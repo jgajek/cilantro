@@ -6,6 +6,10 @@ using System.Text.Json.Serialization;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnlib.DotNet.Writer;
+using ReactorUnpack.Core.Analysis;
+using ReactorUnpack.Core.Codec;
+using ReactorUnpack.Core.Passes;
+using ReactorUnpack.Core.Verification;
 
 namespace ReactorUnpack.Core;
 
@@ -89,12 +93,14 @@ public sealed class ArtifactContext : IDisposable
         OriginalBytes = originalBytes;
         OriginalSha256 = Convert.ToHexStringLower(SHA256.HashData(originalBytes));
         Module = module;
+        OriginalIdentity = ArtifactIdentitySnapshot.Capture(module);
     }
 
     public string InputPath { get; }
     public byte[] OriginalBytes { get; }
     public string OriginalSha256 { get; }
     public ModuleDefMD Module { get; }
+    public ArtifactIdentitySnapshot OriginalIdentity { get; }
     public IReadOnlyList<Evidence> Evidence => new ReadOnlyCollection<Evidence>(_evidence);
     public IReadOnlyList<ChangeRecord> Changes => new ReadOnlyCollection<ChangeRecord>(_changes);
     public IReadOnlyList<PassResult> PassResults => new ReadOnlyCollection<PassResult>(_passResults);
@@ -201,10 +207,15 @@ public sealed class ReactorPipeline
 
     public static IReadOnlyList<IDeobfuscationPass> CreateDefaultPasses() =>
     [
+        new MetadataPreflightPass(),
         new ReactorDetectionPass(),
+        new MethodProtectionAnalysisPass(),
+        new ConstantPredicatePass(),
+        new ControlFlowAnalysisPass(),
         new CfgDeadCodePass(),
         new FieldRvaRecoveryPass(),
         new ResourceAnalysisPass(),
+        new ResourceRolePass(),
         new PayloadExtractionPass(),
         new DelegateProxyPass(),
         new StringRecoveryPass(),
@@ -235,11 +246,14 @@ public sealed class ReactorPipeline
             context.AddPassResult(pass.Run(context));
         }
 
-        var verification = AssemblyVerifier.Verify(context.Module);
-        var requiredPassFailed = context.PassResults.Any(result =>
-            result.Status == PassStatus.Failed ||
-            options.FailOnPartial && result.Status == PassStatus.Partial);
-        var canEmit = !options.AnalyzeOnly && verification.Passed && !requiredPassFailed;
+        var verification = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity);
+        var fatalFailure = context.PassResults.Any(result => result.Status == PassStatus.Failed);
+        var incompleteRecovery = context.PassResults.Any(result =>
+            result.Status is PassStatus.Partial or PassStatus.Unsupported);
+        var canEmit = !options.AnalyzeOnly &&
+            verification.Passed &&
+            !fatalFailure &&
+            !incompleteRecovery;
 
         var reportDirectory = Path.GetFullPath(options.ReportDirectory ??
             Path.GetDirectoryName(context.InputPath)!);
@@ -274,7 +288,7 @@ public sealed class ReactorPipeline
         }
 
         return new PipelineResult(
-            canEmit || options.AnalyzeOnly && !requiredPassFailed,
+            canEmit || options.AnalyzeOnly && !fatalFailure,
             analysisPath,
             changesPath,
             outputPath,
@@ -392,59 +406,41 @@ public sealed class ReactorPipeline
 public sealed class ReactorDetectionPass : DeobfuscationPass
 {
     public override string Name => "reactor-detection";
+    public override IReadOnlyCollection<string> Dependencies => ["metadata-preflight"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
-        var types = context.Module.GetTypes().ToArray();
-        var methods = types.SelectMany(type => type.Methods).ToArray();
-        var delegateTypes = types.Count(IsDelegateProxy);
-        var runtimeMethods = methods.Count(method =>
-            method.HasBody && method.Body.Instructions.Any(IsDynamicRuntimeCall));
-        var deadPrefixes = methods.Count(HasDeadCallPrefix);
-        var confidence = Math.Min(1.0, delegateTypes / 100.0 + deadPrefixes / 2500.0);
-
-        context.SetFact("reactor.delegateTypes", delegateTypes);
-        context.SetFact("reactor.deadPrefixes", deadPrefixes);
+        var facts = ReactorStructureDetector.Analyze(context.Module);
+        var strategy = new StructuralReactor6Strategy().Match(context.Module, facts);
+        context.SetFact("reactor.structure", facts);
+        context.SetFact("reactor.delegateTypes", facts.DelegateProxyCount);
+        context.SetFact("reactor.deadPrefixes", facts.DeadCallPrefixCount);
         context.AddEvidence(new Evidence(
             "protector",
-            $".NET Reactor profile: {delegateTypes} delegate proxies, {deadPrefixes} dead-call prefixes.",
-            Confidence: confidence));
-        if (runtimeMethods > 0)
+            $".NET Reactor {facts.Generation}: {string.Join(", ", strategy.Evidence)}.",
+            Confidence: facts.Confidence));
+        foreach (var capability in facts.IsReactor6 ? facts.CapabilityNames : [])
         {
             context.AddEvidence(new Evidence(
-                "runtime",
-                $"{runtimeMethods} methods reference dynamic IL or delegate construction.",
-                Confidence: 0.95));
+                "capability",
+                capability,
+                Confidence: facts.Confidence));
         }
 
-        var status = delegateTypes >= 10 && deadPrefixes >= 10
-            ? PassStatus.Success
-            : PassStatus.Unsupported;
-        return (status, 0, [$"Detection confidence: {confidence:P0}"]);
+        var status = facts.IsReactor6 ? PassStatus.Success : PassStatus.Unsupported;
+        return (status, 0,
+        [
+            $"Detection confidence: {facts.Confidence:P0}",
+            $"Generation: {facts.Generation}",
+            $"Capabilities: {string.Join(", ", facts.CapabilityNames)}"
+        ]);
     }
 
     public static bool IsDelegateProxy(TypeDef type) =>
-        type.BaseType?.FullName == "System.MulticastDelegate" &&
-        type.Fields.Any(field => field.IsStatic && field.FieldType.FullName == type.FullName);
-
-    private static bool IsDynamicRuntimeCall(Instruction instruction) =>
-        instruction.Operand is IMethod method &&
-        (method.DeclaringType?.FullName == "System.Reflection.Emit.DynamicMethod" ||
-         method.DeclaringType?.FullName == "System.Delegate");
+        ReactorStructureDetector.IsDelegateProxy(type);
 
     internal static bool HasDeadCallPrefix(MethodDef method)
-    {
-        if (!method.HasBody || method.Body.Instructions.Count < 3)
-        {
-            return false;
-        }
-
-        var instructions = method.Body.Instructions;
-        return instructions[0].OpCode.FlowControl == FlowControl.Branch &&
-               instructions[0].Operand is Instruction target &&
-               ReferenceEquals(target, instructions[2]) &&
-               instructions[1].OpCode.FlowControl == FlowControl.Call;
-    }
+        => ReactorStructureDetector.HasDeadCallPrefix(method);
 }
 
 public sealed class CfgDeadCodePass : DeobfuscationPass
@@ -658,14 +654,65 @@ public sealed record PayloadCodecProfile(
 public sealed class PayloadExtractionPass : DeobfuscationPass
 {
     public override string Name => "payload-extraction";
-    public override IReadOnlyCollection<string> Dependencies => ["resource-analysis"];
+    public override IReadOnlyCollection<string> Dependencies => ["resource-roles"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
         if (!PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
         {
+            context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts);
+            if (facts is not null &&
+                StructuralStreamDiscovery.TryDiscoverProxyProfile(
+                    context.Module,
+                    facts,
+                    out var proxyProfile) &&
+                proxyProfile is not null &&
+                StructuralStreamDiscovery.TryDiscoverOuterPayload(
+                    context.Module,
+                    proxyProfile,
+                    out var discovered) &&
+                discovered is not null)
+            {
+                using var payloadModule = ModuleDefMD.Load(discovered.ManagedAssembly);
+                var sourceBytes = discovered.Resource.CreateReader().ToArray();
+                var structuralInfo = new PayloadInfo(
+                    discovered.Resource.Name,
+                    Convert.ToHexStringLower(SHA256.HashData(sourceBytes)),
+                    sourceBytes.Length,
+                    Convert.ToHexStringLower(SHA256.HashData(discovered.DecodedStream)),
+                    discovered.ManagedAssembly.Length,
+                    Convert.ToHexStringLower(SHA256.HashData(discovered.ManagedAssembly)),
+                    discovered.AssemblyName,
+                    payloadModule.Name,
+                    payloadModule.EntryPoint?.MDToken.Raw ?? 0,
+                    payloadModule.Resources.Select(item => item.Name.String).ToArray());
+                IReadOnlyList<ExtractedPayload> structuralPayloads =
+                    [new(structuralInfo, discovered.ManagedAssembly)];
+                context.SetFact("payload.artifacts", structuralPayloads);
+                context.AddEvidence(new Evidence(
+                    "extracted-payload",
+                    $"Structurally recovered managed assembly {structuralInfo.AssemblyName}.",
+                    discovered.Resource.Name,
+                    1.0));
+                context.AddEvidence(new Evidence(
+                    "stream-constants",
+                    $"Derived keyed payload constants A=0x{discovered.A:X8}, D=0x{discovered.D:X8}.",
+                    discovered.Resource.Name,
+                    1.0));
+                context.AddChange(new ChangeRecord(
+                    Name,
+                    "extract-managed-payload",
+                    discovered.Resource.Name,
+                    $"{structuralInfo.AssemblyName}, SHA-256 {structuralInfo.PayloadSha256}"));
+                return (PassStatus.Success, 1,
+                [
+                    $"Structurally extracted {structuralInfo.AssemblyName}.dll ({structuralInfo.PayloadLength} bytes).",
+                    $"SHA-256: {structuralInfo.PayloadSha256}"
+                ]);
+            }
+
             return (PassStatus.Unsupported, 0,
-                ["No verified payload codec profile matches this input."]);
+                ["No structurally validated payload codec was found."]);
         }
 
         var resource = context.Module.Resources
@@ -912,47 +959,11 @@ public static class PayloadResourceCodec
         {
             throw new InvalidDataException("Payload stream key must contain eight UInt32 words.");
         }
-
-        var output = new byte[ciphertext.Length];
-        Span<byte> wordBytes = stackalloc byte[4];
-        uint state = 0;
-        for (var offset = 0; offset < ciphertext.Length; offset += 4)
-        {
-            var keyWord = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
-                key.AsSpan(offset & 31, 4));
-            state = unchecked(state + keyWord);
-            state = Mix(state, profile.A, profile.D);
-
-            var count = Math.Min(4, ciphertext.Length - offset);
-            wordBytes.Clear();
-            ciphertext.Slice(offset, count).CopyTo(wordBytes);
-            var cipher = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(wordBytes);
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(wordBytes, cipher ^ state);
-            wordBytes[..count].CopyTo(output.AsSpan(offset, count));
-        }
-
-        return output;
+        return ReactorStreamMixer.DecodeKeyed(ciphertext, profile.A, profile.D, key);
     }
 
     internal static uint Mix(uint state, uint a, uint d)
-    {
-        var old = state;
-        var r = System.Numerics.BitOperations.RotateRight(a, 5) ^ old;
-        r = ((r & 0xFF00FF00u) >> 8) | ((r & 0x00FF00FFu) << 8);
-        var v = unchecked(0u - r);
-        var q = old == 0 ? uint.MaxValue : old;
-        q = unchecked(r - (r / q + q));
-        v = unchecked(10476u * (v & 0xFFFFu) - (v >> 16));
-        r = unchecked(22014u * r + q);
-        q ^= q << 9;
-        q = unchecked(q + v);
-        q ^= q << 1;
-        q = unchecked(q + q);
-        q ^= q >> 5;
-        q = unchecked(q + d);
-        q = unchecked((((v << 11) + r) ^ v) + q);
-        return unchecked(old + q);
-    }
+        => ReactorStreamMixer.Mix(state, a, d);
 }
 
 public sealed record ProxyDescriptor(
@@ -967,7 +978,7 @@ public sealed record ProxyBinding(uint FieldToken, uint TargetToken, bool CallVi
 public sealed class DelegateProxyPass : DeobfuscationPass
 {
     public override string Name => "delegate-proxy-analysis";
-    public override IReadOnlyCollection<string> Dependencies => ["payload-extraction"];
+    public override IReadOnlyCollection<string> Dependencies => ["resource-analysis"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
@@ -1007,32 +1018,48 @@ public sealed class DelegateProxyPass : DeobfuscationPass
             return (PassStatus.Success, 0, ["No delegate proxies were detected."]);
         }
 
-        if (!ProxyResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
+        EmbeddedResource resource;
+        IReadOnlyList<ProxyBinding> bindings;
+        var profileSource = "structural";
+        context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var structureFacts);
+        if (structureFacts is not null &&
+            StructuralStreamDiscovery.TryDiscoverProxyProfile(
+                context.Module,
+                structureFacts,
+                out var discovered) &&
+            discovered is not null)
+        {
+            resource = discovered.Resource;
+            bindings = discovered.Bindings;
+            context.AddEvidence(new Evidence(
+                "stream-constants",
+                $"Derived proxy stream constants A=0x{discovered.A:X8}, D=0x{discovered.D:X8}.",
+                discovered.EvidenceMethod,
+                1.0));
+        }
+        else if (ProxyResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
+        {
+            profileSource = "known-regression";
+            resource = context.Module.Resources
+                .OfType<EmbeddedResource>()
+                .FirstOrDefault(item =>
+                    Convert.ToHexStringLower(SHA256.HashData(item.CreateReader().ToArray())) ==
+                    profile.ResourceSha256)
+                ?? throw new InvalidDataException("The profiled proxy mapping resource was not found.");
+            var decoded = ProxyResourceCodec.Decode(resource.CreateReader().ToArray(), profile);
+            if (Convert.ToHexStringLower(SHA256.HashData(decoded)) != profile.DecodedSha256)
+                return (PassStatus.Failed, 0, ["Decoded proxy map failed its regression hash."]);
+            bindings = ProxyResourceCodec.Parse(decoded);
+        }
+        else
         {
             return (PassStatus.Unsupported, 0,
             [
                 $"Cataloged {proxies.Length} delegate proxies.",
-                "This proxy stream generation does not have a verified codec profile."
+                "No structurally validated proxy stream codec was found."
             ]);
         }
 
-        var resource = context.Module.Resources
-            .OfType<EmbeddedResource>()
-            .FirstOrDefault(item =>
-                Convert.ToHexStringLower(SHA256.HashData(item.CreateReader().ToArray())) == profile.ResourceSha256);
-        if (resource is null)
-        {
-            return (PassStatus.Failed, 0, ["The profiled proxy mapping resource was not found."]);
-        }
-
-        var decoded = ProxyResourceCodec.Decode(resource.CreateReader().ToArray(), profile);
-        var decodedHash = Convert.ToHexStringLower(SHA256.HashData(decoded));
-        if (decodedHash != profile.DecodedSha256)
-        {
-            return (PassStatus.Failed, 0, ["Decoded proxy map hash did not match the clean-room fixture."]);
-        }
-
-        var bindings = ProxyResourceCodec.Parse(decoded);
         var fields = proxyTypes
             .SelectMany(type => type.Fields)
             .Where(field => field.IsStatic)
@@ -1105,7 +1132,8 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         return (PassStatus.Success, changes,
         [
             $"Decoded {bindings.Count} proxy bindings.",
-            $"Restored {changes} direct call sites."
+            $"Restored {changes} direct call sites.",
+            $"Profile source: {profileSource}."
         ]);
     }
 }
@@ -1139,41 +1167,7 @@ public static class ProxyResourceCodec
         Profiles.TryGetValue(inputSha256, out profile!);
 
     public static byte[] Decode(ReadOnlySpan<byte> ciphertext, ProxyCodecProfile profile)
-    {
-        var output = new byte[ciphertext.Length];
-        uint state = 0;
-        Span<byte> wordBytes = stackalloc byte[4];
-        for (var offset = 0; offset < ciphertext.Length; offset += 4)
-        {
-            var count = Math.Min(4, ciphertext.Length - offset);
-            wordBytes.Clear();
-            ciphertext.Slice(offset, count).CopyTo(wordBytes);
-            var cipher = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(wordBytes);
-
-            var old = state;
-            var rotated = System.Numerics.BitOperations.RotateRight(profile.A, 5) ^ old;
-            var r = ((rotated & 0xFF00FF00u) >> 8) | ((rotated & 0x00FF00FFu) << 8);
-            var v40 = unchecked(0u - r);
-            var q = old == 0 ? uint.MaxValue : old;
-            q = unchecked(r - (r / q + q));
-            v40 = unchecked(10476u * (v40 & 0xFFFFu) - (v40 >> 16));
-            r = unchecked(22014u * r + q);
-            q ^= q << 9;
-            q = unchecked(q + v40);
-            q ^= q << 1;
-            q = unchecked(q + q);
-            q ^= q >> 5;
-            q = unchecked(q + profile.D);
-            q = unchecked((((v40 << 11) + r) ^ v40) + q);
-            state = unchecked(old + q);
-
-            var plain = cipher ^ state;
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(wordBytes, plain);
-            wordBytes[..count].CopyTo(output.AsSpan(offset, count));
-        }
-
-        return output;
-    }
+        => ReactorStreamMixer.DecodeProxy(ciphertext, profile.A, profile.D);
 
     public static IReadOnlyList<ProxyBinding> Parse(ReadOnlySpan<byte> decoded)
     {
@@ -1233,19 +1227,18 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         }
 
         var resolver = candidates[0];
-        var encryptedPayloadName = context.Module.Resources.OfType<EmbeddedResource>()
-            .OrderBy(resource => context.Module.Resources.IndexOf(resource))
-            .ElementAtOrDefault(2)?.Name.String;
-        if (encryptedPayloadName is null)
-        {
-            return (PassStatus.Failed, 0, ["The encrypted payload resource was not found."]);
-        }
-
-        var replacements = new Dictionary<uint, string>
-        {
-            [0x060000D1] = encryptedPayloadName,
-            [0x060000EE] = "Load "
-        };
+        var payloadResourceName = ResolvePayloadResourceName(context);
+        var replacements = context.Module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Where(method => method.HasBody)
+            .Where(method => method.Body.Instructions.Any(instruction =>
+                instruction.Operand is IMethod called &&
+                IsSameMethod(called, resolver)))
+            .Select(method => (
+                Method: method,
+                Value: InferString(context.Module, method, payloadResourceName)))
+            .Where(item => item.Value is not null)
+            .ToDictionary(item => item.Method.MDToken.Raw, item => item.Value!);
         var changed = 0;
         foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
         {
@@ -1258,7 +1251,8 @@ public sealed class StringRecoveryPass : DeobfuscationPass
             for (var index = 0; index < instructions.Count; index++)
             {
                 var instruction = instructions[index];
-                if (instruction.Operand is not MethodDef called || !ReferenceEquals(called, resolver))
+                if (instruction.Operand is not IMethod called ||
+                    !IsSameMethod(called, resolver))
                 {
                     continue;
                 }
@@ -1276,14 +1270,116 @@ public sealed class StringRecoveryPass : DeobfuscationPass
             }
         }
 
+        if (replacements.Count == 0)
+        {
+            return (PassStatus.Partial, 0,
+            [
+                "String resolver is structurally recognized, but its VM-backed table is not statically reducible.",
+                "All unresolved call sites were preserved."
+            ]);
+        }
+
         return changed == replacements.Count
             ? (PassStatus.Success, changed, [$"Statically restored {changed} protected strings."])
             : (PassStatus.Partial, changed,
             [
                 $"Restored {changed} protected strings.",
-                $"Expected {replacements.Count} profiled call sites."
+                $"Expected {replacements.Count} structurally inferred call sites."
             ]);
     }
+
+    private static string? ResolvePayloadResourceName(ArtifactContext context)
+    {
+        if (context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var payloads) &&
+            payloads is { Count: > 0 })
+        {
+            return payloads[0].Info.SourceResource;
+        }
+
+        if (!PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
+            return null;
+        return context.Module.Resources.OfType<EmbeddedResource>()
+            .FirstOrDefault(resource =>
+                Convert.ToHexStringLower(SHA256.HashData(resource.CreateReader().ToArray())) ==
+                profile.ResourceSha256)?.Name;
+    }
+
+    private static string? InferString(
+        ModuleDef module,
+        MethodDef method,
+        string? payloadResourceName)
+    {
+        var directCalls = method.Body.Instructions
+            .Select(instruction => instruction.Operand as IMethod)
+            .Where(called => called is not null)
+            .Cast<IMethod>()
+            .ToArray();
+        if (payloadResourceName is not null &&
+            method.IsStatic &&
+            method.MethodSig?.Params.Count == 0 &&
+            method.Body.Instructions.Count >= 100)
+        {
+            return payloadResourceName;
+        }
+
+        if (method.IsStatic &&
+            method.MethodSig?.Params.Count == 1 &&
+            method.ReturnType.ElementType == ElementType.Object &&
+            directCalls.Any(called =>
+                called.DeclaringType?.FullName == "System.String" &&
+                called.Name == "Trim") &&
+            directCalls.Any(called =>
+                called.DeclaringType?.FullName == "System.Type" &&
+                called.Name == "GetMethod"))
+        {
+            return "Load";
+        }
+
+        var relevantMethods = new HashSet<MethodDef> { method };
+        for (var depth = 0; depth < 2; depth++)
+        {
+            var tokens = relevantMethods.Select(item => item.MDToken.Raw).ToHashSet();
+            foreach (var caller in module.GetTypes().SelectMany(type => type.Methods)
+                         .Where(candidate => candidate.HasBody))
+            {
+                if (caller.Body.Instructions.Any(instruction =>
+                        instruction.Operand is IMethod called &&
+                        tokens.Contains(called.MDToken.Raw)))
+                {
+                    relevantMethods.Add(caller);
+                }
+            }
+        }
+
+        var calls = relevantMethods
+            .SelectMany(item => item.Body.Instructions)
+            .Select(instruction => instruction.Operand as IMethod)
+            .Where(called => called is not null)
+            .Cast<IMethod>()
+            .ToArray();
+        if (payloadResourceName is not null &&
+            calls.Any(called => called.Name == "GetManifestResourceStream"))
+        {
+            return payloadResourceName;
+        }
+
+        if (calls.Any(called =>
+                called.DeclaringType?.FullName == "System.Reflection.Assembly" &&
+                called.Name == "Load") &&
+            calls.Any(called =>
+                called.DeclaringType?.FullName == "System.String" &&
+                called.Name == "Concat"))
+        {
+            return "Load";
+        }
+
+        return null;
+    }
+
+    private static bool IsSameMethod(IMethod candidate, MethodDef expected) =>
+        ReferenceEquals(candidate, expected) ||
+        ReferenceEquals(candidate.ResolveMethodDef(), expected) ||
+        candidate.FullName == expected.FullName;
 }
 
 public sealed class MetadataSanitizationPass : DeobfuscationPass
@@ -1336,7 +1432,9 @@ public sealed record VerificationResult(bool Passed, IReadOnlyList<string> Diagn
 
 public static class AssemblyVerifier
 {
-    public static VerificationResult Verify(ModuleDef module)
+    public static VerificationResult Verify(
+        ModuleDef module,
+        ArtifactIdentitySnapshot? originalIdentity = null)
     {
         var diagnostics = new List<string>();
         foreach (var method in module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
@@ -1356,6 +1454,16 @@ public static class AssemblyVerifier
                 }
             }
 
+            foreach (var handler in method.Body.ExceptionHandlers)
+            {
+                VerifyBoundary(handler.TryStart, "try start");
+                VerifyBoundary(handler.TryEnd, "try end", allowEndOfMethod: true);
+                VerifyBoundary(handler.HandlerStart, "handler start");
+                VerifyBoundary(handler.HandlerEnd, "handler end", allowEndOfMethod: true);
+                if (handler.FilterStart is not null)
+                    VerifyBoundary(handler.FilterStart, "filter start");
+            }
+
             var reachable = CfgDeadCodePass.ComputeReachable(method);
             var invalidReachableCalls = reachable.Count(instruction =>
                 instruction.OpCode.FlowControl == FlowControl.Call && instruction.Operand is null);
@@ -1363,6 +1471,31 @@ public static class AssemblyVerifier
             {
                 diagnostics.Add($"{method.MDToken}: {invalidReachableCalls} reachable calls have invalid operands.");
             }
+
+            void VerifyBoundary(
+                Instruction? boundary,
+                string kind,
+                bool allowEndOfMethod = false)
+            {
+                if (boundary is null && allowEndOfMethod)
+                    return;
+                if (boundary is not null && instructionSet.Contains(boundary))
+                    return;
+                diagnostics.Add($"{method.MDToken}: {kind} is outside the method.");
+            }
+        }
+
+        if (originalIdentity is not null)
+        {
+            var current = ArtifactIdentitySnapshot.Capture(module);
+            if (current.EntryPointToken != originalIdentity.EntryPointToken)
+                diagnostics.Add("Entry point token changed during rewriting.");
+            if (current.StrongNameSigned != originalIdentity.StrongNameSigned)
+                diagnostics.Add("Strong-name signed state changed during rewriting.");
+            if (!current.PublicApi.SequenceEqual(originalIdentity.PublicApi, StringComparer.Ordinal))
+                diagnostics.Add("Public API changed during rewriting.");
+            if (!current.ResourceNames.SequenceEqual(originalIdentity.ResourceNames, StringComparer.Ordinal))
+                diagnostics.Add("Embedded resource set changed during rewriting.");
         }
 
         return new VerificationResult(diagnostics.Count == 0, diagnostics);

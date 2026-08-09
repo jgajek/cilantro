@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReactorUnpack corpus manifest",
+  "type": "object",
+  "required": ["manifestVersion", "profile", "samples"],
+  "properties": {
+    "manifestVersion": { "type": "integer", "const": 1 },
+    "profile": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "samples": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "tier",
+          "sha256",
+          "localName",
+          "expectedDetection",
+          "expectedCapabilities"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "tier": {
+            "enum": ["profiled", "detected", "negative", "exploratory", "oracle"]
+          },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "localName": { "type": "string", "minLength": 1 },
+          "expectedDetection": { "enum": ["reactor6", "none"] },
+          "expectedCapabilities": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          },
+          "oracleSha256": {
+            "type": ["string", "null"],
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

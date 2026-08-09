@@ -1,8 +1,28 @@
 # Compatibility and provenance
 
-## Supported fixture profile
+## Corpus and support contract
 
-The first profile was derived independently from these authorized samples:
+The manifest at `corpus/reactor-6-nonvirt.manifest.json` contains nine
+SHA-256-pinned entries:
+
+- two `profiled` full-recovery fixtures;
+- three `detected` JIT-hook/method-stub samples;
+- one `exploratory` control-flow/proxy sample; and
+- three deobfuscated validation oracles used as negative controls.
+
+The three oracle assemblies are never implementation inputs. They are compared
+only for assembly identity, entry-point kind, public API count, and resource
+count. Binaries remain ignored under `samples/`.
+
+The batch runner verifies each input hash before analysis. `profiled` entries
+must emit deterministic output; `detected` and `exploratory` entries are
+analysis-only; negative controls must receive no destructive edits. Run:
+
+```bash
+dotnet run --project src/ReactorUnpack.Cli -- corpus run
+```
+
+The full-recovery profile was derived independently from:
 
 - `ad0c3182b18b5d7ba8771d830f4d51b4ada7e26f8d05223f4379e6312aba65fa`
 - `c405398fc582e33bbbd37222b7360a6cfdc526146622141503de1ccf9de6174a`
@@ -45,8 +65,12 @@ the adjacent pair `ldsfld mappedField; call staticAdapter`. It is rewritten to
 `nop; call|callvirt target`, preserving stack behavior and instruction
 identity. Each fixture has 2,643 validated sites.
 
-Per-build stream constants are selected only after the original resource and
-decoded payload hashes match. Unknown profiles are not decoded.
+The generic strategy locates a resource whose length equals eight bytes per
+proxy field, extracts candidate stream constants from the token-resolver IL,
+and accepts a pair only when every decoded field and method token resolves and
+the mapping is bijective. This derives Qbjuef's 146-record generation
+(`A=0x64875CD0`, `D=0x7511923A`) without its input hash. Known hashes remain only
+as regression fallbacks.
 
 ### Embedded resource assembly
 
@@ -103,8 +127,10 @@ The resolver is never invoked.
 Before emission, the tool checks:
 
 - all branch and switch targets belong to their method;
+- exception-region boundaries belong to their method;
 - no reachable call has an invalid operand;
-- all required passes succeeded when `--fail-on-partial` is used; and
+- public API, resource names, entry point, and strong-name state are preserved;
+- every pass is complete (partial and unsupported recovery always block output);
 - the emitted file reloads and passes the same structural verification.
 
 The writer preserves metadata tokens and writes atomically. End-to-end tests
@@ -113,13 +139,35 @@ hashes, pass counts, and independent dnlib reload.
 
 ## Intentionally unsupported
 
-- generalized extraction of stream constants from arbitrary Reactor builds;
 - generic interpretation of Reactor's virtualized string initializer;
-- method/native-code decryption and anti-tamper patch maps;
+- virtualized JIT-hook patch-stream interpretation for the ReasonLabs cohort;
 - code-virtualization lifting;
 - destructive removal of runtime/proxy types and encrypted resources;
 - renaming; and
 - dynamic execution of protected assemblies.
+
+The JIT-hook generation is detected through duplicate raw metadata rows,
+hundreds of `NoInlining` default-return stubs, high-entropy patch resources,
+large switch dispatchers, `clrjit` references, and runtime-module pointer
+access. Its protected method bodies are preserved and output is refused. This
+is an explicit capability boundary: the loader's write semantics are known,
+but its virtualized patch transform has not been proven by the bounded static
+interpreter.
+
+## Generic analysis components
+
+- Raw `BSJB`/tables-stream preflight records duplicate Module/Assembly rows,
+  invalid stream bounds, and zero sorted masks before mutation.
+- Resource roles are inferred from consumers such as `ResolveMethod`,
+  `GetManifestResourceStream`, `Assembly.Load`, and `string(int32)` resolvers.
+- Bounded integer evaluation handles constant arithmetic, shifts, and bitwise
+  operations; constant array discovery recovers FieldRVA and IL-built material.
+- Conservative CFG reachability, exception roots, dispatcher detection, and
+  evaluation-stack analysis are bounded and diagnostic.
+- Payload stage gates require strict terminal ByteArray framing, bounded
+  decompression, `MZ`/CLR metadata, and independent managed parsing.
+- Mutations have rollback support; destructive cleanup requires complete
+  recovery, no remaining use sites, and at least 0.95 confidence.
 
 Unsupported mechanisms remain intact and are reported. This is safer than
 claiming broad Reactor 6/7 compatibility or emitting a partially damaged file.

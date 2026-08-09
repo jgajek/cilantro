@@ -1,4 +1,5 @@
 ﻿using ReactorUnpack.Core;
+using ReactorUnpack.Core.Corpus;
 
 return await ReactorCommand.RunAsync(args);
 
@@ -6,6 +7,11 @@ internal static class ReactorCommand
 {
     public static Task<int> RunAsync(string[] args)
     {
+        if (args.Length >= 2 && args[0] == "corpus" && args[1] == "run")
+        {
+            return Task.FromResult(RunCorpus(args[2..]));
+        }
+
         if (args.Length == 0 || args.Any(argument => argument is "-h" or "--help"))
         {
             PrintUsage();
@@ -124,6 +130,43 @@ internal static class ReactorCommand
         return 2;
     }
 
+    private static int RunCorpus(string[] args)
+    {
+        var manifest = "corpus/reactor-6-nonvirt.manifest.json";
+        var samples = "samples";
+        var output = "artifacts/corpus";
+        try
+        {
+            for (var index = 0; index < args.Length; index++)
+            {
+                switch (args[index])
+                {
+                    case "--manifest":
+                        manifest = RequireValue(args, ref index);
+                        break;
+                    case "--samples":
+                        samples = RequireValue(args, ref index);
+                        break;
+                    case "--output":
+                        output = RequireValue(args, ref index);
+                        break;
+                    default:
+                        return Fail($"Unknown corpus option: {args[index]}");
+                }
+            }
+
+            var report = CorpusRunner.Run(manifest, samples, output);
+            Console.WriteLine($"Corpus:  {Path.GetFullPath(manifest)}");
+            Console.WriteLine($"Results: {Path.GetFullPath(Path.Combine(output, "corpus.outcomes.json"))}");
+            Console.WriteLine($"Passed: {report.Passed}; failed: {report.Failed}; missing: {report.Missing}");
+            return report.Failed == 0 && report.Missing == 0 ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            return Fail($"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
     private static void PrintUsage()
     {
         Console.WriteLine(
@@ -132,6 +175,7 @@ internal static class ReactorCommand
 
             Usage:
               ReactorUnpack <assembly> [options]
+              ReactorUnpack corpus run [--manifest PATH] [--samples DIR] [--output DIR]
 
             Options:
               --analyze-only       Produce reports without writing a transformed assembly
@@ -139,6 +183,11 @@ internal static class ReactorCommand
               -o, --output PATH    Select the cleaned assembly path
               --report-dir DIR     Select the JSON report directory
               -h, --help           Show this help
+
+            Corpus options:
+              --manifest PATH      Corpus manifest (default: corpus/reactor-6-nonvirt.manifest.json)
+              --samples DIR        Hash-verified binary directory (default: samples)
+              --output DIR         Normalized report directory (default: artifacts/corpus)
             """);
     }
 }
