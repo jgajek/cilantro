@@ -1,0 +1,9 @@
+.dotnet/
+.dotnet-install.sh
+**/bin/
+**/obj/
+artifacts/
+samples/
+TestResults/
+*.user
+*.suo
