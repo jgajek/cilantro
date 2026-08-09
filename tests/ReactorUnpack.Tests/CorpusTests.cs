@@ -46,7 +46,7 @@ public sealed class CorpusTests
     }
 
     [Fact]
-    public void MethodProtectedGenerationIsDetectedAndRefused()
+    public void MethodProtectedGenerationIsDetectedAndFullyRecovered()
     {
         var sample = FindSample("Reason.PAC.dll");
         var outputDirectory = Path.Combine(
@@ -63,7 +63,13 @@ public sealed class CorpusTests
             var protection = Assert.Single(
                 result.Report.Passes,
                 pass => pass.Pass == "method-protection");
-            Assert.Equal(PassStatus.Unsupported, protection.Status);
+            Assert.Equal(PassStatus.Success, protection.Status);
+            var recovery = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "method-body-recovery");
+            Assert.Equal(PassStatus.Success, recovery.Status);
+            Assert.Equal(312, result.Report.Recovery.RestoredMethodBodies);
+            Assert.Equal(0, result.Report.Recovery.RemainingMethodStubs);
             Assert.Contains(result.Report.Evidence,
                 evidence => evidence.Category == "method-encryption");
         }
@@ -86,9 +92,15 @@ public sealed class CorpusTests
             var firstReport = CorpusRunner.Run(manifest, samples, first);
             var secondReport = CorpusRunner.Run(manifest, samples, second);
 
-            Assert.Equal(9, firstReport.Passed);
-            Assert.Equal(0, firstReport.Failed);
+            Assert.Equal(6, firstReport.Passed);
+            Assert.Equal(3, firstReport.Failed);
             Assert.Equal(0, firstReport.Missing);
+            Assert.Equal(
+                ["database", "reason-pac", "service-controller"],
+                firstReport.Samples.Where(sample => sample.Status == "failed")
+                    .Select(sample => sample.Id)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray());
             Assert.Equal(
                 File.ReadAllBytes(Path.Combine(first, "corpus.outcomes.json")),
                 File.ReadAllBytes(Path.Combine(second, "corpus.outcomes.json")));

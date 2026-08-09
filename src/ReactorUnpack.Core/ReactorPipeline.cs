@@ -9,6 +9,9 @@ using dnlib.DotNet.Writer;
 using ReactorUnpack.Core.Analysis;
 using ReactorUnpack.Core.Codec;
 using ReactorUnpack.Core.Passes;
+using ReactorUnpack.Core.Pipeline;
+using ReactorUnpack.Core.Recovery;
+using ReactorUnpack.Core.Strings;
 using ReactorUnpack.Core.Verification;
 
 namespace ReactorUnpack.Core;
@@ -77,8 +80,16 @@ public sealed record ArtifactReport(
     IReadOnlyList<PayloadInfo> Payloads,
     IReadOnlyList<Evidence> Evidence,
     IReadOnlyList<PassResult> Passes,
+    RecoveryReportMetrics Recovery,
     bool VerificationPassed,
     IReadOnlyList<string> VerificationDiagnostics);
+
+public sealed record RecoveryReportMetrics(
+    int RestoredMethodBodies,
+    int RemainingMethodStubs,
+    int StringCallSites,
+    int ReplacedStringSites,
+    int MutationCount);
 
 public sealed class ArtifactContext : IDisposable
 {
@@ -93,14 +104,18 @@ public sealed class ArtifactContext : IDisposable
         OriginalBytes = originalBytes;
         OriginalSha256 = Convert.ToHexStringLower(SHA256.HashData(originalBytes));
         Module = module;
+        OriginalImage = new PeImageView(originalBytes);
         OriginalIdentity = ArtifactIdentitySnapshot.Capture(module);
+        OriginalStructure = ArtifactStructuralSnapshot.Capture(module);
     }
 
     public string InputPath { get; }
     public byte[] OriginalBytes { get; }
     public string OriginalSha256 { get; }
     public ModuleDefMD Module { get; }
+    public PeImageView OriginalImage { get; }
     public ArtifactIdentitySnapshot OriginalIdentity { get; }
+    public ArtifactStructuralSnapshot OriginalStructure { get; }
     public IReadOnlyList<Evidence> Evidence => new ReadOnlyCollection<Evidence>(_evidence);
     public IReadOnlyList<ChangeRecord> Changes => new ReadOnlyCollection<ChangeRecord>(_changes);
     public IReadOnlyList<PassResult> PassResults => new ReadOnlyCollection<PassResult>(_passResults);
@@ -210,12 +225,15 @@ public sealed class ReactorPipeline
         new MetadataPreflightPass(),
         new ReactorDetectionPass(),
         new MethodProtectionAnalysisPass(),
-        new ConstantPredicatePass(),
-        new ControlFlowAnalysisPass(),
-        new CfgDeadCodePass(),
         new FieldRvaRecoveryPass(),
         new ResourceAnalysisPass(),
         new ResourceRolePass(),
+        new ControlFlowAnalysisPass(),
+        new MethodBodyRecoveryPass(),
+        new StringTableRecoveryPass(),
+        new ConstantPredicatePass(),
+        new DispatcherDeobfuscationPass(),
+        new CfgDeadCodePass(),
         new PayloadExtractionPass(),
         new DelegateProxyPass(),
         new StringRecoveryPass(),
@@ -227,8 +245,9 @@ public sealed class ReactorPipeline
         options ??= new PipelineOptions();
         using var context = ArtifactContext.Load(inputPath);
 
-        foreach (var pass in _passes)
+        foreach (var planned in PipelinePlanner.Plan(_passes))
         {
+            var pass = planned.Pass;
             var dependencyFailed = pass.Dependencies.Any(dependency =>
                 context.PassResults.Any(result =>
                     result.Pass == dependency && result.Status == PassStatus.Failed));
@@ -243,10 +262,25 @@ public sealed class ReactorPipeline
                 continue;
             }
 
+            var decision = PipelinePlanner.Decide(planned, context);
+            if (!decision.Execute)
+            {
+                context.AddPassResult(new PassResult(
+                    pass.Name,
+                    PassStatus.Unsupported,
+                    0,
+                    [decision.Reason!],
+                    TimeSpan.Zero));
+                continue;
+            }
+
             context.AddPassResult(pass.Run(context));
         }
 
-        var verification = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity);
+        var verification = AssemblyVerifier.Verify(
+            context.Module,
+            context.OriginalIdentity,
+            context.OriginalStructure);
         var fatalFailure = context.PassResults.Any(result => result.Status == PassStatus.Failed);
         var incompleteRecovery = context.PassResults.Any(result =>
             result.Status is PassStatus.Partial or PassStatus.Unsupported);
@@ -274,7 +308,10 @@ public sealed class ReactorPipeline
         if (canEmit)
         {
             WriteModule(context.Module, outputPath, options.PreserveTokens);
-            var outputVerification = AssemblyVerifier.VerifyFile(outputPath);
+            var outputVerification = AssemblyVerifier.VerifyFile(
+                outputPath,
+                context.OriginalIdentity,
+                context.OriginalStructure);
             if (!outputVerification.Passed)
             {
                 File.Delete(outputPath);
@@ -304,6 +341,12 @@ public sealed class ReactorPipeline
         var types = context.Module.GetTypes().ToArray();
         var methods = types.SelectMany(type => type.Methods).ToArray();
         context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var payloads);
+        context.TryGetFact<int>("method-protection.restored", out var restoredBodies);
+        context.TryGetFact<IReadOnlyList<ProtectedMethodStub>>(
+            "method-protection.stubs",
+            out var protectedStubs);
+        context.TryGetFact<int>("strings.callSites", out var stringCallSites);
+        context.TryGetFact<int>("strings.replacedSites", out var replacedStringSites);
         return new ArtifactReport(
             Version,
             context.InputPath,
@@ -320,6 +363,12 @@ public sealed class ReactorPipeline
             payloads?.Select(payload => payload.Info).ToArray() ?? [],
             context.Evidence,
             context.PassResults,
+            new RecoveryReportMetrics(
+                restoredBodies,
+                Math.Max(0, (protectedStubs?.Count ?? 0) - restoredBodies),
+                stringCallSites,
+                replacedStringSites,
+                context.Changes.Count),
             verification.Passed,
             verification.Diagnostics);
     }
@@ -446,7 +495,7 @@ public sealed class ReactorDetectionPass : DeobfuscationPass
 public sealed class CfgDeadCodePass : DeobfuscationPass
 {
     public override string Name => "cfg-dead-code";
-    public override IReadOnlyCollection<string> Dependencies => ["reactor-detection"];
+    public override IReadOnlyCollection<string> Dependencies => ["dispatcher-deobfuscation"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
@@ -546,7 +595,7 @@ public sealed record FieldData(uint Token, string Field, int Length, string Sha2
 public sealed class FieldRvaRecoveryPass : DeobfuscationPass
 {
     public override string Name => "field-rva-recovery";
-    public override IReadOnlyCollection<string> Dependencies => ["cfg-dead-code"];
+    public override IReadOnlyCollection<string> Dependencies => ["method-protection"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
@@ -1194,98 +1243,137 @@ public static class ProxyResourceCodec
 public sealed class StringRecoveryPass : DeobfuscationPass
 {
     public override string Name => "string-recovery";
-    public override IReadOnlyCollection<string> Dependencies => ["delegate-proxy-analysis"];
+    public override IReadOnlyCollection<string> Dependencies =>
+        ["delegate-proxy-analysis", "string-table-recovery"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
         var candidates = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
-            .Where(method => method.HasBody && method.ReturnType.FullName == "System.String")
+            .Where(method => method.HasBody &&
+                method.IsStatic &&
+                method.ReturnType.FullName == "System.String" &&
+                method.MethodSig?.Params.Count == 1 &&
+                method.MethodSig.Params[0].ElementType == ElementType.I4)
             .Where(method => method.Body.Instructions.Any(instruction =>
                 instruction.Operand is IMethod called &&
-                called.Name == "GetManifestResourceStream"))
+                called.Name == "GetManifestResourceStream") ||
+                method.Body.Instructions.Any(instruction =>
+                    instruction.OpCode.Code == Code.Ldsfld &&
+                    instruction.Operand is IField field &&
+                    field.FieldSig?.Type.ElementType == ElementType.SZArray))
             .ToArray();
-
-        foreach (var candidate in candidates)
-        {
-            context.AddEvidence(new Evidence(
-                "string-resolver",
-                "Resource-backed string resolver candidate; preserved because its transform is not yet proven.",
-                $"{candidate.MDToken} {candidate.FullName}",
-                0.9));
-        }
-
         if (candidates.Length == 0)
-        {
             return (PassStatus.Success, 0, ["No protected string resolver was detected."]);
-        }
-
         if (candidates.Length != 1)
-        {
             return (PassStatus.Unsupported, 0,
                 [$"Detected {candidates.Length} ambiguous string resolver candidates."]);
+        if (!context.TryGetFact<CapturedStringTable>("strings.table", out var table) ||
+            table is null)
+        {
+            if (PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out _))
+                return RecoverLegacyProfiledStrings(context, candidates[0]);
+            return (PassStatus.Partial, 0,
+                ["No unique captured string table is available; no call site was modified."]);
         }
 
         var resolver = candidates[0];
-        var payloadResourceName = ResolvePayloadResourceName(context);
-        var replacements = context.Module.GetTypes()
+        var callSites = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
             .Where(method => method.HasBody)
-            .Where(method => method.Body.Instructions.Any(instruction =>
-                instruction.Operand is IMethod called &&
-                IsSameMethod(called, resolver)))
-            .Select(method => (
-                Method: method,
-                Value: InferString(context.Module, method, payloadResourceName)))
-            .Where(item => item.Value is not null)
-            .ToDictionary(item => item.Method.MDToken.Raw, item => item.Value!);
-        var changed = 0;
-        foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
+            .SelectMany(method => method.Body.Instructions
+                .Select((instruction, index) => (Method: method, Instruction: instruction, Index: index)))
+            .Where(item => item.Instruction.Operand is IMethod called &&
+                IsSameMethod(called, resolver))
+            .ToArray();
+        if (callSites.Length == 0)
+            return (PassStatus.Success, 0, ["No reachable string resolver call sites were found."]);
+
+        var replacements = new List<(MethodDef Method, Instruction Call, string Value)>();
+        foreach (var site in callSites)
         {
-            if (!replacements.TryGetValue(method.MDToken.Raw, out var value))
+            if (!StringOffsetSlicer.TryEvaluate(
+                    site.Method, site.Index, table.IntegerFields,
+                    out var offset, out var sliceDiagnostic))
             {
-                continue;
+                return (PassStatus.Partial, 0,
+                [
+                    $"Could not prove resolver argument at {site.Method.MDToken} " +
+                    $"IL_{site.Instruction.Offset:X4}: {sliceDiagnostic}.",
+                    $"Proved {replacements.Count} of {callSites.Length} resolver offset(s).",
+                    "The assembly-wide string rewrite was not started."
+                ]);
             }
-
-            var instructions = method.Body.Instructions;
-            for (var index = 0; index < instructions.Count; index++)
+            var matchingRecords = table.Records.Where(record => record.Offset == offset).ToArray();
+            if (matchingRecords.Length != 1)
             {
-                var instruction = instructions[index];
-                if (instruction.Operand is not IMethod called ||
-                    !IsSameMethod(called, resolver))
-                {
-                    continue;
-                }
-
-                instruction.OpCode = OpCodes.Pop;
-                instruction.Operand = null;
-                instructions.Insert(index + 1, Instruction.Create(OpCodes.Ldstr, value));
-                context.AddChange(new ChangeRecord(
-                    Name,
-                    "restore-string",
-                    $"{method.MDToken} IL_{instruction.Offset:X4}",
-                    JsonSerializer.Serialize(value)));
-                changed++;
-                index++;
+                return (PassStatus.Partial, 0,
+                [
+                    $"Resolver argument at {site.Method.MDToken} IL_{site.Instruction.Offset:X4} " +
+                    $"evaluated to {offset}, which matched {matchingRecords.Length} strict record boundaries.",
+                    $"Proved {replacements.Count} of {callSites.Length} resolver offset(s).",
+                    "The assembly-wide string rewrite was not started."
+                ]);
             }
+            replacements.Add((site.Method, site.Instruction, matchingRecords[0].Value));
         }
 
-        if (replacements.Count == 0)
+        var transactions = replacements.Select(item => item.Method)
+            .Distinct()
+            .ToDictionary(method => method, method => new BodyMutationTransaction(method));
+        try
         {
-            return (PassStatus.Partial, 0,
-            [
-                "String resolver is structurally recognized, but its VM-backed table is not statically reducible.",
-                "All unresolved call sites were preserved."
-            ]);
+            foreach (var replacement in replacements)
+            {
+                var instructions = replacement.Method.Body.Instructions;
+                var callIndex = instructions.IndexOf(replacement.Call);
+                if (callIndex < 0)
+                    throw new InvalidOperationException("Resolver call disappeared during rewrite.");
+                instructions.Insert(callIndex, Instruction.Create(OpCodes.Pop));
+                replacement.Call.OpCode = OpCodes.Ldstr;
+                replacement.Call.Operand = replacement.Value;
+            }
+            var remaining = context.Module.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Where(method => method.HasBody)
+                .SelectMany(method => method.Body.Instructions)
+                .Count(instruction => instruction.Operand is IMethod called &&
+                    IsSameMethod(called, resolver));
+            if (remaining != 0)
+                throw new InvalidOperationException(
+                    $"{remaining} targeted resolver reference(s) remained after rewrite.");
+            var verification = AssemblyVerifier.Verify(
+                context.Module,
+                context.OriginalIdentity,
+                context.OriginalStructure);
+            if (!verification.Passed)
+                throw new InvalidOperationException(string.Join("; ", verification.Diagnostics));
+            foreach (var transaction in transactions.Values)
+                transaction.Commit();
+        }
+        catch (Exception exception)
+        {
+            foreach (var transaction in transactions.Values)
+                transaction.Rollback();
+            return (PassStatus.Failed, 0,
+                [$"Atomic string rewrite was rolled back: {exception.Message}"]);
+        }
+        finally
+        {
+            foreach (var transaction in transactions.Values)
+                transaction.Dispose();
         }
 
-        return changed == replacements.Count
-            ? (PassStatus.Success, changed, [$"Statically restored {changed} protected strings."])
-            : (PassStatus.Partial, changed,
-            [
-                $"Restored {changed} protected strings.",
-                $"Expected {replacements.Count} structurally inferred call sites."
-            ]);
+        foreach (var replacement in replacements)
+            context.AddChange(new ChangeRecord(
+                Name,
+                "restore-string",
+                $"{replacement.Method.MDToken} IL_{replacement.Call.Offset:X4}",
+                JsonSerializer.Serialize(replacement.Value)));
+        context.SetFact("strings.callSites", callSites.Length);
+        context.SetFact("strings.replacedSites", replacements.Count);
+        return (PassStatus.Success, replacements.Count,
+            [$"Atomically restored all {replacements.Count} proven string sites."]);
     }
 
     private static string? ResolvePayloadResourceName(ArtifactContext context)
@@ -1302,6 +1390,52 @@ public sealed class StringRecoveryPass : DeobfuscationPass
             .FirstOrDefault(resource =>
                 Convert.ToHexStringLower(SHA256.HashData(resource.CreateReader().ToArray())) ==
                 profile.ResourceSha256)?.Name;
+    }
+
+    private static (PassStatus, int, IReadOnlyList<string>) RecoverLegacyProfiledStrings(
+        ArtifactContext context,
+        MethodDef resolver)
+    {
+        var payloadResourceName = ResolvePayloadResourceName(context);
+        var replacements = context.Module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Where(method => method.HasBody && method.Body.Instructions.Any(instruction =>
+                instruction.Operand is IMethod called && IsSameMethod(called, resolver)))
+            .Select(method => (
+                Method: method,
+                Value: InferString(context.Module, method, payloadResourceName)))
+            .Where(item => item.Value is not null)
+            .ToDictionary(item => item.Method.MDToken.Raw, item => item.Value!);
+        var changed = 0;
+        foreach (var method in context.Module.GetTypes()
+                     .SelectMany(type => type.Methods)
+                     .Where(method => method.HasBody))
+        {
+            if (!replacements.TryGetValue(method.MDToken.Raw, out var value))
+                continue;
+            var instructions = method.Body.Instructions;
+            for (var index = 0; index < instructions.Count; index++)
+            {
+                var instruction = instructions[index];
+                if (instruction.Operand is not IMethod called || !IsSameMethod(called, resolver))
+                    continue;
+                instruction.OpCode = OpCodes.Pop;
+                instruction.Operand = null;
+                instructions.Insert(index + 1, Instruction.Create(OpCodes.Ldstr, value));
+                context.AddChange(new ChangeRecord(
+                    "string-recovery",
+                    "restore-string",
+                    $"{method.MDToken} IL_{instruction.Offset:X4}",
+                    JsonSerializer.Serialize(value)));
+                changed++;
+                index++;
+            }
+        }
+        return changed == replacements.Count
+            ? (PassStatus.Success, changed,
+                [$"Regression-locked restoration recovered {changed} strings."])
+            : (PassStatus.Partial, changed,
+                [$"Recovered {changed} of {replacements.Count} profiled string sites."]);
     }
 
     private static string? InferString(
@@ -1434,7 +1568,8 @@ public static class AssemblyVerifier
 {
     public static VerificationResult Verify(
         ModuleDef module,
-        ArtifactIdentitySnapshot? originalIdentity = null)
+        ArtifactIdentitySnapshot? originalIdentity = null,
+        ArtifactStructuralSnapshot? originalStructure = null)
     {
         var diagnostics = new List<string>();
         foreach (var method in module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
@@ -1498,15 +1633,36 @@ public static class AssemblyVerifier
                 diagnostics.Add("Embedded resource set changed during rewriting.");
         }
 
+        if (originalStructure is not null)
+        {
+            var current = ArtifactStructuralSnapshot.Capture(module);
+            if (current.TypeCount != originalStructure.TypeCount)
+                diagnostics.Add("Type count changed during rewriting.");
+            if (current.MethodCount != originalStructure.MethodCount)
+                diagnostics.Add("Method count changed during rewriting.");
+            if (current.FieldCount != originalStructure.FieldCount)
+                diagnostics.Add("Field count changed during rewriting.");
+            if (current.ResourceCount != originalStructure.ResourceCount)
+                diagnostics.Add("Resource count changed during rewriting.");
+            if (!current.MethodRvas.Keys.Order().SequenceEqual(
+                    originalStructure.MethodRvas.Keys.Order()))
+            {
+                diagnostics.Add("Method token set changed during rewriting.");
+            }
+        }
+
         return new VerificationResult(diagnostics.Count == 0, diagnostics);
     }
 
-    public static VerificationResult VerifyFile(string path)
+    public static VerificationResult VerifyFile(
+        string path,
+        ArtifactIdentitySnapshot? originalIdentity = null,
+        ArtifactStructuralSnapshot? originalStructure = null)
     {
         try
         {
             using var module = ModuleDefMD.Load(path);
-            return Verify(module);
+            return Verify(module, originalIdentity, originalStructure);
         }
         catch (Exception ex)
         {

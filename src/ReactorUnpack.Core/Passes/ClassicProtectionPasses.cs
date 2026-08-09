@@ -49,10 +49,10 @@ public sealed class MethodProtectionAnalysisPass : DeobfuscationPass
             "method-encryption",
             $"{stubs.Length} NoInlining default-return method stubs require prefix restoration.",
             Confidence: 1.0));
-        return (PassStatus.Unsupported, 0,
+        return (PassStatus.Success, 0,
         [
             $"Detected {stubs.Length} protected method stubs.",
-            "The virtualized write bootstrap is preserved; output emission is blocked until every write is proven."
+            "Recovery is delegated to the original-byte method-body recovery phase."
         ]);
     }
 }
@@ -62,7 +62,7 @@ public sealed record ProtectedMethodStub(uint Token, uint Rva, string Method, in
 public sealed class ControlFlowAnalysisPass : DeobfuscationPass
 {
     public override string Name => "control-flow-analysis";
-    public override IReadOnlyCollection<string> Dependencies => ["constant-predicates"];
+    public override IReadOnlyCollection<string> Dependencies => ["method-protection"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {

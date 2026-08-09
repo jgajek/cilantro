@@ -155,21 +155,46 @@ public static class ReactorStructureDetector
         }
 
         var instructions = method.Body.Instructions;
-        if (instructions.Count is < 3 or > 5 || instructions[^1].OpCode != OpCodes.Ret)
+        if (instructions.Count is < 3 or > 6 || instructions[^1].OpCode != OpCodes.Ret)
         {
             return false;
         }
 
+        // A stub returns the default of its return type: it pushes a constant and optionally
+        // coerces it to the declared type. Reactor emits the coercion for value-typed and
+        // widened returns, so matching only the bare constant misses those stubs.
         var meaningful = instructions
+            .Take(instructions.Count - 1)
             .Where(instruction => instruction.OpCode != OpCodes.Nop)
             .ToArray();
-        return meaningful.Length is 1 or 2 &&
-               (meaningful.Length == 1 ||
-                meaningful[0].OpCode is var opcode &&
-                (opcode == OpCodes.Ldnull ||
-                 opcode == OpCodes.Ldc_I4_0 ||
-                 opcode == OpCodes.Ldc_I4_1));
+        return meaningful.Length switch
+        {
+            0 => true,
+            1 => IsDefaultValuePush(meaningful[0].OpCode),
+            2 => IsDefaultValuePush(meaningful[0].OpCode) &&
+                IsDefaultValueCoercion(meaningful[1].OpCode),
+            _ => false
+        };
     }
+
+    private static bool IsDefaultValuePush(OpCode opcode) =>
+        opcode == OpCodes.Ldnull ||
+        opcode == OpCodes.Ldc_I4_0 ||
+        opcode == OpCodes.Ldc_I4_1 ||
+        opcode == OpCodes.Ldc_I4 ||
+        opcode == OpCodes.Ldc_I4_S ||
+        opcode == OpCodes.Ldc_I8 ||
+        opcode == OpCodes.Ldc_R4 ||
+        opcode == OpCodes.Ldc_R8;
+
+    private static bool IsDefaultValueCoercion(OpCode opcode) =>
+        opcode == OpCodes.Unbox_Any ||
+        opcode == OpCodes.Box ||
+        opcode == OpCodes.Castclass ||
+        opcode == OpCodes.Isinst ||
+        opcode.Code is Code.Conv_I or Code.Conv_I1 or Code.Conv_I2 or Code.Conv_I4 or
+            Code.Conv_I8 or Code.Conv_U or Code.Conv_U1 or Code.Conv_U2 or Code.Conv_U4 or
+            Code.Conv_U8 or Code.Conv_R4 or Code.Conv_R8 or Code.Conv_R_Un;
 
     public static bool IsStringResolver(MethodDef method) =>
         method.HasBody &&

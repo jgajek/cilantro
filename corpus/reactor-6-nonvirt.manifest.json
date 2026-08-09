@@ -37,7 +37,12 @@
       "localName": "Reason.PAC.dll",
       "expectedDetection": "reactor6",
       "expectedCapabilities": ["method-stubs", "jit-hook", "protected-strings", "dispatcher-control-flow", "anti-tamper"],
-      "oracleSha256": "82d2b678896ebb388c4ef9ea877e898d1ac2907d956deec4035faddda847dec0"
+      "oracleSha256": "82d2b678896ebb388c4ef9ea877e898d1ac2907d956deec4035faddda847dec0",
+      "expectedRestoredBodyCount": 312,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "maximumMutationCount": 20000,
+      "requireOracleParity": true
     },
     {
       "id": "service-controller",
@@ -46,7 +51,12 @@
       "localName": "rsServiceController.dll",
       "expectedDetection": "reactor6",
       "expectedCapabilities": ["method-stubs", "jit-hook", "protected-strings", "dispatcher-control-flow", "anti-tamper"],
-      "oracleSha256": "6cdf18c01fe19595d44022a587b3ecca978962013e78f006fdfb299aadbe33d9"
+      "oracleSha256": "6cdf18c01fe19595d44022a587b3ecca978962013e78f006fdfb299aadbe33d9",
+      "expectedRestoredBodyCount": 253,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "maximumMutationCount": 20000,
+      "requireOracleParity": true
     },
     {
       "id": "database",
@@ -55,7 +65,12 @@
       "localName": "rsDatabase.protected.dll",
       "expectedDetection": "reactor6",
       "expectedCapabilities": ["method-stubs", "jit-hook", "protected-strings", "dispatcher-control-flow", "anti-tamper"],
-      "oracleSha256": "482100ea3682a84991de0e02dcce449ecd4bea6495999c1a05c95dd37facbd3d"
+      "oracleSha256": "482100ea3682a84991de0e02dcce449ecd4bea6495999c1a05c95dd37facbd3d",
+      "expectedRestoredBodyCount": 199,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "maximumMutationCount": 20000,
+      "requireOracleParity": true
     },
     {
       "id": "reason-pac-oracle",

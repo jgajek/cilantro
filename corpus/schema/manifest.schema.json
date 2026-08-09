@@ -36,6 +36,19 @@
           "oracleSha256": {
             "type": ["string", "null"],
             "pattern": "^[a-f0-9]{64}$"
+          },
+          "expectedRestoredBodyCount": { "type": ["integer", "null"], "minimum": 0 },
+          "maximumRemainingStubs": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumStringSiteCoverage": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "maximumMutationCount": { "type": ["integer", "null"], "minimum": 0 },
+          "requireOracleParity": { "type": "boolean" },
+          "expectedOutputSha256": {
+            "type": ["string", "null"],
+            "pattern": "^[a-f0-9]{64}$"
           }
         },
         "additionalProperties": false

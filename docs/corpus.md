@@ -38,5 +38,13 @@ dotnet run --project src/ReactorUnpack.Cli -- corpus run \
 ```
 
 The command returns nonzero for a missing or mismatched file, an unexpected
-detection/capability result, a failed pass, or a profiled sample that cannot
-emit verified output.
+detection/capability result, a failed pass, or a required sample that cannot
+emit verified output. Manifest gates can additionally require exact restored
+body counts, zero remaining stubs, complete string-site coverage, bounded
+mutation counts, a regression-locked output hash, and normalized oracle parity.
+
+`detected` ReasonLabs entries are release candidates rather than
+analysis-only fixtures. They pass only when all protected application bodies
+are restored and verified. Qbjuef remains exploratory until its complete
+string/proxy use set is accounted for; refusal without edits is an acceptable
+exploratory outcome.

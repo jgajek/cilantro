@@ -10,13 +10,16 @@ SHA-256-pinned entries:
 - one `exploratory` control-flow/proxy sample; and
 - three deobfuscated validation oracles used as negative controls.
 
-The three oracle assemblies are never implementation inputs. They are compared
-only for assembly identity, entry-point kind, public API count, and resource
-count. Binaries remain ignored under `samples/`.
+The three oracle assemblies are never implementation inputs. After recovery,
+they are compared by assembly identity, entry-point kind, normalized method
+signatures, public API sets, and resource sets. Binaries remain ignored under
+`samples/`.
 
-The batch runner verifies each input hash before analysis. `profiled` entries
-must emit deterministic output; `detected` and `exploratory` entries are
-analysis-only; negative controls must receive no destructive edits. Run:
+The batch runner verifies each input hash before analysis. `profiled` and
+`detected` entries must emit deterministic verified output; `exploratory`
+entries remain analysis-only; negative controls must receive no destructive
+edits. Recovery expectations include restored-body counts, remaining-stub
+limits, string-site coverage, mutation limits, and optional oracle parity.
 
 ```bash
 dotnet run --project src/ReactorUnpack.Cli -- corpus run
@@ -38,6 +41,33 @@ names:
 - malformed decoy metadata references.
 
 ## Implemented formats
+
+### Recovery trust boundary
+
+The pipeline is divided into preflight, analysis, original-byte recovery,
+IL-transform, and verify/emit phases. A JIT-hook artifact cannot enter any
+downstream mutating pass until complete method restoration is proven.
+`PeImageView` validates PE32/PE32+ sections, maps RVAs without treating virtual
+zero-fill as file data, and constructs a bounded loader-style image.
+
+The bounded CIL machine models concrete values, objects, arrays, managed and
+synthetic native pointers, static/instance fields, branches, switches, and
+single-level deterministic finally flow. Framework calls are deny-by-default.
+Allowlisted models cover resources, streams/readers, encoding, hashing,
+decompression, symmetric crypto, synthetic module/process metadata, Marshal
+operations, and virtual memory writes. Unknown branches, unmodeled calls,
+symbolic writes, malformed ranges, and exhausted budgets stop recovery.
+
+Every method mutation has a full-body transaction. Instructions, branch
+operands, locals, max-stack settings, and exception handlers are restored
+together on rollback.
+
+### Dispatcher recovery
+
+An EH-aware basic-block graph distinguishes raw switches from qualified Reactor
+dispatchers. Rewrites require a unique state local, complete incoming-edge
+accounting, concrete transitions, legal EH-region edges, and valid stack
+analysis before and after mutation. Ambiguous methods are preserved.
 
 ### Invalid-call prefix
 
@@ -122,6 +152,11 @@ proven direct uses are restored statically with a stack-neutral
 
 The resolver is never invoked.
 
+For generic inputs, table capture and call-site rewriting are separate passes.
+A table must be unique and strictly length-framed UTF-16, and every reachable
+resolver use must have a proven offset. Replacements are atomic across the
+assembly; one unresolved use causes zero string edits.
+
 ## Verification gates
 
 Before emission, the tool checks:
@@ -137,10 +172,11 @@ The writer preserves metadata tokens and writes atomically. End-to-end tests
 also assert deterministic binary output, entry-point preservation, fixture
 hashes, pass counts, and independent dnlib reload.
 
-## Intentionally unsupported
+## Fail-closed capability boundaries
 
-- generic interpretation of Reactor's virtualized string initializer;
-- virtualized JIT-hook patch-stream interpretation for the ReasonLabs cohort;
+- JIT-hook writes that do not deterministically target every catalogued stub;
+- Reactor VM instructions or exception paths outside the bounded model;
+- non-unique or incompletely referenced VM-backed string tables;
 - code-virtualization lifting;
 - destructive removal of runtime/proxy types and encrypted resources;
 - renaming; and
@@ -149,10 +185,10 @@ hashes, pass counts, and independent dnlib reload.
 The JIT-hook generation is detected through duplicate raw metadata rows,
 hundreds of `NoInlining` default-return stubs, high-entropy patch resources,
 large switch dispatchers, `clrjit` references, and runtime-module pointer
-access. Its protected method bodies are preserved and output is refused. This
-is an explicit capability boundary: the loader's write semantics are known,
-but its virtualized patch transform has not been proven by the bounded static
-interpreter.
+access. The recovery pass repeats interpretation, validates write-log identity,
+restricts writes to catalogued method-prefix windows, reparses restored bodies
+by unchanged MethodDef token, and requires all stubs to pass branch/stack/EH
+verification. Any unmet condition preserves every body and refuses output.
 
 ## Generic analysis components
 

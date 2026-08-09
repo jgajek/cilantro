@@ -19,7 +19,13 @@ public sealed record CorpusSample(
     string LocalName,
     string ExpectedDetection,
     IReadOnlyList<string> ExpectedCapabilities,
-    string? OracleSha256);
+    string? OracleSha256,
+    int? ExpectedRestoredBodyCount = null,
+    int? MaximumRemainingStubs = null,
+    double? MinimumStringSiteCoverage = null,
+    int? MaximumMutationCount = null,
+    bool RequireOracleParity = false,
+    string? ExpectedOutputSha256 = null);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -30,6 +36,7 @@ public sealed record CorpusSampleOutcome(
     string Detection,
     IReadOnlyList<string> Capabilities,
     IReadOnlyList<NormalizedPassOutcome> Passes,
+    RecoveryReportMetrics Recovery,
     string? OutputSha256,
     OracleComparison? Oracle,
     IReadOnlyList<string> Diagnostics);
@@ -46,7 +53,12 @@ public sealed record OracleComparison(
     int ProtectedPublicApiCount,
     int OraclePublicApiCount,
     int ProtectedResourceCount,
-    int OracleResourceCount);
+    int OracleResourceCount,
+    int MatchingMethodSignatures,
+    int ProtectedMethodSignatures,
+    int OracleMethodSignatures,
+    bool PublicApiMatches,
+    bool ResourcesMatch);
 
 public sealed record CorpusRunReport(
     int ManifestVersion,
@@ -125,7 +137,7 @@ public static class CorpusRunner
         if (!hash.Equals(sample.Sha256, StringComparison.OrdinalIgnoreCase))
             return FailedHash(sample, hash);
 
-        var analysisOnly = sample.Tier is not "profiled";
+        var analysisOnly = sample.Tier is "negative" or "exploratory";
         var sampleOutputDirectory = Path.Combine(outputDirectory, sample.Id);
         var outputPath = Path.Combine(sampleOutputDirectory, "cleaned.bin");
         var result = new ReactorPipeline().Run(path, new PipelineOptions(
@@ -153,6 +165,7 @@ public static class CorpusRunner
             diagnostics.Add("Profiled sample did not emit verified output.");
         if (result.Report.Passes.Any(pass => pass.Status == PassStatus.Failed))
             diagnostics.Add("At least one pipeline pass failed.");
+        ValidateRecoveryExpectations(sample, result.Report.Recovery, diagnostics);
 
         OracleComparison? oracle = null;
         if (sample.OracleSha256 is not null &&
@@ -163,7 +176,16 @@ public static class CorpusRunner
                 Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(oraclePath)))
                     .Equals(oracleEntry.Sha256, StringComparison.OrdinalIgnoreCase))
             {
-                oracle = CompareAssemblies(path, oraclePath);
+                oracle = CompareAssemblies(result.OutputPath ?? path, oraclePath);
+                if (sample.RequireOracleParity &&
+                    (!oracle.AssemblyIdentityMatches ||
+                     !oracle.EntryPointKindMatches ||
+                     !oracle.PublicApiMatches ||
+                     !oracle.ResourcesMatch ||
+                     oracle.MatchingMethodSignatures != oracle.OracleMethodSignatures))
+                {
+                    diagnostics.Add("Required normalized oracle parity was not achieved.");
+                }
             }
             else
             {
@@ -181,6 +203,14 @@ public static class CorpusRunner
         var outputHash = result.OutputPath is not null && File.Exists(result.OutputPath)
             ? Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(result.OutputPath)))
             : null;
+        if (sample.ExpectedOutputSha256 is not null &&
+            !string.Equals(
+                outputHash,
+                sample.ExpectedOutputSha256,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            diagnostics.Add("Output hash did not match the regression lock.");
+        }
         return new CorpusSampleOutcome(
             sample.Id,
             sample.Tier,
@@ -190,6 +220,7 @@ public static class CorpusRunner
             detected,
             capabilities,
             passes,
+            result.Report.Recovery,
             outputHash,
             oracle,
             diagnostics);
@@ -201,14 +232,59 @@ public static class CorpusRunner
         using var oracleModule = ModuleDefMD.Load(oraclePath);
         var protectedName = protectedModule.Assembly?.Name.String ?? protectedModule.Name.String;
         var oracleName = oracleModule.Assembly?.Name.String ?? oracleModule.Name.String;
+        var protectedSignatures = MethodSignatures(protectedModule);
+        var oracleSignatures = MethodSignatures(oracleModule);
+        var protectedApi = PublicApi(protectedModule);
+        var oracleApi = PublicApi(oracleModule);
+        var protectedResources = protectedModule.Resources.Select(resource => resource.Name.String)
+            .Order(StringComparer.Ordinal).ToArray();
+        var oracleResources = oracleModule.Resources.Select(resource => resource.Name.String)
+            .Order(StringComparer.Ordinal).ToArray();
         return new OracleComparison(
             protectedName == oracleName,
             (protectedModule.EntryPoint is null) == (oracleModule.EntryPoint is null),
             CountPublicApi(protectedModule),
             CountPublicApi(oracleModule),
             protectedModule.Resources.Count,
-            oracleModule.Resources.Count);
+            oracleModule.Resources.Count,
+            protectedSignatures.Intersect(oracleSignatures, StringComparer.Ordinal).Count(),
+            protectedSignatures.Count,
+            oracleSignatures.Count,
+            protectedApi.SetEquals(oracleApi),
+            protectedResources.SequenceEqual(oracleResources, StringComparer.Ordinal));
     }
+
+    private static void ValidateRecoveryExpectations(
+        CorpusSample sample,
+        RecoveryReportMetrics recovery,
+        List<string> diagnostics)
+    {
+        if (sample.ExpectedRestoredBodyCount is int restored &&
+            recovery.RestoredMethodBodies != restored)
+            diagnostics.Add($"Expected {restored} restored bodies, observed {recovery.RestoredMethodBodies}.");
+        if (sample.MaximumRemainingStubs is int remaining &&
+            recovery.RemainingMethodStubs > remaining)
+            diagnostics.Add($"Remaining method stubs exceed {remaining}.");
+        var coverage = recovery.StringCallSites == 0
+            ? 1.0
+            : (double)recovery.ReplacedStringSites / recovery.StringCallSites;
+        if (sample.MinimumStringSiteCoverage is double minimum && coverage < minimum)
+            diagnostics.Add($"String-site coverage {coverage:P2} is below {minimum:P2}.");
+        if (sample.MaximumMutationCount is int mutations &&
+            recovery.MutationCount > mutations)
+            diagnostics.Add($"Mutation count {recovery.MutationCount} exceeds {mutations}.");
+    }
+
+    private static HashSet<string> MethodSignatures(ModuleDef module) =>
+        module.GetTypes().SelectMany(type => type.Methods)
+            .Select(method => method.FullName)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static HashSet<string> PublicApi(ModuleDef module) =>
+        module.GetTypes().SelectMany(type =>
+            type.Methods.Where(method => method.IsPublic).Select(method => method.FullName)
+                .Concat(type.Fields.Where(field => field.IsPublic).Select(field => field.FullName)))
+            .ToHashSet(StringComparer.Ordinal);
 
     private static int CountPublicApi(ModuleDef module) =>
         module.GetTypes().Sum(type =>
@@ -219,10 +295,12 @@ public static class CorpusRunner
                 property.GetMethod?.IsPublic == true || property.SetMethod?.IsPublic == true));
 
     private static CorpusSampleOutcome Missing(CorpusSample sample) =>
-        new(sample.Id, sample.Tier, "missing", sample.Sha256, false, "unknown", [], [], null, null,
+        new(sample.Id, sample.Tier, "missing", sample.Sha256, false, "unknown", [], [],
+            new RecoveryReportMetrics(0, 0, 0, 0, 0), null, null,
             [$"Missing sample: {sample.LocalName}"]);
 
     private static CorpusSampleOutcome FailedHash(CorpusSample sample, string actual) =>
-        new(sample.Id, sample.Tier, "failed", actual, false, "unknown", [], [], null, null,
+        new(sample.Id, sample.Tier, "failed", actual, false, "unknown", [], [],
+            new RecoveryReportMetrics(0, 0, 0, 0, 0), null, null,
             [$"SHA-256 mismatch; expected {sample.Sha256}."]);
 }

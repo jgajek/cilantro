@@ -102,3 +102,27 @@ public sealed record ArtifactIdentitySnapshot(
                 .ToArray());
     }
 }
+
+public sealed record ArtifactStructuralSnapshot(
+    int TypeCount,
+    int MethodCount,
+    int FieldCount,
+    int ResourceCount,
+    IReadOnlyDictionary<uint, uint> MethodRvas,
+    IReadOnlyDictionary<uint, int> MethodInstructionCounts)
+{
+    public static ArtifactStructuralSnapshot Capture(ModuleDef module)
+    {
+        var types = module.GetTypes().ToArray();
+        var methods = types.SelectMany(type => type.Methods).ToArray();
+        return new ArtifactStructuralSnapshot(
+            types.Length,
+            methods.Length,
+            types.Sum(type => type.Fields.Count),
+            module.Resources.Count,
+            methods.ToDictionary(method => method.MDToken.Raw, method => (uint)method.RVA),
+            methods.ToDictionary(
+                method => method.MDToken.Raw,
+                method => method.HasBody ? method.Body.Instructions.Count : -1));
+    }
+}
