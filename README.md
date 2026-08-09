@@ -10,6 +10,7 @@ fixtures. The reusable pipeline currently:
 - fingerprints Reactor runtime and delegate-proxy structures;
 - neutralizes 1,341 proven-unreachable invalid-call prefixes;
 - catalogs initialized data and encrypted resources;
+- statically decodes, inflates, and validates the embedded resource assembly;
 - decodes and validates all 279 proxy bindings;
 - restores 2,643 direct `call`/`callvirt` sites;
 - restores the two protected string call sites used by the fixtures;
@@ -57,15 +58,18 @@ For each input, ReactorUnpack writes:
 - `<sample>.analysis.json` — evidence, resource inventory, pass status, and
   verification results;
 - `<sample>.changes.json` — every IL transformation with token and offset; and
+- `<sample>.payloads/*.dll` — verified managed payloads recovered without CLR
+  loading; and
 - `<sample>.cleaned.exe` — emitted only after verification.
 
 ## Safety and scope
 
 ReactorUnpack does not execute protected code. Inputs remain immutable, output
 is written atomically, and unknown formats are reported as unsupported instead
-of being guessed. The initial milestone deliberately preserves Reactor helper
-types and resources: direct calls are restored, but destructive deletion waits
-for complete native/anti-tamper and VM recovery.
+of being guessed. Payload decoding is bounded and accepted only after stream
+hash, output hash, managed metadata, and assembly identity checks. Reactor
+helper types and resources remain in the cleaned host until destructive removal
+can be proven behaviorally equivalent.
 
 See [docs/compatibility.md](docs/compatibility.md) for exact fixture coverage
 and remaining work.

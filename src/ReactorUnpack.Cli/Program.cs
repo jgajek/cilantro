@@ -77,6 +77,10 @@ internal static class ReactorCommand
             Console.WriteLine(result.OutputPath is null
                 ? "Output:   not emitted (analysis-only or verification gate)"
                 : $"Output:   {result.OutputPath}");
+            foreach (var payloadPath in result.ExtractedPayloadPaths)
+            {
+                Console.WriteLine($"Payload:  {payloadPath}");
+            }
 
             foreach (var pass in result.Report.Passes)
             {

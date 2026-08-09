@@ -6,21 +6,35 @@ namespace ReactorUnpack.Tests;
 
 public sealed class PipelineTests
 {
-    public static TheoryData<string, string> Samples => new()
+    public static TheoryData<string, string, string, int, string, int> Samples => new()
     {
         {
             "embedded_dotnet_Mlfhntkcvb.exe",
-            "ad0c3182b18b5d7ba8771d830f4d51b4ada7e26f8d05223f4379e6312aba65fa"
+            "ad0c3182b18b5d7ba8771d830f4d51b4ada7e26f8d05223f4379e6312aba65fa",
+            "7fa1a9d74dad14fd686ad7b2e794111d1093de3fefe97c51d1908e44586d04de",
+            485376,
+            "81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a",
+            858112
         },
         {
             "embedded_dotnet_Qafcakg.exe",
-            "c405398fc582e33bbbd37222b7360a6cfdc526146622141503de1ccf9de6174a"
+            "c405398fc582e33bbbd37222b7360a6cfdc526146622141503de1ccf9de6174a",
+            "1db4e9c40d83bb790b89963888fd9a112b1d2467f7194dc55b6c35e14e443429",
+            86528,
+            "e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2",
+            154112
         }
     };
 
     [Theory]
     [MemberData(nameof(Samples))]
-    public void PipelineRecoversProfiledSamples(string filename, string expectedHash)
+    public void PipelineRecoversProfiledSamples(
+        string filename,
+        string expectedHash,
+        string expectedPayloadHash,
+        int expectedPayloadLength,
+        string expectedFinalHash,
+        int expectedFinalLength)
     {
         var sample = FindSample(filename);
         var reportDirectory = CreateTemporaryDirectory();
@@ -43,6 +57,23 @@ public sealed class PipelineTests
             Assert.Equal(1341, Pass(result, "cfg-dead-code").Changes);
             Assert.Equal(2643, Pass(result, "delegate-proxy-analysis").Changes);
             Assert.Equal(2, Pass(result, "string-recovery").Changes);
+            Assert.Equal(2, result.Report.Payloads.Count);
+            var payload = Assert.Single(result.Report.Payloads,
+                item => item.PayloadSha256 == expectedPayloadHash);
+            Assert.Equal(expectedPayloadHash, payload.PayloadSha256);
+            Assert.Equal(expectedPayloadLength, payload.PayloadLength);
+            var finalPayload = Assert.Single(result.Report.Payloads,
+                item => item.PayloadSha256 == expectedFinalHash);
+            Assert.Equal(expectedFinalLength, finalPayload.PayloadLength);
+            Assert.Equal(2, result.ExtractedPayloadPaths.Count);
+            Assert.All(result.ExtractedPayloadPaths, path => Assert.True(File.Exists(path)));
+            var payloadPath = Assert.Single(result.ExtractedPayloadPaths,
+                path => Path.GetFileNameWithoutExtension(path) == payload.AssemblyName);
+            using (var payloadModule = ModuleDefMD.Load(payloadPath))
+            {
+                Assert.Null(payloadModule.EntryPoint);
+                Assert.NotEmpty(payloadModule.Resources);
+            }
             Assert.True(File.Exists(result.AnalysisReportPath));
             Assert.True(File.Exists(result.ChangesReportPath));
             Assert.True(File.Exists(output));
@@ -60,7 +91,13 @@ public sealed class PipelineTests
 
     [Theory]
     [MemberData(nameof(Samples))]
-    public void EmissionIsDeterministic(string filename, string _)
+    public void EmissionIsDeterministic(
+        string filename,
+        string _,
+        string expectedPayloadHash,
+        int expectedPayloadLength,
+        string expectedFinalHash,
+        int expectedFinalLength)
     {
         var sample = FindSample(filename);
         var firstDirectory = CreateTemporaryDirectory();
@@ -77,6 +114,17 @@ public sealed class PipelineTests
             Assert.Equal(
                 SHA256.HashData(File.ReadAllBytes(first)),
                 SHA256.HashData(File.ReadAllBytes(second)));
+            var firstPayloads = Directory.GetFiles(
+                Path.Combine(firstDirectory, $"{Path.GetFileNameWithoutExtension(filename)}.payloads"));
+            var secondPayloads = Directory.GetFiles(
+                Path.Combine(secondDirectory, $"{Path.GetFileNameWithoutExtension(filename)}.payloads"));
+            Assert.Equal(2, firstPayloads.Length);
+            Assert.Equal(2, secondPayloads.Length);
+            AssertPayload(firstPayloads, expectedPayloadHash, expectedPayloadLength);
+            AssertPayload(firstPayloads, expectedFinalHash, expectedFinalLength);
+            Assert.Equal(
+                firstPayloads.Order().Select(File.ReadAllBytes).Select(SHA256.HashData),
+                secondPayloads.Order().Select(File.ReadAllBytes).Select(SHA256.HashData));
         }
         finally
         {
@@ -128,6 +176,13 @@ public sealed class PipelineTests
 
     private static PassResult Pass(PipelineResult result, string name) =>
         Assert.Single(result.Report.Passes, pass => pass.Pass == name);
+
+    private static void AssertPayload(IEnumerable<string> paths, string expectedHash, int expectedLength)
+    {
+        var path = Assert.Single(paths, candidate =>
+            Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(candidate))) == expectedHash);
+        Assert.Equal(expectedLength, new FileInfo(path).Length);
+    }
 
     private static string FindSample(string filename)
     {
