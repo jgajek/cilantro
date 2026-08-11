@@ -24,15 +24,18 @@ public static class PipelinePlanner
     [
         "boolean-recovery",
         "antitamper-neutralization",
+        "loader-call-elision",
         "constant-predicates",
+        "global-predicate-folding",
         "dispatcher-deobfuscation",
         "cfg-dead-code",
         "control-flow-completion",
         "token-recovery",
         "type-restoration",
-        "method-inlining",
         "delegate-proxy-analysis",
         "string-recovery",
+        "method-inlining",
+        "resource-hook-elision",
         "runtime-cleanup",
         "symbol-renaming"
     ];
@@ -72,9 +75,12 @@ public static class PipelinePlanner
         "control-flow-analysis" => PipelinePhase.Analysis,
         "method-body-recovery" or
         "string-table-recovery" or
+        "global-state-capture" or
         "boolean-recovery" => PipelinePhase.OriginalByteRecovery,
         "antitamper-neutralization" or
+        "loader-call-elision" or
         "constant-predicates" or
+        "global-predicate-folding" or
         "dispatcher-deobfuscation" or
         "cfg-dead-code" or
         "control-flow-completion" or

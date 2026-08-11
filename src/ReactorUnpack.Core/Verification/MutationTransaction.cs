@@ -111,23 +111,35 @@ public sealed record ArtifactIdentitySnapshot(
     IReadOnlyList<string> PublicApi,
     IReadOnlyList<string> ResourceNames)
 {
+    /// <summary>
+    /// The public-API entries a type contributes, including those of its members.
+    /// </summary>
+    /// <remarks>
+    /// Any pass that deletes a declaration has to declare the same entries this snapshot would
+    /// have recorded for it, so both come from here rather than from two descriptions that could
+    /// drift apart.
+    /// </remarks>
+    public static IEnumerable<string> PublicApiEntries(TypeDef type)
+    {
+        if (type.IsPublic || type.IsNestedPublic)
+            yield return $"T:{type.FullName}";
+        foreach (var method in type.Methods.Where(method => method.IsPublic))
+            yield return PublicApiEntry(method);
+        foreach (var field in type.Fields.Where(field => field.IsPublic))
+            yield return $"F:{field.FullName}";
+        foreach (var property in type.Properties.Where(property =>
+                     property.GetMethod?.IsPublic == true || property.SetMethod?.IsPublic == true))
+        {
+            yield return $"P:{property.FullName}";
+        }
+    }
+
+    public static string PublicApiEntry(MethodDef method) => $"M:{method.FullName}";
+
     public static ArtifactIdentitySnapshot Capture(ModuleDef module)
     {
         var publicApi = module.GetTypes()
-            .SelectMany(type =>
-            {
-                var members = new List<string>();
-                if (type.IsPublic || type.IsNestedPublic)
-                    members.Add($"T:{type.FullName}");
-                members.AddRange(type.Methods.Where(method => method.IsPublic)
-                    .Select(method => $"M:{method.FullName}"));
-                members.AddRange(type.Fields.Where(field => field.IsPublic)
-                    .Select(field => $"F:{field.FullName}"));
-                members.AddRange(type.Properties.Where(property =>
-                        property.GetMethod?.IsPublic == true || property.SetMethod?.IsPublic == true)
-                    .Select(property => $"P:{property.FullName}"));
-                return members;
-            })
+            .SelectMany(PublicApiEntries)
             .Order(StringComparer.Ordinal)
             .ToArray();
         return new ArtifactIdentitySnapshot(
@@ -137,6 +149,73 @@ public sealed record ArtifactIdentitySnapshot(
             module.Resources.Select(resource => resource.Name.String)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
+    }
+}
+
+/// <summary>
+/// A description of a module in terms that survive the metadata writer renumbering rows.
+/// </summary>
+/// <remarks>
+/// Whether the writer produced what was in memory is a different question from whether the
+/// transforms changed only what they declared, and it needs a different reference. Metadata tokens
+/// answer the second question exactly, since removing one definition does not renumber the others
+/// already loaded, but they cannot answer the first: deleting a row forces the writer to renumber
+/// everything after it, so tokens legitimately differ between memory and file. Member names and
+/// signatures do not, which makes them the durable key for comparing the two.
+/// </remarks>
+public sealed record ModuleShape(
+    string? EntryPoint,
+    IReadOnlyList<string> TypeNames,
+    IReadOnlyList<string> MethodNames,
+    IReadOnlyList<string> ResourceNames,
+    int FieldCount)
+{
+    public static ModuleShape Capture(ModuleDef module)
+    {
+        var types = module.GetTypes().ToArray();
+        return new ModuleShape(
+            module.EntryPoint?.FullName,
+            types.Select(type => type.FullName).Order(StringComparer.Ordinal).ToArray(),
+            types.SelectMany(type => type.Methods)
+                .Select(method => method.FullName)
+                .Order(StringComparer.Ordinal)
+                .ToArray(),
+            module.Resources.Select(resource => resource.Name.String)
+                .Order(StringComparer.Ordinal)
+                .ToArray(),
+            types.Sum(type => type.Fields.Count));
+    }
+
+    /// <summary>
+    /// Describes how <paramref name="actual"/> departs from this shape, naming a few examples of
+    /// each difference so a mismatch can be acted on without re-running the comparison by hand.
+    /// </summary>
+    public IReadOnlyList<string> DifferencesFrom(ModuleShape actual)
+    {
+        var differences = new List<string>();
+        if (!string.Equals(EntryPoint, actual.EntryPoint, StringComparison.Ordinal))
+            differences.Add($"Entry point is '{actual.EntryPoint}' but '{EntryPoint}' was expected.");
+        if (FieldCount != actual.FieldCount)
+            differences.Add($"Field count is {actual.FieldCount} but {FieldCount} was expected.");
+        Compare("type", TypeNames, actual.TypeNames);
+        Compare("method", MethodNames, actual.MethodNames);
+        Compare("resource", ResourceNames, actual.ResourceNames);
+        return differences;
+
+        void Compare(string kind, IReadOnlyList<string> expected, IReadOnlyList<string> observed)
+        {
+            var missing = expected.Except(observed, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            var extra = observed.Except(expected, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            if (missing.Length != 0)
+            {
+                differences.Add(
+                    $"{missing.Length} {kind}(s) expected but absent, starting with {missing[0]}.");
+            }
+            if (extra.Length != 0)
+                differences.Add($"{extra.Length} unexpected {kind}(s), starting with {extra[0]}.");
+            if (missing.Length == 0 && extra.Length == 0 && expected.Count != observed.Count)
+                differences.Add($"{kind} count is {observed.Count} but {expected.Count} was expected.");
+        }
     }
 }
 

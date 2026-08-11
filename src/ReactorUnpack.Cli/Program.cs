@@ -20,7 +20,7 @@ internal static class ReactorCommand
 
         var analyzeOnly = false;
         var failOnPartial = false;
-        var removeRuntime = false;
+        var removeRuntime = true;
         var renameSymbols = false;
         string? output = null;
         string? reportDirectory = null;
@@ -38,6 +38,9 @@ internal static class ReactorCommand
                     break;
                 case "--remove-runtime":
                     removeRuntime = true;
+                    break;
+                case "--keep-runtime":
+                    removeRuntime = false;
                     break;
                 case "--rename":
                     renameSymbols = true;
@@ -190,7 +193,7 @@ internal static class ReactorCommand
             Options:
               --analyze-only       Produce reports without writing a transformed assembly
               --fail-on-partial    Refuse output when any pass is incomplete
-              --remove-runtime     Delete proven-dead Reactor runtime types (opt-in, destructive)
+              --keep-runtime       Keep Reactor runtime types that recovery proved unreachable
               --rename             Rename proven Reactor-generated non-public symbols (opt-in)
               -o, --output PATH    Select the cleaned assembly path
               --report-dir DIR     Select the JSON report directory

@@ -1161,7 +1161,39 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 position, isWritable, isExpandable,
                 [unchecked((byte)arguments[1].AsInt32())]);
         }
+        if (name == "CopyTo" && arguments.Count >= 2)
+        {
+            var available = position >= lengthValue ? 0 : checked(lengthValue - (int)position);
+            var bytes = new byte[available];
+            if (!heap.TryReadBytes(bufferValue, checked(originValue + (int)position), bytes))
+                return IntrinsicResult.Invalid("Stream.CopyTo source range is invalid.");
+            heap.TrySetModelValue(stream, "Position", position + available);
+            return CopyInto(context, arguments[1], bytes);
+        }
+        if (name is "Flush" or "FlushFinalBlock")
+            return IntrinsicResult.Completed();
         return IntrinsicResult.Invalid($"Unsupported MemoryStream operation {name}.");
+    }
+
+    /// <summary>
+    /// Writes the drained bytes of a <c>CopyTo</c> into whichever stream the destination models.
+    /// </summary>
+    private static IntrinsicResult CopyInto(
+        IntrinsicContext context,
+        StaticValue destination,
+        byte[] bytes)
+    {
+        var heap = context.State.Heap;
+        if (!heap.TryAllocateByteArray(bytes, out var source))
+            return AllocationFailure("Stream.CopyTo");
+        StaticValue[] write =
+        [
+            destination, source, StaticValue.FromInt32(0), StaticValue.FromInt32(bytes.Length)
+        ];
+        return heap.TryGetRuntimeTypeName(destination, out var destinationType) &&
+            destinationType == "System.Security.Cryptography.CryptoStream"
+                ? InvokeCryptoStream(context, "Write", write)
+                : InvokeMemoryStream(context, "Write", write);
     }
 
     private static IntrinsicResult WriteMemoryStream(
@@ -1324,7 +1356,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
-        if (name != ".ctor" || arguments.Count < 3)
+        // The constructor inflates eagerly and leaves the result modeled as a readable memory
+        // stream, so every later operation is the memory-stream one over those bytes.
+        if (name != ".ctor")
+            return InvokeMemoryStream(context, name, arguments);
+        if (arguments.Count < 3)
             return IntrinsicResult.Invalid($"Unsupported compression operation {name}.");
         var heap = context.State.Heap;
         if (!heap.TryGetModelValue(arguments[1], "Buffer", out StaticValue source) ||

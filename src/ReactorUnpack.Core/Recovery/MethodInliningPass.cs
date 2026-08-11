@@ -1,5 +1,6 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using ReactorUnpack.Core.Analysis;
 using ReactorUnpack.Core.Passes;
 using ReactorUnpack.Core.Verification;
 
@@ -37,8 +38,10 @@ public sealed class MethodInliningPass : DeobfuscationPass
             .ToDictionary(item => item.Method, item => item.Target!);
         if (forwarders.Count == 0)
             return (PassStatus.Success, 0, ["No pass-through forwarder was detected."]);
+        CollapseChains(forwarders);
 
         var changes = 0;
+        var bypassed = new HashSet<MethodDef>();
         using var transaction = new InstructionMutationTransaction();
         foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods)
                      .Where(item => item.HasBody))
@@ -60,6 +63,8 @@ public sealed class MethodInliningPass : DeobfuscationPass
                 instruction.OpCode = forward.InnerOpCode;
                 instruction.Operand = forward.Target;
                 changes++;
+                // The whole chain is skipped, not just its first link.
+                bypassed.UnionWith(forward.Chain);
                 context.AddChange(new ChangeRecord(
                     Name,
                     "inline-forwarder",
@@ -79,9 +84,43 @@ public sealed class MethodInliningPass : DeobfuscationPass
                 ["Forwarder inlining failed verification and was rolled back."]);
         }
         transaction.Commit();
+        // A forwarder exists to be called; every call it had now goes straight to the target.
+        RecoveryOrphans.Declare(context, bypassed);
         context.SetFact("inlining.redirected", changes);
         return (PassStatus.Success, changes,
             [$"Redirected {changes} forwarder call site(s) to their proven targets."]);
+    }
+
+    /// <summary>
+    /// Rewrites each forwarder's target to the end of its chain, so one redirection at a call site
+    /// skips the whole run of them.
+    /// </summary>
+    /// <remarks>
+    /// Reactor nests forwarders, and redirecting a site to the next link only moves the indirection
+    /// by one. Following the chain first is what makes a single rewrite remove all of it.
+    ///
+    /// The last link's opcode is the one that survives, because it is the call the program actually
+    /// performs. Substitution stays stack-neutral along the way: every link in a chain takes the
+    /// same arguments in the same order and returns the same type, or it would not have qualified
+    /// as a forwarder. A chain that loops back on itself is left at its first link, since it has no
+    /// end to resolve to.
+    /// </remarks>
+    private static void CollapseChains(Dictionary<MethodDef, ForwardTarget> forwarders)
+    {
+        foreach (var (forwarder, immediate) in forwarders.ToArray())
+        {
+            var chain = new List<MethodDef> { forwarder };
+            var seen = new HashSet<MethodDef> { forwarder };
+            var final = immediate;
+            while (final.Target.ResolveMethodDef() is { } next &&
+                   seen.Add(next) &&
+                   forwarders.TryGetValue(next, out var onward))
+            {
+                chain.Add(next);
+                final = onward;
+            }
+            forwarders[forwarder] = final with { Chain = chain };
+        }
     }
 
     /// <summary>
@@ -125,7 +164,7 @@ public sealed class MethodInliningPass : DeobfuscationPass
             return null;
         if (!ReturnTypesMatch(method, target))
             return null;
-        return new ForwardTarget(target, call.OpCode);
+        return new ForwardTarget(target, call.OpCode, []);
     }
 
     private static bool IsLoadOfArgument(Instruction instruction, int index) =>
@@ -150,5 +189,7 @@ public sealed class MethodInliningPass : DeobfuscationPass
             forwarderReturn.FullName, targetReturn.FullName, StringComparison.Ordinal);
     }
 
-    private sealed record ForwardTarget(IMethod Target, OpCode InnerOpCode);
+    /// <param name="Chain">The forwarders a call site skips by going straight to the target.</param>
+    private sealed record ForwardTarget(
+        IMethod Target, OpCode InnerOpCode, IReadOnlyList<MethodDef> Chain);
 }

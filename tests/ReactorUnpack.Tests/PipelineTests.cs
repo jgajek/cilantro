@@ -51,12 +51,16 @@ public sealed class PipelineTests
             Assert.Equal(expectedHash, result.Report.InputSha256);
             Assert.True(result.Report.VerificationPassed);
             Assert.Equal(4, result.Report.ResourceCount);
-            Assert.Equal(374, result.Report.TypeCount);
-            Assert.Equal(2126, result.Report.MethodCount);
+            // Down from the 374 types and 2126 methods the input carries: what remains is the
+            // program plus whatever recovery could not attribute to the protector.
+            Assert.Equal(115, result.Report.TypeCount);
+            Assert.Equal(1069, result.Report.MethodCount);
             Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
             Assert.Equal(1341, Pass(result, "cfg-dead-code").Changes);
-            Assert.Equal(221, Pass(result, "method-inlining").Changes);
-            Assert.Equal(2425, Pass(result, "delegate-proxy-analysis").Changes);
+            // Proxy restoration reaches every validated site because it runs before forwarder
+            // redirection, which then finds almost nothing left to redirect.
+            Assert.Equal(2643, Pass(result, "delegate-proxy-analysis").Changes);
+            Assert.Equal(3, Pass(result, "method-inlining").Changes);
             Assert.Equal(2, Pass(result, "string-recovery").Changes);
             Assert.Equal(2, result.Report.Payloads.Count);
             var payload = Assert.Single(result.Report.Payloads,
@@ -81,8 +85,17 @@ public sealed class PipelineTests
 
             using var original = ModuleDefMD.Load(sample);
             using var cleaned = ModuleDefMD.Load(output);
-            Assert.Equal(original.EntryPoint?.MDToken, cleaned.EntryPoint?.MDToken);
-            Assert.Equal(original.GetTypes().Count(), cleaned.GetTypes().Count());
+            // Deleting rows makes the writer renumber, so identity is by name rather than by token.
+            Assert.Equal(original.EntryPoint?.FullName, cleaned.EntryPoint?.FullName);
+
+            // Everything cleanup removed is gone, and nothing else is.
+            var survivors = cleaned.GetTypes().Select(type => type.FullName).ToHashSet(StringComparer.Ordinal);
+            var removed = original.GetTypes()
+                .Select(type => type.FullName)
+                .Where(name => !survivors.Contains(name))
+                .ToArray();
+            Assert.Equal(original.GetTypes().Count() - cleaned.GetTypes().Count(), removed.Length);
+            Assert.Equal(259, removed.Length);
         }
         finally
         {

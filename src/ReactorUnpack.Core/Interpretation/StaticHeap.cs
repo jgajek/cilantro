@@ -485,6 +485,26 @@ public sealed class StaticHeap
         return true;
     }
 
+    /// <summary>
+    /// Every byte array the machine has allocated, in allocation order, with its contents.
+    /// </summary>
+    /// <remarks>
+    /// Recovery passes that run a decryptor for its effect rather than its return value need a way
+    /// to find what it produced. Enumerating in allocation order lets a caller prefer the last thing
+    /// built, which is the plaintext rather than one of the intermediate buffers behind it.
+    /// </remarks>
+    public IEnumerable<(int Id, byte[] Bytes)> EnumerateByteArrays()
+    {
+        foreach (var id in _objects.Keys.Order())
+        {
+            if (_objects[id] is not HeapArray { ElementType: "System.Byte" } array)
+                continue;
+            var bytes = new byte[array.Values.Length];
+            if (TryReadArrayBytes(array, 0, bytes))
+                yield return (id, bytes);
+        }
+    }
+
     public IReadOnlyList<StaticValue>? GetArraySnapshot(StaticValue reference) =>
         TryObject(reference, out var item) && item is HeapArray array
             ? Array.AsReadOnly((StaticValue[])array.Values.Clone())

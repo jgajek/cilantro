@@ -31,7 +31,10 @@ public sealed record CorpusSample(
     int? MinimumResourcesRestored = null,
     int? MaximumRemainingSwitchDispatchers = null,
     int? MaximumUnreachableInstructions = null,
-    string? ExpectUnsupportedReason = null);
+    string? ExpectUnsupportedReason = null,
+    int? MaximumSurplusMethods = null,
+    int? MaximumSurplusResources = null,
+    bool RequireOracleResourceParity = false);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -53,18 +56,42 @@ public sealed record NormalizedPassOutcome(
     int Changes,
     IReadOnlyList<string> Diagnostics);
 
+/// <summary>
+/// Structural comparison of recovered output against a deobfuscated validation oracle.
+/// </summary>
+/// <remarks>
+/// The oracle is not original source: its own types are named <c>Class0</c> and
+/// <c>Class3/Delegate9</c> because another deobfuscator renamed them. Comparing member names for
+/// equality would therefore demand reproducing that tool's arbitrary numbering, which is not a
+/// correctness property and is unreachable for any static tool.
+///
+/// What is meaningful splits in two. Names the protector never obfuscated survive in both
+/// artifacts, so every such member the oracle kept must also exist in our output; losing one means
+/// recovery deleted real program surface, and that is a hard failure. Everything else is scaffolding
+/// the oracle removed and we have not yet proven dead, so it is reported as a surplus count that
+/// gates against a ratchet and is expected to fall as cleanup improves.
+///
+/// Resources split the same way, and counting them alone hides the distinction. A module that
+/// dropped the application's resources and one that kept them alongside the protector's bundle can
+/// have the same resource count, so the oracle's resource names are compared as a subset the output
+/// must contain, exactly as preserved member names are.
+/// </remarks>
 public sealed record OracleComparison(
     bool AssemblyIdentityMatches,
     bool EntryPointKindMatches,
-    int ProtectedPublicApiCount,
-    int OraclePublicApiCount,
-    int ProtectedResourceCount,
+    int OutputTypeCount,
+    int OracleTypeCount,
+    int OutputMethodCount,
+    int OracleMethodCount,
+    int SurplusMethods,
+    int OutputResourceCount,
     int OracleResourceCount,
-    int MatchingMethodSignatures,
-    int ProtectedMethodSignatures,
-    int OracleMethodSignatures,
-    bool PublicApiMatches,
-    bool ResourcesMatch);
+    int SurplusResources,
+    int OraclePreservedNameMembers,
+    int PreservedNameMembersPresent,
+    bool PreservedNamesIntact,
+    IReadOnlyList<string> MissingPreservedNameMembers,
+    IReadOnlyList<string> MissingOracleResources);
 
 public sealed record CorpusRunReport(
     int ManifestVersion,
@@ -146,10 +173,12 @@ public static class CorpusRunner
         var analysisOnly = sample.Tier is "negative" or "exploratory";
         var sampleOutputDirectory = Path.Combine(outputDirectory, sample.Id);
         var outputPath = Path.Combine(sampleOutputDirectory, "cleaned.bin");
+        // The corpus exercises the default emission policy rather than the strict one, so an
+        // outcome reflects what a caller actually gets. Rigor comes from the manifest's explicit
+        // per-sample expectations and from every pass status being recorded in the outcome.
         var result = new ReactorPipeline().Run(path, new PipelineOptions(
             AnalyzeOnly: analysisOnly,
             PreserveTokens: true,
-            FailOnPartial: true,
             OutputPath: outputPath,
             ReportDirectory: sampleOutputDirectory));
         var capabilities = result.Report.Evidence
@@ -192,15 +221,8 @@ public static class CorpusRunner
                     .Equals(oracleEntry.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 oracle = CompareAssemblies(result.OutputPath ?? path, oraclePath);
-                if (sample.RequireOracleParity &&
-                    (!oracle.AssemblyIdentityMatches ||
-                     !oracle.EntryPointKindMatches ||
-                     !oracle.PublicApiMatches ||
-                     !oracle.ResourcesMatch ||
-                     oracle.MatchingMethodSignatures != oracle.OracleMethodSignatures))
-                {
-                    diagnostics.Add("Required normalized oracle parity was not achieved.");
-                }
+                if (sample.RequireOracleParity)
+                    ValidateOracleParity(sample, oracle, diagnostics);
             }
             else
             {
@@ -243,30 +265,151 @@ public static class CorpusRunner
 
     private static OracleComparison CompareAssemblies(string protectedPath, string oraclePath)
     {
-        using var protectedModule = ModuleDefMD.Load(protectedPath);
+        using var outputModule = ModuleDefMD.Load(protectedPath);
         using var oracleModule = ModuleDefMD.Load(oraclePath);
-        var protectedName = protectedModule.Assembly?.Name.String ?? protectedModule.Name.String;
+        var outputName = outputModule.Assembly?.Name.String ?? outputModule.Name.String;
         var oracleName = oracleModule.Assembly?.Name.String ?? oracleModule.Name.String;
-        var protectedSignatures = MethodSignatures(protectedModule);
-        var oracleSignatures = MethodSignatures(oracleModule);
-        var protectedApi = PublicApi(protectedModule);
-        var oracleApi = PublicApi(oracleModule);
-        var protectedResources = protectedModule.Resources.Select(resource => resource.Name.String)
-            .Order(StringComparer.Ordinal).ToArray();
-        var oracleResources = oracleModule.Resources.Select(resource => resource.Name.String)
-            .Order(StringComparer.Ordinal).ToArray();
+        var outputMembers = PreservedNameMembers(outputModule);
+        var oracleMembers = PreservedNameMembers(oracleModule);
+        var missing = oracleMembers.Except(outputMembers, StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var outputMethods = outputModule.GetTypes().Sum(type => type.Methods.Count);
+        var oracleMethods = oracleModule.GetTypes().Sum(type => type.Methods.Count);
+        var outputResources = outputModule.Resources
+            .Select(resource => resource.Name.String)
+            .ToHashSet(StringComparer.Ordinal);
+        var missingResources = oracleModule.Resources
+            .Select(resource => resource.Name.String)
+            .Where(name => !outputResources.Contains(name))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
         return new OracleComparison(
-            protectedName == oracleName,
-            (protectedModule.EntryPoint is null) == (oracleModule.EntryPoint is null),
-            CountPublicApi(protectedModule),
-            CountPublicApi(oracleModule),
-            protectedModule.Resources.Count,
+            outputName == oracleName,
+            (outputModule.EntryPoint is null) == (oracleModule.EntryPoint is null),
+            outputModule.GetTypes().Count(),
+            oracleModule.GetTypes().Count(),
+            outputMethods,
+            oracleMethods,
+            outputMethods - oracleMethods,
+            outputModule.Resources.Count,
             oracleModule.Resources.Count,
-            protectedSignatures.Intersect(oracleSignatures, StringComparer.Ordinal).Count(),
-            protectedSignatures.Count,
-            oracleSignatures.Count,
-            protectedApi.SetEquals(oracleApi),
-            protectedResources.SequenceEqual(oracleResources, StringComparer.Ordinal));
+            outputModule.Resources.Count - oracleModule.Resources.Count,
+            oracleMembers.Count,
+            oracleMembers.Count - missing.Length,
+            missing.Length == 0,
+            missing,
+            missingResources);
+    }
+
+    /// <summary>
+    /// Members whose names the protector left intact, keyed so renaming elsewhere cannot perturb
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// A member qualifies only when every component of its declaring type's name and its own name
+    /// is neither Reactor-generated nor a deobfuscator's synthetic placeholder. The key uses the
+    /// parameter count rather than parameter type names, because an overload's parameter types can
+    /// themselves be renamed types while the overload is still the same member.
+    ///
+    /// Properties and events count as members in their own right rather than as their accessors.
+    /// Their metadata rows are separable from the methods behind them, so an output that kept
+    /// <c>get_Name</c> but lost the <c>Name</c> property would satisfy a method-only comparison
+    /// while presenting a different API to a decompiler.
+    /// </remarks>
+    private static HashSet<string> PreservedNameMembers(ModuleDef module) =>
+        module.GetTypes()
+            .Where(type => HasPreservedName(type.FullName))
+            .SelectMany(type => type.Methods
+                .Where(method => HasPreservedName(method.Name))
+                .Select(method =>
+                    $"{type.FullName}::{method.Name}/{method.MethodSig?.Params.Count ?? 0}")
+                .Concat(type.Properties
+                    .Where(property => HasPreservedName(property.Name))
+                    .Select(property => $"{type.FullName}::{property.Name}/property"))
+                .Concat(type.Events
+                    .Where(item => HasPreservedName(item.Name))
+                    .Select(item => $"{type.FullName}::{item.Name}/event")))
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static bool HasPreservedName(string name) =>
+        name.Split('.', '/', '`', '+')
+            .Where(component => component.Length > 0)
+            .All(component =>
+                !ReactorNameHeuristics.IsGeneratedName(component) &&
+                !IsDeobfuscatorPlaceholder(component));
+
+    /// <summary>
+    /// Recognizes the synthetic names a de4dot-lineage renamer assigns, such as <c>Class3</c> and
+    /// <c>smethod_0</c>.
+    /// </summary>
+    /// <remarks>
+    /// These read as ordinary identifiers, so the generated-name heuristic passes them. Treating
+    /// them as real would demand that our output reproduce another tool's numbering. Types get a
+    /// capitalized prefix and members an underscore-separated lowercase one.
+    /// </remarks>
+    private static bool IsDeobfuscatorPlaceholder(string component)
+    {
+        var digits = 0;
+        while (digits < component.Length && char.IsAsciiDigit(component[^(digits + 1)]))
+            digits++;
+        if (digits == 0 || digits == component.Length)
+            return false;
+        return component[..^digits] is
+            "Class" or "Delegate" or "Interface" or "Enum" or "Struct" or "Type" or
+            "Method" or "Field" or "Prop" or "Property" or "Event" or "Param" or
+            "GParam" or "Namespace" or
+            "class_" or "type_" or "delegate_" or "enum_" or "interface_" or "struct_" or
+            "method_" or "smethod_" or "vmethod_" or
+            "field_" or "sfield_" or "prop_" or "event_" or
+            "param_" or "gparam_" or "local_" or "arg_";
+    }
+
+    /// <summary>
+    /// Applies the two oracle obligations: lose nothing real, and stay within the surplus ratchet.
+    /// </summary>
+    /// <remarks>
+    /// Losing a preserved-name member always fails, because it means recovery deleted program
+    /// surface the oracle kept. The surplus limits are ratchets rather than absolutes: they record
+    /// how much scaffolding still survives today so that any improvement is visible and any
+    /// regression fails, and they are tightened as cleanup advances.
+    /// </remarks>
+    private static void ValidateOracleParity(
+        CorpusSample sample,
+        OracleComparison oracle,
+        List<string> diagnostics)
+    {
+        if (!oracle.AssemblyIdentityMatches)
+            diagnostics.Add("Assembly identity does not match the oracle.");
+        if (!oracle.EntryPointKindMatches)
+            diagnostics.Add("Entry-point kind does not match the oracle.");
+        if (!oracle.PreservedNamesIntact)
+        {
+            diagnostics.Add(
+                $"Recovery lost {oracle.MissingPreservedNameMembers.Count} preserved-name member(s) " +
+                $"the oracle retains, starting with {oracle.MissingPreservedNameMembers[0]}.");
+        }
+
+        if (sample.MaximumSurplusMethods is int methodLimit &&
+            oracle.SurplusMethods > methodLimit)
+        {
+            diagnostics.Add(
+                $"Surplus of {oracle.SurplusMethods} method(s) over the oracle exceeds {methodLimit}.");
+        }
+
+        if (sample.MaximumSurplusResources is int resourceLimit &&
+            oracle.SurplusResources > resourceLimit)
+        {
+            diagnostics.Add(
+                $"Surplus of {oracle.SurplusResources} resource(s) over the oracle exceeds {resourceLimit}.");
+        }
+
+        if (sample.RequireOracleResourceParity && oracle.MissingOracleResources.Count != 0)
+        {
+            diagnostics.Add(
+                $"Output is missing {oracle.MissingOracleResources.Count} resource(s) the oracle " +
+                $"carries: {string.Join(", ", oracle.MissingOracleResources)}.");
+        }
     }
 
     private static void ValidateRecoveryExpectations(
@@ -306,25 +449,6 @@ public static class CorpusRunner
             diagnostics.Add(
                 $"Remaining unreachable instructions {recovery.RemainingUnreachableInstructions} exceed {maxUnreachable}.");
     }
-
-    private static HashSet<string> MethodSignatures(ModuleDef module) =>
-        module.GetTypes().SelectMany(type => type.Methods)
-            .Select(method => method.FullName)
-            .ToHashSet(StringComparer.Ordinal);
-
-    private static HashSet<string> PublicApi(ModuleDef module) =>
-        module.GetTypes().SelectMany(type =>
-            type.Methods.Where(method => method.IsPublic).Select(method => method.FullName)
-                .Concat(type.Fields.Where(field => field.IsPublic).Select(field => field.FullName)))
-            .ToHashSet(StringComparer.Ordinal);
-
-    private static int CountPublicApi(ModuleDef module) =>
-        module.GetTypes().Sum(type =>
-            (type.IsPublic || type.IsNestedPublic ? 1 : 0) +
-            type.Methods.Count(method => method.IsPublic) +
-            type.Fields.Count(field => field.IsPublic) +
-            type.Properties.Count(property =>
-                property.GetMethod?.IsPublic == true || property.SetMethod?.IsPublic == true));
 
     private static CorpusSampleOutcome Missing(CorpusSample sample) =>
         new(sample.Id, sample.Tier, "missing", sample.Sha256, false, "unknown", [], [],

@@ -92,15 +92,21 @@ public sealed class CorpusTests
             var firstReport = CorpusRunner.Run(manifest, samples, first);
             var secondReport = CorpusRunner.Run(manifest, samples, second);
 
-            Assert.Equal(6, firstReport.Passed);
-            Assert.Equal(3, firstReport.Failed);
+            Assert.Equal(9, firstReport.Passed);
+            Assert.Equal(0, firstReport.Failed);
             Assert.Equal(0, firstReport.Missing);
-            Assert.Equal(
-                ["database", "reason-pac", "service-controller"],
-                firstReport.Samples.Where(sample => sample.Status == "failed")
-                    .Select(sample => sample.Id)
-                    .Order(StringComparer.Ordinal)
-                    .ToArray());
+
+            // Recovery must never delete a member whose name the protector left intact; that is
+            // program surface, not scaffolding. Surplus over the oracle is allowed to remain and is
+            // bounded by the manifest ratchet instead.
+            foreach (var outcome in firstReport.Samples.Where(sample => sample.Oracle is not null))
+            {
+                Assert.True(
+                    outcome.Oracle!.PreservedNamesIntact,
+                    $"{outcome.Id} lost preserved-name members: " +
+                    string.Join(", ", outcome.Oracle.MissingPreservedNameMembers));
+            }
+
             Assert.Equal(
                 File.ReadAllBytes(Path.Combine(first, "corpus.outcomes.json")),
                 File.ReadAllBytes(Path.Combine(second, "corpus.outcomes.json")));

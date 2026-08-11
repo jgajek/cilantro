@@ -18,6 +18,7 @@ namespace ReactorUnpack.Core.Recovery;
 public sealed class CosturaExtractionPass : DeobfuscationPass
 {
     public override string Name => "costura-extraction";
+    public override bool GatesEmission => false;
     public override IReadOnlyCollection<string> Dependencies => ["payload-extraction"];
 
     private const int MaximumAssemblyLength = 256 * 1024 * 1024;

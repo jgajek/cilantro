@@ -67,6 +67,33 @@ public static class InitializedFieldCapture
     }
 
     /// <summary>
+    /// Captures the concrete integer values a bounded interpretation left in static fields.
+    /// </summary>
+    /// <remarks>
+    /// Only fields the interpretation actually wrote are reported. A field the loader never
+    /// assigned is absent rather than reported as its zero default, because absence here means the
+    /// interpretation proved nothing about it, not that it proved zero.
+    /// </remarks>
+    public static Dictionary<uint, int> CaptureStaticIntegers(
+        ModuleDef module,
+        StaticMachineState state)
+    {
+        var result = new Dictionary<uint, int>();
+        foreach (var field in module.GetTypes()
+                     .SelectMany(type => type.Fields)
+                     .Where(field => field.IsStatic &&
+                         field.FieldSig?.Type.ElementType == ElementType.I4))
+        {
+            if (state.StaticFields.TryGetValue(field.FullName, out var value) &&
+                value.Kind == StaticValueKind.Int32)
+            {
+                result[field.MDToken.Raw] = value.AsInt32();
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Confirms two independent captures agree, so a key map is only trusted when it does
     /// not depend on interpretation order or on any ambient state.
     /// </summary>

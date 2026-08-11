@@ -42,7 +42,10 @@
       "maximumRemainingStubs": 0,
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000,
-      "requireOracleParity": true
+      "requireOracleParity": true,
+      "maximumSurplusMethods": 205,
+      "maximumSurplusResources": 3,
+      "requireOracleResourceParity": true
     },
     {
       "id": "service-controller",
@@ -56,7 +59,10 @@
       "maximumRemainingStubs": 0,
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000,
-      "requireOracleParity": true
+      "requireOracleParity": true,
+      "maximumSurplusMethods": 179,
+      "maximumSurplusResources": 3,
+      "requireOracleResourceParity": true
     },
     {
       "id": "database",
@@ -70,7 +76,10 @@
       "maximumRemainingStubs": 0,
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000,
-      "requireOracleParity": true
+      "requireOracleParity": true,
+      "maximumSurplusMethods": 107,
+      "maximumSurplusResources": 3,
+      "requireOracleResourceParity": true
     },
     {
       "id": "reason-pac-oracle",

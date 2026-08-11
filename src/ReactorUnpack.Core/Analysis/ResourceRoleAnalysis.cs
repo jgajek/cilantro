@@ -11,7 +11,10 @@ public enum ResourceRole
     MethodPatchStream,
     VirtualMachineData,
     IntegrityData,
-    EncryptedResourceBundle
+    EncryptedResourceBundle,
+
+    /// <summary>An application resource lifted back out of a decrypted bundle.</summary>
+    RestoredApplicationResource
 }
 
 public sealed record ResourceRoleFact(

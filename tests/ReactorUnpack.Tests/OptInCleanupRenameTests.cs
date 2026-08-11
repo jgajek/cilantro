@@ -47,13 +47,29 @@ public sealed class OptInCleanupRenameTests
             SyntheticContext.AddType(module, "Host");
         });
         context.SetFact("options.removeRuntime", true);
+        DeclareProxyOrphaned(context, "DeadProxy");
 
         var result = new RuntimeCleanupPass().Run(context);
 
         Assert.Equal(PassStatus.Success, result.Status);
-        Assert.Equal(1, result.Changes);
         Assert.DoesNotContain(context.Module.GetTypes(), type => type.Name == "DeadProxy");
         AssertWritesAndVerifies(context);
+    }
+
+    [Fact]
+    public void CleanupKeepsDeadCodeRecoveryCannotAccountFor()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            AddDeadProxy(module, "UnusedByTheProgram");
+            SyntheticContext.AddType(module, "Host");
+        });
+        context.SetFact("options.removeRuntime", true);
+
+        var result = new RuntimeCleanupPass().Run(context);
+
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(context.Module.GetTypes(), type => type.Name == "UnusedByTheProgram");
     }
 
     [Fact]
@@ -63,15 +79,68 @@ public sealed class OptInCleanupRenameTests
         {
             var proxy = AddDeadProxy(module, "LiveProxy");
             var host = SyntheticContext.AddType(module, "Host");
+            // The host has to survive cleanup itself for its reference to mean anything, and only
+            // an externally visible type is kept without a call reaching it.
+            host.Attributes = TypeAttributes.Public | TypeAttributes.Class;
             host.Fields.Add(new FieldDefUser(
                 "handle", new FieldSig(proxy.ToTypeSig()), FieldAttributes.Private));
         });
         context.SetFact("options.removeRuntime", true);
+        DeclareProxyOrphaned(context, "LiveProxy");
+
+        new RuntimeCleanupPass().Run(context);
+
+        Assert.Contains(context.Module.GetTypes(), type => type.Name == "LiveProxy");
+        Assert.Contains(context.Module.GetTypes(), type => type.Name == "Host");
+    }
+
+    [Fact]
+    public void CleanupRemovesAnOrphanedMethodFromASurvivingType()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            host.Attributes = TypeAttributes.Public | TypeAttributes.Class;
+            host.Methods.Add(NewVoidMethod(module, "Entry", MethodAttributes.Public));
+            host.Methods.Add(NewVoidMethod(module, "BypassedForwarder", MethodAttributes.Assembly));
+            host.Methods.Add(NewVoidMethod(module, "UnusedHelper", MethodAttributes.Assembly));
+        });
+        context.SetFact("options.removeRuntime", true);
+        RecoveryOrphans.Declare(context, FindMethod(context, "BypassedForwarder"));
 
         var result = new RuntimeCleanupPass().Run(context);
 
-        Assert.Equal(0, result.Changes);
-        Assert.Contains(context.Module.GetTypes(), type => type.Name == "LiveProxy");
+        Assert.Equal(1, result.Changes);
+        var host = context.Module.GetTypes().Single(type => type.Name == "Host");
+        Assert.DoesNotContain(host.Methods, method => method.Name == "BypassedForwarder");
+        // The program's own unused helper is left exactly where it was.
+        Assert.Contains(host.Methods, method => method.Name == "UnusedHelper");
+        AssertWritesAndVerifies(context);
+    }
+
+    [Fact]
+    public void CleanupKeepsAnOrphanedMethodSurvivingCodeStillCalls()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            host.Attributes = TypeAttributes.Public | TypeAttributes.Class;
+            var forwarder = NewVoidMethod(module, "StillCalled", MethodAttributes.Assembly);
+            host.Methods.Add(forwarder);
+            // A virtual method is never removed, so it survives and its call has to stay resolvable.
+            var caller = NewVoidMethod(module, "Caller", MethodAttributes.Assembly);
+            caller.Attributes = MethodAttributes.Assembly | MethodAttributes.Virtual;
+            caller.MethodSig = MethodSig.CreateInstance(module.CorLibTypes.Void);
+            caller.Body.Instructions.Insert(0, OpCodes.Call.ToInstruction(forwarder));
+            host.Methods.Add(caller);
+        });
+        context.SetFact("options.removeRuntime", true);
+        RecoveryOrphans.Declare(context, FindMethod(context, "StillCalled"));
+
+        new RuntimeCleanupPass().Run(context);
+
+        var host = context.Module.GetTypes().Single(type => type.Name == "Host");
+        Assert.Contains(host.Methods, method => method.Name == "StillCalled");
     }
 
     [Fact]
@@ -93,7 +162,7 @@ public sealed class OptInCleanupRenameTests
         var candidates = context.Module.GetTypes()
             .Where(ReactorStructureDetector.IsDelegateProxy)
             .ToHashSet();
-        var removable = RuntimeCleanupPass.ComputeUnreferencedProxies(context.Module, candidates);
+        var removable = RuntimeCleanupPass.ComputeUnreferenced(context.Module, candidates);
 
         Assert.Equal(["ProxyC"], removable.Select(type => type.Name.String).Order());
     }
@@ -161,19 +230,39 @@ public sealed class OptInCleanupRenameTests
         module.Types.Add(proxy);
         proxy.Fields.Add(new FieldDefUser(
             "instance", new FieldSig(proxy.ToTypeSig()), FieldAttributes.Static | FieldAttributes.Assembly));
+        proxy.Methods.Add(NewVoidMethod(module, "Dispatch", MethodAttributes.Assembly));
         return proxy;
     }
 
+    /// <summary>
+    /// Stands in for the pass that would have redirected every call through the proxy.
+    /// </summary>
+    private static void DeclareProxyOrphaned(ArtifactContext context, string proxyName) =>
+        RecoveryOrphans.Declare(
+            context,
+            context.Module.GetTypes().Single(type => type.Name == proxyName).Methods);
+
+    private static MethodDef FindMethod(ArtifactContext context, string name) =>
+        context.Module.GetTypes().SelectMany(type => type.Methods)
+            .Single(method => method.Name == name);
+
+    /// <summary>
+    /// Asserts both halves of the pipeline's gate: the module changed only as declared, and the
+    /// file is the module.
+    /// </summary>
     private static void AssertWritesAndVerifies(ArtifactContext context)
     {
-        var allowance = BuildAllowance(context);
+        var inMemory = AssemblyVerifier.Verify(
+            context.Module, context.OriginalIdentity, context.OriginalStructure, BuildAllowance(context));
+        Assert.True(inMemory.Passed, string.Join("; ", inMemory.Diagnostics));
+
+        var shape = ModuleShape.Capture(context.Module);
         var path = Path.Combine(Path.GetTempPath(), $"ReactorUnpack.OptIn.{Guid.NewGuid():N}.dll");
         try
         {
             context.Module.Write(path);
-            var verification = AssemblyVerifier.VerifyFile(
-                path, context.OriginalIdentity, context.OriginalStructure, allowance);
-            Assert.True(verification.Passed, string.Join("; ", verification.Diagnostics));
+            var roundTrip = AssemblyVerifier.VerifyRoundTrip(path, shape);
+            Assert.True(roundTrip.Passed, string.Join("; ", roundTrip.Diagnostics));
         }
         finally
         {

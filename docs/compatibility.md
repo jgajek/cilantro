@@ -96,7 +96,9 @@ callvirt    = (encodedTarget & 0x40000000) != 0
 Every field and target token is resolved before any edit. A valid use site is
 the adjacent pair `ldsfld mappedField; call staticAdapter`. It is rewritten to
 `nop; call|callvirt target`, preserving stack behavior and instruction
-identity. Each fixture has 2,643 validated sites.
+identity. Each fixture has 2,643 validated sites, and all of them are rewritten:
+proxy restoration runs before forwarder redirection, so no site has already been
+turned into a direct call by the time it looks.
 
 The generic strategy locates a resource whose length equals eight bytes per
 proxy field, extracts candidate stream constants from the token-resolver IL,
@@ -205,6 +207,13 @@ verification. Any unmet condition preserves every body and refuses output.
   invalid stream bounds, and zero sorted masks before mutation.
 - Resource roles are inferred from consumers such as `ResolveMethod`,
   `GetManifestResourceStream`, `Assembly.Load`, and `string(int32)` resolvers.
+- Encrypted resource bundles are recovered by running the module's own bundle
+  reader, identified as a static method that names the bundle and reaches a
+  manifest-resource read through however many laundering hops. Because the
+  reader stores its result rather than returning it, the plaintext is taken from
+  machine state and selected by parsing: the bundle is a satellite assembly, and
+  the one buffer that loads as an assembly carrying resources is it. No cipher,
+  key schedule, or container layout is hardcoded.
 - Bounded integer evaluation handles constant arithmetic, shifts, and bitwise
   operations; constant array discovery recovers FieldRVA and IL-built material.
 - Conservative CFG reachability, exception roots, dispatcher detection, and
@@ -217,25 +226,48 @@ verification. Any unmet condition preserves every body and refuses output.
 Unsupported mechanisms remain intact and are reported. This is safer than
 claiming broad Reactor 6/7 compatibility or emitting a partially damaged file.
 
-## Opt-in destructive cleanup and renaming
+## Scaffolding removal and renaming
 
-Two transforms are available only when the caller requests them and stay off by
-default, so all fail-closed behavior and every existing test holds unchanged:
+`runtime-cleanup` runs by default and `--keep-runtime` turns it off. It deletes a
+type or method only when five things hold: nothing reachable can transfer control
+to it, it is invisible outside the assembly, no reachable code takes its handle,
+no surviving declaration references it under a fixed-point scan, and recovery can
+account for why it has no use left. That last condition is what keeps the pass
+from tree-shaking the program: a pass that replaces a resolver call with its
+string, redirects a call past a forwarder, or elides an inert loader call records
+the declarations it made pointless, and only those are candidates. Unreachable
+code that nothing accounts for is counted in the pass diagnostics and kept. The
+whole pass is additionally gated by `RewritePolicy.CanRemoveRuntime` (recovery
+complete, no surviving use site, confidence at least 0.95).
 
-- `--remove-runtime` runs `runtime-cleanup`, which deletes only Reactor
-  delegate-proxy types proven dead by a fixed-point whole-module reference scan,
-  gated by `RewritePolicy.CanRemoveRuntime` (recovery complete, no surviving use
-  site, confidence at least 0.95).
-- `--rename` runs `symbol-renaming`, which deterministically renames only
-  non-public members whose names are structurally proven Reactor-generated,
-  skipping virtual, P/Invoke, constructor, and serialization-sensitive members,
-  and writes an old-to-new map beside the JSON reports.
+Cleanup is the one place that models a type initializer as running only when its
+type is used, which is what the runtime does and what lets an abandoned island of
+protector code be recognized as dead. Every other consumer of reachability keeps
+the conservative reading in which every initializer runs.
+
+`resource-hook-elision` is the one pass that removes a live subscription rather
+than dead code, and it earns that by proving the subscription can no longer fire.
+Reactor's handler answers `AppDomain.ResourceResolve` with a satellite assembly
+decrypted from an embedded bundle, and the runtime raises that event only after
+its own lookup fails; once restoration has put every one of the satellite's
+streams on the module, the lookup succeeds and the handler is unreachable. The
+edit is the five stack-neutral instructions that build the delegate and add it to
+the event, replaced in place so that every branch target in the body still points
+where it did. It declines if any bundle went unrecovered or a resource still
+looks like an unextracted assembly payload, either of which would mean the hook
+still serves something the module lacks.
+
+`--rename` stays off by default. It runs `symbol-renaming`, which deterministically
+renames only non-public members whose names are structurally proven
+Reactor-generated, skipping virtual, P/Invoke, constructor, and
+serialization-sensitive members, and writes an old-to-new map beside the JSON
+reports.
 
 Identity verification is policy-aware rather than bypassed: each pass declares
 the exact removals, additions, and renames it made, and the snapshot comparison
 still fails on any change outside that declared allowance.
 
-A full stage-by-stage comparison against NETReactorSlayer's sixteen stages is in
+A full stage-by-stage comparison against NETReactorSlayer's fifteen stages is in
 [parity.md](parity.md).
 
 ## Clean-room boundary

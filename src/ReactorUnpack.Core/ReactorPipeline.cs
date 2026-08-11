@@ -164,6 +164,19 @@ public interface IDeobfuscationPass
 {
     string Name { get; }
     IReadOnlyCollection<string> Dependencies { get; }
+
+    /// <summary>
+    /// Whether an incomplete result from this pass must block emission.
+    /// </summary>
+    /// <remarks>
+    /// Emission is gated on the emitted module being trustworthy, so a pass that provably never
+    /// mutates the module cannot make it untrustworthy by declining. Side-artifact recovery
+    /// (payloads, Costura assemblies, resource bundles) is therefore reported without withholding
+    /// an otherwise fully verified assembly. Callers that want everything complete, artifacts
+    /// included, ask for it with <see cref="PipelineOptions.FailOnPartial"/>.
+    /// </remarks>
+    bool GatesEmission { get; }
+
     PassResult Run(ArtifactContext context);
 }
 
@@ -171,6 +184,7 @@ public abstract class DeobfuscationPass : IDeobfuscationPass
 {
     public abstract string Name { get; }
     public virtual IReadOnlyCollection<string> Dependencies => [];
+    public virtual bool GatesEmission => true;
 
     public PassResult Run(ArtifactContext context)
     {
@@ -199,7 +213,7 @@ public sealed record PipelineOptions(
     bool AnalyzeOnly = false,
     bool PreserveTokens = true,
     bool FailOnPartial = false,
-    bool RemoveRuntime = false,
+    bool RemoveRuntime = true,
     bool RenameSymbols = false,
     string? OutputPath = null,
     string? ReportDirectory = null);
@@ -243,19 +257,29 @@ public sealed class ReactorPipeline
         new StringTableRecoveryPass(),
         new BooleanRecoveryPass(),
         new AntiTamperNeutralizationPass(),
+        new LoaderCallElisionPass(),
         new ConstantPredicatePass(),
+        // Loader-initialized state is folded before the control-flow passes, because turning its
+        // reads into constants is what makes Reactor's guards look like the constant branches those
+        // passes already know how to collapse.
+        new GlobalStateCapturePass(),
+        new GlobalPredicateFoldingPass(),
         new DispatcherDeobfuscationPass(),
         new CfgDeadCodePass(),
         new ControlFlowCompletionPass(),
         new TokenRecoveryPass(),
         new TypeRestorationPass(),
-        new MethodInliningPass(),
         new DelegateProxyPass(),
         new StringRecoveryPass(),
+        // Forwarder redirection runs after the rewrites, not before: replacing a resolver call with
+        // its string or a proxy dispatch with a direct call is what leaves many of Reactor's
+        // wrappers as the bare pass-throughs this pass can prove and skip.
+        new MethodInliningPass(),
         // Resource classification and payload extraction run last because a JIT-hook artifact
         // hides every resource consumer behind an encrypted body and an encrypted name literal.
         new ResourceRoleRefinementPass(),
         new ResourceRestorationPass(),
+        new ResourceHookElisionPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
         new RuntimeCleanupPass(),
@@ -309,7 +333,12 @@ public sealed class ReactorPipeline
             context.OriginalStructure,
             allowance);
         var fatalFailure = context.PassResults.Any(result => result.Status == PassStatus.Failed);
+        var emissionGates = _passes
+            .Where(pass => pass.GatesEmission)
+            .Select(pass => pass.Name)
+            .ToHashSet(StringComparer.Ordinal);
         var incompleteRecovery = context.PassResults.Any(result =>
+            (options.FailOnPartial || emissionGates.Contains(result.Pass)) &&
             result.Status is PassStatus.Partial or PassStatus.Unsupported);
         var canEmit = !options.AnalyzeOnly &&
             verification.Passed &&
@@ -328,30 +357,48 @@ public sealed class ReactorPipeline
 
         var payloadPaths = WritePayloads(context, reportDirectory, stem);
         WriteRenameMap(context, reportDirectory, stem);
-        var resourceInfos = ResourceInspector.Inspect(context.Module);
-        var report = BuildReport(context, resourceInfos, verification);
-        WriteJson(analysisPath, report);
-        WriteJson(changesPath, context.Changes);
+
+        // Emission happens before the report is written so that a module which verifies in memory
+        // but not once serialized is explained rather than silently withheld. Round-tripping is the
+        // only check that sees what the metadata writer actually produced.
+        // Deleting metadata rows and preserving row indexes cannot both hold: the writer has to
+        // renumber whatever followed a removed row. Token preservation is dropped exactly when
+        // cleanup deleted something, which is the only case where it is unachievable.
+        context.TryGetFact<int>("cleanup.removedTypeCount", out var removedTypeCount);
+        context.TryGetFact<int>("cleanup.removedMethodCount", out var removedMethodCount);
+        var preserveTokens = options.PreserveTokens &&
+            removedTypeCount == 0 &&
+            removedMethodCount == 0;
 
         if (canEmit)
         {
-            WriteModule(context.Module, outputPath, options.PreserveTokens);
-            var outputVerification = AssemblyVerifier.VerifyFile(
-                outputPath,
-                context.OriginalIdentity,
-                context.OriginalStructure,
-                allowance);
+            var expectedShape = ModuleShape.Capture(context.Module);
+            WriteModule(context.Module, outputPath, preserveTokens);
+            var outputVerification = AssemblyVerifier.VerifyRoundTrip(outputPath, expectedShape);
             if (!outputVerification.Passed)
             {
                 File.Delete(outputPath);
                 canEmit = false;
                 outputPath = null;
+                verification = outputVerification with
+                {
+                    Diagnostics =
+                    [
+                        "The emitted module did not verify after serialization and was discarded.",
+                        .. outputVerification.Diagnostics
+                    ]
+                };
             }
         }
         else
         {
             outputPath = null;
         }
+
+        var resourceInfos = ResourceInspector.Inspect(context.Module);
+        var report = BuildReport(context, resourceInfos, verification);
+        WriteJson(analysisPath, report);
+        WriteJson(changesPath, context.Changes);
 
         return new PipelineResult(
             canEmit || options.AnalyzeOnly && !fatalFailure,
@@ -519,9 +566,10 @@ public sealed class ReactorPipeline
     /// Assembles the declared identity and structural changes the opt-in passes recorded, so the
     /// final verification gate can accept exactly those edits and nothing more.
     /// </summary>
-    private static RewriteAllowance BuildRewriteAllowance(ArtifactContext context)
+    internal static RewriteAllowance BuildRewriteAllowance(ArtifactContext context)
     {
         context.TryGetFact<IReadOnlySet<string>>("cleanup.removedResources", out var removedResources);
+        context.TryGetFact<IReadOnlySet<string>>("resources.addedResources", out var addedResources);
         context.TryGetFact<IReadOnlySet<string>>("cleanup.removedPublicApi", out var cleanupRemovedApi);
         context.TryGetFact<IReadOnlySet<uint>>("cleanup.removedMethodTokens", out var removedMethods);
         context.TryGetFact<int>("cleanup.removedTypeCount", out var removedTypeCount);
@@ -531,13 +579,15 @@ public sealed class ReactorPipeline
 
         var removedApi = Union(cleanupRemovedApi, renameRemovedApi);
         var addedApi = renameAddedApi;
-        if (removedResources is null && removedApi is null && addedApi is null &&
-            removedMethods is null && removedTypeCount == 0 && removedFieldCount == 0)
+        if (removedResources is null && addedResources is null && removedApi is null &&
+            addedApi is null && removedMethods is null && removedTypeCount == 0 &&
+            removedFieldCount == 0)
         {
             return RewriteAllowance.None;
         }
 
         return new RewriteAllowance(
+            AddedResources: addedResources,
             RemovedResources: removedResources,
             RemovedPublicApi: removedApi,
             RemovedMethodTokens: removedMethods,
@@ -844,6 +894,7 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
     public override string Name => "payload-extraction";
     public override IReadOnlyCollection<string> Dependencies =>
         ["resource-role-refinement", "resource-restoration"];
+    public override bool GatesEmission => false;
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
@@ -1334,6 +1385,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         }
 
         var changes = 0;
+        var bypassedAdapters = new HashSet<MethodDef>();
         foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
         {
             var instructions = method.Body.Instructions;
@@ -1363,10 +1415,14 @@ public sealed class DelegateProxyPass : DeobfuscationPass
                     $"{method.MDToken} IL_{adapterCall.Offset:X4}",
                     $"{field.MDToken} -> 0x{binding.TargetToken:X8} ({adapterCall.OpCode.Name})"));
                 changes++;
+                bypassedAdapters.Add(adapter);
                 index++;
             }
         }
 
+        // The adapters existed to dispatch through the proxy fields these sites no longer load,
+        // and the initialization behind them exists only to populate those fields.
+        RecoveryOrphans.DeclareSubtree(context, bypassedAdapters);
         context.SetFact("proxy.bindings", bindings);
         context.AddEvidence(new Evidence(
             "proxy-map",
@@ -1576,6 +1632,9 @@ public sealed class StringRecoveryPass : DeobfuscationPass
                 JsonSerializer.Serialize(replacement.Value)));
         context.SetFact("strings.callSites", callSites.Length);
         context.SetFact("strings.replacedSites", replacements.Count);
+        // Every call the resolver and its aliases existed to serve is now an ldstr, which leaves
+        // the decoding machinery behind them with nothing to decode either.
+        RecoveryOrphans.DeclareSubtree(context, aliases);
         return (PassStatus.Success, replacements.Count,
             [$"Atomically restored all {replacements.Count} proven string sites."]);
     }
@@ -1930,6 +1989,32 @@ public static class AssemblyVerifier
         {
             using var module = ModuleDefMD.Load(path);
             return Verify(module, originalIdentity, originalStructure, allowance);
+        }
+        catch (Exception ex)
+        {
+            return new VerificationResult(false, [$"Reload failed: {ex.Message}"]);
+        }
+    }
+
+    /// <summary>
+    /// Confirms the file on disk is the module that was in memory, and that it still reloads with
+    /// sound method bodies.
+    /// </summary>
+    /// <remarks>
+    /// This deliberately compares against the transformed module rather than the original. The
+    /// in-memory gate has already established that the module differs from the original only by
+    /// what the passes declared; establishing that the file matches that module carries the
+    /// conclusion through to disk, and it is the only form the check can take once deletions have
+    /// made the writer renumber tokens.
+    /// </remarks>
+    public static VerificationResult VerifyRoundTrip(string path, ModuleShape expected)
+    {
+        try
+        {
+            using var module = ModuleDefMD.Load(path);
+            var diagnostics = new List<string>(Verify(module).Diagnostics);
+            diagnostics.AddRange(expected.DifferencesFrom(ModuleShape.Capture(module)));
+            return new VerificationResult(diagnostics.Count == 0, diagnostics);
         }
         catch (Exception ex)
         {

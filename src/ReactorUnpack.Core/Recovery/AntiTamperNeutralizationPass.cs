@@ -172,6 +172,13 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
         }
         context.SetFact("antitamper.neutralized", true);
         context.SetFact("antitamper.entryPoint", entryPoint.MDToken.Raw);
+        // The subtree ran only to serve the initializer call that is now gone.
+        var byToken = context.Module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .ToDictionary(method => method.MDToken.Raw);
+        RecoveryOrphans.Declare(
+            context,
+            subtree!.Where(byToken.ContainsKey).Select(token => byToken[token]));
         context.AddEvidence(new Evidence(
             "antitamper-neutralized",
             $"Removed {calls.Length} initializer call(s) to {entryPoint.MDToken}, whose subtree " +
@@ -288,10 +295,16 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
     /// <summary>
     /// Returns any written static fields that a method outside the removed subtree reads.
     /// </summary>
+    /// <remarks>
+    /// A reader the program can never execute observes nothing, so when reachability is known the
+    /// search is restricted to code that can actually run. Passing no reachability keeps the
+    /// stricter reading, in which any surviving read counts.
+    /// </remarks>
     internal static string[] FindEscapingFieldReaders(
         ModuleDef module,
         IReadOnlySet<uint> subtree,
-        IReadOnlyList<string> writtenFields)
+        IReadOnlyList<string> writtenFields,
+        ModuleReachability? reachability = null)
     {
         if (writtenFields.Count == 0)
             return [];
@@ -299,8 +312,12 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
         var escaping = new HashSet<string>(StringComparer.Ordinal);
         foreach (var method in module.GetTypes().SelectMany(type => type.Methods))
         {
-            if (!method.HasBody || subtree.Contains(method.MDToken.Raw))
+            if (!method.HasBody ||
+                subtree.Contains(method.MDToken.Raw) ||
+                reachability?.IsReachable(method) == false)
+            {
                 continue;
+            }
             foreach (var instruction in method.Body.Instructions)
             {
                 if (instruction.OpCode.Code is not (Code.Ldsfld or Code.Ldsflda) ||

@@ -155,6 +155,9 @@ public sealed class BooleanRecoveryPass : DeobfuscationPass
         }
         context.SetFact("booleans.callSites", offsets.Count);
         context.SetFact("booleans.replacedSites", offsets.Count);
+        // Every call the resolver existed to answer is now the constant it would have returned,
+        // which leaves the table it consulted with nothing to answer from.
+        RecoveryOrphans.DeclareSubtree(context, [resolver]);
         return (PassStatus.Success, offsets.Count,
             [$"Atomically restored all {offsets.Count} proven boolean site(s)."]);
     }
@@ -188,41 +191,10 @@ public sealed class BooleanRecoveryPass : DeobfuscationPass
         out string diagnostic)
     {
         value = false;
-        diagnostic = string.Empty;
-        var limits = new StaticMachineLimits(
-            MaximumSteps: 2_000_000,
-            MaximumRecursionDepth: 64,
-            MaximumAllocatedBytes: 256 * 1024 * 1024,
-            MaximumArrayLength: 256 * 1024 * 1024,
-            MaximumProvenanceNodes: 1_000_000,
-            MaximumProvenanceDepth: 8_192,
-            MaximumRenderedProvenanceNodes: 96);
-        var machine = new StaticMachine(limits, modelTypeInitialization: true);
-        foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>())
-            machine.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
-        machine.State.RegisterAssemblyIdentity(
-            context.Module.Assembly?.Name ?? context.Module.Name,
-            context.Module.Assembly?.PublicKeyToken?.Data ?? []);
-        machine.State.RegisterPointerSize(context.OriginalImage.IsPe32Plus ? 8 : 4);
-        machine.State.RegisterModuleFile(
-            Path.GetFullPath(context.InputPath), context.OriginalBytes);
-        if (!machine.State.TryRegisterImage(
-                context.OriginalImage.CreateMappedImage(), context.OriginalImage.ImageBase))
+        if (!BootstrapMachine.TryRunInitializers(context, 2_000_000, out var machine, out diagnostic) ||
+            machine is null)
         {
-            diagnostic = "the mapped image exceeded the interpreter allocation budget";
             return false;
-        }
-
-        // The resolver may depend on loader-initialized state, so run the module and key-holder
-        // initializers before invoking it, exactly as recovery does.
-        if (context.Module.GlobalType.FindStaticConstructor() is { HasBody: true } moduleInitializer)
-            machine.Execute(moduleInitializer);
-        foreach (var holder in context.Module.GetTypes()
-                     .Where(type => type != context.Module.GlobalType &&
-                         ReactorStructureDetector.IsResolverKeyHolder(type)))
-        {
-            if (holder.FindStaticConstructor() is { HasBody: true } holderInitializer)
-                machine.Execute(holderInitializer);
         }
 
         var result = machine.Execute(resolver, [StaticValue.FromInt32(offset)]);
