@@ -266,7 +266,6 @@ public sealed class ReactorPipeline
         new DispatcherDeobfuscationPass(),
         new CfgDeadCodePass(),
         new ControlFlowCompletionPass(),
-        new TokenRecoveryPass(),
         new TypeRestorationPass(),
         new DelegateProxyPass(),
         new StringRecoveryPass(),
@@ -274,6 +273,9 @@ public sealed class ReactorPipeline
         // its string or a proxy dispatch with a direct call is what leaves many of Reactor's
         // wrappers as the bare pass-throughs this pass can prove and skip.
         new MethodInliningPass(),
+        // Token recovery follows it for the same reason in reverse: the sites it reads are the ones
+        // redirection just brought into view.
+        new TokenRecoveryPass(),
         // Resource classification and payload extraction run last because a JIT-hook artifact
         // hides every resource consumer behind an encrypted body and an encrypted name literal.
         new ResourceRoleRefinementPass(),

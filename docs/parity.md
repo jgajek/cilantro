@@ -28,10 +28,10 @@ execution event. ReactorUnpack never loads or invokes protected code.
 | 3 | `StrongNamePatcher` | `antitamper-neutralization` | Parity. The strong-name verdict is proven through the same modeled verification before any edit. |
 | 4 | `BooleanDecrypter` | `boolean-recovery` | Parity by construction. Detects the `bool(int32)` resolver, proves each offset, and interprets the real resolver to fold sites. No corpus sample exercises it yet. |
 | 5 | `StringDecrypter` | `string-table-recovery` + `string-recovery` | Stronger on proof, weaker on reach. Table capture and site rewriting are separate, all-or-nothing, and offset-proven; Slayer invokes the real decrypter and so handles unmodeled codecs. |
-| 6 | `TokenDeobfuscator` | `token-recovery` | Parity by construction. Rewrites constant-fed `Module.Resolve*` proxies to direct `ldtoken`, validating every decoded token first. No corpus sample exercises it yet. |
+| 6 | `TokenDeobfuscator` | `token-recovery` | Parity by construction. Rewrites constant-fed `Module.Resolve*` proxies and Reactor's own `int`-to-handle forwarders to direct `ldtoken`, validating every decoded token first and proving the forwarder's cached module handle is this module's by interpretation. Sixteen to seventeen sites per JIT-hook sample. |
 | 7 | `ProxyCallFixer` | `delegate-proxy-analysis` | Stronger. Bijective field-to-target validation; the stream codec is derived structurally rather than by hash. |
 | 8 | `TypeRestorer` | `type-restoration` | Weaker/conservative, clean-room. Promotes non-public `object` fields only when every writer agrees; no public-API signature changes. |
-| 9 | `MethodInliner` | `method-inlining` | Parity. Redirects proven single-call pass-through forwarders, collapsing chains to their end, with stack-neutrality proof and full-body rollback. |
+| 9 | `MethodInliner` | `method-inlining` | Parity. Redirects proven single-call pass-through forwarders, collapsing chains to their end, with stack-neutrality proof and full-body rollback. Covers Reactor's object-laundering wrappers over framework calls, whose declared types are allowed to differ from the target's only by a widening to `object`. Four hundred to six hundred sites per JIT-hook sample. |
 | 10 | `AssemblyResolver` (payload dumping) | `payload-extraction` | Parity. Bounded, strictly framed managed-metadata extraction; the `Assembly.Load` sink is never invoked. |
 | 11 | `ResourceResolver` (reattach) | `resource-restoration` + `resource-hook-elision` | Parity. Interprets the module's own bundle reader under the bounded machine, reads the decrypted satellite assembly's streams back onto the module, and drops the resolve subscription those streams made unreachable. |
 | 12 | `CosturaDumper` | `costura-extraction` | Parity. Extracts `costura.*.dll(.compressed)` assemblies into the payload writer. |
@@ -108,9 +108,9 @@ ratchet in the manifest:
 
 | Sample | Types emitted / oracle | Surplus in named types | Whole-module surplus | Unattributed dead methods |
 | --- | --- | --- | --- | --- |
-| `database` | 47 / 49 | 44 | -38 | 87 |
-| `reason-pac` | 47 / 50 | 79 | 59 | 103 |
-| `service-controller` | 41 / 44 | 59 | 173 | 78 |
+| `database` | 45 / 49 | 14 | -90 | 71 |
+| `reason-pac` | 45 / 50 | 28 | -61 | 77 |
+| `service-controller` | 40 / 44 | 5 | -84 | 66 |
 
 The three clean oracle assemblies are the control: elision changes nothing in
 any of them and cleanup removes nothing, which is the evidence that neither is
@@ -127,12 +127,28 @@ there is Reactor's per-type helpers that cleanup cannot yet attribute, and a
 deficit is program that went missing. The gate now fails on any deficit at all,
 and all three samples have none.
 
-`service-controller` is the outlier, and the pass says why. Its
-`ServiceUtils.GetServiceProcessID` still contains an unresolved token-proxy call,
-which keeps the resolver type reachable and the shared cipher alive behind it.
-Token recovery finds no constant-fed proxy on any of the three samples, so that
-is the next lever; it is worth roughly the hundred and fourteen methods that
-sample carries outside its named types.
+`service-controller` used to be the outlier at a hundred and seventy-three, and
+the reason was a single call. Its `ServiceUtils.GetServiceProcessID` loaded a type
+handle through one of Reactor's token forwarders, which kept the resolver type
+reachable and the shared cipher alive behind it; recovering that call closed a
+hundred and forty methods in one step.
+
+The surplus inside named types then fell from fifty-nine, seventy-nine, and
+forty-four to five, twenty-eight, and fourteen, and that came from object
+laundering. Reactor wraps ordinary framework calls in helpers that declare
+everything they can as `System.Object` — `object f(object)` over
+`FileVersionInfo.get_FileVersion` — and forwarder redirection was declining them
+on two counts: the target sits outside the assembly, so it does not resolve to a
+`MethodDef`, and the declared types do not match. Neither is a reason to decline,
+because the body converts nothing: the values reach the target as the caller
+pushed them either way. Admitting both took redirection from ninety-two sites to
+six hundred and sixty on `service-controller`, and undoing the disguise leaves
+the surviving code more strongly typed than it was, since a local already
+declared `FileVersionInfo` now feeds a call that says so.
+
+What is left is Reactor's per-type scaffolding: every type carries a static field
+of its own type, a null-check predicate over it, and a getter, all unreachable
+and none of it attributable to anything recovery did.
 
 The oracle gate itself compares structure — type and method counts, the
 preserved-name subset, per-type method counts inside named types, resource

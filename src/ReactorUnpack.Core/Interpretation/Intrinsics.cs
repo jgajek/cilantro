@@ -421,6 +421,19 @@ public sealed class ArrayIntrinsic : IStaticIntrinsic
 
 public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 {
+    /// <summary>
+    /// Model value marking an assembly or module object as the one being interpreted.
+    /// </summary>
+    /// <remarks>
+    /// Reflection reaches the running module by a chain — take a type's handle, ask it for its
+    /// assembly, ask that for its modules — and each step allocates a fresh model that would
+    /// otherwise be indistinguishable from a model of somebody else's assembly. A caller that needs
+    /// to know a handle addresses this module's metadata, rather than assuming it, has nothing to go
+    /// on unless the chain carries the fact along, and the only thing that establishes it is the
+    /// seed: a <c>TypeDef</c> is defined here, a <c>TypeRef</c> is not.
+    /// </remarks>
+    public const string HomeModuleMark = "HomeModule";
+
     private static readonly HashSet<string> AllowedTypes = new(StringComparer.Ordinal)
     {
         "System.Object",
@@ -730,9 +743,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             var modelType = name == "get_Module"
                 ? "System.Reflection.Module"
                 : "System.Reflection.Assembly";
-            return heap.TryAllocateObject(modelType, out var owner)
-                ? IntrinsicResult.Completed(owner)
-                : AllocationFailure(modelType);
+            if (!heap.TryAllocateObject(modelType, out var owner))
+                return AllocationFailure(modelType);
+            // A TypeDef is defined in the module being interpreted, so the assembly and module it
+            // reports are that module's own. A TypeRef names something outside it and carries the
+            // mark no further.
+            if (heap.TryGetModelValue<object>(arguments[0], "Metadata", out var owning) &&
+                owning is TypeDef)
+            {
+                heap.TrySetModelValue(owner, HomeModuleMark, true);
+            }
+            return IntrinsicResult.Completed(owner);
         }
         if (type == "System.Type" &&
             name == "GetType" &&
@@ -1964,9 +1985,12 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         IReadOnlyList<StaticValue> arguments)
     {
         if (name is "GetExecutingAssembly" or "GetCallingAssembly")
-            return context.State.Heap.TryAllocateObject("System.Reflection.Assembly", out var assembly)
-                ? IntrinsicResult.Completed(assembly)
-                : AllocationFailure("assembly model");
+        {
+            if (!context.State.Heap.TryAllocateObject("System.Reflection.Assembly", out var assembly))
+                return AllocationFailure("assembly model");
+            context.State.Heap.TrySetModelValue(assembly, HomeModuleMark, true);
+            return IntrinsicResult.Completed(assembly);
+        }
         if (name == "get_Location" && arguments.Count == 1)
             return context.State.Heap.TryAllocateString(
                 context.State.ModulePath.Length != 0
@@ -1995,6 +2019,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             {
                 return AllocationFailure("module model");
             }
+            if (heap.TryGetModelValue<bool>(arguments[0], HomeModuleMark, out var home) && home)
+                heap.TrySetModelValue(assemblyModule, HomeModuleMark, true);
             return IntrinsicResult.Completed(modules);
         }
         return IntrinsicResult.Invalid($"Assembly operation {name} is denied.");

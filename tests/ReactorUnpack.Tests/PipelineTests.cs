@@ -54,13 +54,14 @@ public sealed class PipelineTests
             // Down from the 374 types and 2126 methods the input carries: what remains is the
             // program plus whatever recovery could not attribute to the protector.
             Assert.Equal(115, result.Report.TypeCount);
-            Assert.Equal(1069, result.Report.MethodCount);
+            Assert.Equal(1057, result.Report.MethodCount);
             Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
             Assert.Equal(1341, Pass(result, "cfg-dead-code").Changes);
             // Proxy restoration reaches every validated site because it runs before forwarder
-            // redirection, which then finds almost nothing left to redirect.
+            // redirection, which then finds little left to redirect beyond the wrappers that hide a
+            // framework call behind an object-typed signature.
             Assert.Equal(2643, Pass(result, "delegate-proxy-analysis").Changes);
-            Assert.Equal(3, Pass(result, "method-inlining").Changes);
+            Assert.Equal(16, Pass(result, "method-inlining").Changes);
             Assert.Equal(2, Pass(result, "string-recovery").Changes);
             Assert.Equal(2, result.Report.Payloads.Count);
             var payload = Assert.Single(result.Report.Payloads,
