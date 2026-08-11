@@ -37,20 +37,28 @@ public sealed record LoaderObservation(
 /// </summary>
 /// <remarks>
 /// A <c>static void</c> loader entry point can only communicate with the rest of the program
-/// through static fields or the mapped image, because it takes no arguments and returns nothing,
-/// and any object it allocates is unreachable unless it is stored somewhere durable. Recording
-/// those two channels per subtree therefore yields a sound removability test. Writes to
-/// loader-private scratch regions are tracked separately: that memory is allocated and consumed
-/// inside the same interpretation and cannot outlive it.
+/// through static fields, the mapped image, or something it hands to the runtime, because it takes
+/// no arguments and returns nothing, and any object it allocates is unreachable unless it is stored
+/// somewhere durable. Recording those channels per subtree therefore yields a sound removability
+/// test. Writes to loader-private scratch regions are tracked separately: that memory is allocated
+/// and consumed inside the same interpretation and cannot outlive it.
 ///
 /// Static writes are recorded by field name rather than as a flag because a loader routine that
 /// only writes fields nothing else ever reads is still removable, and Reactor's integrity check
 /// does exactly that.
+///
+/// Registrations exist because the machine refuses any call it does not model, which makes the
+/// account complete for everything except the calls it does model and treats as succeeding
+/// silently. Handing the runtime an event handler is the one such call: it changes what the program
+/// does later while touching no field and no memory the interpretation can see. Recording it keeps
+/// the account honest, so a caller may treat an empty account as proof that a frame does nothing
+/// rather than as proof that nothing was noticed.
 /// </remarks>
 public sealed record LoaderMethodEffects(
     IReadOnlyList<string> StaticFieldsWritten,
     bool WroteMappedImage,
-    bool WroteScratchRegion)
+    bool WroteScratchRegion,
+    IReadOnlyList<string> Registrations)
 {
     public bool WroteStaticField => StaticFieldsWritten.Count != 0;
 }
@@ -65,7 +73,7 @@ public sealed record LoaderInterpretationEvidence(
     public LoaderMethodEffects EffectsOf(uint token) =>
         Effects.TryGetValue(token, out var effects)
             ? effects
-            : new LoaderMethodEffects([], false, false);
+            : new LoaderMethodEffects([], false, false, []);
 
     /// <summary>
     /// Confirms two independent interpretations reached the same conclusions, so nothing is
@@ -93,7 +101,8 @@ public sealed record LoaderInterpretationEvidence(
             effects.WroteMappedImage == entry.Value.WroteMappedImage &&
             effects.WroteScratchRegion == entry.Value.WroteScratchRegion &&
             effects.StaticFieldsWritten.SequenceEqual(
-                entry.Value.StaticFieldsWritten, StringComparer.Ordinal));
+                entry.Value.StaticFieldsWritten, StringComparer.Ordinal) &&
+            effects.Registrations.SequenceEqual(entry.Value.Registrations, StringComparer.Ordinal));
     }
 }
 
@@ -126,6 +135,12 @@ internal sealed class LoaderEvidenceRecorder
     public void RecordStaticFieldWrite(string fieldFullName) =>
         MarkStack(effects => effects.StaticFields.Add(fieldFullName));
 
+    /// <summary>
+    /// Records that the subtree handed something to the runtime that outlives the interpretation.
+    /// </summary>
+    public void RecordRegistration(string detail) =>
+        MarkStack(effects => effects.Registrations.Add(detail));
+
     public void RecordRegionWrite(string regionKind)
     {
         if (string.Equals(regionKind, "MappedImage", StringComparison.Ordinal))
@@ -141,7 +156,8 @@ internal sealed class LoaderEvidenceRecorder
             entry => new LoaderMethodEffects(
                 entry.Value.StaticFields.Order(StringComparer.Ordinal).ToArray(),
                 entry.Value.MappedImage,
-                entry.Value.ScratchRegion)));
+                entry.Value.ScratchRegion,
+                entry.Value.Registrations.Order(StringComparer.Ordinal).ToArray())));
 
     // Attributing a write to every frame currently on the stack gives subtree semantics: a
     // caller is responsible for whatever its callees wrote, which is what removability needs.
@@ -158,6 +174,7 @@ internal sealed class LoaderEvidenceRecorder
     private sealed class MutableEffects
     {
         public HashSet<string> StaticFields { get; } = new(StringComparer.Ordinal);
+        public HashSet<string> Registrations { get; } = new(StringComparer.Ordinal);
         public bool MappedImage { get; set; }
         public bool ScratchRegion { get; set; }
     }

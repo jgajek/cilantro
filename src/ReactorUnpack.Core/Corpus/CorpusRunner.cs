@@ -33,6 +33,7 @@ public sealed record CorpusSample(
     int? MaximumUnreachableInstructions = null,
     string? ExpectUnsupportedReason = null,
     int? MaximumSurplusMethods = null,
+    int? MaximumProgramMethodSurplus = null,
     int? MaximumSurplusResources = null,
     bool RequireOracleResourceParity = false);
 
@@ -91,7 +92,9 @@ public sealed record OracleComparison(
     int PreservedNameMembersPresent,
     bool PreservedNamesIntact,
     IReadOnlyList<string> MissingPreservedNameMembers,
-    IReadOnlyList<string> MissingOracleResources);
+    IReadOnlyList<string> MissingOracleResources,
+    int ProgramMethodSurplus,
+    int ProgramMethodDeficit);
 
 public sealed record CorpusRunReport(
     int ManifestVersion,
@@ -284,6 +287,7 @@ public static class CorpusRunner
             .Where(name => !outputResources.Contains(name))
             .Order(StringComparer.Ordinal)
             .ToArray();
+        var (programSurplus, programDeficit) = ProgramMethodDelta(outputModule, oracleModule);
         return new OracleComparison(
             outputName == oracleName,
             (outputModule.EntryPoint is null) == (oracleModule.EntryPoint is null),
@@ -299,7 +303,9 @@ public static class CorpusRunner
             oracleMembers.Count - missing.Length,
             missing.Length == 0,
             missing,
-            missingResources);
+            missingResources,
+            programSurplus,
+            programDeficit);
     }
 
     /// <summary>
@@ -331,6 +337,46 @@ public static class CorpusRunner
                     .Where(item => HasPreservedName(item.Name))
                     .Select(item => $"{type.FullName}::{item.Name}/event")))
             .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// How the output and the oracle differ inside the types both name, counted in both directions.
+    /// </summary>
+    /// <remarks>
+    /// The module-wide method surplus stopped being a safety net once cleanup began removing the
+    /// protector runtime the oracle keeps. De4dot renames Reactor's runtime type rather than
+    /// deleting it, so on these samples it contributes a hundred and forty methods to the oracle's
+    /// total, and an output that removed it scores a negative surplus. A single signed number then
+    /// reads the same whether the output dropped scaffolding the oracle kept or dropped program the
+    /// oracle kept, which is the one distinction the gate exists to make.
+    ///
+    /// Restricting the comparison to types whose names both sides preserved isolates the program
+    /// from the protector, because those are exactly the names Reactor did not obfuscate. Within
+    /// them the two counts are comparable, and the direction carries the meaning: a surplus is
+    /// Reactor's per-type helpers that cleanup cannot yet attribute, while a deficit is program the
+    /// output no longer has.
+    /// </remarks>
+    private static (int Surplus, int Deficit) ProgramMethodDelta(
+        ModuleDef outputModule,
+        ModuleDef oracleModule)
+    {
+        var output = MethodsByPreservedType(outputModule);
+        var surplus = 0;
+        var deficit = 0;
+        foreach (var (name, oracleCount) in MethodsByPreservedType(oracleModule))
+        {
+            var delta = output.GetValueOrDefault(name) - oracleCount;
+            if (delta >= 0)
+                surplus += delta;
+            else
+                deficit -= delta;
+        }
+        return (surplus, deficit);
+    }
+
+    private static Dictionary<string, int> MethodsByPreservedType(ModuleDef module) =>
+        module.GetTypes()
+            .Where(type => HasPreservedName(type.FullName))
+            .ToDictionary(type => type.FullName, type => type.Methods.Count, StringComparer.Ordinal);
 
     private static bool HasPreservedName(string name) =>
         name.Split('.', '/', '`', '+')
@@ -370,9 +416,11 @@ public static class CorpusRunner
     /// </summary>
     /// <remarks>
     /// Losing a preserved-name member always fails, because it means recovery deleted program
-    /// surface the oracle kept. The surplus limits are ratchets rather than absolutes: they record
-    /// how much scaffolding still survives today so that any improvement is visible and any
-    /// regression fails, and they are tightened as cleanup advances.
+    /// surface the oracle kept, and so does losing a method from a type both sides name, which
+    /// catches the unnamed private members that the preserved-name subset cannot see. The surplus
+    /// limits are ratchets rather than absolutes: they record how much scaffolding still survives
+    /// today so that any improvement is visible and any regression fails, and they are tightened as
+    /// cleanup advances.
     /// </remarks>
     private static void ValidateOracleParity(
         CorpusSample sample,
@@ -388,6 +436,21 @@ public static class CorpusRunner
             diagnostics.Add(
                 $"Recovery lost {oracle.MissingPreservedNameMembers.Count} preserved-name member(s) " +
                 $"the oracle retains, starting with {oracle.MissingPreservedNameMembers[0]}.");
+        }
+
+        if (oracle.ProgramMethodDeficit != 0)
+        {
+            diagnostics.Add(
+                $"Output is missing {oracle.ProgramMethodDeficit} method(s) from types the oracle " +
+                "names, so cleanup removed program rather than scaffolding.");
+        }
+
+        if (sample.MaximumProgramMethodSurplus is int programLimit &&
+            oracle.ProgramMethodSurplus > programLimit)
+        {
+            diagnostics.Add(
+                $"Surplus of {oracle.ProgramMethodSurplus} method(s) inside named types exceeds " +
+                $"{programLimit}.");
         }
 
         if (sample.MaximumSurplusMethods is int methodLimit &&

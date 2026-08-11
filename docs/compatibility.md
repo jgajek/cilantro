@@ -240,10 +240,38 @@ code that nothing accounts for is counted in the pass diagnostics and kept. The
 whole pass is additionally gated by `RewritePolicy.CanRemoveRuntime` (recovery
 complete, no surviving use site, confidence at least 0.95).
 
-Cleanup is the one place that models a type initializer as running only when its
-type is used, which is what the runtime does and what lets an abandoned island of
-protector code be recognized as dead. Every other consumer of reachability keeps
-the conservative reading in which every initializer runs.
+Cleanup and loader-call elision are the two places that model a type initializer
+as running only when its type is used, which is what the runtime does and what
+lets an abandoned island of protector code be recognized as dead. Every other
+consumer of reachability keeps the conservative reading in which every
+initializer runs.
+
+`loader-call-elision` removes the calls Reactor injects at the head of type
+initializers all over the assembly, which are what keep its runtime referenced
+from application code. A call goes when the bounded interpretation gives a
+complete account of what it does and nothing that survives can notice any of it.
+The account is complete because the machine refuses every call it does not
+model, so a frame that interprets to completion twice, in agreement, did nothing
+outside the modeled surface, and that surface is read-only apart from handing the
+runtime an event handler — which the effects record names explicitly, and which
+disqualifies the call. That leaves the static fields it wrote as the only channel
+out.
+
+Whether those writes can be noticed is decided by making the edit, recomputing
+reachability, and undoing it. Reactor reaches its own runtime mostly through
+function pointers: the JIT callback and the resource handler are installed rather
+than called, so they stop being reachable exactly when the loader does, and a
+test run before the edit would report them as live readers and condemn every
+candidate. Candidates that fail are dropped and the rest retried, since keeping
+one keeps everything it reaches alive. Removing a call removes its writes, so a
+reader that survives is disqualifying whether or not it is part of the protector;
+only unreachability clears a field.
+
+The pass runs after resource restoration and hook elision rather than early,
+because whether loader state is still observable depends on the earlier
+recoveries having replaced the code that read it. Reactor's resolve handler reads
+four of the loader's fields, and while its subscription stands nothing can be
+cleared.
 
 `resource-hook-elision` is the one pass that removes a live subscription rather
 than dead code, and it earns that by proving the subscription can no longer fire.

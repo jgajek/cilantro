@@ -1005,6 +1005,11 @@ public sealed class StaticMachineState
     public void Observe(LoaderObservationKind kind, string detail, bool? verdict = null) =>
         Evidence.Observe(kind, detail, verdict);
 
+    /// <summary>
+    /// Reports that the running frame handed the runtime something that outlives it.
+    /// </summary>
+    public void RecordRegistration(string detail) => Evidence.RecordRegistration(detail);
+
     public IReadOnlyDictionary<string, StaticValue> StaticFields => _staticFields;
     public IReadOnlyDictionary<string, byte[]> Resources => _resources;
     public IReadOnlyList<TypeInitializationEvent> TypeInitializationEvents =>

@@ -257,7 +257,6 @@ public sealed class ReactorPipeline
         new StringTableRecoveryPass(),
         new BooleanRecoveryPass(),
         new AntiTamperNeutralizationPass(),
-        new LoaderCallElisionPass(),
         new ConstantPredicatePass(),
         // Loader-initialized state is folded before the control-flow passes, because turning its
         // reads into constants is what makes Reactor's guards look like the constant branches those
@@ -280,6 +279,9 @@ public sealed class ReactorPipeline
         new ResourceRoleRefinementPass(),
         new ResourceRestorationPass(),
         new ResourceHookElisionPass(),
+        // Cutting the loader loose comes last of the rewrites, because whether its state is still
+        // observable depends on every recovery before it having replaced the code that read it.
+        new LoaderCallElisionPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
         new RuntimeCleanupPass(),

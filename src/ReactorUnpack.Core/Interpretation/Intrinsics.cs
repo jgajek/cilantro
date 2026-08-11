@@ -629,12 +629,16 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
              name.StartsWith("remove_", StringComparison.Ordinal)) &&
             arguments.Count == 2)
         {
-            return context.State.Heap.TrySetModelValue(
-                arguments[0],
-                $"Event:{name[(name.IndexOf('_') + 1)..]}",
-                arguments[1])
-                ? IntrinsicResult.Completed()
-                : IntrinsicResult.Invalid("Application-domain event receiver is not modeled.");
+            var subscribed = name[(name.IndexOf('_') + 1)..];
+            if (!context.State.Heap.TrySetModelValue(
+                    arguments[0], $"Event:{subscribed}", arguments[1]))
+            {
+                return IntrinsicResult.Invalid("Application-domain event receiver is not modeled.");
+            }
+            // Subscribing changes what the program does later without touching anything the
+            // interpretation can see afterwards, so it has to be declared rather than inferred.
+            context.State.RecordRegistration($"AppDomain.{subscribed}");
+            return IntrinsicResult.Completed();
         }
         return IntrinsicResult.Invalid($"Unsupported AppDomain operation {name}.");
     }

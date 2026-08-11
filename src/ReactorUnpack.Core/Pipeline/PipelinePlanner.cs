@@ -78,7 +78,6 @@ public static class PipelinePlanner
         "global-state-capture" or
         "boolean-recovery" => PipelinePhase.OriginalByteRecovery,
         "antitamper-neutralization" or
-        "loader-call-elision" or
         "constant-predicates" or
         "global-predicate-folding" or
         "dispatcher-deobfuscation" or

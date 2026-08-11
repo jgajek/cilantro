@@ -56,6 +56,9 @@
           "minimumResourcesRestored": { "type": ["integer", "null"], "minimum": 0 },
           "maximumRemainingSwitchDispatchers": { "type": ["integer", "null"], "minimum": 0 },
           "maximumUnreachableInstructions": { "type": ["integer", "null"], "minimum": 0 },
+          "maximumSurplusMethods": { "type": ["integer", "null"] },
+          "maximumProgramMethodSurplus": { "type": ["integer", "null"], "minimum": 0 },
+          "maximumSurplusResources": { "type": ["integer", "null"] },
           "expectUnsupportedReason": { "type": ["string", "null"], "minLength": 1 }
         },
         "additionalProperties": false

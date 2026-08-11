@@ -16,13 +16,28 @@ namespace ReactorUnpack.Core.Recovery;
 /// installed has been folded away. Those call sites are the last thing holding the runtime alive:
 /// while they remain, nothing can prove the runtime unreachable and none of it can be removed.
 ///
-/// An entry point qualifies only on evidence the bootstrap interpretation already produced. It must
-/// be a <c>static void</c> method with no parameters that the interpretation actually executed,
-/// which confines candidates to the loader itself rather than to any inert-looking application
-/// method. Its subtree must have done something only a protector does: verify a signature, read its
-/// own file, probe for a strong name or a debugger, ask to terminate, or patch the mapped image.
-/// And the one channel through which it could still influence the program, the static fields it
-/// wrote, must be read nowhere outside the subtree that disappears with it.
+/// What justifies removing a call is a complete account of what the call does, and no way for any of
+/// it to be noticed afterwards. Both halves rest on the machine refusing every call it does not
+/// model: a frame that interprets to completion twice, in agreement, did nothing outside the modeled
+/// surface, and that surface is read-only apart from handing the runtime an event handler, which the
+/// effects record now names. So a candidate is an argument-free <c>static void</c> method, invisible
+/// outside the assembly, that interpreted cleanly and registered nothing — leaving the static fields
+/// it wrote as the only channel out, and those must be read by nothing that can still run once the
+/// calls are gone.
+///
+/// Requiring the method to look like a protector was the earlier stand-in for that account, from
+/// when the account was known to be incomplete. It cost more than it bought: three of the four entry
+/// points Reactor injects into type initializers merely decrypt, and none of them verifies a
+/// signature or patches an image, so the one that does could never be freed on its own.
+///
+/// The last test is answered by making the edit and looking, not by reasoning about it beforehand.
+/// Reactor reaches its own runtime mostly through function pointers — the JIT callback and the
+/// resource handler are installed, never called — so a reader is not found by following calls from
+/// the entry point, and asking instead whether any method at all reads the field condemns every
+/// candidate, since the readers are the very code the elision strands. Eliding speculatively and
+/// recomputing reachability asks the question that actually matters: can anything that still runs
+/// observe the write. Candidates that fail are dropped and the rest retried, because dropping one
+/// keeps its readers alive and may implicate another.
 ///
 /// Patching the mapped image is disqualifying until method bodies have been recovered statically,
 /// because before that the runtime patcher is the only thing supplying them. Afterwards it is
@@ -34,7 +49,15 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
     private const int MaximumSteps = 4_000_000;
 
     public override string Name => "loader-call-elision";
-    public override IReadOnlyCollection<string> Dependencies => ["antitamper-neutralization"];
+
+    /// <remarks>
+    /// Resource-hook elision is a dependency rather than a coincidence of ordering. Reactor's
+    /// resolve handler reads four of the loader's fields, and while the subscription stands the
+    /// handler is reachable through the function pointer that installs it, so the loader's writes
+    /// are observable and no candidate can be cleared.
+    /// </remarks>
+    public override IReadOnlyCollection<string> Dependencies =>
+        ["antitamper-neutralization", "resource-hook-elision"];
 
     /// <remarks>
     /// Declining leaves the module untouched, and the rewrite either verifies or is rolled back and
@@ -61,10 +84,9 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
             .SelectMany(type => type.Methods)
             .ToDictionary(method => method.MDToken.Raw);
         var initializer = context.Module.GlobalType.FindStaticConstructor();
-        var entryPoints = new List<(MethodDef Method, IReadOnlySet<uint> Subtree)>();
+        var candidates = new List<Candidate>();
         var wrongShape = 0;
-        var noProtectorWork = 0;
-        var escapingState = 0;
+        var registered = 0;
         foreach (var token in evidence.Effects.Keys.Order())
         {
             if (!byToken.TryGetValue(token, out var candidate) || candidate == initializer)
@@ -74,77 +96,69 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
                 wrongShape++;
                 continue;
             }
-            if (!PerformedProtectorWork(evidence, token))
+            if (evidence.EffectsOf(token).Registrations.Count != 0)
             {
-                noProtectorWork++;
+                registered++;
                 continue;
             }
-
-            var subtree = AntiTamperNeutralizationPass.ComputeCallSubtree(candidate);
-            var escaping = AntiTamperNeutralizationPass.FindEscapingFieldReaders(
-                context.Module, subtree, evidence.EffectsOf(token).StaticFieldsWritten);
-            if (escaping.Length != 0)
-            {
-                escapingState++;
-                continue;
-            }
-            entryPoints.Add((candidate, subtree));
+            candidates.Add(new Candidate(
+                candidate,
+                AntiTamperNeutralizationPass.ComputeCallSubtree(candidate),
+                evidence.EffectsOf(token).StaticFieldsWritten));
         }
 
         // Reactor also injects guard calls at the head of ordinary type initializers, which the
         // module-initializer interpretation never reaches. Those are the call sites that keep the
         // runtime referenced from application code, so each is interpreted on its own terms.
-        var reachability = ModuleReachability.Compute(context.Module);
         var interpretedGuards = 0;
+        var guardNotes = new List<string>();
         foreach (var guard in GuardCandidates(context.Module, initializer)
-                     .Where(guard => entryPoints.All(item => item.Method != guard))
+                     .Where(guard => candidates.All(item => item.Method != guard))
                      .OrderBy(guard => guard.MDToken.Raw))
         {
             if (!TryInterpretGuard(context, guard, out var guardEvidence) || guardEvidence is null)
+            {
+                guardNotes.Add($"{guard.Name} did not interpret to completion");
                 continue;
+            }
             interpretedGuards++;
-            var token = guard.MDToken.Raw;
-            if (!PerformedProtectorWork(guardEvidence, token))
+            var guardEffects = guardEvidence.EffectsOf(guard.MDToken.Raw);
+            if (guardEffects.Registrations.Count != 0)
             {
-                noProtectorWork++;
+                registered++;
+                guardNotes.Add(
+                    $"{guard.Name} registers {string.Join(", ", guardEffects.Registrations)}");
                 continue;
             }
-
-            var subtree = AntiTamperNeutralizationPass.ComputeCallSubtree(guard);
-            var escaping = AntiTamperNeutralizationPass.FindEscapingFieldReaders(
-                context.Module, subtree, guardEvidence.EffectsOf(token).StaticFieldsWritten,
-                reachability);
-            if (escaping.Length != 0)
-            {
-                escapingState++;
-                continue;
-            }
-            entryPoints.Add((guard, subtree));
+            candidates.Add(new Candidate(
+                guard,
+                AntiTamperNeutralizationPass.ComputeCallSubtree(guard),
+                guardEvidence.EffectsOf(guard.MDToken.Raw).StaticFieldsWritten));
         }
 
+        // A candidate that another candidate also calls is kept rather than folded into it. Reactor
+        // calls the same entry point both from its own bootstrap and from the head of application
+        // type initializers, so an inner frame typically has call sites the outer one does not
+        // reach, and treating it as disappearing with its caller leaves those behind.
+        var (elidable, callSites, blocked) =
+            SelectObservablyInert(context.Module, [.. candidates]);
         var accounting =
             $"{evidence.Effects.Count} interpreted frame(s) and {interpretedGuards} interpreted " +
-            $"initializer guard(s): {wrongShape} not argument-free void, {noProtectorWork} " +
-            $"performed no protector work, {escapingState} still write state surviving code reads.";
-
-        // A candidate nested inside another candidate's subtree needs no call site of its own
-        // removed: it disappears with its enclosing frame.
-        var enclosed = entryPoints
-            .SelectMany(item => item.Subtree.Where(token => token != item.Method.MDToken.Raw))
-            .ToHashSet();
-        var outermost = entryPoints
-            .Where(item => !enclosed.Contains(item.Method.MDToken.Raw))
-            .Select(item => item.Method)
-            .ToArray();
-        if (outermost.Length == 0)
-            return (PassStatus.Success, 0, [$"No loader entry point was proven inert. {accounting}"]);
-
-        var callSites = FindCallSites(context.Module, outermost);
+            $"initializer guard(s): {wrongShape} not argument-free void, {registered} " +
+            $"hand the runtime a handler that outlives them" +
+            (guardNotes.Count == 0 ? "" : $" [{string.Join(", ", guardNotes)}]") +
+            (blocked.Count == 0
+                ? "."
+                : $", {blocked.Count} still write state that code surviving the elision reads " +
+                  $"({string.Join("; ", blocked)}).");
         if (callSites.Length == 0)
         {
             return (PassStatus.Success, 0,
             [
-                $"The {outermost.Length} proven-inert loader entry point(s) have no remaining call site.",
+                elidable.Length == 0
+                    ? "No loader entry point was proven inert."
+                    : $"The {elidable.Length} proven-inert loader entry point(s) have no remaining " +
+                      "call site.",
                 accounting
             ]);
         }
@@ -163,7 +177,10 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         }
 
         var verification = AssemblyVerifier.Verify(
-            context.Module, context.OriginalIdentity, context.OriginalStructure);
+            context.Module,
+            context.OriginalIdentity,
+            context.OriginalStructure,
+            ReactorPipeline.BuildRewriteAllowance(context));
         if (!verification.Passed)
         {
             transaction.Rollback();
@@ -178,22 +195,132 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         // The whole subtree existed to serve these calls, and every one of them is now gone.
         RecoveryOrphans.Declare(
             context,
-            entryPoints
+            elidable
                 .SelectMany(item => item.Subtree)
                 .Distinct()
                 .Where(byToken.ContainsKey)
                 .Select(token => byToken[token]));
         context.AddEvidence(new Evidence(
             "loader-call-elision",
-            $"Removed {callSites.Length} call(s) to {outermost.Length} loader entry point(s) whose " +
-            "subtrees performed only protector work and wrote no static field surviving code reads.",
+            $"Removed {callSites.Length} call(s) to {elidable.Length} loader entry point(s) whose " +
+            "subtrees performed only protector work and whose static writes nothing still reachable " +
+            "reads.",
             null,
             0.95));
         return (PassStatus.Success, callSites.Length,
         [
-            $"Elided {callSites.Length} call(s) to {outermost.Length} proven-inert loader entry point(s).",
+            $"Elided {callSites.Length} call(s) to {elidable.Length} proven-inert loader entry point(s).",
             accounting
         ]);
+    }
+
+    private sealed record Candidate(
+        MethodDef Method,
+        IReadOnlySet<uint> Subtree,
+        IReadOnlyList<string> FieldsWritten);
+
+    /// <summary>
+    /// Narrows candidates to those whose static writes no surviving code can observe, by making the
+    /// elision, measuring what remains reachable, and undoing it.
+    /// </summary>
+    /// <remarks>
+    /// A candidate is judged against the module as it would be, not as it is. That is the only way to
+    /// see that Reactor's readers are themselves stranded: the JIT callback and the resource handler
+    /// are reached solely through function pointers taken inside the loader, so they stop being
+    /// reachable exactly when the loader does, and a test run before the edit cannot know that.
+    ///
+    /// Membership in the elided subtree is not an excuse. Removing a call removes the writes, so a
+    /// reader that survives sees a field that never got its value, and it makes no difference whether
+    /// that reader was part of the protector. Only unreachability clears a field.
+    ///
+    /// Retrying after a drop is what makes the answer independent of the order candidates were
+    /// considered in. Keeping one candidate keeps everything it reaches alive, which can implicate
+    /// another that looked clear alongside it, so the set is shrunk until it stops changing.
+    /// </remarks>
+    private static (Candidate[] Elidable,
+        (MethodDef Method, Instruction Instruction, MethodDef Target)[] CallSites,
+        IReadOnlyList<string> Blocked) SelectObservablyInert(
+            ModuleDef module,
+            Candidate[] candidates)
+    {
+        var blocked = new List<string>();
+        var accepted = candidates;
+        while (accepted.Length != 0)
+        {
+            var callSites = FindCallSites(module, accepted.Select(item => item.Method).ToArray());
+            if (callSites.Length == 0)
+                return (accepted, [], blocked);
+
+            Dictionary<string, string> observed;
+            using (var probe = new InstructionMutationTransaction())
+            {
+                foreach (var (_, instruction, _) in callSites)
+                {
+                    probe.Capture(instruction);
+                    instruction.OpCode = OpCodes.Nop;
+                    instruction.Operand = null;
+                }
+                observed = StaticFieldsReadByReachableCode(module);
+                probe.Rollback();
+            }
+
+            var failing = accepted
+                .Where(item => item.FieldsWritten.Any(observed.ContainsKey))
+                .ToArray();
+            if (failing.Length == 0)
+                return (accepted, callSites, blocked);
+            foreach (var item in failing)
+            {
+                blocked.Add(
+                    $"{item.Method.Name} writes " +
+                    string.Join(", ", item.FieldsWritten
+                        .Where(observed.ContainsKey)
+                        .Order(StringComparer.Ordinal)
+                        .Select(field => $"{ShortName(field)} (read by {observed[field]})")));
+            }
+            accepted = accepted.Except(failing).ToArray();
+        }
+        return ([], [], blocked);
+    }
+
+    /// <summary>
+    /// Every static field reachable code reads, each with one method that reads it.
+    /// </summary>
+    /// <remarks>
+    /// A type initializer counts as running only when its type is used, the same reading cleanup
+    /// takes. Here it is not a relaxation but the point of the test: Reactor's own runtime type
+    /// reads loader state from its initializer, and asking whether that read can happen is asking
+    /// whether anything still touches the type, which after the elision is exactly what is in
+    /// question. Treating every initializer as running would answer yes by assumption.
+    ///
+    /// Carrying a reader alongside the field is what makes a decline diagnosable. The field name
+    /// alone says the elision is unsafe but not what still depends on the loader, and that is the
+    /// thing a reader of the report needs in order to know which recovery is missing.
+    /// </remarks>
+    private static Dictionary<string, string> StaticFieldsReadByReachableCode(ModuleDef module)
+    {
+        var reachability = ModuleReachability.Compute(module, typeInitializersAlwaysRun: false);
+        var read = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var method in reachability.ReachableMethods.OrderBy(item => item.MDToken.Raw))
+        {
+            if (!method.HasBody)
+                continue;
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.OpCode.Code is Code.Ldsfld or Code.Ldsflda &&
+                    instruction.Operand is IField field)
+                {
+                    read.TryAdd(field.FullName, $"{method.DeclaringType.Name}::{method.Name}");
+                }
+            }
+        }
+        return read;
+    }
+
+    private static string ShortName(string fieldFullName)
+    {
+        var separator = fieldFullName.LastIndexOf("::", StringComparison.Ordinal);
+        return separator < 0 ? fieldFullName : fieldFullName[(separator + 2)..];
     }
 
     /// <summary>
@@ -276,13 +403,6 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         evidence = candidate;
         return true;
     }
-
-    /// <summary>
-    /// Whether the subtree did something that only a protector's runtime does.
-    /// </summary>
-    private static bool PerformedProtectorWork(LoaderInterpretationEvidence evidence, uint token) =>
-        evidence.EffectsOf(token).WroteMappedImage ||
-        evidence.Observations.Any(observation => observation.CallStack.Contains(token));
 
     private static (MethodDef Method, Instruction Instruction, MethodDef Target)[] FindCallSites(
         ModuleDef module,

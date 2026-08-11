@@ -38,6 +38,7 @@ execution event. ReactorUnpack never loads or invokes protected code.
 | 13 | `ControlFlowDeobfuscator` | `dispatcher-deobfuscation` + `control-flow-completion` | Clean-room. Proves dispatcher edges, folds constant branches, and deletes all unreachable code with EH regions preserved and per-method verification. |
 | 14 | `Cleaner` | `runtime-cleanup` (on by default; `--keep-runtime` disables) | Weaker. Slayer also strips attributes and unused resources and fixes the entry point and metadata header. We delete any type or method that is unreachable, invisible outside the assembly, unexposed to reflection, unreferenced by survivors, and attributable to the protector. |
 | 15 | `SymbolRenamer` | `symbol-renaming` (opt-in `--rename`) | Much weaker. Slayer renames the full de4dot surface including public types and restores properties and events. We rename only non-public, non-virtual, structurally proven names to synthetic identifiers. |
+| — | no equivalent | `loader-call-elision` | Beyond Slayer. Cuts the loader calls Reactor injects at the head of type initializers throughout the assembly, once the bounded interpretation accounts for everything a call does and nothing that survives can read what it wrote. Slayer removes the runtime by recognizing it; this reaches the same code by proving the calls inert, and is what leaves the runtime unreachable for cleanup. |
 | — | anti-debug (folded into `AntiManipulationPatcher`) | `antitamper-neutralization` | Partial. Debugger-probe sites are neutralized only where the value provably feeds a Reactor termination path. |
 | — | `Helper/NativeUnpacker` + `QuickLZ` | `metadata-preflight` (`NativePackDetector`) | Deferred. Native-packed input is detected and reported unsupported with a specific diagnostic rather than mis-processed. Slayer unpacks it. |
 | — | `Helper/CodeVirtualizationUtils` | `reactor-detection` | Parity. Both tools only detect code virtualization; neither lifts it. |
@@ -93,46 +94,54 @@ fails rather than passing quietly.
 
 ## Current corpus standing
 
-Last full run: 9 passed, 0 failed, 0 missing, against 175 passing unit tests.
+Last full run: 9 passed, 0 failed, 0 missing, against 179 passing unit tests.
 
 The three JIT-hook samples restore every protected body (199, 312, and 253),
 fold their constant predicates, complete control flow, inline forwarders,
 restore every string site, decrypt and reattach every resource stream their
-bundle held, and emit verified output that clears the structural oracle gate
-with every preserved name intact.
+bundle held, cut the loader calls Reactor injected into their type initializers,
+and emit verified output that clears the structural oracle gate with every
+preserved name intact.
 
 What remains is surplus rather than failure, and it is measured per sample as a
 ratchet in the manifest:
 
-| Sample | Types emitted / oracle | Surplus methods | Unattributed dead methods |
-| --- | --- | --- | --- |
-| `database` | 51 / 49 | 107 | 87 |
-| `reason-pac` | 51 / 50 | 205 | 101 |
-| `service-controller` | 45 / 44 | 179 | 79 |
+| Sample | Types emitted / oracle | Surplus in named types | Whole-module surplus | Unattributed dead methods |
+| --- | --- | --- | --- | --- |
+| `database` | 47 / 49 | 44 | -38 | 87 |
+| `reason-pac` | 47 / 50 | 79 | 59 | 103 |
+| `service-controller` | 41 / 44 | 59 | 173 | 78 |
 
-The three clean oracle assemblies are the control: cleanup removes nothing from
-any of them, which is the evidence that attribution is not quietly tree-shaking
-the program.
+The three clean oracle assemblies are the control: elision changes nothing in
+any of them and cleanup removes nothing, which is the evidence that neither is
+quietly tree-shaking the program.
 
-The surplus is now dominated by one thing rather than by scattered dead code.
-Reactor injects a call to each of its loader entry points at the head of every
-type initializer in the module, so the JIT-hook installer and the string-table
-initializer are reached from everywhere and keep their shared cipher and
-compression library — about 170 methods — alive. Recovery has made both
-redundant, exactly as it made the resource hook redundant, but the resource hook
-was separable: its subscription is five stack-neutral instructions that can be
-proved in place, whereas the remaining two write loader state and eliding them
-means reasoning about the whole bootstrap. That is the next lever, and it is
-worth roughly the entire remaining surplus.
+Two surplus columns replace the one there used to be, because the single figure
+stopped meaning what it says. De4dot renames Reactor's runtime type rather than
+removing it, so the oracle for `database` carries a hundred and forty-four
+methods of protector inside `Class1`; an output that deletes them scores a
+negative whole-module surplus, and the same number would have appeared had the
+output deleted program instead. The left column compares only types both sides
+name — the ones Reactor never obfuscated — which separates the two: a surplus
+there is Reactor's per-type helpers that cleanup cannot yet attribute, and a
+deficit is program that went missing. The gate now fails on any deficit at all,
+and all three samples have none.
+
+`service-controller` is the outlier, and the pass says why. Its
+`ServiceUtils.GetServiceProcessID` still contains an unresolved token-proxy call,
+which keeps the resolver type reachable and the shared cipher alive behind it.
+Token recovery finds no constant-fed proxy on any of the three samples, so that
+is the next lever; it is worth roughly the hundred and fourteen methods that
+sample carries outside its named types.
 
 The oracle gate itself compares structure — type and method counts, the
-preserved-name subset, resource names, and entry-point kind — because the
-oracle's own type names are `Class0`, `Class1`, and `Class3/Delegate9`: it was
-produced by a de4dot-style renamer, not built from original source. Requiring
-exact name equality would mean reproducing another tool's arbitrary `ClassN`
-numbering, which is not a correctness property. Names Reactor preserved, such as
-`Reason.rsServiceController.ServiceUtils`, do appear verbatim in both, and those
-are what the preserved-name subset checks.
+preserved-name subset, per-type method counts inside named types, resource
+names, and entry-point kind — because the oracle's own type names are `Class0`,
+`Class1`, and `Class3/Delegate9`: it was produced by a de4dot-style renamer, not
+built from original source. Requiring exact name equality would mean reproducing
+another tool's arbitrary `ClassN` numbering, which is not a correctness property.
+Names Reactor preserved, such as `Reason.rsServiceController.ServiceUtils`, do
+appear verbatim in both, and those are what the preserved-name subset checks.
 
 Resources are compared by name and not only by count, under
 `requireOracleResourceParity`. Counting alone could not tell apart a module that
