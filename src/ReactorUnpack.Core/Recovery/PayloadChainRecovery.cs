@@ -41,6 +41,28 @@ public static class PayloadChainRecovery
     /// </summary>
     private const int MaximumSteps = 16_000_000;
 
+    /// <summary>
+    /// What a chain is allowed to spend once it has shown it needs more than the usual allowance.
+    /// </summary>
+    /// <remarks>
+    /// A stage that decrypts megabytes inside the protector's own interpreter costs orders of
+    /// magnitude more than one written as plain code, and giving every module that allowance up
+    /// front would make every analysis pay for the rare one. So the ordinary allowance is tried
+    /// first and raised only for a root that ran out of it, which is the one case where more
+    /// spending is known to buy something.
+    /// </remarks>
+    private const int PatientSteps = 64_000_000;
+
+    /// <summary>
+    /// How many candidate roots are worth interpreting before the search stops paying for itself.
+    /// </summary>
+    /// <remarks>
+    /// Each root costs two full interpretations, so a module that offers hundreds of candidates
+    /// would spend minutes proving that most of them unpack nothing. Candidates are taken in
+    /// metadata order, which puts a crypter's own types — emitted before the payload's — first.
+    /// </remarks>
+    private const int MaximumRoots = 24;
+
     public sealed record Recovered(MethodDef Root, byte[] Image, string AssemblyName, string Sha256);
 
     /// <summary>
@@ -85,6 +107,12 @@ public static class PayloadChainRecovery
                     continue;
                 recovered.Add(new Recovered(root, image, AssemblyNameOf(image), hash));
             }
+
+            // The remaining candidates were only ever guesses about where the chain starts. Once one
+            // of them has run the chain and produced assemblies, the others have nothing left to
+            // answer, and interpreting them costs as much as the one that worked.
+            if (recovered.Count != 0)
+                break;
         }
 
         if (recovered.Count == 0 && notes.Count == 0)
@@ -98,10 +126,17 @@ public static class PayloadChainRecovery
     /// </summary>
     /// <remarks>
     /// A crypter runs before the program does, so the entry point is where its work is reachable
-    /// from and is the first candidate. It is not the only one, because a library has no entry point
-    /// and can still unpack from an initializer, so any static argument-free method that reaches a
-    /// memory load is admitted too. Reaching the load is what makes a candidate worth the cost;
-    /// candidates that turn out not to load anything are simply reported as having loaded nothing.
+    /// from and is the first candidate. It is not the only one. A library has no entry point and can
+    /// still unpack from an initializer, and a startup path can be unreachable for reasons that have
+    /// nothing to do with the crypter — anti-tamper the machine will not follow, or, as in the
+    /// samples this was extended for, a virtualized module initializer that the crypter's own stages
+    /// sit entirely outside of. Entering at the chain instead of ahead of it steps over all of that.
+    ///
+    /// So any argument-free method reaching a memory load is admitted, whether or not it needs a
+    /// receiver, provided one can be supplied: a driver written as a class with a default
+    /// constructor is as ordinary as one written as a static method, and excluding it would only
+    /// encode a preference about how the crypter's author spelled things. Reaching the load is what
+    /// makes a candidate worth the cost, and candidates that load nothing simply say so.
     /// </remarks>
     private static MethodDef[] UnpackingRoots(ModuleDef module)
     {
@@ -111,14 +146,29 @@ public static class PayloadChainRecovery
         roots.AddRange(module.GetTypes()
             .SelectMany(type => type.Methods)
             .Where(method => method.HasBody &&
-                method.IsStatic &&
                 method.MethodSig?.Params.Count == 0 &&
                 !method.HasGenericParameters &&
+                !method.IsConstructor &&
                 method != module.EntryPoint &&
+                (method.IsStatic || CanSupplyReceiver(method.DeclaringType)) &&
                 ReachesAMemoryLoad(method))
-            .OrderBy(method => method.MDToken.Raw));
+            .OrderBy(method => method.MDToken.Raw)
+            .Take(MaximumRoots));
         return [.. roots];
     }
+
+    /// <summary>
+    /// Whether the machine can stand up an instance of a type to call an instance root on.
+    /// </summary>
+    private static bool CanSupplyReceiver(TypeDef? type) =>
+        type is { IsAbstract: false, IsInterface: false } &&
+        !type.HasGenericParameters &&
+        DefaultConstructor(type) is not null;
+
+    private static MethodDef? DefaultConstructor(TypeDef type) =>
+        type.FindInstanceConstructors()
+            .FirstOrDefault(constructor =>
+                constructor.HasBody && constructor.MethodSig?.Params.Count == 0);
 
     /// <summary>
     /// Whether a method can reach <c>Assembly.Load</c> on a byte array through the calls it makes.
@@ -179,19 +229,36 @@ public static class PayloadChainRecovery
     /// </summary>
     private static byte[][]? Harvest(ArtifactContext context, MethodDef root, out string diagnostic)
     {
+        var harvested = Harvest(context, root, MaximumSteps, out diagnostic, out var exhausted);
+        return harvested is null && exhausted
+            ? Harvest(context, root, PatientSteps, out diagnostic, out _)
+            : harvested;
+    }
+
+    private static byte[][]? Harvest(
+        ArtifactContext context,
+        MethodDef root,
+        int budget,
+        out string diagnostic,
+        out bool exhausted)
+    {
+        exhausted = false;
         diagnostic = string.Empty;
-        if (!BootstrapMachine.TryRunInitializers(context, MaximumSteps, out var machine, out var seed) ||
+        if (!BootstrapMachine.TryRunInitializers(context, budget, out var machine, out var seed) ||
             machine is null)
         {
             diagnostic = seed;
             return null;
         }
 
-        var arguments = root.MethodSig?.Params.Count == 1 &&
-            machine.State.Heap.TryAllocateArray(null, 0, out var empty)
-                ? new[] { empty }
-                : null;
+        if (!TryBuildArguments(machine, root, out var arguments))
+        {
+            diagnostic = "a receiver for the root could not be constructed";
+            return null;
+        }
+
         var result = machine.Execute(root, arguments);
+        exhausted = machine.State.RanOutOfBudget;
         var loaded = machine.State.CapturedAssemblyLoads
             .Where(image => !image.AsSpan().SequenceEqual(context.OriginalBytes))
             .Where(LooksLikeManagedAssembly)
@@ -212,6 +279,46 @@ public static class PayloadChainRecovery
         }
 
         return loaded;
+    }
+
+    /// <summary>
+    /// Builds the argument list a root is entered with, including a receiver where one is needed.
+    /// </summary>
+    /// <remarks>
+    /// An instance root is constructed rather than merely allocated, because a driver keeps what it
+    /// unpacks from — the resource name, the stage list — in fields its constructor fills, and an
+    /// allocated-but-unconstructed receiver would enter the chain with all of that missing.
+    /// </remarks>
+    private static bool TryBuildArguments(
+        StaticMachine machine,
+        MethodDef root,
+        out IReadOnlyList<StaticValue>? arguments)
+    {
+        arguments = null;
+        var supplied = new List<StaticValue>();
+        if (root.MethodSig?.HasThis == true)
+        {
+            if (DefaultConstructor(root.DeclaringType) is not { } constructor ||
+                !machine.State.Heap.TryAllocateObject(root.DeclaringType.FullName, out var receiver) ||
+                !machine.Execute(constructor, [receiver]).Succeeded)
+            {
+                return false;
+            }
+
+            supplied.Add(receiver);
+        }
+
+        // An entry point is the one root that may take arguments, and it is given the empty command
+        // line it would see when run without any.
+        if (root.MethodSig?.Params.Count == 1)
+        {
+            if (!machine.State.Heap.TryAllocateArray(null, 0, out var empty))
+                return false;
+            supplied.Add(empty);
+        }
+
+        arguments = supplied.Count == 0 ? null : supplied;
+        return true;
     }
 
     private static bool SameImages(byte[][] first, byte[][] second) =>

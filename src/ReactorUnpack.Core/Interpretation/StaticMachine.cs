@@ -69,6 +69,8 @@ public sealed class StaticMachine
                 Status = StaticExecutionStatus.Unknown,
                 Diagnostic = "Execution returned an unknown value."
             };
+        if (MachineTrace.Enabled && result.Status != StaticExecutionStatus.Completed)
+            MachineTrace.DumpRecent($"{method.Name} gave up: {result.Diagnostic}");
         return new StaticExecutionResult(
             result.Status,
             result.Value,
@@ -80,6 +82,17 @@ public sealed class StaticMachine
     // Every frame is tracked so that side effects and loader observations can be attributed to the
     // call subtree that produced them, which is what later passes need in order to prove what is
     // safe to remove.
+    /// <summary>
+    /// The methods currently on the machine's stack, outermost first.
+    /// </summary>
+    /// <remarks>
+    /// Kept because protected code asks. A string decrypter that reads its own caller and folds the
+    /// caller's token into the key is only answerable by a machine that knows who called it, and the
+    /// machine does know — this is simply that knowledge written down where a modeled API can reach
+    /// it.
+    /// </remarks>
+    private readonly List<MethodDef> _frames = [];
+
     private FrameResult ExecuteFrame(
         MethodDef method,
         IReadOnlyList<StaticValue> arguments,
@@ -87,12 +100,14 @@ public sealed class StaticMachine
         int depth)
     {
         State.Evidence.EnterMethod(method);
+        _frames.Add(method);
         try
         {
             return ExecuteFrameCore(method, arguments, budget, depth);
         }
         finally
         {
+            _frames.RemoveAt(_frames.Count - 1);
             State.Evidence.LeaveMethod();
         }
     }
@@ -168,12 +183,27 @@ public sealed class StaticMachine
         while ((uint)ip < (uint)instructions.Count)
         {
             if (!budget.TryConsumeStep())
+            {
+                // A caller deciding whether spending more would help needs to know this happened
+                // even when the code that ran out of budget went on to catch its own failure.
+                State.RanOutOfBudget = true;
                 return FrameResult.Fail(
                     StaticExecutionStatus.StepLimitExceeded,
                     $"Execution exhausted its {budget.MaximumSteps}-step budget.");
+            }
+
 
             var instruction = instructions[ip];
             var next = ip + 1;
+            if (MachineTrace.Enabled)
+            {
+                MachineTrace.Step(
+                    $"{method.Name} [{ip}] {instruction.OpCode.Name}" +
+                    (instruction.Operand is { } shown ? $" {Abbreviate(shown)}" : string.Empty) +
+                    $" | stack {stack.Count}" +
+                    (stack.Count != 0 ? $" top={Describe(stack[^1])}" : string.Empty));
+            }
+
             try
             {
                 switch (instruction.OpCode.Code)
@@ -350,6 +380,26 @@ public sealed class StaticMachine
                     case Code.Conv_R4:
                     case Code.Conv_R8:
                     case Code.Conv_R_Un:
+                    case Code.Conv_Ovf_I1:
+                    case Code.Conv_Ovf_I1_Un:
+                    case Code.Conv_Ovf_U1:
+                    case Code.Conv_Ovf_U1_Un:
+                    case Code.Conv_Ovf_I2:
+                    case Code.Conv_Ovf_I2_Un:
+                    case Code.Conv_Ovf_U2:
+                    case Code.Conv_Ovf_U2_Un:
+                    case Code.Conv_Ovf_I4:
+                    case Code.Conv_Ovf_I4_Un:
+                    case Code.Conv_Ovf_U4:
+                    case Code.Conv_Ovf_U4_Un:
+                    case Code.Conv_Ovf_I8:
+                    case Code.Conv_Ovf_I8_Un:
+                    case Code.Conv_Ovf_U8:
+                    case Code.Conv_Ovf_U8_Un:
+                    case Code.Conv_Ovf_I:
+                    case Code.Conv_Ovf_I_Un:
+                    case Code.Conv_Ovf_U:
+                    case Code.Conv_Ovf_U_Un:
                         {
                             var input = Pop(stack);
                             stack.Add(TrackOperation(
@@ -481,7 +531,13 @@ public sealed class StaticMachine
                                     ? thrownType
                                     : "an unmodeled object") +
                                 $" from {method.Name} IL_{instruction.Offset:X4}" +
-                                (landed ? " (caught here)" : " (left the method)"));
+                                (landed ? " (caught here)" : " (left the method)") +
+                                $" after [{Preceding(instructions, ip)}]");
+                            // The first throw is the one worth the approach. Later ones are usually
+                            // the program's own error handling reacting to it, and dumping each in
+                            // turn would push the cause out of the ring before it could be read.
+                            if (MachineTrace.Enabled && State.ThrowSites.Count == 1)
+                                MachineTrace.DumpRecent($"{method.Name} threw");
                             if (landed)
                             {
                                 stack.Clear();
@@ -678,9 +734,14 @@ public sealed class StaticMachine
                             {
                                 return initializationFailure;
                             }
-                            var value = State.ReadStaticField(field);
-                            if (!value.IsKnown && field.ResolveFieldDef() is { HasConstant: true } definition)
-                                value = ConstantValue(definition.Constant?.Value);
+                            if (!TryReadModeledStatic(field, out var value))
+                            {
+                                value = State.ReadStaticField(field);
+                                if (!value.IsKnown &&
+                                    field.ResolveFieldDef() is { HasConstant: true } definition)
+                                    value = ConstantValue(definition.Constant?.Value);
+                            }
+
                             stack.Add(TrackOperation(
                                 method,
                                 instruction,
@@ -796,6 +857,8 @@ public sealed class StaticMachine
                                 State.Heap.TryGetRuntimeTypeName(value, out var actual) &&
                                 (string.Equals(actual, expected, StringComparison.Ordinal) ||
                                  InheritsModel(actual, expected) ||
+                                 DerivesFrom(actual, expected) ||
+                                 ArraySatisfies(actual, expected) ||
                                  actual == "System.Delegate" &&
                                  (instruction.Operand as ITypeDefOrRef)?
                                      .ResolveTypeDef()?.BaseType?.FullName is
@@ -852,7 +915,7 @@ public sealed class StaticMachine
                                 definition = ResolveVirtualTarget(
                                     target,
                                     callArguments[0],
-                                    method.Module) ?? definition;
+                                    State.ModuleMetadata ?? method.Module) ?? definition;
                             }
                             FrameResult callResult;
                             if (isConstructor && IsDelegateConstructor(target))
@@ -866,12 +929,12 @@ public sealed class StaticMachine
                                 callResult = invoked;
                             }
                             else if (definition is not null && definition.HasBody &&
-                                definition.Module == method.Module)
+                                BelongsToSubject(definition, method))
                             {
                                 callResult = ExecuteFrame(definition, callArguments, budget, depth + 1);
                             }
                             else if (definition is not null &&
-                                definition.Module == method.Module &&
+                                BelongsToSubject(definition, method) &&
                                 definition.IsStatic &&
                                 definition.MethodSig?.Params.Count == 0 &&
                                 definition.ReturnType.ToTypeDefOrRef()?.ResolveTypeDef() is
@@ -895,14 +958,7 @@ public sealed class StaticMachine
                             else if (_intrinsics.TryResolve(target, out var intrinsic))
                             {
                                 var intrinsicResult = intrinsic.Invoke(
-                                    new IntrinsicContext(
-                                        State,
-                                        (callee, callbackArguments) => CallDelegate(
-                                            callee, callbackArguments, budget, depth),
-                                        (callee, callbackArguments) => Reenter(
-                                            callee, callbackArguments, budget, depth)),
-                                    target,
-                                    callArguments);
+                                    Assisting(budget, depth), target, callArguments);
                                 callResult = new FrameResult(
                                     intrinsicResult.Status,
                                     intrinsicResult.Value,
@@ -1174,6 +1230,78 @@ public sealed class StaticMachine
             : StaticValue.FromInt32(unchecked((int)result));
     }
 
+    /// <summary>
+    /// The overflow-checking conversions, each paired with the plain conversion it narrows to and
+    /// whether it reads its source as unsigned.
+    /// </summary>
+    private static readonly Dictionary<Code, (Code Target, bool FromUnsigned)> CheckedConversions =
+        new()
+        {
+            [Code.Conv_Ovf_I1] = (Code.Conv_I1, false),
+            [Code.Conv_Ovf_I1_Un] = (Code.Conv_I1, true),
+            [Code.Conv_Ovf_U1] = (Code.Conv_U1, false),
+            [Code.Conv_Ovf_U1_Un] = (Code.Conv_U1, true),
+            [Code.Conv_Ovf_I2] = (Code.Conv_I2, false),
+            [Code.Conv_Ovf_I2_Un] = (Code.Conv_I2, true),
+            [Code.Conv_Ovf_U2] = (Code.Conv_U2, false),
+            [Code.Conv_Ovf_U2_Un] = (Code.Conv_U2, true),
+            [Code.Conv_Ovf_I4] = (Code.Conv_I4, false),
+            [Code.Conv_Ovf_I4_Un] = (Code.Conv_I4, true),
+            [Code.Conv_Ovf_U4] = (Code.Conv_U4, false),
+            [Code.Conv_Ovf_U4_Un] = (Code.Conv_U4, true),
+            [Code.Conv_Ovf_I8] = (Code.Conv_I8, false),
+            [Code.Conv_Ovf_I8_Un] = (Code.Conv_I8, true),
+            [Code.Conv_Ovf_U8] = (Code.Conv_U8, false),
+            [Code.Conv_Ovf_U8_Un] = (Code.Conv_U8, true),
+            [Code.Conv_Ovf_I] = (Code.Conv_I, false),
+            [Code.Conv_Ovf_I_Un] = (Code.Conv_I, true),
+            [Code.Conv_Ovf_U] = (Code.Conv_U, false),
+            [Code.Conv_Ovf_U_Un] = (Code.Conv_U, true)
+        };
+
+    /// <summary>
+    /// Converts a value the way an overflow-checking conversion would, refusing to fold one that
+    /// would not have survived.
+    /// </summary>
+    /// <remarks>
+    /// The whole point of these instructions is that an out-of-range value stops the program rather
+    /// than quietly losing its high bits. Narrowing anyway would hand the rest of the run a number
+    /// the program would never have seen, so the machine stops instead and says why.
+    /// </remarks>
+    private StaticValue ConvertChecked(Code code, Code target, bool fromUnsigned, StaticValue value)
+    {
+        if (!value.IsInteger)
+            return ConvertValue(target, value);
+        var signed = value.Kind == StaticValueKind.Int64 ? value.AsInt64() : value.AsInt32();
+        var unsigned = value.Kind == StaticValueKind.Int64
+            ? unchecked((ulong)value.AsInt64())
+            : unchecked((uint)value.AsInt32());
+        var narrow = State.PointerSize == 4;
+        long low;
+        ulong high;
+        switch (target)
+        {
+            case Code.Conv_I1: low = sbyte.MinValue; high = (ulong)sbyte.MaxValue; break;
+            case Code.Conv_U1: low = 0; high = byte.MaxValue; break;
+            case Code.Conv_I2: low = short.MinValue; high = (ulong)short.MaxValue; break;
+            case Code.Conv_U2: low = 0; high = ushort.MaxValue; break;
+            case Code.Conv_I4: low = int.MinValue; high = int.MaxValue; break;
+            case Code.Conv_U4: low = 0; high = uint.MaxValue; break;
+            case Code.Conv_I8: low = long.MinValue; high = long.MaxValue; break;
+            case Code.Conv_I: low = narrow ? int.MinValue : long.MinValue;
+                high = narrow ? int.MaxValue : (ulong)long.MaxValue; break;
+            case Code.Conv_U: low = 0; high = narrow ? uint.MaxValue : ulong.MaxValue; break;
+            default: low = 0; high = ulong.MaxValue; break;
+        }
+
+        var fits = fromUnsigned
+            ? unsigned <= high
+            : signed >= low && (signed < 0 || (ulong)signed <= high);
+        if (!fits)
+            throw new InvalidOperationException($"{code} overflowed converting {signed}.");
+        return ConvertInteger(target, value);
+    }
+
     private StaticValue ConvertValue(Code code, StaticValue value)
     {
         if (!value.IsKnown)
@@ -1197,6 +1325,8 @@ public sealed class StaticMachine
                 : (double)unchecked((uint)value.AsInt32());
             return StaticValue.FromFloat64(unsigned);
         }
+        if (CheckedConversions.TryGetValue(code, out var narrowing))
+            return ConvertChecked(code, narrowing.Target, narrowing.FromUnsigned, value);
         if (value.IsInteger)
             return ConvertInteger(code, value);
         if (!value.IsFloatingPoint)
@@ -1623,8 +1753,8 @@ public sealed class StaticMachine
         ModelBaseTypes.TryGetValue(actual, out var bases) &&
         bases.Contains(expected, StringComparer.Ordinal);
 
-    private const string DelegateTargetKey = "DelegateTarget";
-    private const string DelegateMethodKey = "DelegateMethod";
+    internal const string DelegateTargetKey = "DelegateTarget";
+    internal const string DelegateMethodKey = "DelegateMethod";
 
     /// <summary>
     /// Whether a constructor is a delegate's, decided from its signature rather than its type.
@@ -1683,18 +1813,110 @@ public sealed class StaticMachine
         if (target.Name != "Invoke" || callArguments.Length == 0)
             return false;
         if (!State.Heap.TryGetModelValue<IMethod>(callArguments[0], DelegateMethodKey, out var bound) ||
-            bound?.ResolveMethodDef() is not { HasBody: true } definition)
+            bound is null)
         {
             return false;
         }
 
         State.Heap.TryGetModelValue<StaticValue>(callArguments[0], DelegateTargetKey, out var receiver);
-        StaticValue[] arguments = definition.IsStatic
+        var definition = bound.ResolveMethodDef();
+        var unbound = definition?.IsStatic ?? bound.MethodSig?.HasThis != true;
+        StaticValue[] arguments = unbound
             ? [.. callArguments[1..]]
             : [receiver, .. callArguments[1..]];
-        result = ExecuteFrame(definition, arguments, budget, depth + 1);
+        if (definition is { HasBody: true })
+        {
+            result = ExecuteFrame(definition, arguments, budget, depth + 1);
+            return true;
+        }
+
+        // The delegate stands for a method whose body is not here to run, which for an obfuscator
+        // runtime usually means a framework method it chose to reach through a delegate rather than
+        // a direct call. It is the same call either way, so it is dispatched the same way.
+        if (!_intrinsics.TryResolve(bound, out var intrinsic))
+            return false;
+        var answered = intrinsic.Invoke(Assisting(budget, depth), bound, arguments);
+        result = new FrameResult(
+            answered.Status,
+            answered.Value,
+            answered.Status == StaticExecutionStatus.Completed
+                ? answered.Diagnostic
+                : $"{bound.FullName}: {answered.Diagnostic}");
         return true;
     }
+
+    /// <summary>
+    /// Whether an array can be viewed as the type a cast is asking for.
+    /// </summary>
+    /// <remarks>
+    /// Arrays have no declaration to walk, so the hierarchy check has nothing to work with. What the
+    /// runtime promises about them is fixed and short: every array is an <c>Array</c>, meets the
+    /// untyped list and sequence contracts, and may be seen through an array of any base of the type
+    /// it holds.
+    /// </remarks>
+    private bool ArraySatisfies(string actual, string? expected)
+    {
+        const string suffix = "[]";
+        if (expected is null || !actual.EndsWith(suffix, StringComparison.Ordinal))
+            return false;
+        if (expected is "System.Array" or "System.ICloneable" or
+            "System.Collections.IList" or "System.Collections.ICollection" or
+            "System.Collections.IEnumerable" or "System.Collections.IStructuralComparable" or
+            "System.Collections.IStructuralEquatable")
+        {
+            return true;
+        }
+
+        if (!expected.EndsWith(suffix, StringComparison.Ordinal))
+            return false;
+        var wanted = expected[..^suffix.Length];
+        return wanted == "System.Object" || DerivesFrom(actual[..^suffix.Length], wanted);
+    }
+
+    /// <summary>
+    /// Whether a callee's body is part of the code this machine was set running on.
+    /// </summary>
+    /// <remarks>
+    /// Normally that is just "the same module as the caller". The exception is a body the machine
+    /// assembled itself from instructions a program emitted: it lives in a scratch module of its
+    /// own, but the methods it calls are the subject's, and asking about the caller would refuse
+    /// to run them.
+    /// </remarks>
+    private bool BelongsToSubject(MethodDef definition, MethodDef caller) =>
+        definition.Module == caller.Module || definition.Module == State.ModuleMetadata;
+
+    /// <summary>
+    /// Supplies a framework constant that the machine models rather than stores.
+    /// </summary>
+    /// <remarks>
+    /// Most static fields hold whatever the program last wrote there, but a few are the framework's
+    /// own and hold a value the program never assigns. An opcode is the case that matters here: a
+    /// program building a method reads them by name and hands them straight back, so the machine
+    /// only needs to remember which one it was told about.
+    /// </remarks>
+    private bool TryReadModeledStatic(IField field, out StaticValue value)
+    {
+        value = StaticValue.Unknown;
+        if (field.DeclaringType?.FullName != "System.Reflection.Emit.OpCodes" ||
+            !ReflectionEmitIntrinsic.Opcodes.ContainsKey(field.Name.String) ||
+            !State.Heap.TryAllocateObject("System.Reflection.Emit.OpCode", out value))
+        {
+            return false;
+        }
+
+        State.Heap.TrySetModelValue(value, "OpCode", field.Name.String);
+        return true;
+    }
+
+    /// <summary>
+    /// The context a modeled API needs to call back into the machine while it runs.
+    /// </summary>
+    private IntrinsicContext Assisting(StaticWorkBudget budget, int depth) =>
+        new(
+            State,
+            (callee, arguments) => CallDelegate(callee, arguments, budget, depth),
+            (callee, arguments) => Reenter(callee, arguments, budget, depth),
+            _frames);
 
     /// <summary>
     /// Runs a delegate on behalf of a modeled API that was handed one.
@@ -1722,16 +1944,26 @@ public sealed class StaticMachine
     /// <summary>
     /// Runs a method for a modeled reflection call, on the caller's budget.
     /// </summary>
+    /// <remarks>
+    /// Reflection reaches framework methods as readily as the file's own, so a call arriving here
+    /// with no body to run is not a failure — it is a call the machine already knows how to answer
+    /// by other means, and it is answered the same way a direct call to it would be.
+    /// </remarks>
     private IntrinsicResult Reenter(
-        MethodDef method,
+        IMethod method,
         IReadOnlyList<StaticValue> arguments,
         StaticWorkBudget budget,
         int depth)
     {
-        if (!method.HasBody)
-            return IntrinsicResult.Invalid($"{method.FullName} has no body to run.");
-        var result = ExecuteFrame(method, [.. arguments], budget, depth + 1);
-        return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
+        if (method.ResolveMethodDef() is { HasBody: true } definition)
+        {
+            var result = ExecuteFrame(definition, [.. arguments], budget, depth + 1);
+            return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
+        }
+
+        return _intrinsics.TryResolve(method, out var intrinsic)
+            ? intrinsic.Invoke(Assisting(budget, depth), method, [.. arguments])
+            : IntrinsicResult.Invalid($"{method.FullName} has no body to run.");
     }
 
     private MethodDef? ResolveVirtualTarget(
@@ -1875,16 +2107,124 @@ public sealed class StaticMachine
             return true;
         if (!State.Heap.TryGetRuntimeTypeName(thrown, out var actual) || actual is null)
             return false;
-        if (string.Equals(actual, caught, StringComparison.Ordinal))
-            return true;
-        for (var type = State.ModuleMetadata?.Find(actual, false); type is not null;)
+        return string.Equals(actual, caught, StringComparison.Ordinal) ||
+            DerivesFrom(actual, caught);
+    }
+
+    private readonly Dictionary<(string, string), bool> _ancestry = [];
+
+    /// <summary>
+    /// Whether one type in the module under interpretation is the other, or is one of its kinds.
+    /// </summary>
+    /// <remarks>
+    /// The machine records what an object is by name, so answering this means going back to the
+    /// metadata and walking. Interfaces are walked alongside base classes because a cast to an
+    /// interface is a cast, and stopping at the base chain would quietly turn one into a null.
+    ///
+    /// Getting this wrong is not a small matter of precision. Obfuscated code casts to base types
+    /// constantly — every value passed as its abstract kind and taken back out again — and a
+    /// machine that answers no to a cast that would have succeeded does not fail where it went
+    /// wrong. It hands back a null that travels until the program itself objects to it, which is
+    /// how a fidelity gap ends up looking like the protected program rejecting its own state.
+    /// </remarks>
+    private bool DerivesFrom(string? actual, string? expected)
+    {
+        if (actual is null || expected is null || State.ModuleMetadata is not { } metadata)
+            return false;
+        if (_ancestry.TryGetValue((actual, expected), out var known))
+            return known;
+
+        const int deepEnoughForAnyHierarchy = 64;
+        var pending = new Queue<TypeDef>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var found = false;
+        if (metadata.Find(actual, false) is { } start)
+            pending.Enqueue(start);
+        while (pending.Count != 0 && seen.Count < deepEnoughForAnyHierarchy && !found)
         {
-            if (string.Equals(type.FullName, caught, StringComparison.Ordinal))
-                return true;
-            type = type.BaseType?.ResolveTypeDef();
+            var type = pending.Dequeue();
+            if (!seen.Add(type.FullName))
+                continue;
+            found = string.Equals(type.FullName, expected, StringComparison.Ordinal);
+            if (type.BaseType?.ResolveTypeDef() is { } baseType)
+                pending.Enqueue(baseType);
+            foreach (var contract in type.Interfaces)
+            {
+                if (contract.Interface?.ResolveTypeDef() is { } resolved)
+                    pending.Enqueue(resolved);
+            }
         }
 
-        return false;
+        _ancestry[(actual, expected)] = found;
+        return found;
+    }
+
+    /// <summary>
+    /// Renders a value the way a reader of the trace needs to see it: what it is, not where it is.
+    /// </summary>
+    private string Describe(StaticValue value)
+    {
+        if (value.Kind != StaticValueKind.HeapReference)
+        {
+            return value.Kind switch
+            {
+                StaticValueKind.Null => "null",
+                StaticValueKind.Int32 when value.IsKnown => $"i4:{value.AsInt32()}",
+                StaticValueKind.Int64 when value.IsKnown => $"i8:{value.AsInt64()}",
+                _ => $"{value.Kind}"
+            };
+        }
+
+        if (State.Heap.TryGetString(value, out var text))
+            return $"\"{(text.Length > 32 ? text[..32] + "..." : text)}\"";
+        if (!State.Heap.TryGetRuntimeTypeName(value, out var runtimeType))
+            return "object";
+        if (runtimeType.EndsWith("[]", StringComparison.Ordinal) &&
+            State.Heap.TryGetLength(value, out var length))
+            return $"{runtimeType}({length})";
+
+        // A modeled Type is the one object whose identity, rather than its class, is the thing a
+        // reader is asking about, since the code around it is deciding what kind of value it holds.
+        // A reflection model is described by what it denotes, since the code around it is deciding
+        // which member or type it has, not what class the model belongs to.
+        if (State.Heap.TryGetModelValue(value, "TypeName", out string? named) && named is not null)
+            return $"{runtimeType}({named})";
+        return State.Heap.TryGetModelValue(value, "Metadata", out object? metadata) &&
+            metadata is IFullName denoted
+                ? $"{runtimeType}({denoted.FullName})"
+                : runtimeType;
+    }
+
+    /// <summary>
+    /// Renders an operand short enough to keep one traced step on one line.
+    /// </summary>
+    private static string Abbreviate(object operand)
+    {
+        const int enoughToIdentify = 72;
+        var text = operand switch
+        {
+            Instruction target => $"-> {target.OpCode.Name}",
+            Instruction[] targets => $"switch({targets.Length})",
+            _ => operand.ToString() ?? string.Empty
+        };
+        return text.Length <= enoughToIdentify ? text : text[..enoughToIdentify] + "...";
+    }
+
+    /// <summary>
+    /// The handful of instructions leading to a point, for describing it without using offsets.
+    /// </summary>
+    /// <remarks>
+    /// An instruction's recorded offset goes stale as soon as a pass rewrites the body around it,
+    /// so quoting one sends a reader to the wrong place in the file they are looking at. The
+    /// instructions themselves do not drift.
+    /// </remarks>
+    private static string Preceding(IList<Instruction> instructions, int ip)
+    {
+        const int worthShowing = 6;
+        var from = Math.Max(0, ip - worthShowing);
+        return string.Join("; ", Enumerable.Range(from, ip - from)
+            .Select(index => instructions[index].OpCode.Name +
+                (instructions[index].Operand is { } operand ? $" {operand}" : string.Empty)));
     }
 
     private static ExceptionHandler? FindFinally(

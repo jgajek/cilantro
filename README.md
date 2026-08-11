@@ -121,8 +121,11 @@ embedded payload assemblies.
 Being straight about this matters more than the feature list.
 
 - **Code virtualization.** If Reactor turned methods into bytecode for its own
-  interpreter, ReactorUnpack detects and reports it but does not undo it. No
-  public tool does.
+  interpreter, ReactorUnpack detects and reports it but does not turn that
+  bytecode back into readable methods. No public tool does. It can still pull
+  hidden files out of a sample whose unpacker is virtualized, because it runs
+  the interpreter rather than trying to undo it — that just takes a minute or so
+  instead of seconds.
 - **Native-packed files.** If the sample is wrapped in a native stub rather than
   being a pure .NET file, it is detected and reported as unsupported rather than
   being mangled. See [docs/how-net-reactor-works.md](docs/how-net-reactor-works.md).

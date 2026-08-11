@@ -113,15 +113,33 @@ The protected host's `ResourceResolve` path consumes the large, high-entropy
 resource and eventually passes decompressed bytes to `Assembly.Load(byte[])`.
 ReactorUnpack models that load as a capture sink and never invokes it.
 
-For the supported fixtures, extraction:
+The general route is to interpret the module's own unpacker and take the bytes
+as they reach that sink, which needs to know nothing about the cipher or the
+number of stages. It is tried first, and it is what recovers payloads from
+crypters the tool has never seen.
 
-1. selects the resource by SHA-256 rather than its randomized name or ordinal;
-2. applies the profiled eight-word keyed stream transform with unchecked
-   UInt32 arithmetic;
-3. verifies the decoded raw-DEFLATE stream hash;
-4. inflates it with a 256 MiB output limit;
-5. verifies output length and SHA-256; and
-6. parses the result with dnlib and verifies its assembly identity.
+It reaches both stages of both fixtures, which is worth stating because of what
+stands between the entry point and the payload. Underneath Reactor these samples
+carry a second protector that virtualizes the crypter's module initializer: the
+initializer's work is carried out by a bytecode dispatcher rather than by IL,
+and the fields it sets are read both by the chain's flattened control flow and
+by the string-table indices that supply the driver its resource name and key.
+Nothing lifts that bytecode back to IL. The machine instead runs the dispatcher
+as the ordinary IL it is, and the chain's own behaviour follows: the string
+table decrypts, the protector's resource-resolve handler is raised the way the
+runtime would raise it, the satellite it returns is read for the encrypted
+stage, and the stage decrypts to an assembly. Running the virtual machine rather
+than defeating it costs a great deal of interpretation — roughly a minute for
+these samples — which is why the step allowance is raised only for a chain that
+has already shown it ran out of the ordinary one.
+
+There is no longer a second route. Until the machine could run the virtualized
+initializer, these two fixtures were extracted by a table of their input hashes
+that carried the cipher, the keys, and the expected outputs; the generic route
+now reproduces every one of those hashes, so the table is gone. What each stage
+must satisfy has not changed: a buffer is believed only when it parses as
+managed metadata, and only when two independent interpretations produce the same
+bytes.
 
 Recovered resource-only assemblies:
 
@@ -130,13 +148,12 @@ Recovered resource-only assemblies:
 - `cf07e290-4799-450f-969c-80255a1a4f0c.dll`, 86,528 bytes,
   SHA-256 `1db4e9c40d83bb790b89963888fd9a112b1d2467f7194dc55b6c35e14e443429`.
 
-Each resource assembly contains one terminal `.resources` v2 ByteArray record.
-The extractor locates that record with strict framing and hash checks without
-deserializing resource objects. It then reproduces the application's legacy
-TripleDES-CBC/PKCS7 stage, validates a little-endian output-length prefix,
-bounded-decompresses the following GZip stream, and parses the final bytes as
-managed metadata. It never reproduces the application's final
-`Assembly.Load`/reflection invocation.
+Each resource assembly contains one terminal `.resources` v2 ByteArray record
+holding the second stage. The tool does not decode that record itself; the
+crypter's own driver does, under interpretation, and the bytes are taken where
+it hands them to `Assembly.Load`. That the stage happens to be TripleDES-CBC
+under a GZip stream is something the run reveals rather than something the tool
+knows. The final load and the reflective entry-point call are never performed.
 
 Final managed payloads:
 
@@ -156,6 +173,13 @@ proven direct uses are restored statically with a stack-neutral
 - `"Load "`, subsequently trimmed by the original code.
 
 The resolver is never invoked.
+
+This is the one place left where the tool recognizes a sample by its input hash.
+Table capture reports ambiguous framing on these two, and the older strategy is
+what keeps them producing output at all, so it is held behind a set of two
+hashes in `LegacyStringStrategySamples` rather than deleted. The set exists to
+be removed: the framing it works around is a virtual machine building the table,
+and the machine can now run one.
 
 For generic inputs, table capture and call-site rewriting are separate passes.
 A table must be unique and strictly length-framed UTF-16, and every reachable

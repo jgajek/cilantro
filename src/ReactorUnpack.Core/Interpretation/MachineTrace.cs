@@ -33,4 +33,49 @@ internal static class MachineTrace
         File.AppendAllText(Path!, Buffer.ToString());
         Buffer.Clear();
     }
+
+    /// <summary>
+    /// The instructions most recently executed, kept so a failure can say what led to it.
+    /// </summary>
+    /// <remarks>
+    /// Writing every instruction to the trace would bury the interesting moment in millions of
+    /// lines and turn a run into a disk-bound one, but a failure deep inside an obfuscator's own
+    /// interpreter is unreadable without knowing what it just did. A ring keeps the cost of a step
+    /// at one array store and still has the approach to any failure when one happens.
+    /// </remarks>
+    private static readonly string?[] Recent = new string[Enabled ? Depth() : 0];
+
+    /// <summary>
+    /// How many steps to keep, from <c>REACTOR_TRACE_DEPTH</c> when a longer run-up is needed.
+    /// </summary>
+    private static int Depth() =>
+        int.TryParse(
+            Environment.GetEnvironmentVariable("REACTOR_TRACE_DEPTH"),
+            out var requested) && requested > 0
+            ? requested
+            : 4096;
+    private static int _written;
+
+    public static void Step(string description)
+    {
+        if (Recent.Length == 0)
+            return;
+        Recent[_written++ % Recent.Length] = description;
+    }
+
+    /// <summary>
+    /// Writes the approach to a failure, oldest first, and forgets it.
+    /// </summary>
+    public static void DumpRecent(string reason)
+    {
+        if (Recent.Length == 0 || _written == 0)
+            return;
+        var kept = Math.Min(_written, Recent.Length);
+        Line($"--- last {kept} steps before {reason} ---");
+        for (var age = kept; age > 0; age--)
+            Line(Recent[(_written - age) % Recent.Length]!);
+        Line($"--- end of approach to {reason} ---");
+        _written = 0;
+        Flush();
+    }
 }

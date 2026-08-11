@@ -884,24 +884,6 @@ public static class ResourceInspector
     }
 }
 
-public sealed record PayloadCodecProfile(
-    string ResourceSha256,
-    string DecodedStreamSha256,
-    string PayloadSha256,
-    int PayloadLength,
-    string EffectiveKeyHex,
-    uint A,
-    uint D,
-    string AssemblyName,
-    string NestedResourceSha256,
-    string NestedEntryName,
-    string NestedEntrySha256,
-    int NestedEntryLength,
-    string TripleDesKeyHex,
-    string TripleDesIvHex,
-    string FinalPayloadSha256,
-    int FinalPayloadLength,
-    string FinalAssemblyName);
 
 public sealed class PayloadExtractionPass : DeobfuscationPass
 {
@@ -920,158 +902,62 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
         if (TryRecoverByInterpretation(context, out var interpreted, out var declined))
             return interpreted;
 
-        if (!PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
+        context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts);
+        if (facts is not null &&
+            StructuralStreamDiscovery.TryDiscoverProxyProfile(
+                context.Module,
+                facts,
+                out var proxyProfile) &&
+            proxyProfile is not null &&
+            StructuralStreamDiscovery.TryDiscoverOuterPayload(
+                context.Module,
+                proxyProfile,
+                out var discovered) &&
+            discovered is not null)
         {
-            context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts);
-            if (facts is not null &&
-                StructuralStreamDiscovery.TryDiscoverProxyProfile(
-                    context.Module,
-                    facts,
-                    out var proxyProfile) &&
-                proxyProfile is not null &&
-                StructuralStreamDiscovery.TryDiscoverOuterPayload(
-                    context.Module,
-                    proxyProfile,
-                    out var discovered) &&
-                discovered is not null)
-            {
-                using var payloadModule = ModuleDefMD.Load(discovered.ManagedAssembly);
-                var sourceBytes = discovered.Resource.CreateReader().ToArray();
-                var structuralInfo = new PayloadInfo(
-                    discovered.Resource.Name,
-                    Convert.ToHexStringLower(SHA256.HashData(sourceBytes)),
-                    sourceBytes.Length,
-                    Convert.ToHexStringLower(SHA256.HashData(discovered.DecodedStream)),
-                    discovered.ManagedAssembly.Length,
-                    Convert.ToHexStringLower(SHA256.HashData(discovered.ManagedAssembly)),
-                    discovered.AssemblyName,
-                    payloadModule.Name,
-                    payloadModule.EntryPoint?.MDToken.Raw ?? 0,
-                    payloadModule.Resources.Select(item => item.Name.String).ToArray());
-                IReadOnlyList<ExtractedPayload> structuralPayloads =
-                    [new(structuralInfo, discovered.ManagedAssembly)];
-                context.SetFact("payload.artifacts", structuralPayloads);
-                context.AddEvidence(new Evidence(
-                    "extracted-payload",
-                    $"Structurally recovered managed assembly {structuralInfo.AssemblyName}.",
-                    discovered.Resource.Name,
-                    1.0));
-                context.AddEvidence(new Evidence(
-                    "stream-constants",
-                    $"Derived keyed payload constants A=0x{discovered.A:X8}, D=0x{discovered.D:X8}.",
-                    discovered.Resource.Name,
-                    1.0));
-                context.AddChange(new ChangeRecord(
-                    Name,
-                    "extract-managed-payload",
-                    discovered.Resource.Name,
-                    $"{structuralInfo.AssemblyName}, SHA-256 {structuralInfo.PayloadSha256}"));
-                return (PassStatus.Success, 1,
-                [
-                    $"Structurally extracted {structuralInfo.AssemblyName}.dll ({structuralInfo.PayloadLength} bytes).",
-                    $"SHA-256: {structuralInfo.PayloadSha256}"
-                ]);
-            }
-
-            return (PassStatus.Unsupported, 0,
-            [
-                "No payload could be recovered by interpreting the module's own unpacker.",
-                .. declined,
-                "No structurally validated payload codec was found either."
-            ]);
-        }
-
-
-        var resource = context.Module.Resources
-            .OfType<EmbeddedResource>()
-            .FirstOrDefault(item =>
-                Convert.ToHexStringLower(SHA256.HashData(item.CreateReader().ToArray())) ==
-                profile.ResourceSha256);
-        if (resource is null)
-        {
-            return (PassStatus.Failed, 0, ["The profiled payload resource was not found."]);
-        }
-
-        var encoded = resource.CreateReader().ToArray();
-        var decodedStream = PayloadResourceCodec.Decode(encoded, profile);
-        var streamHash = Convert.ToHexStringLower(SHA256.HashData(decodedStream));
-        if (streamHash != profile.DecodedStreamSha256)
-        {
-            return (PassStatus.Failed, 0,
-                ["Decoded resource stream failed its SHA-256 verification gate."]);
-        }
-
-        var payloadBytes = ResourceTransforms.Decompress(
-            decodedStream,
-            "deflate",
-            maximumLength: 256 * 1024 * 1024);
-        var payloadHash = Convert.ToHexStringLower(SHA256.HashData(payloadBytes));
-        if (payloadBytes.Length != profile.PayloadLength || payloadHash != profile.PayloadSha256)
-        {
-            return (PassStatus.Failed, 0,
-                ["Inflated payload failed its length or SHA-256 verification gate."]);
-        }
-
-        PayloadInfo info;
-        ExtractedPayload finalPayload;
-        try
-        {
-            using var payloadModule = ModuleDefMD.Load(payloadBytes);
-            var assemblyName = payloadModule.Assembly?.Name.String ?? payloadModule.Name.String;
-            if (!string.Equals(assemblyName, profile.AssemblyName, StringComparison.Ordinal))
-            {
-                return (PassStatus.Failed, 0,
-                    ["Extracted assembly identity did not match the verified profile."]);
-            }
-
-            info = new PayloadInfo(
-                resource.Name,
-                profile.ResourceSha256,
-                encoded.Length,
-                streamHash,
-                payloadBytes.Length,
-                payloadHash,
-                assemblyName,
+            using var payloadModule = ModuleDefMD.Load(discovered.ManagedAssembly);
+            var sourceBytes = discovered.Resource.CreateReader().ToArray();
+            var structuralInfo = new PayloadInfo(
+                discovered.Resource.Name,
+                Convert.ToHexStringLower(SHA256.HashData(sourceBytes)),
+                sourceBytes.Length,
+                Convert.ToHexStringLower(SHA256.HashData(discovered.DecodedStream)),
+                discovered.ManagedAssembly.Length,
+                Convert.ToHexStringLower(SHA256.HashData(discovered.ManagedAssembly)),
+                discovered.AssemblyName,
                 payloadModule.Name,
                 payloadModule.EntryPoint?.MDToken.Raw ?? 0,
                 payloadModule.Resources.Select(item => item.Name.String).ToArray());
-            finalPayload = ExtractFinalPayload(payloadModule, profile);
-        }
-        catch (Exception ex)
-        {
-            return (PassStatus.Failed, 0,
-                [$"Extracted bytes are not a valid managed assembly: {ex.Message}"]);
+            IReadOnlyList<ExtractedPayload> structuralPayloads =
+                [new(structuralInfo, discovered.ManagedAssembly)];
+            context.SetFact("payload.artifacts", structuralPayloads);
+            context.AddEvidence(new Evidence(
+                "extracted-payload",
+                $"Structurally recovered managed assembly {structuralInfo.AssemblyName}.",
+                discovered.Resource.Name,
+                1.0));
+            context.AddEvidence(new Evidence(
+                "stream-constants",
+                $"Derived keyed payload constants A=0x{discovered.A:X8}, D=0x{discovered.D:X8}.",
+                discovered.Resource.Name,
+                1.0));
+            context.AddChange(new ChangeRecord(
+                Name,
+                "extract-managed-payload",
+                discovered.Resource.Name,
+                $"{structuralInfo.AssemblyName}, SHA-256 {structuralInfo.PayloadSha256}"));
+            return (PassStatus.Success, 1,
+            [
+                $"Structurally extracted {structuralInfo.AssemblyName}.dll ({structuralInfo.PayloadLength} bytes).",
+                $"SHA-256: {structuralInfo.PayloadSha256}"
+            ]);
         }
 
-        IReadOnlyList<ExtractedPayload> payloads = [new(info, payloadBytes), finalPayload];
-        context.SetFact("payload.artifacts", payloads);
-        context.AddEvidence(new Evidence(
-            "extracted-payload",
-            $"Recovered managed assembly {info.AssemblyName} ({info.PayloadLength} bytes).",
-            resource.Name,
-            1.0));
-        context.AddEvidence(new Evidence(
-            "extracted-payload",
-            $"Recovered final managed payload {finalPayload.Info.AssemblyName} " +
-            $"({finalPayload.Info.PayloadLength} bytes).",
-            finalPayload.Info.SourceResource,
-            1.0));
-        context.AddChange(new ChangeRecord(
-            Name,
-            "extract-managed-payload",
-            resource.Name,
-            $"{info.AssemblyName}, SHA-256 {info.PayloadSha256}"));
-        context.AddChange(new ChangeRecord(
-            Name,
-            "extract-final-managed-payload",
-            finalPayload.Info.SourceResource,
-            $"{finalPayload.Info.AssemblyName}, SHA-256 {finalPayload.Info.PayloadSha256}"));
-        return (PassStatus.Success, 2,
+        return (PassStatus.Unsupported, 0,
         [
-            $"Extracted {info.AssemblyName}.dll ({info.PayloadLength} bytes).",
-            $"Extracted final payload {finalPayload.Info.AssemblyName}.dll " +
-            $"({finalPayload.Info.PayloadLength} bytes).",
-            $"Final SHA-256: {finalPayload.Info.PayloadSha256}"
+            "No payload could be recovered by interpreting the module's own unpacker.",
+            .. declined,
+            "No structurally validated payload codec was found either."
         ]);
     }
 
@@ -1189,79 +1075,6 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
         return true;
     }
 
-    private static ExtractedPayload ExtractFinalPayload(
-        ModuleDef payloadModule,
-        PayloadCodecProfile profile)
-    {
-        var nestedResource = payloadModule.Resources
-            .OfType<EmbeddedResource>()
-            .FirstOrDefault(resource =>
-                Convert.ToHexStringLower(SHA256.HashData(resource.CreateReader().ToArray())) ==
-                profile.NestedResourceSha256)
-            ?? throw new InvalidDataException("The profiled nested .resources stream was not found.");
-        var resourceData = nestedResource.CreateReader().ToArray();
-        var ciphertext = ExtractByteArrayRecord(resourceData, profile.NestedEntryLength);
-        if (Convert.ToHexStringLower(SHA256.HashData(ciphertext)) != profile.NestedEntrySha256)
-        {
-            throw new InvalidDataException("Nested ByteArray entry failed its SHA-256 gate.");
-        }
-
-        // Compatibility decoder for legacy protected data, not new cryptographic protection.
-#pragma warning disable CA5350
-        using var tripleDes = TripleDES.Create();
-#pragma warning restore CA5350
-        tripleDes.Mode = CipherMode.CBC;
-        tripleDes.Padding = PaddingMode.PKCS7;
-        var legacyKey = Convert.FromHexString(profile.TripleDesKeyHex);
-        tripleDes.Key = legacyKey.Length == 16
-            ? [.. legacyKey, .. legacyKey.AsSpan(0, 8)]
-            : legacyKey;
-        var iv = Convert.FromHexString(profile.TripleDesIvHex);
-        var cleartext = tripleDes.DecryptCbc(ciphertext, iv, PaddingMode.PKCS7);
-        if (cleartext.Length < 6 ||
-            cleartext[4] != 0x1F ||
-            cleartext[5] != 0x8B)
-        {
-            throw new InvalidDataException("Decrypted nested payload is not a length-prefixed GZip stream.");
-        }
-
-        var expectedLength = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(cleartext);
-        if (expectedLength != profile.FinalPayloadLength)
-        {
-            throw new InvalidDataException("Nested payload length prefix failed its profile gate.");
-        }
-
-        var finalBytes = ResourceTransforms.Decompress(
-            cleartext.AsSpan(4),
-            "gzip",
-            maximumLength: 256 * 1024 * 1024);
-        var finalHash = Convert.ToHexStringLower(SHA256.HashData(finalBytes));
-        if (finalBytes.Length != expectedLength || finalHash != profile.FinalPayloadSha256)
-        {
-            throw new InvalidDataException("Final payload failed its length or SHA-256 gate.");
-        }
-
-        using var finalModule = ModuleDefMD.Load(finalBytes);
-        var assemblyName = finalModule.Assembly?.Name.String ?? finalModule.Name.String;
-        if (!string.Equals(assemblyName, profile.FinalAssemblyName, StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("Final payload assembly identity failed its profile gate.");
-        }
-
-        var info = new PayloadInfo(
-            $"{nestedResource.Name}/{profile.NestedEntryName}",
-            profile.NestedEntrySha256,
-            ciphertext.Length,
-            Convert.ToHexStringLower(SHA256.HashData(cleartext)),
-            finalBytes.Length,
-            finalHash,
-            assemblyName,
-            finalModule.Name,
-            finalModule.EntryPoint?.MDToken.Raw ?? 0,
-            finalModule.Resources.Select(item => item.Name.String).ToArray());
-        return new ExtractedPayload(info, finalBytes);
-    }
-
     private static byte[] ExtractByteArrayRecord(ReadOnlySpan<byte> resourceData, int expectedLength)
     {
         var matches = new List<byte[]>();
@@ -1285,66 +1098,28 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
     }
 }
 
-public static class PayloadResourceCodec
+/// <summary>
+/// The samples whose string table the interpreter cannot yet frame on its own.
+/// </summary>
+/// <remarks>
+/// Recognizing a sample by its hash is the opposite of what this tool is for, and everything these
+/// entries once carried — the payload cipher, its keys, the expected outputs — is gone, because
+/// interpreting the module's own unpacker now recovers those payloads without being told anything.
+/// What remains is an admission: for these two the string-table capture reports ambiguous framing,
+/// and without the older strategy they would produce no output at all. The entries should go when
+/// the capture can frame a table the protector's virtual machine builds; until then, removing them
+/// would trade a narrow piece of cheating for a wide loss.
+/// </remarks>
+public static class LegacyStringStrategySamples
 {
-    private static readonly Dictionary<string, PayloadCodecProfile> Profiles =
+    private static readonly HashSet<string> Recognized =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["ad0c3182b18b5d7ba8771d830f4d51b4ada7e26f8d05223f4379e6312aba65fa"] =
-                new(
-                    "c58ab86a6470b2f08e3edfb0d8301d80c12df17e7c9f08d3dde52ba0752ac741",
-                    "412461ab23fbd615d1985cf54f763bfbac422cf862a9b788a30fa7da2606a743",
-                    "7fa1a9d74dad14fd686ad7b2e794111d1093de3fefe97c51d1908e44586d04de",
-                    485376,
-                    "28283748cd92fc7602cf7a23e3eb0199d81640e59e2f6d634e031262b28213f2",
-                    0x14F5581E,
-                    0x2C784A62,
-                    "f94b00a2-0086-4424-b9df-e76ba48d2dee",
-                    "6cab8f1f11b1e7a98b4c98be75614bb2f2c6a7276d2525e0f3d0b78b3684a8ee",
-                    "Xezkiylqy",
-                    "b534ac62d25a783884a1836da4072206d60b14c6bec0645db237096ac0f92a33",
-                    482920,
-                    "74f24a5086904ec72c105e0baf5fb29e",
-                    "285b1914002ffc96",
-                    "81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a",
-                    858112,
-                    "Lqcuzgc"),
-            ["c405398fc582e33bbbd37222b7360a6cfdc526146622141503de1ccf9de6174a"] =
-                new(
-                    "67c50155443e02afecb6be091bc0ef66f500f7670468c22d326e8cf0ea5b8c0a",
-                    "dab6ae574bf2ba13af741a6ccedcaee7abb083831c9d515fa90d48ce8f422124",
-                    "1db4e9c40d83bb790b89963888fd9a112b1d2467f7194dc55b6c35e14e443429",
-                    86528,
-                    "839978966791bf940bfba04c5c44bcd92ede506acd5f708a1d7583c38718b663",
-                    0x3DBE5B8B,
-                    0x468A5E02,
-                    "cf07e290-4799-450f-969c-80255a1a4f0c",
-                    "290ecf5495fd4883f9c4f092992462dbef1ee0caaa4e6858ba2b36f8851f9af9",
-                    "Xxjptrwnzv",
-                    "818cbce72b1d324077f02edcbca0c22c445228e47f4172277eea9f0bf50fd0ad",
-                    84320,
-                    "cfdf271a4450da8f316ee9552cb6a0e7",
-                    "84a3a9f20bc77ed1",
-                    "e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2",
-                    154112,
-                    "Ptnifif")
+            "ad0c3182b18b5d7ba8771d830f4d51b4ada7e26f8d05223f4379e6312aba65fa",
+            "c405398fc582e33bbbd37222b7360a6cfdc526146622141503de1ccf9de6174a"
         };
 
-    public static bool TryGetProfile(string inputSha256, out PayloadCodecProfile profile) =>
-        Profiles.TryGetValue(inputSha256, out profile!);
-
-    public static byte[] Decode(ReadOnlySpan<byte> ciphertext, PayloadCodecProfile profile)
-    {
-        var key = Convert.FromHexString(profile.EffectiveKeyHex);
-        if (key.Length != 32)
-        {
-            throw new InvalidDataException("Payload stream key must contain eight UInt32 words.");
-        }
-        return ReactorStreamMixer.DecodeKeyed(ciphertext, profile.A, profile.D, key);
-    }
-
-    internal static uint Mix(uint state, uint a, uint d)
-        => ReactorStreamMixer.Mix(state, a, d);
+    public static bool Includes(string inputSha256) => Recognized.Contains(inputSha256);
 }
 
 public sealed record ProxyDescriptor(
@@ -1608,8 +1383,8 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         if (!context.TryGetFact<CapturedStringTable>("strings.table", out var table) ||
             table is null)
         {
-            if (PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out _))
-                return RecoverLegacyProfiledStrings(context, candidates[0]);
+            if (LegacyStringStrategySamples.Includes(context.OriginalSha256))
+                return RecoverLegacyStrings(context, candidates[0]);
             return (PassStatus.Partial, 0,
                 ["No unique captured string table is available; no call site was modified."]);
         }
@@ -1725,23 +1500,41 @@ public sealed class StringRecoveryPass : DeobfuscationPass
             [$"Atomically restored all {replacements.Count} proven string sites."]);
     }
 
+    /// <summary>
+    /// Names the resource the protected code asks for by name, so the older string strategy can put
+    /// that name back at the call site that would have decrypted it.
+    /// </summary>
+    /// <remarks>
+    /// Extraction runs after string recovery, so its record of which resource a payload came from is
+    /// usually not there yet, and when it is it names the method the chain was entered through
+    /// rather than a resource. The fallback is the module's own catalog: one embedded resource is
+    /// both the largest and indistinguishable from random, and that is the encrypted stage. Requiring
+    /// it to be strictly the largest keeps the answer from being a guess between two candidates.
+    /// </remarks>
     private static string? ResolvePayloadResourceName(ArtifactContext context)
     {
+        var names = context.Module.Resources.Select(resource => resource.Name.String).ToHashSet(StringComparer.Ordinal);
         if (context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var payloads) &&
-            payloads is { Count: > 0 })
+            payloads is { Count: > 0 } &&
+            names.Contains(payloads[0].Info.SourceResource))
         {
             return payloads[0].Info.SourceResource;
         }
 
-        if (!PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
+        if (!context.TryGetFact<IReadOnlyList<ResourceInfo>>("resources.catalog", out var catalog) ||
+            catalog is null)
+        {
             return null;
-        return context.Module.Resources.OfType<EmbeddedResource>()
-            .FirstOrDefault(resource =>
-                Convert.ToHexStringLower(SHA256.HashData(resource.CreateReader().ToArray())) ==
-                profile.ResourceSha256)?.Name;
+        }
+
+        var opaque = catalog
+            .Where(resource => resource.Classification == "encrypted-or-compressed")
+            .OrderByDescending(resource => resource.Length)
+            .ToArray();
+        return opaque.Length >= 2 && opaque[0].Length > opaque[1].Length ? opaque[0].Name : null;
     }
 
-    private static (PassStatus, int, IReadOnlyList<string>) RecoverLegacyProfiledStrings(
+    private static (PassStatus, int, IReadOnlyList<string>) RecoverLegacyStrings(
         ArtifactContext context,
         MethodDef resolver)
     {

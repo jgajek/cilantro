@@ -76,6 +76,29 @@ public sealed class StaticHeap
         return true;
     }
 
+    private readonly Dictionary<string, StaticValue> _types = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Hands back the one object standing for a named type, making it on first request.
+    /// </summary>
+    /// <remarks>
+    /// The runtime hands out a single <c>Type</c> per type and programs depend on it: they compare
+    /// types with reference equality, key dictionaries on them, and branch on identity. Allocating
+    /// a fresh model for every lookup would make <c>typeof(int) == typeof(int)</c> false, which is
+    /// not a rounding error in fidelity but a wrong answer that sends the program down a path it
+    /// would never have taken, somewhere far from where the model was wrong.
+    /// </remarks>
+    public bool TryAllocateType(string identity, out StaticValue reference)
+    {
+        if (_types.TryGetValue(identity, out reference))
+            return true;
+        if (!TryAllocateObject("System.Type", out reference))
+            return false;
+        TrySetModelValue(reference, "TypeName", identity);
+        _types[identity] = reference;
+        return true;
+    }
+
     public bool TryGetObjectType(StaticValue reference, out string typeName)
     {
         typeName = string.Empty;
@@ -92,8 +115,74 @@ public sealed class StaticHeap
             return false;
         if (instance.Fields.TryGetValue(field.FullName, out value))
             return true;
+        if (TryReadOverlapping(instance, field, out value))
+            return true;
         value = DefaultFieldValue(field.FieldSig?.Type);
         return true;
+    }
+
+    /// <summary>
+    /// Reads a field that shares its storage with one already written.
+    /// </summary>
+    /// <remarks>
+    /// A type can place several fields at the same offset, and then writing one is writing all of
+    /// them: the bytes are the same bytes, read through whichever name the code picks. Storing
+    /// fields under their names, as this heap does, loses that — a value written as a long and read
+    /// back as an int would come back as the default zero, which is not a near miss but a wrong
+    /// number that goes on to be used as a length or an index.
+    ///
+    /// Obfuscator runtimes lean on this deliberately: a virtual machine that has to hold operands of
+    /// any type keeps one union-shaped cell and reads back whichever member matches the operand's
+    /// type. So this is not an exotic corner of the format but the ordinary case for the code the
+    /// tool exists to read.
+    /// </remarks>
+    private static bool TryReadOverlapping(HeapInstance instance, IField field, out StaticValue value)
+    {
+        value = StaticValue.Unknown;
+        if (field.ResolveFieldDef() is not { FieldOffset: { } offset } read ||
+            read.DeclaringType is not { IsExplicitLayout: true } union)
+        {
+            return false;
+        }
+
+        foreach (var sharing in union.Fields)
+        {
+            if (sharing == read || sharing.FieldOffset != offset ||
+                !instance.Fields.TryGetValue(sharing.FullName, out var written))
+            {
+                continue;
+            }
+
+            if (!TryReinterpret(written, read.FieldType, out value))
+                continue;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Reads the bits of a value as another primitive type, the way overlapping storage would.
+    /// </summary>
+    private static bool TryReinterpret(StaticValue written, TypeSig? asType, out StaticValue value)
+    {
+        value = StaticValue.Unknown;
+        if (!written.IsKnown || !written.IsInteger || asType is null)
+            return false;
+        var bits = written.Kind == StaticValueKind.Int64 ? written.AsInt64() : written.AsInt32();
+        value = asType.ElementType switch
+        {
+            ElementType.Boolean => StaticValue.FromInt32((bits & 1) != 0 ? 1 : 0),
+            ElementType.I1 => StaticValue.FromInt32(unchecked((sbyte)bits)),
+            ElementType.U1 => StaticValue.FromInt32(unchecked((byte)bits)),
+            ElementType.I2 => StaticValue.FromInt32(unchecked((short)bits)),
+            ElementType.U2 or ElementType.Char => StaticValue.FromInt32(unchecked((ushort)bits)),
+            ElementType.I4 => StaticValue.FromInt32(unchecked((int)bits)),
+            ElementType.U4 => StaticValue.FromInt32(unchecked((int)(uint)bits)),
+            ElementType.I8 or ElementType.U8 => StaticValue.FromInt64(bits),
+            _ => StaticValue.Unknown
+        };
+        return value.IsKnown;
     }
 
     /// <summary>
@@ -117,6 +206,18 @@ public sealed class StaticHeap
     {
         if (!TryObject(reference, out var item) || item is not HeapInstance instance)
             return false;
+        // Writing one member of overlapping storage overwrites the others, so anything previously
+        // written at the same offset is now stale and must not answer a later read.
+        if (field.ResolveFieldDef() is { FieldOffset: { } offset } written &&
+            written.DeclaringType is { IsExplicitLayout: true } union)
+        {
+            foreach (var sharing in union.Fields)
+            {
+                if (sharing != written && sharing.FieldOffset == offset)
+                    instance.Fields.Remove(sharing.FullName);
+            }
+        }
+
         instance.Fields[field.FullName] = value;
         return true;
     }
@@ -271,6 +372,22 @@ public sealed class StaticHeap
         var values = new StaticValue[length];
         Array.Fill(values, initial);
         reference = Add(new HeapArray(typeName, initial, values));
+        return true;
+    }
+
+    /// <summary>
+    /// Copies an array, keeping what it holds and what it says it holds.
+    /// </summary>
+    public bool TryCloneArray(StaticValue original, out StaticValue reference)
+    {
+        reference = StaticValue.Unknown;
+        if (!TryObject(original, out var item) || item is not HeapArray array ||
+            !TryReserve(array.Values.Length))
+        {
+            return false;
+        }
+
+        reference = Add(new HeapArray(array.ElementType, array.DefaultValue, [.. array.Values]));
         return true;
     }
 
@@ -1043,6 +1160,9 @@ public sealed class StaticMachineState
     /// loop should not be able to grow it without limit.
     /// </remarks>
     public IReadOnlyList<string> ThrowSites => _throwSites;
+
+    /// <summary>Whether any execution in this state stopped for want of steps.</summary>
+    public bool RanOutOfBudget { get; set; }
 
     private readonly List<string> _throwSites = [];
 

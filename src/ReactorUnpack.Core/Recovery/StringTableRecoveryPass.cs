@@ -98,10 +98,10 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
 
         if (candidates.Count != 1)
         {
-            if (PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out _))
+            if (LegacyStringStrategySamples.Includes(context.OriginalSha256))
             {
                 return (PassStatus.Success, 0,
-                    ["Legacy profiled sample retains its regression-locked string strategy."]);
+                    ["Recognized sample falls back to its older, regression-locked string strategy."]);
             }
             return (PassStatus.Partial, 0,
             [

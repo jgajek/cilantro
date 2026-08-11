@@ -32,7 +32,7 @@ execution event. ReactorUnpack never loads or invokes protected code.
 | 7 | `ProxyCallFixer` | `delegate-proxy-analysis` | Stronger. Bijective field-to-target validation; the stream codec is derived structurally rather than by hash. |
 | 8 | `TypeRestorer` | `type-restoration` | Weaker/conservative, clean-room. Promotes non-public `object` fields only when every writer agrees; no public-API signature changes. |
 | 9 | `MethodInliner` | `method-inlining` | Parity. Redirects proven single-call pass-through forwarders, collapsing chains to their end, with stack-neutrality proof and full-body rollback. Covers Reactor's object-laundering wrappers over framework calls, whose declared types are allowed to differ from the target's only by a widening to `object`. Four hundred to six hundred sites per JIT-hook sample. |
-| 10 | `AssemblyResolver` (payload dumping) | `payload-extraction` | Parity. Bounded, strictly framed managed-metadata extraction; the `Assembly.Load` sink is never invoked. |
+| 10 | `AssemblyResolver` (payload dumping) | `payload-extraction` | Stronger on reach, equal on framing. The general route interprets whatever unpacker the module carries and takes the bytes as they reach `Assembly.Load`, so a crypter's cipher, container, and stage count need not be known and need not be Reactor's; a driver written as a constructed object is entered as readily as a static one. The sink is never invoked, and a recovered buffer is believed only after it parses as managed metadata twice over. A crypter whose setup is itself virtualized is reached by running its virtual machine as the IL it is, at the cost of a much longer interpretation. |
 | 11 | `ResourceResolver` (reattach) | `resource-restoration` + `resource-hook-elision` | Parity. Interprets the module's own bundle reader under the bounded machine, reads the decrypted satellite assembly's streams back onto the module, and drops the resolve subscription those streams made unreachable. |
 | 12 | `CosturaDumper` | `costura-extraction` | Parity. Extracts `costura.*.dll(.compressed)` assemblies into the payload writer. |
 | 13 | `ControlFlowDeobfuscator` | `dispatcher-deobfuscation` + `control-flow-completion` | Clean-room. Proves dispatcher edges, folds constant branches, and deletes all unreachable code with EH regions preserved and per-method verification. |
@@ -66,7 +66,10 @@ The corpus proves method-body recovery, proxy fixing, string recovery,
 anti-tamper neutralization, control-flow completion, encrypted-resource
 restoration, and payload extraction on real samples. Boolean protection, token
 proxies, Costura packaging, and native packing are implemented and unit tested
-but not yet represented by a real corpus sample; the manifest schema and runner
+but not yet represented by a real corpus sample. Payload recovery by
+interpretation is proved on both payload-carrying samples, each of which hides
+its unpacker behind a virtualized initializer that the machine runs rather than
+lifts; the recovered stages are pinned by hash. The manifest schema and runner
 already carry the gates (`minimumBooleansRecovered`, `minimumTokensRestored`,
 `minimumResourcesRestored`, `maximumRemainingSwitchDispatchers`,
 `maximumUnreachableInstructions`, `expectUnsupportedReason`) so those samples can
