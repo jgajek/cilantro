@@ -203,6 +203,11 @@ public static class PayloadChainRecovery
                     ? "the startup path ran to completion without loading anything from memory"
                     : $"the startup path stopped before any load: {result.Diagnostic}"
                 : $"{machine.State.CapturedAssemblyLoads.Count} loaded buffer(s) are not managed assemblies";
+            // Where it first went wrong is more use than where it finally stopped, because a loader
+            // that catches its own exceptions reports them far from their cause.
+            var throws = machine.State.ThrowSites;
+            if (throws.Count != 0)
+                diagnostic += $"; first threw at {string.Join(", then ", throws.Take(3))}";
             return null;
         }
 

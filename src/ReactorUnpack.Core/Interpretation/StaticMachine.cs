@@ -474,7 +474,15 @@ public sealed class StaticMachine
                             var thrown = instruction.OpCode.Code == Code.Rethrow
                                 ? caught
                                 : Pop(stack);
-                            if (TryDispatchToCatch(method, indices, ip, thrown, out var handlerIndex))
+                            var landed = TryDispatchToCatch(
+                                method, indices, ip, thrown, out var handlerIndex);
+                            State.RecordThrow(
+                                (State.Heap.TryGetRuntimeTypeName(thrown, out var thrownType)
+                                    ? thrownType
+                                    : "an unmodeled object") +
+                                $" from {method.Name} IL_{instruction.Offset:X4}" +
+                                (landed ? " (caught here)" : " (left the method)"));
+                            if (landed)
                             {
                                 stack.Clear();
                                 stack.Add(thrown);
@@ -1851,6 +1859,15 @@ public sealed class StaticMachine
         return true;
     }
 
+    /// <summary>
+    /// Whether a handler catches what was thrown.
+    /// </summary>
+    /// <remarks>
+    /// A handler catches a type and everything derived from it, so the question is asked of the
+    /// thrown object's ancestry rather than the handler's. Where the thrown type is not known, only
+    /// a catch-all is accepted, since resuming in a handler that would not really have run puts the
+    /// program on a path it never took.
+    /// </remarks>
     private bool Catches(ExceptionHandler handler, StaticValue thrown)
     {
         var caught = handler.CatchType?.FullName;
@@ -1860,9 +1877,9 @@ public sealed class StaticMachine
             return false;
         if (string.Equals(actual, caught, StringComparison.Ordinal))
             return true;
-        for (var type = handler.CatchType.ResolveTypeDef(); type is not null;)
+        for (var type = State.ModuleMetadata?.Find(actual, false); type is not null;)
         {
-            if (string.Equals(type.FullName, actual, StringComparison.Ordinal))
+            if (string.Equals(type.FullName, caught, StringComparison.Ordinal))
                 return true;
             type = type.BaseType?.ResolveTypeDef();
         }

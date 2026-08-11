@@ -1032,6 +1032,27 @@ public sealed class StaticMachineState
 
     public void CaptureAssemblyLoad(byte[] image) => _capturedAssemblyLoads.Add(image);
 
+    /// <summary>
+    /// Where interpreted code threw, in order, so a run that ended in an exception can be read back.
+    /// </summary>
+    /// <remarks>
+    /// Obfuscator runtimes catch their own exceptions and rethrow them somewhere else entirely, so
+    /// the place an interpretation finally stops is rarely the place it went wrong. Keeping the
+    /// throws in the order they happened is what makes the first one findable, and the first one is
+    /// almost always the one that matters. The log is bounded because a program that throws in a
+    /// loop should not be able to grow it without limit.
+    /// </remarks>
+    public IReadOnlyList<string> ThrowSites => _throwSites;
+
+    private readonly List<string> _throwSites = [];
+
+    public void RecordThrow(string where)
+    {
+        const int mostWorthKeeping = 64;
+        if (_throwSites.Count < mostWorthKeeping)
+            _throwSites.Add(where);
+    }
+
     public IReadOnlyDictionary<string, StaticValue> StaticFields => _staticFields;
     public IReadOnlyDictionary<string, byte[]> Resources => _resources;
     public IReadOnlyList<TypeInitializationEvent> TypeInitializationEvents =>
