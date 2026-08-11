@@ -19,7 +19,10 @@ The batch runner verifies each input hash before analysis. `profiled` and
 `detected` entries must emit deterministic verified output; `exploratory`
 entries remain analysis-only; negative controls must receive no destructive
 edits. Recovery expectations include restored-body counts, remaining-stub
-limits, string-site coverage, mutation limits, and optional oracle parity.
+limits, string-site coverage, mutation limits, and optional oracle parity, plus
+gates for recovered booleans, restored tokens, restored resources, maximum
+remaining switch dispatchers, maximum unreachable instructions, and an expected
+unsupported diagnostic for native-packed inputs.
 
 ```bash
 dotnet run --project src/ReactorUnpack.Cli -- corpus run
@@ -177,10 +180,16 @@ hashes, pass counts, and independent dnlib reload.
 - JIT-hook writes that do not deterministically target every catalogued stub;
 - Reactor VM instructions or exception paths outside the bounded model;
 - non-unique or incompletely referenced VM-backed string tables;
-- code-virtualization lifting;
-- destructive removal of runtime/proxy types and encrypted resources;
-- renaming; and
+- code-virtualization lifting; and
 - dynamic execution of protected assemblies.
+
+Native-stub unpacking (NecroBit native / QuickLZ) is a deferred capability, not
+a silent failure: `metadata-preflight` detects a native entry point, a managed
+native header, or a non-IL-only image and reports the input as unsupported with
+a specific diagnostic naming the deferred stage.
+
+Destructive removal of runtime/proxy types and symbol renaming are no longer
+permanently out of scope; they are opt-in and off by default (see below).
 
 The JIT-hook generation is detected through duplicate raw metadata rows,
 hundreds of `NoInlining` default-return stubs, high-entropy patch resources,
@@ -207,6 +216,27 @@ verification. Any unmet condition preserves every body and refuses output.
 
 Unsupported mechanisms remain intact and are reported. This is safer than
 claiming broad Reactor 6/7 compatibility or emitting a partially damaged file.
+
+## Opt-in destructive cleanup and renaming
+
+Two transforms are available only when the caller requests them and stay off by
+default, so all fail-closed behavior and every existing test holds unchanged:
+
+- `--remove-runtime` runs `runtime-cleanup`, which deletes only Reactor
+  delegate-proxy types proven dead by a fixed-point whole-module reference scan,
+  gated by `RewritePolicy.CanRemoveRuntime` (recovery complete, no surviving use
+  site, confidence at least 0.95).
+- `--rename` runs `symbol-renaming`, which deterministically renames only
+  non-public members whose names are structurally proven Reactor-generated,
+  skipping virtual, P/Invoke, constructor, and serialization-sensitive members,
+  and writes an old-to-new map beside the JSON reports.
+
+Identity verification is policy-aware rather than bypassed: each pass declares
+the exact removals, additions, and renames it made, and the snapshot comparison
+still fails on any change outside that declared allowance.
+
+A full stage-by-stage comparison against NETReactorSlayer's sixteen stages is in
+[parity.md](parity.md).
 
 ## Clean-room boundary
 

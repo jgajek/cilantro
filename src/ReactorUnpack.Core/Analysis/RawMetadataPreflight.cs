@@ -120,6 +120,19 @@ public sealed class MetadataPreflightPass : DeobfuscationPass
         context.SetFact("metadata.raw", facts);
         foreach (var anomaly in facts.Anomalies)
             context.AddEvidence(new Evidence("metadata-anomaly", anomaly, Confidence: 1.0));
+
+        if (NativePackDetector.TryDescribe(context.Module, out var nativeReason))
+        {
+            context.SetFact("preflight.nativePacked", true);
+            context.AddEvidence(new Evidence("native-pack", nativeReason, Confidence: 1.0));
+            return (PassStatus.Unsupported, 0,
+            [
+                nativeReason,
+                "Native-stub unpacking (NecroBit native/QuickLZ) is a deferred capability; " +
+                "static managed recovery cannot proceed on this input."
+            ]);
+        }
+
         return (PassStatus.Success, 0,
         [
             $"Raw metadata: {facts.ModuleRows} Module row(s), {facts.AssemblyRows} Assembly row(s).",

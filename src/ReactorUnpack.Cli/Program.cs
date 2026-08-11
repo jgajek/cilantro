@@ -20,6 +20,8 @@ internal static class ReactorCommand
 
         var analyzeOnly = false;
         var failOnPartial = false;
+        var removeRuntime = false;
+        var renameSymbols = false;
         string? output = null;
         string? reportDirectory = null;
         string? input = null;
@@ -33,6 +35,12 @@ internal static class ReactorCommand
                     break;
                 case "--fail-on-partial":
                     failOnPartial = true;
+                    break;
+                case "--remove-runtime":
+                    removeRuntime = true;
+                    break;
+                case "--rename":
+                    renameSymbols = true;
                     break;
                 case "-o":
                 case "--output":
@@ -71,11 +79,13 @@ internal static class ReactorCommand
         {
             var pipeline = new ReactorPipeline();
             var result = pipeline.Run(input, new PipelineOptions(
-                analyzeOnly,
+                AnalyzeOnly: analyzeOnly,
                 PreserveTokens: true,
-                failOnPartial,
-                output,
-                reportDirectory));
+                FailOnPartial: failOnPartial,
+                RemoveRuntime: removeRuntime,
+                RenameSymbols: renameSymbols,
+                OutputPath: output,
+                ReportDirectory: reportDirectory));
 
             Console.WriteLine($"Input:    {result.Report.InputSha256}");
             Console.WriteLine($"Analysis: {result.AnalysisReportPath}");
@@ -180,6 +190,8 @@ internal static class ReactorCommand
             Options:
               --analyze-only       Produce reports without writing a transformed assembly
               --fail-on-partial    Refuse output when any pass is incomplete
+              --remove-runtime     Delete proven-dead Reactor runtime types (opt-in, destructive)
+              --rename             Rename proven Reactor-generated non-public symbols (opt-in)
               -o, --output PATH    Select the cleaned assembly path
               --report-dir DIR     Select the JSON report directory
               -h, --help           Show this help

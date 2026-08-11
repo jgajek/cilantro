@@ -25,7 +25,13 @@ public sealed record CorpusSample(
     double? MinimumStringSiteCoverage = null,
     int? MaximumMutationCount = null,
     bool RequireOracleParity = false,
-    string? ExpectedOutputSha256 = null);
+    string? ExpectedOutputSha256 = null,
+    int? MinimumBooleansRecovered = null,
+    int? MinimumTokensRestored = null,
+    int? MinimumResourcesRestored = null,
+    int? MaximumRemainingSwitchDispatchers = null,
+    int? MaximumUnreachableInstructions = null,
+    string? ExpectUnsupportedReason = null);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -165,6 +171,15 @@ public static class CorpusRunner
             diagnostics.Add("Profiled sample did not emit verified output.");
         if (result.Report.Passes.Any(pass => pass.Status == PassStatus.Failed))
             diagnostics.Add("At least one pipeline pass failed.");
+        if (sample.ExpectUnsupportedReason is string expectedReason)
+        {
+            var reported = result.Report.Passes.Any(pass =>
+                pass.Status == PassStatus.Unsupported &&
+                pass.Diagnostics.Any(diagnostic =>
+                    diagnostic.Contains(expectedReason, StringComparison.OrdinalIgnoreCase)));
+            if (!reported)
+                diagnostics.Add($"Expected an unsupported diagnostic mentioning '{expectedReason}'.");
+        }
         ValidateRecoveryExpectations(sample, result.Report.Recovery, diagnostics);
 
         OracleComparison? oracle = null;
@@ -273,6 +288,23 @@ public static class CorpusRunner
         if (sample.MaximumMutationCount is int mutations &&
             recovery.MutationCount > mutations)
             diagnostics.Add($"Mutation count {recovery.MutationCount} exceeds {mutations}.");
+        if (sample.MinimumBooleansRecovered is int booleans &&
+            recovery.BooleansRecovered < booleans)
+            diagnostics.Add($"Recovered booleans {recovery.BooleansRecovered} is below {booleans}.");
+        if (sample.MinimumTokensRestored is int tokens &&
+            recovery.TokensRestored < tokens)
+            diagnostics.Add($"Restored tokens {recovery.TokensRestored} is below {tokens}.");
+        if (sample.MinimumResourcesRestored is int restoredResources &&
+            recovery.ResourcesRestored < restoredResources)
+            diagnostics.Add($"Restored resources {recovery.ResourcesRestored} is below {restoredResources}.");
+        if (sample.MaximumRemainingSwitchDispatchers is int maxDispatchers &&
+            recovery.RemainingSwitchDispatchers > maxDispatchers)
+            diagnostics.Add(
+                $"Remaining switch dispatchers {recovery.RemainingSwitchDispatchers} exceed {maxDispatchers}.");
+        if (sample.MaximumUnreachableInstructions is int maxUnreachable &&
+            recovery.RemainingUnreachableInstructions > maxUnreachable)
+            diagnostics.Add(
+                $"Remaining unreachable instructions {recovery.RemainingUnreachableInstructions} exceed {maxUnreachable}.");
     }
 
     private static HashSet<string> MethodSignatures(ModuleDef module) =>

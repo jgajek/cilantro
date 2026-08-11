@@ -83,7 +83,11 @@ public sealed record RewriteAllowance(
     IReadOnlySet<string>? AddedResources = null,
     IReadOnlySet<string>? RemovedResources = null,
     IReadOnlySet<string>? RemovedPublicApi = null,
-    IReadOnlyDictionary<string, string>? RenamedPublicApi = null)
+    IReadOnlyDictionary<string, string>? RenamedPublicApi = null,
+    IReadOnlySet<uint>? RemovedMethodTokens = null,
+    int RemovedTypeCount = 0,
+    int RemovedFieldCount = 0,
+    IReadOnlySet<string>? AddedPublicApi = null)
 {
     public static RewriteAllowance None { get; } = new();
 
@@ -93,8 +97,12 @@ public sealed record RewriteAllowance(
         RemovedResources ?? System.Collections.Immutable.ImmutableHashSet<string>.Empty;
     public IReadOnlySet<string> RemovedPublicApiSet =>
         RemovedPublicApi ?? System.Collections.Immutable.ImmutableHashSet<string>.Empty;
+    public IReadOnlySet<string> AddedPublicApiSet =>
+        AddedPublicApi ?? System.Collections.Immutable.ImmutableHashSet<string>.Empty;
     public IReadOnlyDictionary<string, string> RenamedPublicApiMap =>
         RenamedPublicApi ?? System.Collections.Immutable.ImmutableDictionary<string, string>.Empty;
+    public IReadOnlySet<uint> RemovedMethodTokenSet =>
+        RemovedMethodTokens ?? System.Collections.Immutable.ImmutableHashSet<uint>.Empty;
 }
 
 public sealed record ArtifactIdentitySnapshot(

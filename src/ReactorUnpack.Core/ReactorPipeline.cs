@@ -89,7 +89,15 @@ public sealed record RecoveryReportMetrics(
     int RemainingMethodStubs,
     int StringCallSites,
     int ReplacedStringSites,
-    int MutationCount);
+    int MutationCount,
+    int BooleansRecovered = 0,
+    int TokensRestored = 0,
+    int ResourcesRestored = 0,
+    int UnreachableInstructionsRemoved = 0,
+    int RemainingSwitchDispatchers = 0,
+    int RuntimeTypesRemoved = 0,
+    int SymbolsRenamed = 0,
+    int RemainingUnreachableInstructions = 0);
 
 public sealed class ArtifactContext : IDisposable
 {
@@ -191,6 +199,8 @@ public sealed record PipelineOptions(
     bool AnalyzeOnly = false,
     bool PreserveTokens = true,
     bool FailOnPartial = false,
+    bool RemoveRuntime = false,
+    bool RenameSymbols = false,
     string? OutputPath = null,
     string? ReportDirectory = null);
 
@@ -236,6 +246,7 @@ public sealed class ReactorPipeline
         new ConstantPredicatePass(),
         new DispatcherDeobfuscationPass(),
         new CfgDeadCodePass(),
+        new ControlFlowCompletionPass(),
         new TokenRecoveryPass(),
         new TypeRestorationPass(),
         new MethodInliningPass(),
@@ -247,6 +258,8 @@ public sealed class ReactorPipeline
         new ResourceRestorationPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
+        new RuntimeCleanupPass(),
+        new SymbolRenamingPass(),
         new MetadataSanitizationPass()
     ];
 
@@ -254,6 +267,8 @@ public sealed class ReactorPipeline
     {
         options ??= new PipelineOptions();
         using var context = ArtifactContext.Load(inputPath);
+        context.SetFact("options.removeRuntime", options.RemoveRuntime);
+        context.SetFact("options.renameSymbols", options.RenameSymbols);
 
         foreach (var planned in PipelinePlanner.Plan(_passes))
         {
@@ -287,10 +302,12 @@ public sealed class ReactorPipeline
             context.AddPassResult(pass.Run(context));
         }
 
+        var allowance = BuildRewriteAllowance(context);
         var verification = AssemblyVerifier.Verify(
             context.Module,
             context.OriginalIdentity,
-            context.OriginalStructure);
+            context.OriginalStructure,
+            allowance);
         var fatalFailure = context.PassResults.Any(result => result.Status == PassStatus.Failed);
         var incompleteRecovery = context.PassResults.Any(result =>
             result.Status is PassStatus.Partial or PassStatus.Unsupported);
@@ -310,6 +327,7 @@ public sealed class ReactorPipeline
             : Path.GetFullPath(options.OutputPath);
 
         var payloadPaths = WritePayloads(context, reportDirectory, stem);
+        WriteRenameMap(context, reportDirectory, stem);
         var resourceInfos = ResourceInspector.Inspect(context.Module);
         var report = BuildReport(context, resourceInfos, verification);
         WriteJson(analysisPath, report);
@@ -321,7 +339,8 @@ public sealed class ReactorPipeline
             var outputVerification = AssemblyVerifier.VerifyFile(
                 outputPath,
                 context.OriginalIdentity,
-                context.OriginalStructure);
+                context.OriginalStructure,
+                allowance);
             if (!outputVerification.Passed)
             {
                 File.Delete(outputPath);
@@ -357,6 +376,12 @@ public sealed class ReactorPipeline
             out var protectedStubs);
         context.TryGetFact<int>("strings.callSites", out var stringCallSites);
         context.TryGetFact<int>("strings.replacedSites", out var replacedStringSites);
+        context.TryGetFact<int>("booleans.replacedSites", out var booleansRecovered);
+        context.TryGetFact<int>("tokens.restored", out var tokensRestored);
+        context.TryGetFact<int>("resources.restoredBundles", out var resourcesRestored);
+        context.TryGetFact<int>("cfg.unreachableInstructionsRemoved", out var unreachableRemoved);
+        context.TryGetFact<int>("cleanup.removedTypeCount", out var runtimeTypesRemoved);
+        context.TryGetFact<IReadOnlyDictionary<string, string>>("rename.map", out var renameMap);
         return new ArtifactReport(
             Version,
             context.InputPath,
@@ -378,9 +403,57 @@ public sealed class ReactorPipeline
                 Math.Max(0, (protectedStubs?.Count ?? 0) - restoredBodies),
                 stringCallSites,
                 replacedStringSites,
-                context.Changes.Count),
+                context.Changes.Count,
+                booleansRecovered,
+                tokensRestored,
+                resourcesRestored,
+                unreachableRemoved,
+                CountRemainingSwitchDispatchers(context.Module),
+                runtimeTypesRemoved,
+                renameMap?.Count ?? 0,
+                CountRemainingUnreachableInstructions(context.Module)),
             verification.Passed,
             verification.Diagnostics);
+    }
+
+    /// <summary>
+    /// Counts the switch-flattener-shaped methods that survive in the final module, so the corpus
+    /// can gate on residual control-flow obfuscation.
+    /// </summary>
+    private static int CountRemainingSwitchDispatchers(ModuleDef module)
+    {
+        var analyzer = new DispatcherAnalyzer();
+        var count = 0;
+        foreach (var method in module.GetTypes().SelectMany(type => type.Methods))
+        {
+            if (!method.HasBody ||
+                !method.Body.Instructions.Any(instruction => instruction.OpCode == OpCodes.Switch))
+            {
+                continue;
+            }
+            if (analyzer.Analyze(method).Qualification != DispatcherQualification.NotCandidate)
+                count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Counts instructions the reachability walk cannot reach in the final module, so residual
+    /// dead code can be gated even where a method body was not otherwise touched.
+    /// </summary>
+    private static int CountRemainingUnreachableInstructions(ModuleDef module)
+    {
+        var count = 0;
+        foreach (var method in module.GetTypes().SelectMany(type => type.Methods))
+        {
+            if (!method.HasBody || method.Body.Instructions.Count == 0)
+                continue;
+            var reachable = CfgDeadCodePass.ComputeReachable(method);
+            count += method.Body.Instructions.Count(instruction => !reachable.Contains(instruction));
+        }
+
+        return count;
     }
 
     private static List<string> WritePayloads(
@@ -440,6 +513,62 @@ public sealed class ReactorPipeline
     private static void WriteJson<T>(string path, T value)
     {
         File.WriteAllText(path, JsonSerializer.Serialize(value, ReportJsonOptions));
+    }
+
+    /// <summary>
+    /// Assembles the declared identity and structural changes the opt-in passes recorded, so the
+    /// final verification gate can accept exactly those edits and nothing more.
+    /// </summary>
+    private static RewriteAllowance BuildRewriteAllowance(ArtifactContext context)
+    {
+        context.TryGetFact<IReadOnlySet<string>>("cleanup.removedResources", out var removedResources);
+        context.TryGetFact<IReadOnlySet<string>>("cleanup.removedPublicApi", out var cleanupRemovedApi);
+        context.TryGetFact<IReadOnlySet<uint>>("cleanup.removedMethodTokens", out var removedMethods);
+        context.TryGetFact<int>("cleanup.removedTypeCount", out var removedTypeCount);
+        context.TryGetFact<int>("cleanup.removedFieldCount", out var removedFieldCount);
+        context.TryGetFact<IReadOnlySet<string>>("rename.removedPublicApi", out var renameRemovedApi);
+        context.TryGetFact<IReadOnlySet<string>>("rename.addedPublicApi", out var renameAddedApi);
+
+        var removedApi = Union(cleanupRemovedApi, renameRemovedApi);
+        var addedApi = renameAddedApi;
+        if (removedResources is null && removedApi is null && addedApi is null &&
+            removedMethods is null && removedTypeCount == 0 && removedFieldCount == 0)
+        {
+            return RewriteAllowance.None;
+        }
+
+        return new RewriteAllowance(
+            RemovedResources: removedResources,
+            RemovedPublicApi: removedApi,
+            RemovedMethodTokens: removedMethods,
+            RemovedTypeCount: removedTypeCount,
+            RemovedFieldCount: removedFieldCount,
+            AddedPublicApi: addedApi);
+    }
+
+    private static IReadOnlySet<string>? Union(IReadOnlySet<string>? left, IReadOnlySet<string>? right)
+    {
+        if (left is null)
+            return right;
+        if (right is null)
+            return left;
+        var union = new HashSet<string>(left, StringComparer.Ordinal);
+        union.UnionWith(right);
+        return union;
+    }
+
+    /// <summary>
+    /// Emits the old-to-new symbol map beside the other JSON reports when renaming ran.
+    /// </summary>
+    private static void WriteRenameMap(ArtifactContext context, string reportDirectory, string stem)
+    {
+        if (!context.TryGetFact<IReadOnlyDictionary<string, string>>("rename.map", out var map) ||
+            map is null || map.Count == 0)
+        {
+            return;
+        }
+
+        WriteJson(Path.Combine(reportDirectory, $"{stem}.renames.json"), map);
     }
 
     private static void ValidateDependencies(IReadOnlyList<IDeobfuscationPass> passes)
@@ -1714,23 +1843,36 @@ public static class AssemblyVerifier
 
         if (originalStructure is not null)
         {
+            var effective = allowance ?? RewriteAllowance.None;
             var current = ArtifactStructuralSnapshot.Capture(module);
-            if (current.TypeCount != originalStructure.TypeCount)
+            var removedMethods = effective.RemovedMethodTokenSet;
+            var resourceDelta = effective.AddedResourceSet.Count - effective.RemovedResourceSet.Count;
+            if (current.TypeCount != originalStructure.TypeCount - effective.RemovedTypeCount)
                 diagnostics.Add("Type count changed during rewriting.");
-            if (current.MethodCount != originalStructure.MethodCount)
+            if (current.MethodCount != originalStructure.MethodCount - removedMethods.Count)
                 diagnostics.Add("Method count changed during rewriting.");
-            if (current.FieldCount != originalStructure.FieldCount)
+            if (current.FieldCount != originalStructure.FieldCount - effective.RemovedFieldCount)
                 diagnostics.Add("Field count changed during rewriting.");
-            if (current.ResourceCount != originalStructure.ResourceCount)
+            if (current.ResourceCount != originalStructure.ResourceCount + resourceDelta)
                 diagnostics.Add("Resource count changed during rewriting.");
-            if (!current.MethodRvas.Keys.Order().SequenceEqual(
-                    originalStructure.MethodRvas.Keys.Order()))
-            {
+            if (!MethodTokensMatch(originalStructure.MethodRvas.Keys, current.MethodRvas.Keys, removedMethods))
                 diagnostics.Add("Method token set changed during rewriting.");
-            }
         }
 
         return new VerificationResult(diagnostics.Count == 0, diagnostics);
+    }
+
+    /// <summary>
+    /// Confirms the surviving method tokens are exactly the original set minus the declared removals.
+    /// </summary>
+    private static bool MethodTokensMatch(
+        IEnumerable<uint> original,
+        IEnumerable<uint> current,
+        IReadOnlySet<uint> removed)
+    {
+        var expected = new HashSet<uint>(original);
+        expected.ExceptWith(removed);
+        return expected.SetEquals(current);
     }
 
     /// <summary>
@@ -1751,15 +1893,19 @@ public static class AssemblyVerifier
     }
 
     /// <summary>
-    /// Confirms the public API changed only by the declared removals and renames.
+    /// Confirms the public API changed only by the declared removals, additions, and renames.
     /// </summary>
     private static bool ApiMatches(
         IReadOnlyList<string> original,
         IReadOnlyList<string> current,
         RewriteAllowance allowance)
     {
-        if (allowance.RemovedPublicApiSet.Count == 0 && allowance.RenamedPublicApiMap.Count == 0)
+        if (allowance.RemovedPublicApiSet.Count == 0 &&
+            allowance.AddedPublicApiSet.Count == 0 &&
+            allowance.RenamedPublicApiMap.Count == 0)
+        {
             return current.SequenceEqual(original, StringComparer.Ordinal);
+        }
 
         var expected = new HashSet<string>(original, StringComparer.Ordinal);
         foreach (var removed in allowance.RemovedPublicApiSet)
@@ -1769,18 +1915,21 @@ public static class AssemblyVerifier
             if (expected.Remove(rename.Key))
                 expected.Add(rename.Value);
         }
+        foreach (var added in allowance.AddedPublicApiSet)
+            expected.Add(added);
         return expected.SetEquals(current);
     }
 
     public static VerificationResult VerifyFile(
         string path,
         ArtifactIdentitySnapshot? originalIdentity = null,
-        ArtifactStructuralSnapshot? originalStructure = null)
+        ArtifactStructuralSnapshot? originalStructure = null,
+        RewriteAllowance? allowance = null)
     {
         try
         {
             using var module = ModuleDefMD.Load(path);
-            return Verify(module, originalIdentity, originalStructure);
+            return Verify(module, originalIdentity, originalStructure, allowance);
         }
         catch (Exception ex)
         {

@@ -27,11 +27,14 @@ public static class PipelinePlanner
         "constant-predicates",
         "dispatcher-deobfuscation",
         "cfg-dead-code",
+        "control-flow-completion",
         "token-recovery",
         "type-restoration",
         "method-inlining",
         "delegate-proxy-analysis",
-        "string-recovery"
+        "string-recovery",
+        "runtime-cleanup",
+        "symbol-renaming"
     ];
 
     public static IReadOnlyList<PlannedPass> Plan(IEnumerable<IDeobfuscationPass> passes) =>
@@ -74,6 +77,7 @@ public static class PipelinePlanner
         "constant-predicates" or
         "dispatcher-deobfuscation" or
         "cfg-dead-code" or
+        "control-flow-completion" or
         "token-recovery" or
         "type-restoration" or
         "method-inlining" or
