@@ -1429,11 +1429,18 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         var isModule = state.ModulePath.Length != 0 &&
             string.Equals(path, state.ModulePath, StringComparison.OrdinalIgnoreCase);
         if (name == "Exists")
+        {
+            if (isModule)
+                state.Observe(LoaderObservationKind.ModuleFileRead, "File.Exists on the module path");
             return IntrinsicResult.Completed(StaticValue.FromInt32(isModule ? 1 : 0));
+        }
         if (name == "ReadAllBytes")
         {
             if (!isModule)
                 return IntrinsicResult.Invalid($"File '{path}' is outside the analysed image.");
+            state.Observe(
+                LoaderObservationKind.ModuleFileRead,
+                $"File.ReadAllBytes of {state.ModuleFileBytes.Length} module byte(s)");
             return state.Heap.TryAllocateByteArray(state.ModuleFileBytes, out var bytes)
                 ? IntrinsicResult.Completed(bytes)
                 : AllocationFailure("module file bytes");
@@ -1501,6 +1508,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             {
                 return IntrinsicResult.Invalid($"RSA verification failed: {exception.Message}");
             }
+            context.State.Observe(
+                LoaderObservationKind.SignatureVerification,
+                $"{type}::{name} over a {digest.Length}-byte digest with a " +
+                $"{signature.Length}-byte signature",
+                verified);
             return IntrinsicResult.Completed(StaticValue.FromInt32(verified ? 1 : 0));
         }
         return IntrinsicResult.Invalid($"Unsupported asymmetric operation {type}::{name}.");
@@ -1806,6 +1818,9 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return IntrinsicResult.Invalid($"File '{path}' is outside the analysed image.");
         if (!heap.TryAllocateByteArray(state.ModuleFileBytes, out var buffer))
             return AllocationFailure("module file stream");
+        state.Observe(
+            LoaderObservationKind.ModuleFileRead,
+            $"FileStream over {state.ModuleFileBytes.Length} module byte(s)");
         var stream = arguments[0];
         heap.TrySetModelValue(stream, "Buffer", buffer);
         heap.TrySetModelValue(stream, "Position", 0L);
@@ -1953,11 +1968,16 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (arguments.Count != 1)
             return IntrinsicResult.Invalid($"AssemblyName operation {name} is denied.");
         if (name == "GetPublicKeyToken")
+        {
+            context.State.Observe(
+                LoaderObservationKind.StrongNameProbe,
+                $"AssemblyName.GetPublicKeyToken of {context.State.PublicKeyToken.Length} byte(s)");
             return context.State.Heap.TryAllocateByteArray(
                 context.State.PublicKeyToken,
                 out var token)
                 ? IntrinsicResult.Completed(token)
                 : AllocationFailure("public key token");
+        }
         if (name == "get_Name")
             return context.State.Heap.TryAllocateString(context.State.AssemblyName, out var value)
                 ? IntrinsicResult.Completed(value)

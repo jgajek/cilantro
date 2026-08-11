@@ -22,9 +22,14 @@ public static class PipelinePlanner
 {
     private static readonly HashSet<string> MutatingPasses =
     [
+        "boolean-recovery",
+        "antitamper-neutralization",
         "constant-predicates",
         "dispatcher-deobfuscation",
         "cfg-dead-code",
+        "token-recovery",
+        "type-restoration",
+        "method-inlining",
         "delegate-proxy-analysis",
         "string-recovery"
     ];
@@ -63,10 +68,15 @@ public static class PipelinePlanner
         "resource-roles" or
         "control-flow-analysis" => PipelinePhase.Analysis,
         "method-body-recovery" or
-        "string-table-recovery" => PipelinePhase.OriginalByteRecovery,
+        "string-table-recovery" or
+        "boolean-recovery" => PipelinePhase.OriginalByteRecovery,
+        "antitamper-neutralization" or
         "constant-predicates" or
         "dispatcher-deobfuscation" or
         "cfg-dead-code" or
+        "token-recovery" or
+        "type-restoration" or
+        "method-inlining" or
         "delegate-proxy-analysis" or
         "string-recovery" => PipelinePhase.IlTransform,
         _ => PipelinePhase.Finalize

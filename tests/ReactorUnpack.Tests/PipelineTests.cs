@@ -55,7 +55,8 @@ public sealed class PipelineTests
             Assert.Equal(2126, result.Report.MethodCount);
             Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
             Assert.Equal(1341, Pass(result, "cfg-dead-code").Changes);
-            Assert.Equal(2643, Pass(result, "delegate-proxy-analysis").Changes);
+            Assert.Equal(221, Pass(result, "method-inlining").Changes);
+            Assert.Equal(2425, Pass(result, "delegate-proxy-analysis").Changes);
             Assert.Equal(2, Pass(result, "string-recovery").Changes);
             Assert.Equal(2, result.Report.Payloads.Count);
             var payload = Assert.Single(result.Report.Payloads,

@@ -66,6 +66,8 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 limits,
                 out var firstResult,
                 out var firstWrites,
+                out var firstKeys,
+                out var firstEvidence,
                 out var setupDiagnostic) ||
             !TryExecuteBootstrap(
                 context,
@@ -73,6 +75,8 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 limits,
                 out var secondResult,
                 out var secondWrites,
+                out var secondKeys,
+                out var secondEvidence,
                 out setupDiagnostic))
         {
             return (PassStatus.Failed, 0, [setupDiagnostic!]);
@@ -88,6 +92,22 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
             return (PassStatus.Failed, 0,
             [
                 "The two bounded bootstrap interpretations produced different status, step count, or write logs.",
+                "No method body or initializer was modified."
+            ]);
+        }
+        if (!InitializedFieldCapture.CapturesAgree(firstKeys, secondKeys))
+        {
+            return (PassStatus.Failed, 0,
+            [
+                "The two bounded bootstrap interpretations disagreed on loader-initialized integer fields.",
+                "No method body or initializer was modified."
+            ]);
+        }
+        if (!firstEvidence.Agrees(secondEvidence))
+        {
+            return (PassStatus.Failed, 0,
+            [
+                "The two bounded bootstrap interpretations disagreed on loader observations or effects.",
                 "No method body or initializer was modified."
             ]);
         }
@@ -117,6 +137,33 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 firstResult.Diagnostic ?? "No diagnostic was provided.",
                 "No method body or initializer was modified."
             ]);
+        }
+
+        // The loader seeds per-site resolver keys into instance fields of a singleton it roots
+        // in a static field. Downstream string and boolean recovery cannot prove any call-site
+        // argument without them, and this is the only interpretation that runs the bootstrap.
+        if (firstKeys.Count != 0)
+        {
+            context.SetFact<IReadOnlyDictionary<uint, int>>("bootstrap.integerFields", firstKeys);
+            context.AddEvidence(new Evidence(
+                "loader-key-fields",
+                $"Captured {firstKeys.Count} loader-initialized integer field(s) that agreed " +
+                "across two independent bootstrap interpretations.",
+                $"{bootstrap.MDToken} {bootstrap.FullName}",
+                0.95));
+        }
+        context.SetFact("bootstrap.evidence", firstEvidence);
+        context.SetFact("bootstrap.token", bootstrap.MDToken.Raw);
+        foreach (var group in firstEvidence.Observations.GroupBy(item => item.Kind))
+        {
+            context.AddEvidence(new Evidence(
+                "loader-observation",
+                $"{group.Key}: {group.Count()} occurrence(s); " +
+                string.Join("; ", group.Select(item => item.Verdict is null
+                    ? item.Detail
+                    : $"{item.Detail} => {item.Verdict}").Distinct().Take(4)),
+                $"{bootstrap.MDToken} {bootstrap.FullName}",
+                0.95));
         }
 
         if (writes.Length == 0)
@@ -166,26 +213,13 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 ]);
             }
 
-            var initializer = context.Module.GlobalType.FindStaticConstructor();
-            var neutralizableCalls = GetNeutralizableBootstrapCalls(
-                context.Module,
-                initializer,
-                bootstrap,
-                firstWrites);
             var snapshots = replacements.Keys
-                .Append(initializer)
-                .Where(method => method is not null)
                 .Distinct()
-                .ToDictionary(method => method!, MethodBodySnapshot.Capture);
+                .ToDictionary(method => method, MethodBodySnapshot.Capture);
             try
             {
                 foreach (var replacement in replacements)
                     replacement.Key.Body = replacement.Value;
-                foreach (var call in neutralizableCalls)
-                {
-                    call.OpCode = OpCodes.Nop;
-                    call.Operand = null;
-                }
 
                 if (recoveredStubs.Any(stub =>
                         context.Module.ResolveToken(stub.Token) is not MethodDef restored ||
@@ -213,7 +247,7 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 return (PassStatus.Failed, 0,
                 [
                     exception.Message,
-                    "All method-body and initializer changes were rolled back."
+                    "All method-body changes were rolled back."
                 ]);
             }
 
@@ -225,23 +259,13 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                     $"0x{stub.Token:X8} {stub.Method}",
                     "Grafted deterministic statically restored CIL by unchanged MethodDef token."));
             }
-            foreach (var call in neutralizableCalls)
-            {
-                context.AddChange(new ChangeRecord(
-                    Name,
-                    "neutralize-bootstrap-call",
-                    $"{initializer!.MDToken} IL_{call.Offset:X4}",
-                    "Removed the now-unnecessary deterministic method-patch bootstrap call."));
-            }
             context.SetFact("method-protection.complete", true);
             context.SetFact("method-protection.restored", replacements.Count);
-            return (PassStatus.Success, replacements.Count + neutralizableCalls.Length,
+            return (PassStatus.Success, replacements.Count,
             [
                 $"Restored and verified all {replacements.Count} protected method bodies.",
                 $"Replayed {writes.Length} deterministic writes while preserving all bytes outside stub prefixes.",
-                neutralizableCalls.Length == 0
-                    ? "The bootstrap was preserved because its reachable calls were not proven unnecessary."
-                    : $"Neutralized {neutralizableCalls.Length} proven-unnecessary bootstrap call(s)."
+                "Removing the loader bootstrap itself is left to anti-tamper neutralization."
             ]);
         }
         catch (Exception exception) when (
@@ -266,8 +290,12 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
         StaticMachineLimits limits,
         out StaticExecutionResult result,
         out IReadOnlyList<MappedImageWrite> writes,
+        out Dictionary<uint, int> integerFields,
+        out LoaderInterpretationEvidence evidence,
         out string? diagnostic)
     {
+        integerFields = [];
+        evidence = LoaderInterpretationEvidence.Empty;
         var machine = new StaticMachine(limits, modelTypeInitialization: true);
         foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>())
             machine.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
@@ -288,6 +316,16 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
             return false;
         }
         result = machine.Execute(bootstrap);
+        // Materialize the write log before anything else runs: only the bootstrap's own writes
+        // may be replayed into method-body slots.
+        writes = machine.State.Heap.ImageWrites
+            .Select(MappedImageWrite.From)
+            .ToArray();
+        // Snapshot before the key-holder initializers run so the evidence describes the loader
+        // bootstrap alone.
+        evidence = machine.State.LoaderEvidence;
+        if (result.Succeeded)
+            integerFields = CaptureResolverKeys(context.Module, machine);
         if (machine.State.TypeInitializationEvents.Count != 0)
         {
             var events = string.Join(
@@ -303,11 +341,34 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 Diagnostic = $"Type initialization: {events}. {result.Diagnostic}"
             };
         }
-        writes = machine.State.Heap.ImageWrites
-            .Select(MappedImageWrite.From)
-            .ToArray();
         diagnostic = null;
         return true;
+    }
+
+    /// <summary>
+    /// Runs the resolver key holders' type initializers on the machine that just completed the
+    /// loader bootstrap, then captures the integer keys they installed.
+    /// </summary>
+    /// <remarks>
+    /// The keys must be read from a machine that has already run the bootstrap, because the
+    /// holders' initializers call into loader runtime state the bootstrap establishes. Reusing
+    /// this machine avoids a second expensive interpretation, and the write log has already been
+    /// materialized so nothing these initializers do can reach the method-body replay gate.
+    /// A holder that cannot be interpreted contributes no keys instead of failing recovery: its
+    /// call sites simply stay unproven downstream.
+    /// </remarks>
+    private static Dictionary<uint, int> CaptureResolverKeys(
+        ModuleDefMD module,
+        StaticMachine machine)
+    {
+        foreach (var holder in module.GetTypes()
+                     .Where(type => type != module.GlobalType &&
+                         ReactorStructureDetector.IsResolverKeyHolder(type)))
+        {
+            if (holder.FindStaticConstructor() is { HasBody: true } initializer)
+                machine.Execute(initializer);
+        }
+        return InitializedFieldCapture.CaptureInstanceIntegers(module, machine.State);
     }
 
     private static bool BodiesMatch(CilBody left, CilBody right) =>
@@ -377,35 +438,6 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
         replacements = new Dictionary<MethodDef, CilBody>();
         diagnostic = message;
         return false;
-    }
-
-    private static Instruction[] GetNeutralizableBootstrapCalls(
-        ModuleDef module,
-        MethodDef? initializer,
-        MethodDef bootstrap,
-        IReadOnlyList<MappedImageWrite> allWrites)
-    {
-        if (initializer?.HasBody != true ||
-            bootstrap.MethodSig?.Params.Count != 0 ||
-            bootstrap.ReturnType.ElementType != ElementType.Void ||
-            allWrites.Any(write => write.RegionKind != "MappedImage"))
-            return [];
-
-        var reachableReferences = module.GetTypes()
-            .SelectMany(type => type.Methods)
-            .Where(method => method.HasBody)
-            .SelectMany(method => CfgDeadCodePass.ComputeReachable(method)
-                .Where(instruction =>
-                    instruction.Operand is IMethod called &&
-                    called.ResolveMethodDef() == bootstrap)
-                .Select(instruction => (Method: method, Instruction: instruction)))
-            .ToArray();
-        if (reachableReferences.Length == 0 ||
-            reachableReferences.Any(reference =>
-                reference.Method != initializer ||
-                reference.Instruction.OpCode.FlowControl != FlowControl.Call))
-            return [];
-        return reachableReferences.Select(reference => reference.Instruction).ToArray();
     }
 
     private static MethodDef? FindBootstrap(ModuleDef module)

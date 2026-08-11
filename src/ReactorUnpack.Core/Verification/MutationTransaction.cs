@@ -68,6 +68,35 @@ public static class RewritePolicy
         confidence >= MinimumDestructiveConfidence;
 }
 
+/// <summary>
+/// Declares the identity changes a pass is permitted to make, so the identity gate can stay
+/// fail-closed while still allowing proven, opt-in edits.
+/// </summary>
+/// <remarks>
+/// Every set defaults to empty, which reproduces the original strict comparison exactly. A pass
+/// that legitimately changes identity (reattaching a decrypted resource, removing a consumed
+/// runtime type, renaming an obfuscated symbol) declares precisely what it touched; anything the
+/// module changed beyond the declaration still fails verification. Renames are keyed old to new so
+/// the gate can confirm the new name is present and the old one is gone.
+/// </remarks>
+public sealed record RewriteAllowance(
+    IReadOnlySet<string>? AddedResources = null,
+    IReadOnlySet<string>? RemovedResources = null,
+    IReadOnlySet<string>? RemovedPublicApi = null,
+    IReadOnlyDictionary<string, string>? RenamedPublicApi = null)
+{
+    public static RewriteAllowance None { get; } = new();
+
+    public IReadOnlySet<string> AddedResourceSet =>
+        AddedResources ?? System.Collections.Immutable.ImmutableHashSet<string>.Empty;
+    public IReadOnlySet<string> RemovedResourceSet =>
+        RemovedResources ?? System.Collections.Immutable.ImmutableHashSet<string>.Empty;
+    public IReadOnlySet<string> RemovedPublicApiSet =>
+        RemovedPublicApi ?? System.Collections.Immutable.ImmutableHashSet<string>.Empty;
+    public IReadOnlyDictionary<string, string> RenamedPublicApiMap =>
+        RenamedPublicApi ?? System.Collections.Immutable.ImmutableDictionary<string, string>.Empty;
+}
+
 public sealed record ArtifactIdentitySnapshot(
     uint EntryPointToken,
     bool StrongNameSigned,

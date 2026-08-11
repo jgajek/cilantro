@@ -196,6 +196,33 @@ public static class ReactorStructureDetector
             Code.Conv_I8 or Code.Conv_U or Code.Conv_U1 or Code.Conv_U2 or Code.Conv_U4 or
             Code.Conv_U8 or Code.Conv_R4 or Code.Conv_R8 or Code.Conv_R_Un;
 
+    /// <summary>
+    /// The minimum number of integer instance fields before a self-rooted singleton is treated
+    /// as a resolver key holder rather than an ordinary application type.
+    /// </summary>
+    private const int MinimumResolverKeyFields = 8;
+
+    /// <summary>
+    /// Recognizes the type Reactor uses to hold per-call-site resolver keys.
+    /// </summary>
+    /// <remarks>
+    /// Protected string and boolean call sites never pass a literal offset. Each computes
+    /// <c>constant XOR key</c>, loading the key with <c>ldsfld singleton; ldfld key</c>. The
+    /// holder is structurally distinctive: a class that roots an instance of itself in one of
+    /// its own static fields and declares a large block of integer instance fields that its
+    /// type initializer fills. Matching that shape avoids depending on the randomized
+    /// <c>&lt;Module&gt;{guid}</c> naming Reactor emits.
+    /// </remarks>
+    public static bool IsResolverKeyHolder(TypeDef type) =>
+        type.IsClass &&
+        !type.IsInterface &&
+        type.FindStaticConstructor() is not null &&
+        type.Fields.Any(field =>
+            field.IsStatic && field.FieldType?.FullName == type.FullName) &&
+        type.Fields.Count(field =>
+            !field.IsStatic &&
+            field.FieldSig?.Type.ElementType == ElementType.I4) >= MinimumResolverKeyFields;
+
     public static bool IsStringResolver(MethodDef method) =>
         method.HasBody &&
         method.MethodSig?.Params.Count == 1 &&

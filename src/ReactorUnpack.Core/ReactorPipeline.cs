@@ -231,12 +231,22 @@ public sealed class ReactorPipeline
         new ControlFlowAnalysisPass(),
         new MethodBodyRecoveryPass(),
         new StringTableRecoveryPass(),
+        new BooleanRecoveryPass(),
+        new AntiTamperNeutralizationPass(),
         new ConstantPredicatePass(),
         new DispatcherDeobfuscationPass(),
         new CfgDeadCodePass(),
-        new PayloadExtractionPass(),
+        new TokenRecoveryPass(),
+        new TypeRestorationPass(),
+        new MethodInliningPass(),
         new DelegateProxyPass(),
         new StringRecoveryPass(),
+        // Resource classification and payload extraction run last because a JIT-hook artifact
+        // hides every resource consumer behind an encrypted body and an encrypted name literal.
+        new ResourceRoleRefinementPass(),
+        new ResourceRestorationPass(),
+        new PayloadExtractionPass(),
+        new CosturaExtractionPass(),
         new MetadataSanitizationPass()
     ];
 
@@ -703,12 +713,16 @@ public sealed record PayloadCodecProfile(
 public sealed class PayloadExtractionPass : DeobfuscationPass
 {
     public override string Name => "payload-extraction";
-    public override IReadOnlyCollection<string> Dependencies => ["resource-roles"];
+    public override IReadOnlyCollection<string> Dependencies =>
+        ["resource-role-refinement", "resource-restoration"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
         if (!PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
         {
+            if (TryProveNoManagedPayload(context, out var accounting))
+                return (PassStatus.Success, 0, accounting);
+
             context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts);
             if (facts is not null &&
                 StructuralStreamDiscovery.TryDiscoverProxyProfile(
@@ -763,6 +777,7 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
             return (PassStatus.Unsupported, 0,
                 ["No structurally validated payload codec was found."]);
         }
+
 
         var resource = context.Module.Resources
             .OfType<EmbeddedResource>()
@@ -855,6 +870,57 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
             $"({finalPayload.Info.PayloadLength} bytes).",
             $"Final SHA-256: {finalPayload.Info.PayloadSha256}"
         ]);
+    }
+
+    /// <summary>
+    /// Decides whether the absence of a payload is a proven fact or an unsupported codec.
+    /// </summary>
+    /// <remarks>
+    /// Reporting "no payload codec" for an assembly that simply never embedded one is a false
+    /// negative, and because incomplete recovery withholds output it blocks otherwise complete
+    /// artifacts. Not every Reactor build uses the embedded-assembly feature: protected libraries
+    /// commonly ship only a method-patch stream, a string table, an integrity blob, and an
+    /// encrypted resource bundle.
+    ///
+    /// The proof is completeness of attribution rather than absence of a signal. Every embedded
+    /// resource must be attributed to a role established from recovered consumer IL, and none of
+    /// those roles may be a managed payload. A single unattributed resource keeps the pass
+    /// unsupported, because that blob is exactly where an unextracted assembly would hide.
+    /// </remarks>
+    private static bool TryProveNoManagedPayload(
+        ArtifactContext context,
+        out IReadOnlyList<string> diagnostics)
+    {
+        diagnostics = [];
+        var resources = context.Module.Resources.OfType<EmbeddedResource>().ToArray();
+        if (resources.Length == 0)
+        {
+            diagnostics = ["The module embeds no resource that could carry a managed payload."];
+            return true;
+        }
+        if (!context.TryGetFact<IReadOnlyList<ResourceRoleFact>>("resource.roles", out var roles) ||
+            roles is null)
+        {
+            return false;
+        }
+
+        var byName = roles.ToDictionary(role => role.Resource, StringComparer.Ordinal);
+        var attributed = resources.All(resource =>
+            byName.TryGetValue(resource.Name, out var role) && role.Role != ResourceRole.Unknown);
+        if (!attributed || roles.Any(role => role.Role == ResourceRole.ManagedPayload))
+            return false;
+
+        diagnostics =
+        [
+            $"All {resources.Length} embedded resource(s) are attributed to non-payload roles.",
+            "Roles: " + string.Join(
+                ", ",
+                roles.GroupBy(role => role.Role)
+                    .OrderBy(group => group.Key.ToString(), StringComparer.Ordinal)
+                    .Select(group => $"{group.Key}={group.Count()}")),
+            "The module does not embed a managed assembly, so there is nothing to extract."
+        ];
+        return true;
     }
 
     private static ExtractedPayload ExtractFinalPayload(
@@ -1278,13 +1344,16 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         }
 
         var resolver = candidates[0];
+        var aliases = ResolverAliasAnalysis.Resolve(context.Module, resolver);
         var callSites = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
             .Where(method => method.HasBody)
             .SelectMany(method => method.Body.Instructions
                 .Select((instruction, index) => (Method: method, Instruction: instruction, Index: index)))
             .Where(item => item.Instruction.Operand is IMethod called &&
-                IsSameMethod(called, resolver))
+                called.ResolveMethodDef() is { } resolved &&
+                aliases.Contains(resolved))
+            .Where(item => !ResolverAliasAnalysis.IsInternalForwardingCall(item.Method, aliases))
             .ToArray();
         if (callSites.Length == 0)
             return (PassStatus.Success, 0, ["No reachable string resolver call sites were found."]);
@@ -1333,15 +1402,21 @@ public sealed class StringRecoveryPass : DeobfuscationPass
                 replacement.Call.OpCode = OpCodes.Ldstr;
                 replacement.Call.Operand = replacement.Value;
             }
+            // Every rewritten site is gone, so the only tolerable references left are the
+            // forwarding calls inside aliases that now have no callers at all.
             var remaining = context.Module.GetTypes()
                 .SelectMany(type => type.Methods)
                 .Where(method => method.HasBody)
-                .SelectMany(method => method.Body.Instructions)
-                .Count(instruction => instruction.Operand is IMethod called &&
-                    IsSameMethod(called, resolver));
-            if (remaining != 0)
+                .SelectMany(method => method.Body.Instructions
+                    .Select(instruction => (Method: method, Instruction: instruction)))
+                .Where(item => item.Instruction.Operand is IMethod called &&
+                    called.ResolveMethodDef() is { } resolved &&
+                    aliases.Contains(resolved))
+                .Where(item => !ResolverAliasAnalysis.IsInternalForwardingCall(item.Method, aliases))
+                .ToArray();
+            if (remaining.Length != 0)
                 throw new InvalidOperationException(
-                    $"{remaining} targeted resolver reference(s) remained after rewrite.");
+                    $"{remaining.Length} targeted resolver reference(s) remained after rewrite.");
             var verification = AssemblyVerifier.Verify(
                 context.Module,
                 context.OriginalIdentity,
@@ -1569,7 +1644,8 @@ public static class AssemblyVerifier
     public static VerificationResult Verify(
         ModuleDef module,
         ArtifactIdentitySnapshot? originalIdentity = null,
-        ArtifactStructuralSnapshot? originalStructure = null)
+        ArtifactStructuralSnapshot? originalStructure = null,
+        RewriteAllowance? allowance = null)
     {
         var diagnostics = new List<string>();
         foreach (var method in module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
@@ -1622,14 +1698,17 @@ public static class AssemblyVerifier
 
         if (originalIdentity is not null)
         {
+            var effective = allowance ?? RewriteAllowance.None;
             var current = ArtifactIdentitySnapshot.Capture(module);
             if (current.EntryPointToken != originalIdentity.EntryPointToken)
                 diagnostics.Add("Entry point token changed during rewriting.");
             if (current.StrongNameSigned != originalIdentity.StrongNameSigned)
                 diagnostics.Add("Strong-name signed state changed during rewriting.");
-            if (!current.PublicApi.SequenceEqual(originalIdentity.PublicApi, StringComparer.Ordinal))
+            if (!ApiMatches(originalIdentity.PublicApi, current.PublicApi, effective))
                 diagnostics.Add("Public API changed during rewriting.");
-            if (!current.ResourceNames.SequenceEqual(originalIdentity.ResourceNames, StringComparer.Ordinal))
+            if (!SetMatches(
+                    originalIdentity.ResourceNames, current.ResourceNames,
+                    effective.AddedResourceSet, effective.RemovedResourceSet))
                 diagnostics.Add("Embedded resource set changed during rewriting.");
         }
 
@@ -1652,6 +1731,45 @@ public static class AssemblyVerifier
         }
 
         return new VerificationResult(diagnostics.Count == 0, diagnostics);
+    }
+
+    /// <summary>
+    /// Confirms the current set equals the original plus declared additions minus declared removals.
+    /// </summary>
+    private static bool SetMatches(
+        IReadOnlyList<string> original,
+        IReadOnlyList<string> current,
+        IReadOnlySet<string> added,
+        IReadOnlySet<string> removed)
+    {
+        var expected = new HashSet<string>(original, StringComparer.Ordinal);
+        foreach (var name in removed)
+            expected.Remove(name);
+        foreach (var name in added)
+            expected.Add(name);
+        return expected.SetEquals(current);
+    }
+
+    /// <summary>
+    /// Confirms the public API changed only by the declared removals and renames.
+    /// </summary>
+    private static bool ApiMatches(
+        IReadOnlyList<string> original,
+        IReadOnlyList<string> current,
+        RewriteAllowance allowance)
+    {
+        if (allowance.RemovedPublicApiSet.Count == 0 && allowance.RenamedPublicApiMap.Count == 0)
+            return current.SequenceEqual(original, StringComparer.Ordinal);
+
+        var expected = new HashSet<string>(original, StringComparer.Ordinal);
+        foreach (var removed in allowance.RemovedPublicApiSet)
+            expected.Remove(removed);
+        foreach (var rename in allowance.RenamedPublicApiMap)
+        {
+            if (expected.Remove(rename.Key))
+                expected.Add(rename.Value);
+        }
+        return expected.SetEquals(current);
     }
 
     public static VerificationResult VerifyFile(

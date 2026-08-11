@@ -1,5 +1,6 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using ReactorUnpack.Core.Interpretation;
 using ReactorUnpack.Core.Strings;
 
 namespace ReactorUnpack.Core.Recovery;
@@ -52,13 +53,18 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
         }
 
         var resolver = resolvers[0];
+        var aliases = ResolverAliasAnalysis.Resolve(context.Module, resolver);
         var references = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
             .Where(method => method.HasBody)
             .SelectMany(method => method.Body.Instructions.Select(instruction =>
                 (Method: method, Instruction: instruction)))
             .Where(item => item.Instruction.Operand is IMethod called &&
-                IsSameMethod(called, resolver))
+                called.ResolveMethodDef() is { } resolved &&
+                aliases.Contains(resolved))
+            // The forwarding call inside an alias passes that alias's own parameter, so it is
+            // accounted for by the alias's call sites rather than on its own.
+            .Where(item => !ResolverAliasAnalysis.IsInternalForwardingCall(item.Method, aliases))
             .ToArray();
         var directCalls = references.Where(item =>
                 item.Instruction.OpCode.Code is Code.Call or Code.Callvirt)
@@ -106,11 +112,14 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
             ]);
         }
 
-        var table = candidates[0];
+        var table = MergeLoaderKeys(context, candidates[0]);
         context.SetFact("strings.table", table);
         context.SetFact("strings.tableRecords", table.Records.Count);
         context.SetFact("strings.resolverToken", resolver.MDToken.Raw);
         context.SetFact("strings.expectedUses", directCalls.Length);
+        context.SetFact<IReadOnlyList<uint>>(
+            "strings.resolverAliases",
+            aliases.Where(alias => alias != resolver).Select(alias => alias.MDToken.Raw).ToArray());
         context.AddEvidence(new Evidence(
             "string-table",
             $"Captured {table.Records.Count} strictly framed UTF-16 strings with " +
@@ -121,6 +130,42 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
             [$"Captured {table.Records.Count} strings from {table.Source}.",
              $"Accounted for all {directCalls.Length} direct resolver use(s).",
              $"Captured {table.IntegerFields.Count} unique VM-initialized integer field(s)."]);
+    }
+
+    /// <summary>
+    /// Folds the loader-initialized resolver keys recovered while restoring method bodies into
+    /// the captured table.
+    /// </summary>
+    /// <remarks>
+    /// The string-table initializer only populates the table itself. The per-site XOR keys live
+    /// in instance fields seeded by the JIT-hook bootstrap, so on those samples the two halves
+    /// of the proof are produced by two different interpretations. A key captured by both must
+    /// agree, otherwise it is dropped and its call sites stay unproven.
+    /// </remarks>
+    private static CapturedStringTable MergeLoaderKeys(
+        ArtifactContext context,
+        CapturedStringTable table)
+    {
+        if (!context.TryGetFact<IReadOnlyDictionary<uint, int>>(
+                "bootstrap.integerFields", out var bootstrapKeys) ||
+            bootstrapKeys is null ||
+            bootstrapKeys.Count == 0)
+        {
+            return table;
+        }
+
+        var merged = new Dictionary<uint, int>(table.IntegerFields);
+        foreach (var entry in bootstrapKeys)
+        {
+            if (merged.TryGetValue(entry.Key, out var existing))
+            {
+                if (existing != entry.Value)
+                    merged.Remove(entry.Key);
+                continue;
+            }
+            merged[entry.Key] = entry.Value;
+        }
+        return table with { IntegerFields = merged };
     }
 
     private static bool IsSameMethod(IMethod candidate, MethodDef expected) =>

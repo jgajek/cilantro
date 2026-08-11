@@ -180,7 +180,7 @@ public static class StaticStringTableInterpreter
         }
 
         run = (candidates[0].Bytes, candidates[0].Records,
-            new Dictionary<uint, int>(), result.Steps, "managed-cil");
+            CaptureIntegerFields(module, machine), result.Steps, "managed-cil");
         diagnostic = string.Empty;
         return true;
     }
@@ -201,32 +201,8 @@ public static class StaticStringTableInterpreter
 
     private static Dictionary<uint, int> CaptureIntegerFields(
         ModuleDefMD module,
-        StaticMachine machine)
-    {
-        var roots = machine.State.StaticFields.Values
-            .Where(value => value.Kind == StaticValueKind.HeapReference)
-            .ToArray();
-        var result = new Dictionary<uint, int>();
-        foreach (var field in module.GetTypes().SelectMany(type => type.Fields)
-                     .Where(field => !field.IsStatic &&
-                         field.FieldSig?.Type.ElementType == ElementType.I4))
-        {
-            var values = roots
-                .Where(root => machine.State.Heap.TryGetRuntimeTypeName(
-                    root, out var runtimeType) &&
-                    runtimeType == field.DeclaringType.FullName)
-                .Select(root => machine.State.Heap.TryReadField(root, field, out var value)
-                    ? value
-                    : StaticValue.FromInt32(0))
-                .Where(value => value.IsInteger)
-                .Select(value => unchecked((int)value.AsInt64()))
-                .Distinct()
-                .ToArray();
-            if (values.Length == 1)
-                result[field.MDToken.Raw] = values[0];
-        }
-        return result;
-    }
+        StaticMachine machine) =>
+        InitializedFieldCapture.CaptureInstanceIntegers(module, machine.State);
 
     private static bool TryParseVmMethod(
         ModuleDefMD module,

@@ -4,6 +4,7 @@
 **/obj/
 artifacts/
 samples/
+scratch/
 TestResults/
 *.user
 *.suo

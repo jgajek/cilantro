@@ -24,6 +24,12 @@ public sealed class StaticHeap
     public int MaximumObjectLength => _limits.MaximumArrayLength;
     public IReadOnlyList<ImageRegionWrite> ImageWrites => _imageWrites;
 
+    /// <summary>
+    /// Notified with the region kind of every raw region write, so the owning machine state can
+    /// attribute the write to the call stack that performed it.
+    /// </summary>
+    internal Action<string>? RegionWriteObserver { get; set; }
+
     public bool TryAllocateString(string value, out StaticValue reference)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -88,6 +94,23 @@ public sealed class StaticHeap
             return true;
         value = DefaultFieldValue(field.FieldSig?.Type);
         return true;
+    }
+
+    /// <summary>
+    /// Reads a field only when the interpretation actually assigned it, unlike
+    /// <see cref="TryReadField"/> which substitutes the CLR default for an untouched field.
+    /// </summary>
+    /// <remarks>
+    /// Recovering loader key material must distinguish "the loader stored zero here" from
+    /// "this interpretation never reached the store". Defaulting the second case to zero
+    /// would turn a modeling gap into a confidently wrong constant.
+    /// </remarks>
+    public bool TryReadAssignedField(StaticValue reference, IField field, out StaticValue value)
+    {
+        value = StaticValue.Unknown;
+        return TryObject(reference, out var item) &&
+            item is HeapInstance instance &&
+            instance.Fields.TryGetValue(field.FullName, out value);
     }
 
     public bool TryWriteField(StaticValue reference, IField field, StaticValue value)
@@ -411,6 +434,7 @@ public sealed class StaticHeap
                 return false;
             source.CopyTo(region.Bytes.AsSpan(offset, source.Length));
             _imageWrites.Add(new ImageRegionWrite(reference, offset, source.ToArray(), region.Kind));
+            RegionWriteObserver?.Invoke(region.Kind);
             return true;
         }
 
@@ -937,7 +961,7 @@ public sealed class StaticMachineState
 
     public StaticMachineState(StaticMachineLimits limits)
     {
-        Heap = new StaticHeap(limits);
+        Heap = new StaticHeap(limits) { RegionWriteObserver = Evidence.RecordRegionWrite };
         Provenance = new ProvenanceGraph(
             limits.MaximumProvenanceNodes,
             limits.MaximumProvenanceDepth,
@@ -946,6 +970,21 @@ public sealed class StaticMachineState
 
     public StaticHeap Heap { get; }
     public ProvenanceGraph Provenance { get; }
+
+    /// <summary>
+    /// Records what the loader did and where, so later passes can decide what is removable from
+    /// interpretation evidence rather than from pattern guesses.
+    /// </summary>
+    internal LoaderEvidenceRecorder Evidence { get; } = new();
+
+    public LoaderInterpretationEvidence LoaderEvidence => Evidence.Snapshot();
+
+    /// <summary>
+    /// Reports a loader behavior worth proving, such as a signature verdict or a debugger probe.
+    /// </summary>
+    public void Observe(LoaderObservationKind kind, string detail, bool? verdict = null) =>
+        Evidence.Observe(kind, detail, verdict);
+
     public IReadOnlyDictionary<string, StaticValue> StaticFields => _staticFields;
     public IReadOnlyDictionary<string, byte[]> Resources => _resources;
     public IReadOnlyList<TypeInitializationEvent> TypeInitializationEvents =>
@@ -978,6 +1017,7 @@ public sealed class StaticMachineState
     public void WriteStaticField(IField field, StaticValue value)
     {
         _staticFields[field.FullName] = value;
+        Evidence.RecordStaticFieldWrite(field.FullName);
         if (_staticFieldReferences.TryGetValue(field.FullName, out var reference))
             Heap.TryWriteManaged(reference, value);
     }

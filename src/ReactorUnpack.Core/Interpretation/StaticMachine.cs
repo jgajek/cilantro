@@ -77,7 +77,27 @@ public sealed class StaticMachine
             State.Heap.AllocatedBytes);
     }
 
+    // Every frame is tracked so that side effects and loader observations can be attributed to the
+    // call subtree that produced them, which is what later passes need in order to prove what is
+    // safe to remove.
     private FrameResult ExecuteFrame(
+        MethodDef method,
+        IReadOnlyList<StaticValue> arguments,
+        StaticWorkBudget budget,
+        int depth)
+    {
+        State.Evidence.EnterMethod(method);
+        try
+        {
+            return ExecuteFrameCore(method, arguments, budget, depth);
+        }
+        finally
+        {
+            State.Evidence.LeaveMethod();
+        }
+    }
+
+    private FrameResult ExecuteFrameCore(
         MethodDef method,
         IReadOnlyList<StaticValue> arguments,
         StaticWorkBudget budget,
