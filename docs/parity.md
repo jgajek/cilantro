@@ -36,9 +36,9 @@ execution event. ReactorUnpack never loads or invokes protected code.
 | 11 | `ResourceResolver` (reattach) | `resource-restoration` + `resource-hook-elision` | Parity. Interprets the module's own bundle reader under the bounded machine, reads the decrypted satellite assembly's streams back onto the module, and drops the resolve subscription those streams made unreachable. |
 | 12 | `CosturaDumper` | `costura-extraction` | Parity. Extracts `costura.*.dll(.compressed)` assemblies into the payload writer. |
 | 13 | `ControlFlowDeobfuscator` | `dispatcher-deobfuscation` + `control-flow-completion` | Clean-room. Proves dispatcher edges, folds constant branches, and deletes all unreachable code with EH regions preserved and per-method verification. |
-| 14 | `Cleaner` | `runtime-cleanup` (on by default; `--keep-runtime` disables) | Weaker. Slayer also strips attributes and unused resources and fixes the entry point and metadata header. We delete any type or method that is unreachable, invisible outside the assembly, unexposed to reflection, unreferenced by survivors, and attributable to the protector. |
+| 14 | `Cleaner` | `runtime-cleanup` (on by default; `--keep-runtime` disables) | Weaker. Slayer also strips attributes and unused resources and fixes the entry point and metadata header. We delete any type or method that is unreachable, invisible outside the assembly, unexposed to reflection, unreferenced by survivors, and attributable to the protector, plus attributed type initializers whose bodies cannot do anything, for which reachability is beside the point. |
 | 15 | `SymbolRenamer` | `symbol-renaming` (opt-in `--rename`) | Much weaker. Slayer renames the full de4dot surface including public types and restores properties and events. We rename only non-public, non-virtual, structurally proven names to synthetic identifiers. |
-| — | no equivalent | `loader-call-elision` | Beyond Slayer. Cuts the loader calls Reactor injects at the head of type initializers throughout the assembly, once the bounded interpretation accounts for everything a call does and nothing that survives can read what it wrote. Slayer removes the runtime by recognizing it; this reaches the same code by proving the calls inert, and is what leaves the runtime unreachable for cleanup. |
+| — | no equivalent | `loader-call-elision` | Beyond Slayer. Cuts the loader calls Reactor injects at the head of type initializers throughout the assembly, once the bounded interpretation accounts for everything a call does and nothing that survives can read what it wrote. Slayer removes the runtime by recognizing it; this reaches the same code by proving the calls inert, and is what leaves the runtime unreachable for cleanup. The initializers left empty by the cut are handed to cleanup by the same pass, on the grounds that it is what emptied them. |
 | — | anti-debug (folded into `AntiManipulationPatcher`) | `antitamper-neutralization` | Partial. Debugger-probe sites are neutralized only where the value provably feeds a Reactor termination path. |
 | — | `Helper/NativeUnpacker` + `QuickLZ` | `metadata-preflight` (`NativePackDetector`) | Deferred. Native-packed input is detected and reported unsupported with a specific diagnostic rather than mis-processed. Slayer unpacks it. |
 | — | `Helper/CodeVirtualizationUtils` | `reactor-detection` | Parity. Both tools only detect code virtualization; neither lifts it. |
@@ -94,7 +94,7 @@ fails rather than passing quietly.
 
 ## Current corpus standing
 
-Last full run: 9 passed, 0 failed, 0 missing, against 179 passing unit tests.
+Last full run: 9 passed, 0 failed, 0 missing, against 189 passing unit tests.
 
 The three JIT-hook samples restore every protected body (199, 312, and 253),
 fold their constant predicates, complete control flow, inline forwarders,
@@ -108,9 +108,9 @@ ratchet in the manifest:
 
 | Sample | Types emitted / oracle | Surplus in named types | Whole-module surplus | Unattributed dead methods |
 | --- | --- | --- | --- | --- |
-| `database` | 45 / 49 | 14 | -90 | 71 |
-| `reason-pac` | 45 / 50 | 28 | -61 | 77 |
-| `service-controller` | 40 / 44 | 5 | -84 | 66 |
+| `database` | 40 / 49 | 8 | -118 | 66 |
+| `reason-pac` | 41 / 50 | 16 | -100 | 72 |
+| `service-controller` | 37 / 44 | 4 | -110 | 61 |
 
 The three clean oracle assemblies are the control: elision changes nothing in
 any of them and cleanup removes nothing, which is the evidence that neither is
@@ -146,9 +146,23 @@ six hundred and sixty on `service-controller`, and undoing the disguise leaves
 the surviving code more strongly typed than it was, since a local already
 declared `FileVersionInfo` now feeds a call that says so.
 
+Removing the type initializers elision had hollowed out took the three the rest
+of the way to eight, sixteen, and four. Reactor puts its loader call at the head
+of every type's initializer, writing an initializer to hold it on types that had
+none, so cutting the calls left twenty-two to thirty-five bodies per sample that
+run and return. Those are removed on the strength of the body rather than of
+reachability, which for an initializer answers the wrong question: nothing has
+to call it, because the runtime starts it when the type is first used. What can
+be said is that running it achieves nothing, and that holds whenever the runtime
+chooses to. Emptiness also draws the line in the right place on its own, since a
+type whose own initializer Reactor merely prepended to still has the program's
+code in the body and so is never a candidate.
+
 What is left is Reactor's per-type scaffolding: every type carries a static field
-of its own type, a null-check predicate over it, and a getter, all unreachable
-and none of it attributable to anything recovery did.
+of its own type, a null-check predicate over it, and a getter. These are dead in
+the input as well as the output — Reactor emits them and never calls them — so no
+pass made them dead and nothing recovery did accounts for them. Attributing them
+would need evidence of a different kind than the rule currently admits.
 
 The oracle gate itself compares structure — type and method counts, the
 preserved-name subset, per-type method counts inside named types, resource

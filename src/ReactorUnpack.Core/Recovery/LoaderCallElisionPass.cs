@@ -200,6 +200,15 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
                 .Distinct()
                 .Where(byToken.ContainsKey)
                 .Select(token => byToken[token]));
+        // A type initializer the elision hollowed out is the same claim one step on: the call was
+        // the whole body, so what is left runs and returns. Cleanup is told about it here because
+        // this is the pass that emptied it.
+        var emptied = callSites
+            .Select(site => site.Method)
+            .Distinct()
+            .Where(EmptyTypeInitializers.DoesNothing)
+            .ToArray();
+        RecoveryOrphans.Declare(context, emptied);
         context.AddEvidence(new Evidence(
             "loader-call-elision",
             $"Removed {callSites.Length} call(s) to {elidable.Length} loader entry point(s) whose " +
@@ -210,6 +219,7 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         return (PassStatus.Success, callSites.Length,
         [
             $"Elided {callSites.Length} call(s) to {elidable.Length} proven-inert loader entry point(s).",
+            $"{emptied.Length} type initializer(s) were left doing nothing and are cleanup's to remove.",
             accounting
         ]);
     }

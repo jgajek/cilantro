@@ -53,6 +53,23 @@ public sealed class LoaderCallElisionTests
         Assert.Contains(RecoveryOrphans.Of(context), token => token == install.MDToken.Raw);
     }
 
+    /// <summary>
+    /// The call was the initializer's whole body, so removing it leaves an initializer that runs
+    /// and returns. Cleanup will only take that away if it is told, and this pass is what emptied it.
+    /// </summary>
+    [Fact]
+    public void TheInitializerLeftWithNothingInItIsClaimedToo()
+    {
+        using var context = LoaderContext();
+
+        var result = new LoaderCallElisionPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        var initializer = Method(context, ".cctor");
+        Assert.True(EmptyTypeInitializers.DoesNothing(initializer));
+        Assert.Contains(RecoveryOrphans.Of(context), token => token == initializer.MDToken.Raw);
+    }
+
     [Fact]
     public void ALoaderCallStaysWhileReachableCodeReadsWhatItWrote()
     {

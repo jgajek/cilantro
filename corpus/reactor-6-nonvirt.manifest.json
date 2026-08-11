@@ -43,8 +43,8 @@
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000,
       "requireOracleParity": true,
-      "maximumSurplusMethods": -61,
-      "maximumProgramMethodSurplus": 28,
+      "maximumSurplusMethods": -100,
+      "maximumProgramMethodSurplus": 16,
       "maximumSurplusResources": 3,
       "requireOracleResourceParity": true
     },
@@ -61,8 +61,8 @@
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000,
       "requireOracleParity": true,
-      "maximumSurplusMethods": -84,
-      "maximumProgramMethodSurplus": 5,
+      "maximumSurplusMethods": -110,
+      "maximumProgramMethodSurplus": 4,
       "maximumSurplusResources": 3,
       "requireOracleResourceParity": true
     },
@@ -79,8 +79,8 @@
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000,
       "requireOracleParity": true,
-      "maximumSurplusMethods": -90,
-      "maximumProgramMethodSurplus": 14,
+      "maximumSurplusMethods": -118,
+      "maximumProgramMethodSurplus": 8,
       "maximumSurplusResources": 3,
       "requireOracleResourceParity": true
     },

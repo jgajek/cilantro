@@ -174,11 +174,10 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         var dead = surviving
             .SelectMany(type => type.Methods)
             .Where(method =>
-                !reachability.IsReachable(method) &&
                 !method.IsVirtual &&
-                !method.IsStaticConstructor &&
                 !MemberVisibility.IsExternallyVisible(method) &&
-                !accessors.Contains(method))
+                !accessors.Contains(method) &&
+                (NothingCallsIt(method) || NothingHappensWhenItDoes(method)))
             .ToArray();
         var candidates = dead.Where(method => orphans.Contains(method.MDToken.Raw)).ToHashSet();
         unattributed = dead.Length - candidates.Count;
@@ -207,6 +206,20 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                 "Removed a method proven unreachable and unreferenced after recovery."));
         }
         return candidates.Count;
+
+        // The ordinary case: nothing in the module reaches it. A type initializer is excluded
+        // because reaching it is not how it runs — the runtime starts it when the type is first
+        // used, so no call has to exist for it to matter.
+        bool NothingCallsIt(MethodDef method) =>
+            !method.IsStaticConstructor && !reachability.IsReachable(method);
+
+        // Which leaves the other way to be beside the point: an initializer whose body cannot do
+        // anything is one the runtime is welcome to run, and removing it removes nothing that was
+        // going to happen. Reachability is not consulted because the answer would not change the
+        // conclusion. Attribution is, as ever, still required, so this reaches only the
+        // initializers recovery itself hollowed out.
+        static bool NothingHappensWhenItDoes(MethodDef method) =>
+            EmptyTypeInitializers.DoesNothing(method);
     }
 
     /// <summary>
