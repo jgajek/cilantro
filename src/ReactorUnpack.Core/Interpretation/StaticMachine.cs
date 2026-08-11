@@ -162,6 +162,7 @@ public sealed class StaticMachine
         var localReferences = new Dictionary<int, StaticValue>();
         var pendingLeaves = new Stack<int>();
         var stack = new List<StaticValue>(Math.Max(method.Body.MaxStack, (ushort)8));
+        var caught = StaticValue.Null;
         var ip = 0;
 
         while ((uint)ip < (uint)instructions.Count)
@@ -179,6 +180,15 @@ public sealed class StaticMachine
                 {
                     case Code.Nop:
                     case Code.Break:
+                    // Prefixes that qualify how the next instruction runs on real hardware without
+                    // changing what it computes. The call that follows resolves its own target and
+                    // follows a reference receiver where it finds one, so there is nothing here for
+                    // the machine to do differently.
+                    case Code.Constrained:
+                    case Code.Volatile:
+                    case Code.Readonly:
+                    case Code.Unaligned:
+                    case Code.Tailcall:
                         break;
                     case Code.Ldnull:
                         stack.Add(TrackOrigin(method, instruction, StaticValue.Null, "null"));
@@ -457,6 +467,27 @@ public sealed class StaticMachine
                             throw new InvalidOperationException("endfinally has no pending leave.");
                         next = pendingLeaves.Pop();
                         break;
+
+                    case Code.Throw:
+                    case Code.Rethrow:
+                        {
+                            var thrown = instruction.OpCode.Code == Code.Rethrow
+                                ? caught
+                                : Pop(stack);
+                            if (TryDispatchToCatch(method, indices, ip, thrown, out var handlerIndex))
+                            {
+                                stack.Clear();
+                                stack.Add(thrown);
+                                caught = thrown;
+                                next = handlerIndex;
+                                break;
+                            }
+
+                            return new FrameResult(
+                                StaticExecutionStatus.Threw,
+                                thrown,
+                                $"{method.FullName} IL_{instruction.Offset:X4} threw.");
+                        }
 
                     case Code.Newarr:
                         {
@@ -756,6 +787,7 @@ public sealed class StaticMachine
                             var matches = expected == "System.Object" ||
                                 State.Heap.TryGetRuntimeTypeName(value, out var actual) &&
                                 (string.Equals(actual, expected, StringComparison.Ordinal) ||
+                                 InheritsModel(actual, expected) ||
                                  actual == "System.Delegate" &&
                                  (instruction.Operand as ITypeDefOrRef)?
                                      .ResolveTypeDef()?.BaseType?.FullName is
@@ -815,7 +847,17 @@ public sealed class StaticMachine
                                     method.Module) ?? definition;
                             }
                             FrameResult callResult;
-                            if (definition is not null && definition.HasBody &&
+                            if (isConstructor && IsDelegateConstructor(target))
+                            {
+                                BindDelegate(constructed, callArguments);
+                                callResult = FrameResult.Success(default);
+                            }
+                            else if (TryInvokeDelegate(
+                                target, callArguments, budget, depth, out var invoked))
+                            {
+                                callResult = invoked;
+                            }
+                            else if (definition is not null && definition.HasBody &&
                                 definition.Module == method.Module)
                             {
                                 callResult = ExecuteFrame(definition, callArguments, budget, depth + 1);
@@ -845,7 +887,12 @@ public sealed class StaticMachine
                             else if (_intrinsics.TryResolve(target, out var intrinsic))
                             {
                                 var intrinsicResult = intrinsic.Invoke(
-                                    new IntrinsicContext(State),
+                                    new IntrinsicContext(
+                                        State,
+                                        (callee, callbackArguments) => CallDelegate(
+                                            callee, callbackArguments, budget, depth),
+                                        (callee, callbackArguments) => Reenter(
+                                            callee, callbackArguments, budget, depth)),
                                     target,
                                     callArguments);
                                 callResult = new FrameResult(
@@ -868,6 +915,23 @@ public sealed class StaticMachine
                                     $"is not allowlisted{receiver}.");
                             }
 
+                            // A callee that threw is not a callee the machine failed on. If this
+                            // frame guards the call site, the throw is delivered there and the
+                            // program carries on exactly as it would have.
+                            if (callResult.Status == StaticExecutionStatus.Threw)
+                            {
+                                if (TryDispatchToCatch(
+                                        method, indices, ip, callResult.Value, out var caughtAt))
+                                {
+                                    stack.Clear();
+                                    stack.Add(callResult.Value);
+                                    caught = callResult.Value;
+                                    next = caughtAt;
+                                    break;
+                                }
+
+                                return callResult;
+                            }
                             if (callResult.Status != StaticExecutionStatus.Completed)
                                 return callResult with
                                 {
@@ -884,12 +948,24 @@ public sealed class StaticMachine
                                             : RenderArgumentProvenance(callArguments))
                                 };
                             if (isConstructor)
+                            {
+                                // An intrinsic that models a framework type builds its own instance
+                                // with the state that makes it usable, and that is the object the
+                                // program ends up holding. Keeping the placeholder instead would
+                                // hand back something that answers no question about itself, which
+                                // is how a modeled collection turns into an unmodeled one.
+                                var produced =
+                                    callResult.Value.Kind == StaticValueKind.HeapReference &&
+                                    !callResult.Value.Equals(constructed)
+                                        ? callResult.Value
+                                        : constructed;
                                 stack.Add(TrackOperation(
                                     method,
                                     instruction,
-                                    constructed,
+                                    produced,
                                     ProvenanceKind.Call,
                                     callArguments));
+                            }
                             else if (signature.RetType.ElementType != ElementType.Void)
                                 stack.Add(TrackOperation(
                                     method,
@@ -1514,6 +1590,142 @@ public sealed class StaticMachine
         return result;
     }
 
+    /// <summary>
+    /// The base types of the framework models the machine allocates.
+    /// </summary>
+    /// <remarks>
+    /// A model is named by the concrete type it stands for, so a cast to one of that type's bases
+    /// has to be allowed or perfectly ordinary code stops on a cast that would always have
+    /// succeeded. Only the reflection types the machine actually mints are listed, because a
+    /// relationship it has not modeled is one it should not be asserting.
+    /// </remarks>
+    private static readonly Dictionary<string, string[]> ModelBaseTypes = new(StringComparer.Ordinal)
+    {
+        ["System.Reflection.MethodInfo"] =
+            ["System.Reflection.MethodBase", "System.Reflection.MemberInfo"],
+        ["System.Reflection.ConstructorInfo"] =
+            ["System.Reflection.MethodBase", "System.Reflection.MemberInfo"],
+        ["System.Reflection.MethodBase"] = ["System.Reflection.MemberInfo"],
+        ["System.Reflection.FieldInfo"] = ["System.Reflection.MemberInfo"],
+        ["System.Type"] = ["System.Reflection.MemberInfo"]
+    };
+
+    private static bool InheritsModel(string? actual, string? expected) =>
+        actual is not null && expected is not null &&
+        ModelBaseTypes.TryGetValue(actual, out var bases) &&
+        bases.Contains(expected, StringComparer.Ordinal);
+
+    private const string DelegateTargetKey = "DelegateTarget";
+    private const string DelegateMethodKey = "DelegateMethod";
+
+    /// <summary>
+    /// Whether a constructor is a delegate's, decided from its signature rather than its type.
+    /// </summary>
+    /// <remarks>
+    /// A delegate constructor is the only one the runtime gives the signature
+    /// <c>(object, native int)</c>, so the shape identifies it outright. Deciding it this way rather
+    /// than by resolving the declaring type matters, because the delegate types that show up here
+    /// are usually generic instantiations of framework types such as <c>Comparison&lt;T&gt;</c>,
+    /// whose definitions live in an assembly the machine deliberately cannot see.
+    /// </remarks>
+    private static bool IsDelegateConstructor(IMethod target) =>
+        target.Name == ".ctor" &&
+        target.MethodSig is { Params.Count: 2 } signature &&
+        signature.Params[0].ElementType == ElementType.Object &&
+        signature.Params[1].ElementType is ElementType.I or ElementType.U or ElementType.Ptr;
+
+    /// <summary>
+    /// Remembers what a delegate was built over, so that calling it later can mean something.
+    /// </summary>
+    /// <remarks>
+    /// The two operands of the construction are the receiver and the function pointer, and the
+    /// pointer arrived from <c>ldftn</c> as a metadata handle that still names the method. Keeping
+    /// both on the delegate is what turns an opaque object into a call the machine can make, which
+    /// is the difference between interpreting a token-driven runtime and refusing it.
+    /// </remarks>
+    private void BindDelegate(StaticValue constructed, StaticValue[] callArguments)
+    {
+        if (callArguments.Length != 3)
+            return;
+        State.Heap.TrySetModelValue(constructed, DelegateTargetKey, callArguments[1]);
+        if (State.Heap.TryGetMetadataHandle(callArguments[2], out var handle) &&
+            handle is IMethod bound)
+        {
+            State.Heap.TrySetModelValue(constructed, DelegateMethodKey, bound);
+        }
+    }
+
+    /// <summary>
+    /// Calls a delegate that was built here, or reports that this was not one.
+    /// </summary>
+    /// <remarks>
+    /// Only a delegate the machine watched being constructed can be invoked, because only then is
+    /// the bound method known; anything else declines and takes the ordinary path. The receiver is
+    /// prepended for an instance target and omitted for a static one, which is exactly the shape
+    /// the callee's frame expects.
+    /// </remarks>
+    private bool TryInvokeDelegate(
+        IMethod target,
+        StaticValue[] callArguments,
+        StaticWorkBudget budget,
+        int depth,
+        out FrameResult result)
+    {
+        result = default!;
+        if (target.Name != "Invoke" || callArguments.Length == 0)
+            return false;
+        if (!State.Heap.TryGetModelValue<IMethod>(callArguments[0], DelegateMethodKey, out var bound) ||
+            bound?.ResolveMethodDef() is not { HasBody: true } definition)
+        {
+            return false;
+        }
+
+        State.Heap.TryGetModelValue<StaticValue>(callArguments[0], DelegateTargetKey, out var receiver);
+        StaticValue[] arguments = definition.IsStatic
+            ? [.. callArguments[1..]]
+            : [receiver, .. callArguments[1..]];
+        result = ExecuteFrame(definition, arguments, budget, depth + 1);
+        return true;
+    }
+
+    /// <summary>
+    /// Runs a delegate on behalf of a modeled API that was handed one.
+    /// </summary>
+    private IntrinsicResult CallDelegate(
+        StaticValue callee,
+        IReadOnlyList<StaticValue> arguments,
+        StaticWorkBudget budget,
+        int depth)
+    {
+        if (!State.Heap.TryGetModelValue<IMethod>(callee, DelegateMethodKey, out var bound) ||
+            bound?.ResolveMethodDef() is not { HasBody: true } definition)
+        {
+            return IntrinsicResult.Invalid("The callback is not a delegate this machine built.");
+        }
+
+        State.Heap.TryGetModelValue<StaticValue>(callee, DelegateTargetKey, out var receiver);
+        StaticValue[] callArguments = definition.IsStatic
+            ? [.. arguments]
+            : [receiver, .. arguments];
+        var result = ExecuteFrame(definition, callArguments, budget, depth + 1);
+        return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
+    }
+
+    /// <summary>
+    /// Runs a method for a modeled reflection call, on the caller's budget.
+    /// </summary>
+    private IntrinsicResult Reenter(
+        MethodDef method,
+        IReadOnlyList<StaticValue> arguments,
+        StaticWorkBudget budget,
+        int depth)
+    {
+        if (!method.HasBody)
+            return IntrinsicResult.Invalid($"{method.FullName} has no body to run.");
+        var result = ExecuteFrame(method, [.. arguments], budget, depth + 1);
+        return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
+    }
+
     private MethodDef? ResolveVirtualTarget(
         IMethod target,
         StaticValue instance,
@@ -1593,6 +1805,69 @@ public sealed class StaticMachine
             references[index] = reference;
         }
         return reference;
+    }
+
+    /// <summary>
+    /// Finds the catch handler that would receive a throw at this point, if any.
+    /// </summary>
+    /// <remarks>
+    /// The innermost enclosing try wins, matching the runtime's own search order, and a handler is
+    /// only accepted when the thrown object can be shown to be of its caught type. Where the
+    /// object's type is not known the handler is accepted only if it catches everything, since
+    /// guessing that a specific catch applies would resume the program on a path it might never
+    /// have taken.
+    /// </remarks>
+    private bool TryDispatchToCatch(
+        MethodDef method,
+        Dictionary<Instruction, int> indices,
+        int ip,
+        StaticValue thrown,
+        out int handlerIndex)
+    {
+        handlerIndex = -1;
+        var best = default(ExceptionHandler);
+        var bestStart = -1;
+        foreach (var handler in method.Body.ExceptionHandlers)
+        {
+            if (handler.HandlerType != ExceptionHandlerType.Catch ||
+                handler.TryStart is null || handler.HandlerStart is null ||
+                !indices.TryGetValue(handler.TryStart, out var start))
+            {
+                continue;
+            }
+
+            var end = handler.TryEnd is not null && indices.TryGetValue(handler.TryEnd, out var stop)
+                ? stop
+                : indices.Count;
+            if (ip < start || ip >= end || start <= bestStart || !Catches(handler, thrown))
+                continue;
+            best = handler;
+            bestStart = start;
+        }
+
+        if (best?.HandlerStart is null)
+            return false;
+        handlerIndex = indices[best.HandlerStart];
+        return true;
+    }
+
+    private bool Catches(ExceptionHandler handler, StaticValue thrown)
+    {
+        var caught = handler.CatchType?.FullName;
+        if (caught is null or "System.Object" or "System.Exception")
+            return true;
+        if (!State.Heap.TryGetRuntimeTypeName(thrown, out var actual) || actual is null)
+            return false;
+        if (string.Equals(actual, caught, StringComparison.Ordinal))
+            return true;
+        for (var type = handler.CatchType.ResolveTypeDef(); type is not null;)
+        {
+            if (string.Equals(type.FullName, actual, StringComparison.Ordinal))
+                return true;
+            type = type.BaseType?.ResolveTypeDef();
+        }
+
+        return false;
     }
 
     private static ExceptionHandler? FindFinally(

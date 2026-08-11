@@ -912,11 +912,16 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
+        if (TryProveNoManagedPayload(context, out var accounting))
+            return (PassStatus.Success, 0, accounting);
+
+        // Asking the module to unpack itself is the general answer and the one that survives a
+        // change of crypter, so it is tried before anything that reasons about a particular codec.
+        if (TryRecoverByInterpretation(context, out var interpreted, out var declined))
+            return interpreted;
+
         if (!PayloadResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
         {
-            if (TryProveNoManagedPayload(context, out var accounting))
-                return (PassStatus.Success, 0, accounting);
-
             context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts);
             if (facts is not null &&
                 StructuralStreamDiscovery.TryDiscoverProxyProfile(
@@ -969,7 +974,11 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
             }
 
             return (PassStatus.Unsupported, 0,
-                ["No structurally validated payload codec was found."]);
+            [
+                "No payload could be recovered by interpreting the module's own unpacker.",
+                .. declined,
+                "No structurally validated payload codec was found either."
+            ]);
         }
 
 
@@ -1064,6 +1073,69 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
             $"({finalPayload.Info.PayloadLength} bytes).",
             $"Final SHA-256: {finalPayload.Info.PayloadSha256}"
         ]);
+    }
+
+    /// <summary>
+    /// Recovers payloads by interpreting the unpacker the module carries.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="PayloadChainRecovery"/> for why the anchor is the load rather than the codec.
+    /// A decline says nothing about whether a payload was there, so the caller carries on to the
+    /// narrower routes rather than concluding anything from it.
+    /// </remarks>
+    private bool TryRecoverByInterpretation(
+        ArtifactContext context,
+        out (PassStatus, int, IReadOnlyList<string>) outcome,
+        out IReadOnlyList<string> declined)
+    {
+        outcome = default;
+        var recovered = PayloadChainRecovery.Recover(context, out var why);
+        declined = why;
+        if (recovered.Count == 0)
+            return false;
+
+        var payloads = new List<ExtractedPayload>();
+        var diagnostics = new List<string>
+        {
+            $"Interpreted the module's own unpacker and captured {recovered.Count} assembly load(s)."
+        };
+        foreach (var item in recovered)
+        {
+            using var payloadModule = ModuleDefMD.Load(item.Image);
+            var origin = $"{item.Root.DeclaringType?.Name}::{item.Root.Name}";
+            var info = new PayloadInfo(
+                origin,
+                context.OriginalSha256,
+                context.OriginalBytes.Length,
+                item.Sha256,
+                item.Image.Length,
+                item.Sha256,
+                item.AssemblyName,
+                payloadModule.Name,
+                payloadModule.EntryPoint?.MDToken.Raw ?? 0,
+                payloadModule.Resources.Select(resource => resource.Name.String).ToArray());
+            payloads.Add(new ExtractedPayload(info, item.Image));
+            context.AddEvidence(new Evidence(
+                "extracted-payload",
+                $"Recovered managed assembly {item.AssemblyName} ({item.Image.Length} bytes) " +
+                "by interpreting the module's own loader.",
+                origin,
+                1.0));
+            context.AddChange(new ChangeRecord(
+                Name, "extract-managed-payload", origin,
+                $"{item.AssemblyName}, SHA-256 {item.Sha256}"));
+            diagnostics.Add(
+                $"Extracted {item.AssemblyName} ({item.Image.Length} bytes), SHA-256 {item.Sha256}.");
+        }
+
+        var combined = context.TryGetFact<IReadOnlyList<ExtractedPayload>>(
+                "payload.artifacts", out var existing) && existing is not null
+            ? existing.Concat(payloads).ToArray()
+            : payloads.ToArray();
+        context.SetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", combined);
+        diagnostics.AddRange(why);
+        outcome = (PassStatus.Success, payloads.Count, diagnostics);
+        return true;
     }
 
     /// <summary>

@@ -49,6 +49,7 @@ public static class BootstrapMachine
             context.Module.Assembly?.Name ?? context.Module.Name,
             context.Module.Assembly?.PublicKeyToken?.Data ?? []);
         candidate.State.RegisterPointerSize(context.OriginalImage.IsPe32Plus ? 8 : 4);
+        candidate.State.RegisterModuleMetadata(context.Module);
         candidate.State.RegisterModuleFile(
             Path.GetFullPath(context.InputPath), context.OriginalBytes);
         if (!candidate.State.TryRegisterImage(

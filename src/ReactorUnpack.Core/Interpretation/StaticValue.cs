@@ -107,6 +107,17 @@ public enum StaticExecutionStatus
     Completed,
     Unknown,
     Unsupported,
+
+    /// <summary>
+    /// The frame ended by throwing, and the thrown object is the result value.
+    /// </summary>
+    /// <remarks>
+    /// Obfuscator runtimes throw and catch as ordinary control flow rather than only on error, so a
+    /// throw that leaves a frame is a normal outcome that the caller may well handle. Carrying it as
+    /// its own status keeps it distinguishable from a frame the machine could not interpret, which
+    /// is what lets a caught exception resume instead of ending the interpretation.
+    /// </remarks>
+    Threw,
     StepLimitExceeded,
     RecursionLimitExceeded,
     AllocationLimitExceeded,

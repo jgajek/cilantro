@@ -1010,6 +1010,28 @@ public sealed class StaticMachineState
     /// </summary>
     public void RecordRegistration(string detail) => Evidence.RecordRegistration(detail);
 
+    /// <summary>
+    /// Bytes the interpreted code tried to hand to <c>Assembly.Load</c>, in the order it offered
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// A loader that decrypts an assembly ends by asking the runtime to load it, and that call is
+    /// the one place where the thing being loaded is unambiguously the payload rather than an
+    /// intermediate. Recording the argument turns the interpretation into an answer without anyone
+    /// having to recognise the format it arrived in: whatever chain of ciphers and containers
+    /// produced these bytes, the module itself named them as the assembly it wanted.
+    ///
+    /// The load is recorded rather than performed. Nothing is loaded, resolved, or executed; the
+    /// caller is handed a model assembly so that interpretation can continue past the call and
+    /// reach any further stages, which is what makes a loader that unpacks more than one payload
+    /// recoverable in a single run.
+    /// </remarks>
+    public IReadOnlyList<byte[]> CapturedAssemblyLoads => _capturedAssemblyLoads;
+
+    private readonly List<byte[]> _capturedAssemblyLoads = [];
+
+    public void CaptureAssemblyLoad(byte[] image) => _capturedAssemblyLoads.Add(image);
+
     public IReadOnlyDictionary<string, StaticValue> StaticFields => _staticFields;
     public IReadOnlyDictionary<string, byte[]> Resources => _resources;
     public IReadOnlyList<TypeInitializationEvent> TypeInitializationEvents =>
@@ -1109,6 +1131,23 @@ public sealed class StaticMachineState
         AssemblyName = name ?? string.Empty;
         PublicKeyToken = publicKeyToken.ToArray();
     }
+
+    /// <summary>
+    /// The metadata of the module being interpreted, for the reflection it performs on itself.
+    /// </summary>
+    /// <remarks>
+    /// Everything else in this environment is deliberately absent unless the module can observe it,
+    /// and its own metadata is squarely on the observable side: a running assembly can always ask
+    /// its module to resolve one of its own tokens, and the answer is fixed by the file rather than
+    /// by anything about the machine it runs on. Handing it over is therefore modeling rather than
+    /// inventing, and it is what lets a token-driven runtime be interpreted instead of refused.
+    ///
+    /// Only this module is reachable. A token belonging to somebody else's metadata resolves to
+    /// nothing here, which is the same answer the interpretation would be entitled to draw anyway.
+    /// </remarks>
+    public ModuleDef? ModuleMetadata { get; private set; }
+
+    public void RegisterModuleMetadata(ModuleDef module) => ModuleMetadata = module;
 
     public void RegisterPointerSize(int pointerSize)
     {
