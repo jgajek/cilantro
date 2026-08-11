@@ -89,9 +89,18 @@ public sealed class CorpusTests
         {
             var manifest = Path.Combine(root, "corpus", "reactor-6-nonvirt.manifest.json");
             var samples = Path.Combine(root, "samples");
-            var firstReport = CorpusRunner.Run(manifest, samples, first);
-            var secondReport = CorpusRunner.Run(manifest, samples, second);
+            // The two runs go at once, which is the point rather than a shortcut. A run already
+            // analyses several samples in parallel, so overlapping the pair leaves the two copies
+            // of each sample interleaved differently against everything else in flight; agreeing
+            // afterwards is then evidence that the outcome does not depend on what ran beside it.
+            var directories = new[] { first, second };
+            var reports = new CorpusRunReport[directories.Length];
+            Parallel.For(
+                0,
+                directories.Length,
+                index => reports[index] = CorpusRunner.Run(manifest, samples, directories[index]));
 
+            var firstReport = reports[0];
             Assert.Equal(9, firstReport.Passed);
             Assert.Equal(0, firstReport.Failed);
             Assert.Equal(0, firstReport.Missing);

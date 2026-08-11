@@ -44,8 +44,13 @@ The repository targets .NET 10:
 ```bash
 dotnet restore ReactorUnpack.slnx
 dotnet build ReactorUnpack.slnx
-dotnet test ReactorUnpack.slnx
+dotnet test ReactorUnpack.slnx -c Release
 ```
+
+Run the tests in `Release`. Most of the suite is the bounded interpreter working
+through real samples, which an unoptimized build runs about five times slower,
+so the default `Debug` configuration turns a three-quarter-minute run into a
+six-minute one. Build `Debug` when stepping through a pass.
 
 If the host has no SDK, the workspace-local installation used during
 development is available as `.dotnet/dotnet`.

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using dnlib.DotNet;
 using ReactorUnpack.Core.Analysis;
+using ReactorUnpack.Core.Interpretation;
 
 namespace ReactorUnpack.Core.Corpus;
 
@@ -128,6 +129,30 @@ public static class CorpusRunner
         return manifest;
     }
 
+    /// <summary>
+    /// How many samples are analysed at once.
+    /// </summary>
+    /// <remarks>
+    /// A sample is a closed unit of work: it reads one file, writes one directory named after
+    /// itself, and shares nothing with its neighbours, since every module is loaded into a context
+    /// of its own and no pass keeps state between runs. Running them together is therefore free of
+    /// interference, and the outcome list is filled by position so the report reads the same whether
+    /// one sample ran or all of them did.
+    ///
+    /// The cap is on memory rather than on cores. Interpreting a loader can hold a mapped image and
+    /// a few hundred megabytes of heap model, so the useful width is set by how many of those fit at
+    /// once, and past a handful there is nothing left to overlap anyway: a run is only ever as short
+    /// as its slowest sample.
+    ///
+    /// Tracing is the one thing that does not survive the overlap, because the trace is a single
+    /// ordered account of what one interpretation did and samples running together would shuffle
+    /// their lines into each other. A run with tracing asked for therefore goes back to one at a
+    /// time, which is the only way the file it produces means anything.
+    /// </remarks>
+    private static int SampleConcurrency => MachineTrace.Enabled
+        ? 1
+        : Math.Max(1, Math.Min(Environment.ProcessorCount, 4));
+
     public static CorpusRunReport Run(
         string manifestPath,
         string sampleDirectory,
@@ -138,14 +163,22 @@ public static class CorpusRunner
         var samplesByHash = manifest.Samples.ToDictionary(
             sample => sample.Sha256,
             StringComparer.OrdinalIgnoreCase);
-        var outcomes = new List<CorpusSampleOutcome>();
-        foreach (var sample in manifest.Samples
-                     .Where(sample => sample.Tier != "oracle")
-                     .OrderBy(sample => sample.Id, StringComparer.Ordinal))
-        {
-            var path = Path.Combine(sampleDirectory, sample.LocalName);
-            outcomes.Add(RunSample(sample, path, sampleDirectory, outputDirectory, samplesByHash));
-        }
+        var scheduled = manifest.Samples
+            .Where(sample => sample.Tier != "oracle")
+            .OrderBy(sample => sample.Id, StringComparer.Ordinal)
+            .ToArray();
+        var outcomes = new CorpusSampleOutcome[scheduled.Length];
+        Parallel.For(
+            0,
+            scheduled.Length,
+            new ParallelOptions { MaxDegreeOfParallelism = SampleConcurrency },
+            index =>
+            {
+                var sample = scheduled[index];
+                var path = Path.Combine(sampleDirectory, sample.LocalName);
+                outcomes[index] =
+                    RunSample(sample, path, sampleDirectory, outputDirectory, samplesByHash);
+            });
 
         var report = new CorpusRunReport(
             manifest.ManifestVersion,
