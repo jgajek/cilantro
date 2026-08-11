@@ -349,14 +349,24 @@ public sealed class ReactorPipeline
             !fatalFailure &&
             !incompleteRecovery;
 
-        var reportDirectory = Path.GetFullPath(options.ReportDirectory ??
-            Path.GetDirectoryName(context.InputPath)!);
-        Directory.CreateDirectory(reportDirectory);
+        var inputDirectory = Path.GetDirectoryName(Path.GetFullPath(context.InputPath))!;
         var stem = Path.GetFileNameWithoutExtension(context.InputPath);
+        // Reports and payloads go into a folder of their own so that running the tool on a sample
+        // leaves two things beside it rather than five. The cleaned assembly is not one of them: it
+        // is the thing the analyst came for, so it lands next to the input where it can be found.
+        // The folder is not named after the sample because the files inside it already are, which
+        // lets a directory of samples share one folder without any of them colliding.
+        var reportDirectory = Path.GetFullPath(options.ReportDirectory ??
+            Path.Combine(inputDirectory, "reactorunpack"));
+        Directory.CreateDirectory(reportDirectory);
         var analysisPath = Path.Combine(reportDirectory, $"{stem}.analysis.json");
         var changesPath = Path.Combine(reportDirectory, $"{stem}.changes.json");
+        // A cleaned library is still a library. Naming every output `.exe` produced a file that
+        // tools would refuse by extension alone.
         var outputPath = options.OutputPath is null
-            ? Path.Combine(reportDirectory, $"{stem}.cleaned.exe")
+            ? Path.Combine(
+                inputDirectory,
+                $"{stem}.cleaned{Path.GetExtension(context.InputPath)}")
             : Path.GetFullPath(options.OutputPath);
 
         var payloadPaths = WritePayloads(context, reportDirectory, stem);

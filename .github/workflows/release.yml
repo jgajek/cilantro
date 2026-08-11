@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and publish'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    strategy:
+      matrix:
+        include:
+          - runtime: win-x64
+            artifact: ReactorUnpack-win-x64.zip
+          - runtime: linux-x64
+            artifact: ReactorUnpack-linux-x64.tar.gz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Self-contained and single-file, so the download runs on a machine that has never had .NET
+      # installed. That is the whole point: an analyst should not have to provision a runtime
+      # before they can look at a sample.
+      - name: Publish ${{ matrix.runtime }}
+        run: >
+          dotnet publish src/ReactorUnpack.Cli
+          -c Release
+          -r ${{ matrix.runtime }}
+          -p:PublishSingleFile=true
+          -o publish/${{ matrix.runtime }}
+
+      - name: Package
+        run: |
+          cd publish/${{ matrix.runtime }}
+          rm -f *.pdb
+          cp ../../LICENSE ../../README.md .
+          if [ "${{ matrix.runtime }}" = "win-x64" ]; then
+            zip -r ../../${{ matrix.artifact }} .
+          else
+            tar czf ../../${{ matrix.artifact }} .
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.runtime }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Checksums
+        run: sha256sum ReactorUnpack-* > SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            ReactorUnpack-*
+            SHA256SUMS.txt
+          generate_release_notes: true

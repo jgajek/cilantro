@@ -1,115 +1,193 @@
 # ReactorUnpack
 
-ReactorUnpack is a clean-room, static-first .NET Reactor analysis and
-deobfuscation tool. It treats protected assemblies as untrusted data and never
-loads them into the CLR for execution.
+**Recovers readable code from .NET malware protected with .NET Reactor — without ever running it.**
 
-The compatibility engine is capability-driven and validated against a
-hash-verified, tiered .NET Reactor 6 corpus. The reusable pipeline currently:
+You pulled a .NET sample out of a sandbox, opened it in dnSpyEx, and every method
+is empty. No strings. Class names like `H1lrRRwH0tOVtn61XvY`. That is .NET
+Reactor, a commercial protector that malware authors buy to stop exactly what you
+are trying to do.
 
-- performs a raw metadata preflight before dnlib mutation;
-- plans explicit preflight, analysis, original-byte recovery, IL-transform, and
-  verify/emit phases;
-- interprets loader IL in a bounded deterministic machine with synthetic PE,
-  resource, stream, crypto, and native-write models;
-- detects delegate-runtime and JIT-hook Reactor 6 generations structurally;
-- classifies protected resources from consumer behavior;
-- derives proxy stream constants by decoded-token validation;
-- neutralizes 1,341 proven-unreachable invalid-call prefixes;
-- folds proven constant predicates and transactionally rewrites strictly
-  qualified EH-aware dispatchers;
-- statically decodes, inflates, and validates the embedded resource assembly,
-  reattaches the resource streams it holds, and drops the resolve subscription
-  they make unreachable;
-- decodes and validates all 279 proxy bindings;
-- restores all 2,643 direct `call`/`callvirt` sites;
-- restores structurally proven string call sites;
-- catalogs Reactor method stubs, validates deterministic virtual-PE write logs,
-  and refuses incomplete body grafts;
-- deletes the protector's scaffolding once recovery has proved it unreachable and
-  accounted for why it is unused, leaving the program's own unused code alone;
-- preserves metadata tokens where deletion permits, and refuses output when any
-  pass that can affect the module is incomplete (`--fail-on-partial` extends that
-  to side artifacts); and
-- emits structured analysis and change reports.
+ReactorUnpack undoes it and hands you a copy you can actually read.
 
-The implementation is independent of
-[NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer) and does not
-include de4dot or other GPL-derived code.
+```
+  File     rsServiceController.dll  (191.3 KB)
+  SHA-256  15931d5e8c20547c24c851dcb2e29b747699e8b81b925c46c2245269c93d1c91
 
-## Build
+  PROTECTION   .NET Reactor
 
-The repository targets .NET 10:
+    - Method bodies are encrypted, and decrypted in memory as they run (NecroBit)
+    - Every method was replaced by an empty stub that gets filled in at run time
+    - Text is encrypted, so no readable strings appear in the file
+    - Control flow is scrambled, so decompiled code reads as nonsense
+    - The file checks itself for modification and can refuse to run
+    - Other files are hidden inside this one, encrypted
+
+  RECOVERED
+
+    Method bodies decrypted        253 of 253
+    Strings decrypted              163 of 163
+    Hidden calls resolved          17
+    Junk instructions removed      1,942
+    Encrypted resources restored   1
+    Protector types deleted        12
+
+  WROTE
+
+    Cleaned copy    rsServiceController.cleaned.dll
+    Hidden files    1 in reactorunpack/rsServiceController.payloads
+    Full report     reactorunpack/rsServiceController.analysis.json
+
+  Open the cleaned copy in dnSpyEx or ILSpy to read the code.
+```
+
+## Why you might want it
+
+**It never runs the sample.** This is the important one. Most .NET deobfuscators
+work by loading the malware into memory and calling its own decryption routines.
+That is malware execution, on your machine, and it is why those tools carry
+warnings about only being used in a VM. ReactorUnpack reads the file as data and
+works out what the decryption *would* produce, so analysing a sample is as safe
+as running `strings` on it.
+
+**It tells you when it is unsure.** If it cannot prove a change is correct, it
+does not make the change, and it says so. It will refuse to write a cleaned copy
+rather than hand you a subtly broken file that wastes an afternoon. Everything it
+did is listed in the report.
+
+**It gets the hidden files out.** Reactor is often used to wrap a second payload.
+ReactorUnpack decrypts and extracts those, so the thing you actually care about
+is sitting on disk instead of buried in an encrypted blob.
+
+**It leaves your file alone.** The input is never modified. Output goes to new
+files beside it.
+
+## Install
+
+Download the archive for your platform from the
+[Releases page](https://github.com/jgajek/reactor-unpack/releases) and unpack it.
+
+There is nothing to install. It is a single file with everything it needs
+inside, so it works on a fresh analysis VM that has never had .NET on it.
+
+| Platform | Download |
+| --- | --- |
+| Windows 64-bit | `ReactorUnpack-win-x64.zip` |
+| Linux 64-bit | `ReactorUnpack-linux-x64.tar.gz` |
+
+Check the download against `SHA256SUMS.txt` if you care to, which you should.
+
+## Use it
+
+Point it at the file:
+
+```
+ReactorUnpack suspicious.exe
+```
+
+That is the whole thing. There are no required options.
+
+It leaves two things next to your sample:
+
+- **`suspicious.cleaned.exe`** — the readable copy. Open this in
+  [dnSpyEx](https://github.com/dnSpyEx/dnSpy) or
+  [ILSpy](https://github.com/icsharpcode/ILSpy).
+- **`reactorunpack/`** — a folder with the full JSON report, a list of every
+  change made, and any files that were hidden inside the sample.
+
+If you only want to know what a file is without producing anything:
+
+```
+ReactorUnpack suspicious.exe --analyze-only
+```
+
+If you want to watch what it is doing, or you are reporting a problem:
+
+```
+ReactorUnpack suspicious.exe --verbose
+```
+
+Run `ReactorUnpack --help` for the rest. There are only a handful.
+
+## What it handles
+
+.NET Reactor 6, which covers the large majority of Reactor-protected samples in
+circulation. Specifically: encrypted method bodies (NecroBit), encrypted strings,
+scrambled control flow, junk-call insertion, proxied calls, hidden metadata
+references, anti-tamper and anti-debug checks, encrypted embedded resources, and
+embedded payload assemblies.
+
+## What it does not handle
+
+Being straight about this matters more than the feature list.
+
+- **Code virtualization.** If Reactor turned methods into bytecode for its own
+  interpreter, ReactorUnpack detects and reports it but does not undo it. No
+  public tool does.
+- **Native-packed files.** If the sample is wrapped in a native stub rather than
+  being a pure .NET file, it is detected and reported as unsupported rather than
+  being mangled. See [docs/how-net-reactor-works.md](docs/how-net-reactor-works.md).
+- **Other protectors.** ConfuserEx, Eazfuscator, Babel, and friends are out of
+  scope. Try [de4dot](https://github.com/de4dot/de4dot) for those.
+- **Getting original names back.** Reactor destroys them; they are not in the
+  file. `--rename` substitutes readable placeholders, which helps navigation but
+  is not the same thing.
+
+If a sample is not Reactor-protected, it says so and stops.
+
+## Is the cleaned file safe to run?
+
+**No.** It is still malware. The cleaned copy is for reading in a decompiler.
+It is not sanitised, defanged, or made safe in any way — quite the opposite, it
+is the malware with its protection removed. Treat it exactly as you would treat
+the original.
+
+## Documentation
+
+- **[How .NET Reactor works](docs/how-net-reactor-works.md)** — what each
+  protection actually does to the file, written for someone who does not know
+  .NET internals. Start here if the output mentioned something you did not
+  recognise.
+- **[How ReactorUnpack undoes it](docs/how-recovery-works.md)** — the technique
+  used against each protection, and why it is safe to do statically.
+- **[Reading the output](docs/reading-the-output.md)** — the report format, what
+  each number means, and what to do when something does not work.
+- **[Compatibility and provenance](docs/compatibility.md)** — the precise
+  support contract and verification gates.
+- **[Comparison with NETReactorSlayer](docs/parity.md)** — stage-by-stage,
+  including where this tool is weaker.
+- **[Corpus](docs/corpus.md)** — how correctness is measured.
+
+## Building from source
+
+Requires the .NET 10 SDK.
 
 ```bash
 dotnet restore ReactorUnpack.slnx
-dotnet build ReactorUnpack.slnx
+dotnet build ReactorUnpack.slnx -c Release
 dotnet test ReactorUnpack.slnx -c Release
 ```
 
-Run the tests in `Release`. Most of the suite is the bounded interpreter working
-through real samples, which an unoptimized build runs about five times slower,
-so the default `Debug` configuration turns a three-quarter-minute run into a
-six-minute one. Build `Debug` when stepping through a pass.
+Use `-c Release` for the tests. Most of the suite is the analysis engine working
+through real samples, which an unoptimised build runs about five times slower.
 
-If the host has no SDK, the workspace-local installation used during
-development is available as `.dotnet/dotnet`.
+## Contributing
 
-## Usage
+Samples are the bottleneck, not ideas. If you have a Reactor-protected sample
+that ReactorUnpack handles badly, that is the most valuable thing you can
+contribute — particularly native-packed ones, which are unimplemented purely
+because no sample has been available to develop against.
 
-Analyze without emitting a transformed binary:
+Bug reports should include the `--verbose` output and the SHA-256 of the sample.
 
-```bash
-dotnet run --project src/ReactorUnpack.Cli -- \
-  samples/embedded_dotnet_Mlfhntkcvb.exe \
-  --analyze-only --report-dir artifacts
-```
+## Licence and credits
 
-Emit only when every pass and verification gate succeeds:
+MIT. See [LICENSE](LICENSE).
 
-```bash
-dotnet run --project src/ReactorUnpack.Cli -- \
-  samples/embedded_dotnet_Mlfhntkcvb.exe \
-  --fail-on-partial --report-dir artifacts \
-  --output artifacts/Mlfhntkcvb.cleaned.exe
-```
+ReactorUnpack is independent of
+[NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer) and contains no
+de4dot-derived or other GPL code; it was built clean-room from behaviour observed
+in samples, which is what allows it to be MIT rather than GPL. It depends on
+[dnlib](https://github.com/0xd4d/dnlib), also MIT.
 
-Run the complete local corpus with deterministic normalized outcomes:
-
-```bash
-dotnet run --project src/ReactorUnpack.Cli -- corpus run \
-  --manifest corpus/reactor-6-nonvirt.manifest.json \
-  --samples samples \
-  --output artifacts/corpus
-```
-
-For each input, ReactorUnpack writes:
-
-- `<sample>.analysis.json` — evidence, resource inventory, pass status, and
-  verification results;
-- `<sample>.changes.json` — every IL transformation with token and offset; and
-- `<sample>.payloads/*.dll` — verified managed payloads recovered without CLR
-  loading; and
-- `<sample>.cleaned.exe` — emitted only after verification.
-
-## Safety and scope
-
-ReactorUnpack does not execute protected code. Inputs remain immutable, output
-is written atomically, and unknown formats are reported as unsupported instead
-of being guessed. Payload stages are bounded and accepted only after framing,
-compression, cryptographic, and managed-metadata invariants. Public API,
-resources, token sets, entry point, strong-name state, branches, exception
-regions, and stacks are checked against the input before emission, and the
-emitted file is then checked against the module it came from, by member name so
-that the check survives the renumbering deletion forces on the metadata writer.
-Method edits use full-body rollback covering locals and EH state.
-
-Nothing is deleted on unreachability alone. A declaration is removed only when
-recovery can also say why it has no use left — because the pass that replaced a
-resolver call with its string, redirected a call past a forwarder, or elided an
-inert loader call recorded what it made pointless. Anything unreachable that no
-pass accounts for is reported and kept, which is what separates removing an
-obfuscation from editing the program.
-
-See [docs/compatibility.md](docs/compatibility.md) for capability coverage and
-[docs/corpus.md](docs/corpus.md) for corpus provenance and reproducible checks.
+.NET Reactor is a product of Eziriz. This project is not affiliated with or
+endorsed by them.

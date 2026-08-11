@@ -1,27 +1,32 @@
-﻿using ReactorUnpack.Core;
+﻿using ReactorUnpack.Cli;
+using ReactorUnpack.Core;
 using ReactorUnpack.Core.Corpus;
 
-return await ReactorCommand.RunAsync(args);
+return ReactorCommand.Run(args);
 
 internal static class ReactorCommand
 {
-    public static Task<int> RunAsync(string[] args)
+    public static int Run(string[] args)
     {
         if (args.Length >= 2 && args[0] == "corpus" && args[1] == "run")
+            return RunCorpus(args[2..]);
+        if (args.Any(argument => argument is "--version"))
         {
-            return Task.FromResult(RunCorpus(args[2..]));
+            Console.WriteLine(ReactorPipeline.Version);
+            return 0;
         }
 
-        if (args.Length == 0 || args.Any(argument => argument is "-h" or "--help"))
+        if (args.Length == 0 || args.Any(argument => argument is "-h" or "--help" or "/?"))
         {
             PrintUsage();
-            return Task.FromResult(args.Length == 0 ? 2 : 0);
+            return args.Length == 0 ? 2 : 0;
         }
 
         var analyzeOnly = false;
         var failOnPartial = false;
         var removeRuntime = true;
         var renameSymbols = false;
+        var verbose = false;
         string? output = null;
         string? reportDirectory = null;
         string? input = null;
@@ -45,43 +50,39 @@ internal static class ReactorCommand
                 case "--rename":
                     renameSymbols = true;
                     break;
+                case "-v":
+                case "--verbose":
+                    verbose = true;
+                    break;
                 case "-o":
                 case "--output":
-                    output = RequireValue(args, ref index);
+                    if (!TryTakeValue(args, ref index, out output))
+                        return Fail($"{args[index]} needs a file path after it.");
                     break;
                 case "--report-dir":
-                    reportDirectory = RequireValue(args, ref index);
+                    if (!TryTakeValue(args, ref index, out reportDirectory))
+                        return Fail($"{args[index]} needs a folder path after it.");
                     break;
                 default:
-                    if (args[index].Length > 0 && args[index][0] == '-')
-                    {
-                        return Task.FromResult(Fail($"Unknown option: {args[index]}"));
-                    }
-
+                    if (args[index].StartsWith('-'))
+                        return Fail($"Unknown option: {args[index]}");
                     if (input is not null)
-                    {
-                        return Task.FromResult(Fail("Only one input assembly can be processed at a time."));
-                    }
-
+                        return Fail("Give one file at a time.");
                     input = args[index];
                     break;
             }
         }
 
         if (input is null)
-        {
-            return Task.FromResult(Fail("An input assembly is required."));
-        }
-
+            return Fail("Tell me which file to look at.");
+        if (Directory.Exists(input))
+            return Fail($"That is a folder, not a file: {input}");
         if (!File.Exists(input))
-        {
-            return Task.FromResult(Fail($"Input does not exist: {input}"));
-        }
+            return Fail($"No such file: {input}");
 
         try
         {
-            var pipeline = new ReactorPipeline();
-            var result = pipeline.Run(input, new PipelineOptions(
+            var result = new ReactorPipeline().Run(input, new PipelineOptions(
                 AnalyzeOnly: analyzeOnly,
                 PreserveTokens: true,
                 FailOnPartial: failOnPartial,
@@ -90,56 +91,45 @@ internal static class ReactorCommand
                 OutputPath: output,
                 ReportDirectory: reportDirectory));
 
-            Console.WriteLine($"Input:    {result.Report.InputSha256}");
-            Console.WriteLine($"Analysis: {result.AnalysisReportPath}");
-            Console.WriteLine($"Changes:  {result.ChangesReportPath}");
-            Console.WriteLine(result.OutputPath is null
-                ? "Output:   not emitted (analysis-only or verification gate)"
-                : $"Output:   {result.OutputPath}");
-            foreach (var payloadPath in result.ExtractedPayloadPaths)
-            {
-                Console.WriteLine($"Payload:  {payloadPath}");
-            }
-
-            foreach (var pass in result.Report.Passes)
-            {
-                Console.WriteLine($"[{pass.Status.ToString().ToLowerInvariant(),-11}] {pass.Pass}: {pass.Changes} changes");
-                foreach (var diagnostic in pass.Diagnostics)
-                {
-                    Console.WriteLine($"              {diagnostic}");
-                }
-            }
-
+            if (verbose)
+                Explain.PassLog(result.Report);
+            Explain.Summarize(result, input);
             if (!result.Report.VerificationPassed)
             {
                 foreach (var diagnostic in result.Report.VerificationDiagnostics)
-                {
                     Console.Error.WriteLine($"verify: {diagnostic}");
-                }
             }
 
-            return Task.FromResult(result.Success ? 0 : 1);
+            return result.Success ? 0 : 1;
+        }
+        catch (BadImageFormatException)
+        {
+            return Fail(
+                $"{Path.GetFileName(input)} is not a .NET assembly. ReactorUnpack only reads " +
+                ".NET executables and libraries.");
         }
         catch (Exception ex)
         {
-            return Task.FromResult(Fail($"{ex.GetType().Name}: {ex.Message}"));
+            return Fail($"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
-    private static string RequireValue(string[] args, ref int index)
+    private static bool TryTakeValue(string[] args, ref int index, out string? value)
     {
-        if (++index >= args.Length)
+        if (index + 1 >= args.Length || args[index + 1].StartsWith('-'))
         {
-            throw new ArgumentException($"Missing value for {args[index - 1]}.");
+            value = null;
+            return false;
         }
 
-        return args[index];
+        value = args[++index];
+        return true;
     }
 
     private static int Fail(string message)
     {
         Console.Error.WriteLine($"error: {message}");
-        Console.Error.WriteLine("Use --help for usage.");
+        Console.Error.WriteLine("Run ReactorUnpack --help for usage.");
         return 2;
     }
 
@@ -155,22 +145,26 @@ internal static class ReactorCommand
                 switch (args[index])
                 {
                     case "--manifest":
-                        manifest = RequireValue(args, ref index);
+                        if (!TryTakeValue(args, ref index, out manifest))
+                            return Fail("--manifest needs a file path after it.");
                         break;
                     case "--samples":
-                        samples = RequireValue(args, ref index);
+                        if (!TryTakeValue(args, ref index, out samples))
+                            return Fail("--samples needs a folder path after it.");
                         break;
                     case "--output":
-                        output = RequireValue(args, ref index);
+                        if (!TryTakeValue(args, ref index, out output))
+                            return Fail("--output needs a folder path after it.");
                         break;
                     default:
                         return Fail($"Unknown corpus option: {args[index]}");
                 }
             }
 
-            var report = CorpusRunner.Run(manifest, samples, output);
-            Console.WriteLine($"Corpus:  {Path.GetFullPath(manifest)}");
-            Console.WriteLine($"Results: {Path.GetFullPath(Path.Combine(output, "corpus.outcomes.json"))}");
+            var report = CorpusRunner.Run(manifest!, samples!, output!);
+            Console.WriteLine($"Corpus:  {Path.GetFullPath(manifest!)}");
+            Console.WriteLine(
+                $"Results: {Path.GetFullPath(Path.Combine(output!, "corpus.outcomes.json"))}");
             Console.WriteLine($"Passed: {report.Passed}; failed: {report.Failed}; missing: {report.Missing}");
             return report.Failed == 0 && report.Missing == 0 ? 0 : 1;
         }
@@ -180,29 +174,34 @@ internal static class ReactorCommand
         }
     }
 
-    private static void PrintUsage()
-    {
+    private static void PrintUsage() =>
         Console.WriteLine(
-            """
-            ReactorUnpack - safe, static-first .NET Reactor analysis and deobfuscation
+            $"""
+            ReactorUnpack {ReactorPipeline.Version} - recover readable code from .NET Reactor
 
-            Usage:
-              ReactorUnpack <assembly> [options]
-              ReactorUnpack corpus run [--manifest PATH] [--samples DIR] [--output DIR]
+            Point it at a protected .NET file. It decrypts what Reactor encrypted, undoes
+            what it scrambled, and writes a clean copy you can open in a decompiler. The
+            protected file is never run.
+
+              ReactorUnpack suspicious.exe
+
+            That writes suspicious.cleaned.exe beside the input, plus a reactorunpack
+            folder holding the full report and any files that were hidden inside.
 
             Options:
-              --analyze-only       Produce reports without writing a transformed assembly
-              --fail-on-partial    Refuse output when any pass is incomplete
-              --keep-runtime       Keep Reactor runtime types that recovery proved unreachable
-              --rename             Rename proven Reactor-generated non-public symbols (opt-in)
-              -o, --output PATH    Select the cleaned assembly path
-              --report-dir DIR     Select the JSON report directory
-              -h, --help           Show this help
+              -v, --verbose            Show every step the tool took
+                  --analyze-only       Report what is there without writing a clean copy
+              -o, --output PATH        Write the clean copy somewhere else
+                  --report-dir DIR     Write the report somewhere else
+                  --keep-runtime       Leave Reactor's own code in place instead of removing it
+                  --rename             Give obfuscated names readable placeholders
+                  --fail-on-partial    Write nothing unless every stage fully succeeded
+              -h, --help               Show this
+                  --version            Print the version
 
-            Corpus options:
-              --manifest PATH      Corpus manifest (default: corpus/reactor-6-nonvirt.manifest.json)
-              --samples DIR        Hash-verified binary directory (default: samples)
-              --output DIR         Normalized report directory (default: artifacts/corpus)
+            Development:
+              ReactorUnpack corpus run [--manifest PATH] [--samples DIR] [--output DIR]
+
+            Docs and issues: https://github.com/jgajek/reactor-unpack
             """);
-    }
 }
