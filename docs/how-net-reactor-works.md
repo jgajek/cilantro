@@ -247,8 +247,8 @@ the outside, gives conditional branches the comparison they are made on, and
 occasionally names an operation nothing else could. Two operations per sample
 have no fixed arity at all, which is how the call and the object construction
 give themselves away, those being told how many values to take by the method
-their operand names. Between all of it, 28 of the 29 operations in each sample
-are reported on and 27 named, and 99.8% of a program can be written out as
+their operand names. Between all of it, all 29 operations in each sample are
+reported on and named, and every operation in a program can be written out as
 the IL it stands for.
 
 Whether that reading holds together can then be checked without knowing anything

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using dnlib.DotNet;
 using ReactorUnpack.Core.Interpretation;
@@ -50,6 +51,26 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     /// <summary>Which of the engine's own places it was seen writing to, where it wrote one.</summary>
     public IReadOnlyList<string>? Changes { get; init; }
 
+    /// <summary>
+    /// What the rest of the program leaves it no choice but to do to the stack, where nothing
+    /// measured it: the number of values it adds, which is negative for one that takes more than
+    /// it leaves.
+    /// </summary>
+    public int? Net { get; init; }
+
+    /// <summary>The type of the value it leaves on top, where every sighting agreed on one.</summary>
+    public string? Pushed { get; init; }
+
+    /// <summary>The type of the value it takes off the top, where every sighting agreed.</summary>
+    public string? Popped { get; init; }
+
+    /// <summary>How long the table it fetched from is, where it was seen fetching from one.</summary>
+    /// <remarks>
+    /// A method's arguments are as many as its signature declares. That is what tells the table of
+    /// arguments from the table of locals, neither of which says what it is.
+    /// </remarks>
+    public int? Holding { get; init; }
+
     /// <summary>What kind of thing it leaves, for a push whose value could not be read.</summary>
     /// <remarks>
     /// This is the poorest of the readings and is only reached when every better one has failed,
@@ -93,7 +114,11 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
         get
         {
             if (!Measured)
-                return Name ?? "effect not established";
+            {
+                return Name ?? (Net is { } net
+                    ? $"effect not established, {net:+0;-0;0} on the stack by what surrounds it"
+                    : "effect not established");
+            }
             var stack = Name ?? (Pops, Pushes) switch
             {
                 (0, 0) => TouchesState ? "changes engine state" : "no effect seen",
@@ -269,8 +294,8 @@ public static class VirtualSemantics
             foreach (var shape in Shapes)
             {
                 var trials = Trials(
-                    machine, module, heap, dispatcher, engine, factory, stack, example, shape,
-                    out var refused);
+                    machine, module, heap, dispatcher, engine, factory, slotType, stack, example,
+                    operand, shape, out var refused);
                 if (trials.Count == 0)
                 {
                     if (reason.Length == 0)
@@ -328,6 +353,13 @@ public static class VirtualSemantics
         /// <summary>Whether an array offered to it came back holding the value at the index given.</summary>
         public bool Stored { get; init; }
 
+        /// <summary>
+        /// The engine's tables that held what it left, at the place its operand names, and how
+        /// long each of those tables is.
+        /// </summary>
+        public IReadOnlyDictionary<string, int> Loaded { get; init; } =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+
         /// <summary>What kind of thing it left, where the value itself could not be read.</summary>
         public List<string> Kinds { get; init; } = [];
 
@@ -358,6 +390,9 @@ public static class VirtualSemantics
     /// is reseeded for every trial and accounted for separately, so including it would mark every
     /// operation as touching state and the distinction would be lost.
     /// </remarks>
+    /// <summary>How long a list may be and still be a table of values rather than the program.</summary>
+    private const int Tabular = 64;
+
     /// <summary>One place the engine keeps something, remembered well enough to put it back.</summary>
     private sealed record Place(
         string Path,
@@ -388,8 +423,24 @@ public static class VirtualSemantics
 
             // The engine's stack is the one thing deliberately disturbed, so it is not evidence.
             if (heap.TryGetModelValue<List<StaticValue>>(value, "Items", out var items) &&
-                ReferenceEquals(items, stack))
+                items is not null)
             {
+                if (ReferenceEquals(items, stack))
+                    continue;
+
+                // A table the engine keeps as a list is as much a place as one it keeps as an
+                // array, and an operation that fetches from one is doing what an operation that
+                // fetches from the other does. The long ones are left alone: a list of thousands is
+                // the program itself rather than a table of values, and walking it every trial
+                // costs more than it could ever say.
+                if (items.Count <= Tabular)
+                {
+                    for (var index = 0; index < items.Count; index++)
+                    {
+                        held.Add(new Place($"{path}[{index}]", value, null, index, items[index]));
+                        Follow(queue, $"{path}[{index}]", items[index], depth);
+                    }
+                }
                 continue;
             }
 
@@ -439,12 +490,7 @@ public static class VirtualSemantics
     private static void Restore(StaticHeap heap, List<Place> footprint)
     {
         foreach (var place in footprint)
-        {
-            if (place.Field is not null)
-                heap.TryWriteField(place.Owner, place.Field, place.Value);
-            else
-                heap.TryWriteArray(place.Owner, place.Index, place.Value);
-        }
+            Put(heap, place, place.Value);
     }
 
     internal static long? Operand(StaticHeap heap, StaticValue operation, FieldDef? operandField)
@@ -467,8 +513,10 @@ public static class VirtualSemantics
         MethodDef dispatcher,
         StaticValue engine,
         MethodDef factory,
+        string slotType,
         List<StaticValue> stack,
         StaticValue operation,
+        long? operand,
         Shape shape,
         out string refused)
     {
@@ -502,7 +550,10 @@ public static class VirtualSemantics
             }
 
             var footprint = Footprint(heap, module, engine, stack);
-            var was = footprint.ToDictionary(place => place.Path, place => place.Value.Bits);
+            var seeded = Sown(
+                machine, module, heap, factory, slotType, footprint, operand, trials.Count);
+            var was = (seeded.Count == 0 ? footprint : Footprint(heap, module, engine, stack))
+                .ToDictionary(place => place.Path, place => place.Value.Bits);
             var outcome = machine.Execute(
                 dispatcher, [engine, operation], new StaticWorkBudget(TrialSteps));
             if (outcome.Status != StaticExecutionStatus.Completed)
@@ -512,9 +563,10 @@ public static class VirtualSemantics
                 return [];
             }
 
+            var settled = Footprint(heap, module, engine, stack);
             var moved = new HashSet<long>();
             var where = new List<string>();
-            foreach (var place in Footprint(heap, module, engine, stack))
+            foreach (var place in settled)
             {
                 if (was.TryGetValue(place.Path, out var earlier) && earlier == place.Value.Bits)
                     continue;
@@ -554,6 +606,7 @@ public static class VirtualSemantics
 
             trials.Add(new Trial(before, after, kept, moved)
             {
+                Loaded = Fetched(heap, module, settled, stack, kept, operand),
                 Stored = stored,
                 Where = where,
                 Kinds = kinds,
@@ -562,6 +615,85 @@ public static class VirtualSemantics
             Restore(heap, footprint);
         }
         return trials;
+    }
+
+    /// <summary>
+    /// Puts a value of our own in every table of the engine, at the place the operand names.
+    /// </summary>
+    /// <remarks>
+    /// An operation that fetches from a table cannot be performed against an engine no run has
+    /// filled in: it reaches for a place that is not there, or finds something the surrounding
+    /// program left half-made, and faults either way. That is what leaves the arguments of a method
+    /// unreadable, since nothing but a real call ever puts anything in them.
+    ///
+    /// So the tables are filled before the operation is asked, and filled differently in each one,
+    /// which turns a refusal into a measurement twice over: the operation runs, and the table it
+    /// fetched from is the one holding the number that came back. Everything written here is put
+    /// back afterwards along with the rest of the trial's disturbance.
+    /// </remarks>
+    private static Dictionary<string, long> Sown(
+        StaticMachine machine,
+        ModuleDef module,
+        StaticHeap heap,
+        MethodDef factory,
+        string slotType,
+        List<Place> footprint,
+        long? operand,
+        int trial)
+    {
+        var written = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (operand is not { } index || index < 0 || index > int.MaxValue)
+            return written;
+
+        var ending = $"[{index.ToString(CultureInfo.InvariantCulture)}]";
+        var number = Sowing + (trial * Sowing / 4);
+        foreach (var place in footprint)
+        {
+            if (place.Field is not null ||
+                !place.Path.EndsWith(ending, StringComparison.Ordinal) ||
+                !Tabled(heap, place.Owner, slotType) ||
+                !TryMakeSlot(machine, module, heap, factory, ++number, false, out var slot, out _))
+            {
+                continue;
+            }
+            if (Put(heap, place, slot))
+                written[place.Path] = number;
+        }
+        return written;
+    }
+
+    /// <summary>Where the numbers sown into the engine's tables start.</summary>
+    /// <remarks>
+    /// Far from the numbers the stack is seeded with, so that a value fetched from a table is
+    /// never mistaken for one taken off the stack, and far from anything small the engine is
+    /// likely to be holding already.
+    /// </remarks>
+    private const int Sowing = 6000;
+
+    /// <summary>Whether something the engine holds is one of its tables of values.</summary>
+    private static bool Tabled(StaticHeap heap, StaticValue owner, string slotType) =>
+        heap.TryGetArrayElementType(owner, out var element) &&
+            string.Equals(element, slotType, StringComparison.Ordinal) ||
+        heap.TryGetRuntimeTypeName(owner, out var typeName) &&
+            string.Equals(
+                typeName,
+                $"System.Collections.Generic.List`1<{slotType}>",
+                StringComparison.Ordinal);
+
+    /// <summary>Writes one value into a place the engine keeps one, however it keeps it.</summary>
+    private static bool Put(StaticHeap heap, Place place, StaticValue value)
+    {
+        if (place.Field is not null)
+            return heap.TryWriteField(place.Owner, place.Field, value);
+        if (heap.TryGetModelValue<List<StaticValue>>(place.Owner, "Items", out var items) &&
+            items is not null)
+        {
+            if (place.Index >= items.Count)
+                return false;
+            items[place.Index] = value;
+            return true;
+        }
+        return heap.TryWriteArray(place.Owner, place.Index, value);
     }
 
     /// <summary>
@@ -637,18 +769,39 @@ public static class VirtualSemantics
             ? Measuring(shape, pops, pushes, trials)
             : (pops, pushes) switch
             {
-                (0, 1) => Nullary(trials),
+                (0, 1) => Nullary(trials) ??
+                    (Fetching(trials) is not null ? "loads what its operand indexes" : null),
                 (1, 1) => Unary(trials),
                 (2, 1) => Binary(trials),
                 _ => null
             };
         return new VirtualOperation(opcode, pops, pushes, name)
         {
+            Holding = pushes == 1 && pops == 0 ? Fetching(trials)?.Length : null,
             Leaving = pushes == 1 && pops == 0 ? Leaves(trials) : null,
             TouchesState = !settled,
             Changes = settled ? null : Changed(trials),
             Needs = shape.Plain ? null : shape.Needs
         };
+    }
+
+    /// <summary>
+    /// The one table that held what the operation left, every trial, at the place its operand named.
+    /// </summary>
+    /// <remarks>
+    /// One table only. Where two of them hold the same thing at the same place there is nothing to
+    /// choose between them, and a reading that picks one is a guess dressed as a measurement.
+    /// </remarks>
+    private static (string Path, int Length)? Fetching(List<Trial> trials)
+    {
+        var shared = trials[0].Loaded.Keys.ToHashSet(StringComparer.Ordinal);
+        foreach (var trial in trials.Skip(1))
+            shared.IntersectWith(trial.Loaded.Keys);
+        if (shared.Count != 1)
+            return null;
+        var path = shared.First();
+        var lengths = trials.Select(trial => trial.Loaded[path]).Distinct().ToList();
+        return lengths.Count == 1 ? (path, lengths[0]) : null;
     }
 
     /// <summary>
@@ -733,16 +886,102 @@ public static class VirtualSemantics
     private static string Site(string written) => written.Split('=')[0];
 
     /// <summary>
-    /// What sort of thing a value is, for saying something about one that cannot be read.
+    /// The tables of the engine that hold, where the operand says, what the operation left.
     /// </summary>
     /// <remarks>
-    /// The engine keeps its stack in slots, so what is on it is the slot and what matters is what
-    /// the slot holds. A value that is no number is still a value of some kind, and naming the kind
-    /// is often the whole answer: an operation that always leaves nothing at all is pushing null.
+    /// An operation that pushes something the trials cannot read is not necessarily beyond them.
+    /// Where the thing it pushed is sitting in one of the engine's own tables at the very place its
+    /// operand names, the operation fetched it from there, and that is a reading however unreadable
+    /// the value itself was. It only works against an engine a real run has filled in: in a cold
+    /// one the tables are empty and there is nothing to match.
+    ///
+    /// How long the table is comes back with it, because that is what later tells one table from
+    /// another — a method's arguments are as many as it declares, and its locals are not.
     /// </remarks>
-    private static string Kind(StaticHeap heap, ModuleDef module, StaticValue slot)
+    private static Dictionary<string, int> Fetched(
+        StaticHeap heap,
+        ModuleDef module,
+        List<Place> settled,
+        List<StaticValue> stack,
+        int kept,
+        long? operand)
     {
-        var held = slot;
+        var found = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (operand is not { } index || index < 0 || stack.Count - kept != 1)
+            return found;
+
+        var left = stack[^1];
+        var ending = $"[{index.ToString(CultureInfo.InvariantCulture)}]";
+        var lengths = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var place in settled)
+        {
+            // An element of a table, and not something kept inside one of its elements: the places
+            // under a table run on into whatever its values are made of, and counting those as
+            // entries would make every table as long as its contents are deep.
+            if (Element(place.Path) is not { } table)
+                continue;
+            lengths.TryGetValue(table, out var counted);
+            lengths[table] = counted + 1;
+            if (place.Path.EndsWith(ending, StringComparison.Ordinal) &&
+                Holds(heap, module, place.Value, left))
+            {
+                found[table] = 0;
+            }
+        }
+        foreach (var table in found.Keys.ToList())
+            found[table] = lengths[table];
+        return found;
+    }
+
+    /// <summary>The table a place is an element of, or nothing if it is not one.</summary>
+    private static string? Element(string path)
+    {
+        if (path.Length == 0 || path[^1] != ']')
+            return null;
+        var cut = path.LastIndexOf('[');
+        if (cut < 0)
+            return null;
+        var index = path.AsSpan(cut + 1, path.Length - cut - 2);
+        return index.Length > 0 && !index.ContainsAnyExcept(Digits) ? path[..cut] : null;
+    }
+
+    private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
+
+    /// <summary>Whether two of the engine's values stand for the same thing.</summary>
+    private static bool Holds(
+        StaticHeap heap,
+        ModuleDef module,
+        StaticValue held,
+        StaticValue left) =>
+        held.Kind == left.Kind && held.Bits == left.Bits ||
+        Kind(heap, module, held) is var kind && kind != "nothing at all" &&
+        string.Equals(kind, Kind(heap, module, left), StringComparison.Ordinal) &&
+        Same(heap, module, held, left);
+
+    /// <summary>Whether two wrappers hold the same thing, looked at through them.</summary>
+    /// <remarks>
+    /// Two wrappers around one object are the same value however many wrappers there are, so the
+    /// object itself is what is compared. Numbers are not shared that way — each wrapper has a
+    /// place of its own to keep one in — so for those it is the number that has to agree.
+    /// </remarks>
+    private static bool Same(
+        StaticHeap heap,
+        ModuleDef module,
+        StaticValue held,
+        StaticValue left)
+    {
+        var one = Unwrapped(heap, module, held);
+        var other = Unwrapped(heap, module, left);
+        if (one.Kind == other.Kind && one.Bits == other.Bits)
+            return true;
+        return TryReadNumber(heap, module, held, out var number) &&
+            TryReadNumber(heap, module, left, out var alike) &&
+            number == alike;
+    }
+
+    private static StaticValue Unwrapped(StaticHeap heap, ModuleDef module, StaticValue value)
+    {
+        var held = value;
         for (var unwrapped = 0; unwrapped < 3; unwrapped++)
         {
             if (held.Kind != StaticValueKind.HeapReference ||
@@ -753,11 +992,25 @@ public static class VirtualSemantics
             }
             held = within;
         }
-        if (held.Kind == StaticValueKind.Null)
+        return held;
+    }
+
+    /// <summary>
+    /// What sort of thing a value is, for saying something about one that cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// The engine keeps its stack in slots, so what is on it is the slot and what matters is what
+    /// the slot holds. A value that is no number is still a value of some kind, and naming the kind
+    /// is often the whole answer: an operation that always leaves nothing at all is pushing null.
+    /// </remarks>
+    private static string Kind(StaticHeap heap, ModuleDef module, StaticValue slot)
+    {
+        var carried = Carrying(heap, module, slot, 0);
+        if (carried.Nothing)
             return "nothing at all";
-        if (held.Kind != StaticValueKind.HeapReference)
-            return held.Kind.ToString();
-        return heap.TryGetRuntimeTypeName(held, out var typeName) ? typeName : "something";
+        if (carried.Type is { } named)
+            return named;
+        return heap.TryGetRuntimeTypeName(slot, out var typeName) ? typeName : "something";
     }
 
     /// <summary>
@@ -777,7 +1030,8 @@ public static class VirtualSemantics
         var held = new List<StaticValue>();
         foreach (var field in Fields(module, typeName))
         {
-            if (heap.TryReadField(wrapper, field, out var stored) &&
+            if (!Describing(field) &&
+                heap.TryReadField(wrapper, field, out var stored) &&
                 stored.Kind != StaticValueKind.Null)
             {
                 held.Add(stored);
@@ -1066,6 +1320,103 @@ public static class VirtualSemantics
             }
         }
         return null;
+    }
+
+    /// <summary>What a value the engine stacked turns out to be, seen through its wrappers.</summary>
+    /// <param name="Nothing">
+    /// Whether it is nothing at all. A wrapper whose every place is empty is holding null, and
+    /// that is a reading rather than a failure to read one: the operation that leaves it pushes
+    /// null, which no amount of looking at the wrapper's own type would ever say.
+    /// </param>
+    /// <param name="Type">The name of the type it holds, where the wrapping says which.</param>
+    internal readonly record struct Carriage(bool Nothing, string? Type);
+
+    /// <summary>How many layers of the engine's wrapping to see through.</summary>
+    private const int Wrapping = 4;
+
+    /// <summary>Whether a field says what a value is rather than holding it.</summary>
+    /// <remarks>
+    /// An engine that stacks values of every type has to record which type each one is, and the
+    /// record is not the value. Two kinds of field do that: a small number from an enum whose
+    /// members were stripped, and a <see cref="Type"/> the engine kept beside the value. Reading
+    /// either as the value is how a slot holding null comes to be reported as holding a number.
+    /// </remarks>
+    private static bool Describing(FieldDef field)
+    {
+        if (field.FieldType?.FullName == "System.Type")
+            return true;
+        var declared = field.FieldType?.ToTypeDefOrRef()?.ResolveTypeDef();
+        return declared is { IsEnum: true };
+    }
+
+    /// <summary>
+    /// What type a value the engine stacked really is, read out of how the engine wrapped it.
+    /// </summary>
+    /// <remarks>
+    /// The wrapper holds a struct that lays every integer width at the same offset — a union — and
+    /// the member the engine last wrote is what the value is, a distinction the heap keeps because
+    /// writing one member of overlapping storage makes the others stale. So the type comes back as
+    /// the name the engine's own code used when it put the value there, which is what a typed
+    /// listing needs and what the stripped enum beside it cannot give.
+    /// </remarks>
+    internal static Carriage Carrying(
+        StaticHeap heap,
+        ModuleDef module,
+        StaticValue value,
+        int depth)
+    {
+        ArgumentNullException.ThrowIfNull(heap);
+        ArgumentNullException.ThrowIfNull(module);
+        if (depth > Wrapping)
+            return new Carriage(false, null);
+        switch (value.Kind)
+        {
+            case StaticValueKind.Null:
+                return new Carriage(true, null);
+            case StaticValueKind.Int32:
+                return new Carriage(false, "System.Int32");
+            case StaticValueKind.Int64:
+                return new Carriage(false, "System.Int64");
+            case StaticValueKind.Float32:
+                return new Carriage(false, "System.Single");
+            case StaticValueKind.Float64:
+                return new Carriage(false, "System.Double");
+            case StaticValueKind.HeapReference:
+                break;
+            default:
+                return new Carriage(false, null);
+        }
+
+        if (!heap.TryGetRuntimeTypeName(value, out var held))
+            return new Carriage(false, null);
+        if (module.Find(held, isReflectionName: false) is not { } declared)
+            return new Carriage(false, held);
+
+        // A union says which type it holds by which of its members was last written into it.
+        if (declared.IsExplicitLayout)
+        {
+            foreach (var member in declared.Fields)
+            {
+                if (!member.IsStatic && heap.TryReadAssignedField(value, member, out _))
+                    return new Carriage(false, member.FieldType?.FullName);
+            }
+            return new Carriage(false, null);
+        }
+
+        var places = 0;
+        var empty = 0;
+        foreach (var field in Fields(module, held))
+        {
+            if (Describing(field) || !heap.TryReadField(value, field, out var within))
+                continue;
+            places++;
+            var carried = Carrying(heap, module, within, depth + 1);
+            if (carried.Type is not null)
+                return carried;
+            if (carried.Nothing)
+                empty++;
+        }
+        return new Carriage(places > 0 && empty == places, null);
     }
 
     private static IEnumerable<FieldDef> Fields(ModuleDef module, string typeName)

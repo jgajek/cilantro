@@ -11,10 +11,43 @@ public sealed record VirtualInstruction(int Index, int Opcode, VirtualOperand Op
 public abstract record VirtualOperand
 {
     public sealed record None : VirtualOperand;
-    public sealed record Number(long Value) : VirtualOperand;
+    public sealed record Number(long Value) : VirtualOperand
+    {
+        /// <summary>
+        /// The type the engine boxed it as, which is the width the constant really has.
+        /// </summary>
+        /// <remarks>
+        /// Read from the operand itself rather than from what the operation was seen doing, so it
+        /// holds for the instructions no run ever reached.
+        /// </remarks>
+        public string? Type { get; init; }
+    }
     public sealed record Text(string Value) : VirtualOperand;
     public sealed record Table(IReadOnlyList<long> Values) : VirtualOperand;
     public sealed record Other(string Description) : VirtualOperand;
+}
+
+/// <summary>A guarded region of a virtualized program, as the engine parsed it.</summary>
+/// <param name="Numbers">The places it spans, in the order the engine keeps them.</param>
+/// <param name="Kind">The number the engine writes to tell one sort of handler from another.</param>
+/// <param name="Caught">The type it catches, where it names one.</param>
+public sealed record VirtualRegion(IReadOnlyList<int> Numbers, int? Kind, string? Caught)
+{
+    /// <summary>
+    /// The region as a line of the listing, said in the engine's own terms.
+    /// </summary>
+    /// <remarks>
+    /// Which number is the start of the try and which the start of the handler is not something
+    /// the engine says, so they are given in the order it keeps them rather than under names that
+    /// would be a guess. A reader with the listing beside them can see which is which.
+    /// </remarks>
+    public string Describe()
+    {
+        var places = string.Join(", ", Numbers);
+        var kind = Kind is { } number ? $", kind {number}" : string.Empty;
+        var caught = Caught is null ? string.Empty : $", catching {Caught}";
+        return $"over operations {places}{kind}{caught}";
+    }
 }
 
 /// <summary>A virtualized method's program, as the engine itself decoded it.</summary>
@@ -33,12 +66,77 @@ public sealed record VirtualProgram(
     /// <summary>The jumping operations whose target was, every time it was watched, their operand.</summary>
     public IReadOnlySet<int> TargetIsOperand { get; init; } = new HashSet<int>();
 
+    /// <summary>The guarded regions the engine parsed alongside the operations.</summary>
+    /// <remarks>
+    /// A method's exception handling is not in its operations — nothing in a stream of stack
+    /// operations says where a try begins — so a listing without it is not a reading of the method
+    /// but of most of it, and a body built from one would run the wrong code when anything threw.
+    /// </remarks>
+    public IReadOnlyList<VirtualRegion> Regions { get; init; } = [];
+
+    /// <summary>
+    /// What is known about the method's exception handling where no region was recovered.
+    /// </summary>
+    /// <remarks>
+    /// Finding nothing and being unable to look are different answers, and a body rebuilt on the
+    /// first when the second is true would be missing handlers nobody knew to look for.
+    /// </remarks>
+    public string? Guarding { get; init; }
+
     /// <summary>Why the operations that were not performed in isolation were left alone.</summary>
     /// <remarks>
     /// Saying nothing about an operation and saying nothing about why are different. The reason is
     /// what tells a reader whether the gap is in the method or in the tool.
     /// </remarks>
     public IReadOnlyList<string> Declined { get; init; } = [];
+
+    /// <summary>What an operation leaves and takes, in the types the run found on them.</summary>
+    private static string Typed(VirtualOperation operation)
+    {
+        var takes = operation.Popped is { } popped ? $"takes {Short(popped)}" : null;
+        var leaves = operation.Pushed is { } pushed ? $"leaves {Short(pushed)}" : null;
+        var said = string.Join(", ", new[] { takes, leaves }.Where(one => one is not null));
+        return said.Length == 0 ? string.Empty : $" [{said}]";
+    }
+
+    /// <summary>Breaks a sentence into lines a listing can hold.</summary>
+    private static IEnumerable<string> Wrapped(string said)
+    {
+        var line = new System.Text.StringBuilder();
+        foreach (var word in said.Split(' '))
+        {
+            if (line.Length + word.Length + 1 > 84)
+            {
+                yield return line.ToString();
+                line.Clear();
+            }
+            if (line.Length > 0)
+                line.Append(' ');
+            line.Append(word);
+        }
+        if (line.Length > 0)
+            yield return line.ToString();
+    }
+
+    /// <summary>A type's name as a reader of IL would say it.</summary>
+    internal static string Short(string name) => name switch
+    {
+        "System.Int32" => "int32",
+        "System.Int64" => "int64",
+        "System.Int16" => "int16",
+        "System.SByte" => "int8",
+        "System.Byte" => "uint8",
+        "System.UInt16" => "uint16",
+        "System.UInt32" => "uint32",
+        "System.UInt64" => "uint64",
+        "System.Single" => "float32",
+        "System.Double" => "float64",
+        "System.String" => "string",
+        "System.Boolean" => "bool",
+        "System.Char" => "char",
+        "System.IntPtr" => "native int",
+        _ => name
+    };
 
     /// <summary>
     /// Writes the program out, naming anything an operand turns out to be a metadata token for.
@@ -68,7 +166,7 @@ public sealed record VirtualProgram(
                 "standing.";
             yield return ";";
             foreach (var operation in Operations.Values.OrderBy(item => item.Opcode))
-                yield return $";   op {operation.Opcode,4}  {operation.Describe()}";
+                yield return $";   op {operation.Opcode,4}  {operation.Describe()}{Typed(operation)}";
             foreach (var line in Declined)
                 yield return $"; {line}".TrimEnd();
             if (Targets.Count > 0)
@@ -81,6 +179,24 @@ public sealed record VirtualProgram(
                 yield return "; which is how every watched jump of that kind turned out to have " +
                     "been decided.";
             }
+        }
+
+        // Said whether or not any operation was named: what a method guards is a fact about the
+        // method rather than about how well its operations were read.
+        if (Regions.Count > 0)
+        {
+            yield return ";";
+            yield return $"; The engine also parsed {Regions.Count} guarded region(s), which are " +
+                "no part of the";
+            yield return "; operations and would be invisible in a reading of them alone:";
+            foreach (var region in Regions)
+                yield return $";   {region.Describe()}";
+        }
+        else if (Guarding is { } said)
+        {
+            yield return ";";
+            foreach (var line in Wrapped(said))
+                yield return $"; {line}";
         }
         yield return string.Empty;
         foreach (var instruction in Instructions)
@@ -198,20 +314,24 @@ public static class VirtualProgramRecovery
         var roots = stalled
             ? Callers(context.Module, method.Stub).Take(CallersTried)
             : [method.Stub];
+        Watched? watched = null;
         foreach (var root in roots)
         {
-            if (Watch(context, root, attempt) is { } watched)
+            if (Watch(context, root, attempt) is { } one)
             {
-                flow = watched;
+                watched = one;
+                flow = one.Run;
                 if (flow.Learned)
                     break;
             }
         }
 
+        var operandField = OperandField(
+            context.Module, attempt.OpcodeField, attempt.InstructionType);
         var probed = VirtualSemantics.Probe(
             attempt.Machine, context.Module, attempt.Dispatcher, attempt.Engine, attempt.OpcodeField,
-            OperandField(context.Module, attempt.OpcodeField, attempt.InstructionType),
-            attempt.Program);
+            operandField, attempt.Program);
+        probed = Again(context, attempt, watched, operandField, probed);
 
         // How far the engine got before the run stopped is worth saying: the state left behind is
         // what the operations are asked their meaning in, and an engine that stopped at its first
@@ -225,13 +345,322 @@ public static class VirtualProgramRecovery
             $"{method.ProgramId}, read back from its own " +
             $"{attempt.InstructionType.Split('/')[^1]} list. It performed {attempt.Performed} of " +
             $"them before stopping. " + probed.Summary + " " + Say(flow);
-        return new VirtualProgram(method, attempt.InstructionType, attempt.Decoded)
+        var program = new VirtualProgram(method, attempt.InstructionType, attempt.Decoded)
         {
             Operations = operations,
-            Declined = VirtualSemantics.Wording(VirtualSemantics.Counted(refused)),
             Targets = flow.Targets,
             TargetIsOperand = byOperand
         };
+
+        // An operation read from what the program forces on it and what its operand names is read,
+        // however the trials fared with it, so the refusals are counted last.
+        var regions = Regions(
+            (watched?.Machine ?? attempt.Machine).State.Heap,
+            context.Module,
+            attempt.Decoded.Count,
+            out var shapedTypes,
+            out var made);
+        var guarding = shapedTypes == 0
+            ? "The engine has no class shaped like an exception clause, so whether the method " +
+                "guards anything could not be established."
+            : regions.Count > 0
+                ? null
+                : made == 0
+                    ? $"The engine has {shapedTypes} class(es) shaped like an exception clause and " +
+                        "made none of them while running this program, so nothing in this method " +
+                        "is guarded."
+                    : $"The engine made {made} object(s) shaped like an exception clause while " +
+                        "running this program, none of them naming places in it, so they are " +
+                        "something else of the engine's and nothing here is known to be guarded.";
+        var settled = Settled(program, context.Module);
+        var left = refused
+            .Where(entry => !settled.TryGetValue(entry.Key, out var known) || !known.Identified)
+            .ToDictionary(entry => entry.Key, entry => entry.Value);
+        return program with
+        {
+            Regions = regions,
+            Guarding = guarding,
+            Operations = settled,
+            Declined = VirtualSemantics.Wording(VirtualSemantics.Counted(left))
+        };
+    }
+
+    /// <summary>
+    /// The guarded regions the engine parsed, found by their shape rather than by any name.
+    /// </summary>
+    /// <remarks>
+    /// A clause has to say four things — where the guarded part starts and ends, where the handler
+    /// starts and ends — and it has to say what is caught, so a class with several whole numbers
+    /// and a type in it is what one looks like from outside. That shape alone would catch other
+    /// things too, which is why the numbers are then checked against the program: a clause whose
+    /// places are not places in this program is not this program's clause, and nothing is claimed.
+    /// </remarks>
+    private static List<VirtualRegion> Regions(
+        StaticHeap heap,
+        ModuleDef module,
+        int operations,
+        out int shapedTypes,
+        out int made)
+    {
+        made = 0;
+        shapedTypes = 0;
+        var shaped = module.GetTypes()
+            .Where(type => type.Fields.Count(field =>
+                    !field.IsStatic && field.FieldType?.FullName == "System.Int32") >= Places &&
+                type.Fields.Any(field =>
+                    !field.IsStatic && field.FieldType?.FullName == "System.Type"))
+            .Select(type => type.FullName)
+            .ToHashSet(StringComparer.Ordinal);
+        shapedTypes = shaped.Count;
+        if (shaped.Count == 0)
+            return [];
+
+        var found = new List<VirtualRegion>();
+        made = 0;
+        foreach (var value in heap.Instances())
+        {
+            if (!heap.TryGetRuntimeTypeName(value, out var typeName) || !shaped.Contains(typeName))
+                continue;
+            made++;
+            if (Region(heap, module, value, operations) is { } region)
+                found.Add(region);
+        }
+        return found;
+    }
+
+    /// <summary>A value read as a clause, where it has the shape of one and the places to match.</summary>
+    private static VirtualRegion? Region(
+        StaticHeap heap,
+        ModuleDef module,
+        StaticValue value,
+        int operations)
+    {
+        if (!heap.TryGetRuntimeTypeName(value, out var typeName) ||
+            module.Find(typeName, isReflectionName: false) is not { } declared)
+        {
+            return null;
+        }
+
+        var numbers = new List<int>();
+        int? kind = null;
+        string? caught = null;
+        var typed = false;
+        foreach (var field in declared.Fields)
+        {
+            if (field.IsStatic || !heap.TryReadAssignedField(value, field, out var stored))
+                continue;
+            switch (field.FieldType?.FullName)
+            {
+                case "System.Int32" when stored.Kind == StaticValueKind.Int32:
+                    numbers.Add((int)stored.Bits);
+                    break;
+                case "System.Byte" when stored.Kind == StaticValueKind.Int32:
+                    kind ??= (int)stored.Bits;
+                    break;
+                case "System.Type":
+                    typed = true;
+                    caught ??= heap.TryGetModelValue<string>(stored, "Name", out var named)
+                        ? named
+                        : null;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Four places and a type is a clause; anything less is some other object of the engine's
+        // that happens to hold numbers, and the numbers have to be places in this program besides.
+        return typed && numbers.Count >= Places &&
+            numbers.TrueForAll(one => one >= 0 && one <= operations)
+                ? new VirtualRegion(numbers, kind, caught)
+                : null;
+    }
+
+    /// <summary>How many places a clause has to name to be read as one.</summary>
+    private const int Places = 4;
+
+    /// <summary>
+    /// Takes what the program forces on an operation together with what its operand names.
+    /// </summary>
+    /// <remarks>
+    /// Neither half is a reading on its own. That an operation takes one value and leaves none says
+    /// nothing about where the value went, and that its operand names a static field says nothing
+    /// about what it does with the field — an operation could as easily be reading it. Put
+    /// together, with every other reading of the operation already ruled out, there is one thing
+    /// left for it to be, and it is the counterpart of an operation the run watched doing the
+    /// opposite. The name is the same one watching would have produced, because it is the same
+    /// claim.
+    /// </remarks>
+    internal static Dictionary<int, VirtualOperation> Settled(
+        VirtualProgram program,
+        ModuleDef module)
+    {
+        var forced = VirtualLift.Solve(program, module);
+        var operations = program.Operations.ToDictionary(entry => entry.Key, entry => entry.Value);
+        foreach (var (opcode, net) in forced)
+        {
+            if (!operations.TryGetValue(opcode, out var operation))
+                operation = new VirtualOperation(opcode, 0, 0, null) { Measured = false };
+            operations[opcode] = operation with { Net = net };
+        }
+
+        foreach (var (opcode, operation) in operations)
+        {
+            var takes = operation.Measured
+                ? operation is { Pops: > 0, Pushes: 0 }
+                : operation.Net == -1;
+            if (operation.Identified || !takes || !Fields(program, module, opcode))
+                continue;
+            operations[opcode] = operation with { Name = "writes the static field it names" };
+        }
+
+        foreach (var (opcode, operation) in operations)
+        {
+            if (Arguments(program, operation) is { } named)
+                operations[opcode] = operation with { Name = named };
+        }
+        return operations;
+    }
+
+    /// <summary>
+    /// Whether an operation that reaches into a table of the engine's reaches into the arguments.
+    /// </summary>
+    /// <remarks>
+    /// Nothing about a table says what it is for, and an engine keeps the arguments of the method
+    /// it is running in one just like its locals. What tells them apart is the method itself: its
+    /// arguments are as many as it declares, so a table of exactly that length, never reached past
+    /// the last of them, is the one holding them. A locals table of the same length would be
+    /// reached past the moment the method had a local it did not have an argument for, and where
+    /// it is not, the two are the same table as far as anything here can tell — so nothing more is
+    /// claimed than the length supports.
+    /// </remarks>
+    private static string? Arguments(VirtualProgram program, VirtualOperation operation)
+    {
+        var wanted = operation.Name switch
+        {
+            "loads what its operand indexes" => "loads the argument it indexes",
+            "stores where its operand indexes" => "stores into the argument it indexes",
+            _ => null
+        };
+        if (wanted is null || operation.Holding is not { } length)
+            return null;
+
+        var declared = program.Method.Stub.Parameters.Count;
+        if (declared == 0 || length != declared)
+            return null;
+        var reached = program.Instructions
+            .Where(one => one.Opcode == operation.Opcode)
+            .Select(one => one.Operand as VirtualOperand.Number)
+            .ToList();
+        return reached.Count > 0 &&
+            reached.TrueForAll(number => number is not null && number.Value >= 0 &&
+                number.Value < declared)
+                ? wanted
+                : null;
+    }
+
+    /// <summary>Whether every operation of a kind carries the token of a static field.</summary>
+    private static bool Fields(VirtualProgram program, ModuleDef module, int opcode)
+    {
+        var carried = program.Instructions.Where(one => one.Opcode == opcode).ToList();
+        return carried.Count > 0 && carried.TrueForAll(one =>
+            one.Operand is VirtualOperand.Number number &&
+            number.Value is >= int.MinValue and <= int.MaxValue &&
+            Field(module, (int)number.Value) is { IsStatic: true });
+    }
+
+    private static FieldDef? Field(ModuleDef module, int token)
+    {
+        try
+        {
+            return (module.ResolveToken(token) as IField)?.ResolveFieldDef();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Asks the operations nothing settled a second time, in the engine a real run left behind.
+    /// </summary>
+    /// <remarks>
+    /// The two ways of asking fail for opposite reasons and the failures do not overlap. A cold
+    /// engine can be arranged however the questioning likes but has none of what the program would
+    /// have prepared, so an operation that reaches for a table or a resolved member cannot be
+    /// performed at all. A real run has all of it but goes one way through the program, so it never
+    /// performs the operations on the paths it did not take. Asking the second way in the state the
+    /// first way produced has neither limit: the tables are full, the members are resolved, and the
+    /// operation is still performed on values chosen to tell its effect apart from its neighbours'.
+    ///
+    /// Only what is still unsettled is asked again, and an answer is only taken where the first way
+    /// had none. A cold engine is the more controlled of the two, so where both answer, the
+    /// controlled answer stands.
+    /// </remarks>
+    private static VirtualSemanticsReport Again(
+        ArtifactContext context,
+        Attempt attempt,
+        Watched? watched,
+        FieldDef? operandField,
+        VirtualSemanticsReport first)
+    {
+        if (watched is null || watched.Program.Count == 0)
+            return first;
+        var wanted = first.Operations
+            .Where(entry => !entry.Value.Identified || !entry.Value.Measured)
+            .Select(entry => entry.Key)
+            .Concat(first.Refused.Keys)
+            .ToHashSet();
+        if (wanted.Count == 0)
+            return first;
+
+        // Only one instruction of each kind is worth asking about, and asking about the rest costs
+        // a run of the engine each.
+        var asked = new List<StaticValue>();
+        var seen = new HashSet<int>();
+        foreach (var operation in watched.Program)
+        {
+            // The run that was watched has a heap of its own, and these are its objects. Reading
+            // them out of the first run's heap asks a different heap what is at the same address.
+            if (watched.Machine.State.Heap.TryReadField(
+                    operation, attempt.OpcodeField, out var code) &&
+                code.Kind == StaticValueKind.Int32 &&
+                wanted.Contains((int)code.Bits) && seen.Add((int)code.Bits))
+            {
+                asked.Add(operation);
+            }
+        }
+        if (asked.Count == 0)
+            return first;
+
+        var second = VirtualSemantics.Probe(
+            watched.Machine, context.Module, attempt.Dispatcher, watched.Engine,
+            attempt.OpcodeField, operandField, asked);
+        var operations = first.Operations.ToDictionary(entry => entry.Key, entry => entry.Value);
+        var refused = first.Refused.ToDictionary(entry => entry.Key, entry => entry.Value);
+        var gained = 0;
+        foreach (var (opcode, answer) in second.Operations)
+        {
+            if (operations.TryGetValue(opcode, out var known) &&
+                (known.Identified || !answer.Identified && known.Measured))
+            {
+                continue;
+            }
+            operations[opcode] = answer;
+            refused.Remove(opcode);
+            gained++;
+        }
+        // Where the second asking failed too, its refusal is the one worth reporting: it was made
+        // in the state the operation was written for, so what it says is missing really is missing.
+        foreach (var (opcode, why) in second.Refused)
+        {
+            if (!operations.TryGetValue(opcode, out var known) || !known.Identified)
+                refused[opcode] = why;
+        }
+        var summary = first.Summary +
+            $" {asked.Count} of them were asked again in the engine a real run left behind, " +
+            $"which answered {gained}.";
+        return new VirtualSemanticsReport(operations, refused, summary);
     }
 
     /// <summary>
@@ -293,7 +722,10 @@ public static class VirtualProgramRecovery
                 merged[opcode] = known with
                 {
                     Name = known.Name ?? watched.Name,
-                    Computes = watched.Computes
+                    Computes = watched.Computes,
+                    Holding = known.Holding ?? watched.Holding,
+                    Pushed = known.Pushed ?? watched.Pushed,
+                    Popped = known.Popped ?? watched.Popped
                 };
             }
         }
@@ -412,7 +844,7 @@ public static class VirtualProgramRecovery
     /// Where the first run went nowhere the call site is entered instead, its arguments being the
     /// ones the program itself supplies rather than the nothing the stub was handed.
     /// </summary>
-    private static VirtualRun? Watch(
+    private static Watched? Watch(
         ArtifactContext context,
         MethodDef root,
         Attempt known)
@@ -434,8 +866,23 @@ public static class VirtualProgramRecovery
         machine.FrameEntered = null;
         machine.FrameExited = null;
         machine.Stepped = null;
-        return watcher.Result();
+        return new Watched(watcher.Result(), machine, watcher.Engine, watcher.Program);
     }
+
+    /// <summary>
+    /// A run of the program and the engine it left behind, which is worth more than the run.
+    /// </summary>
+    /// <remarks>
+    /// An operation asked its meaning in a cold engine is asked in a state the program never
+    /// actually put it in: the tables are empty, nothing has been resolved, and a handler that
+    /// reaches for any of it faults or answers wrongly. The engine a real run leaves is the one the
+    /// operations were written for, so it is kept rather than discarded with the machine.
+    /// </remarks>
+    private sealed record Watched(
+        VirtualRun Run,
+        StaticMachine Machine,
+        StaticValue Engine,
+        List<StaticValue> Program);
 
     /// <summary>What one run of the engine left behind, and the program it decoded on the way.</summary>
     private sealed record Attempt(
@@ -616,6 +1063,16 @@ public static class VirtualProgramRecovery
         Fields(module, instructionType).FirstOrDefault(field =>
             field != opcodeField && field.FieldType.FullName == "System.Object");
 
+    /// <summary>What width the engine kept a number at, where the number says so itself.</summary>
+    private static string? Boxed(StaticValue value) => value.Kind switch
+    {
+        StaticValueKind.Int32 => "System.Int32",
+        StaticValueKind.Int64 => "System.Int64",
+        StaticValueKind.Float32 => "System.Single",
+        StaticValueKind.Float64 => "System.Double",
+        _ => null
+    };
+
     private static List<VirtualInstruction>? Decode(
         StaticHeap heap,
         ModuleDef module,
@@ -649,14 +1106,14 @@ public static class VirtualProgramRecovery
         {
             return value.Kind == StaticValueKind.Null
                 ? new VirtualOperand.None()
-                : new VirtualOperand.Number(value.Bits);
+                : new VirtualOperand.Number(value.Bits) { Type = Boxed(value) };
         }
         if (heap.TryGetString(value, out var text))
             return new VirtualOperand.Text(text);
         if (heap.TryUnbox(value, out var unboxed) &&
             unboxed.Kind != StaticValueKind.HeapReference)
         {
-            return new VirtualOperand.Number(unboxed.Bits);
+            return new VirtualOperand.Number(unboxed.Bits) { Type = Boxed(unboxed) };
         }
         if (heap.GetArraySnapshot(value) is { } elements)
         {

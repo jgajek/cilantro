@@ -689,6 +689,23 @@ public sealed class StaticHeap
         return false;
     }
 
+    /// <summary>Every object the interpretation made, for a search that must not miss one.</summary>
+    /// <remarks>
+    /// Walking outwards from a root reaches what the root holds through its fields and its lists,
+    /// which is most things but not all: something kept in a dictionary, or under a field of a type
+    /// the walk stopped at, is held all the same and would be missed. Where the question is whether
+    /// a thing exists at all, a walk that misses one answers no as confidently as a walk that
+    /// looked everywhere, and the two answers are not the same.
+    /// </remarks>
+    public IEnumerable<StaticValue> Instances()
+    {
+        foreach (var pair in _objects)
+        {
+            if (pair.Value is HeapInstance)
+                yield return StaticValue.FromHeapReference(pair.Key);
+        }
+    }
+
     private StaticValue Add(HeapObject value)
     {
         var id = _nextId++;

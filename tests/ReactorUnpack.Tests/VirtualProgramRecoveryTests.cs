@@ -24,6 +24,9 @@ public sealed class VirtualProgramRecoveryTests
 {
     private const byte Key = 0x5A;
 
+    /// <summary>The four places a clause has to name, under names of the test's own.</summary>
+    private static readonly string[] Places = ["From", "To", "Handler", "Ends"];
+
     /// <summary>Opcode, operand — the shape the listing is written from.</summary>
     private static readonly (int Opcode, int Operand)[] Program =
     [
@@ -74,19 +77,126 @@ public sealed class VirtualProgramRecoveryTests
     [Fact]
     public void AnEngineThatNeverDecodesAnythingIsReportedRatherThanGuessedAt()
     {
-        using var context = SyntheticContext.Build(module => AddEngine(module, decode: false));
+        using var context = SyntheticContext.Build(
+            module => AddEngine(module, decode: false, guarded: false));
         var method = Assert.Single(VirtualizedMethodDetector.Detect(context.Module));
 
         Assert.Null(VirtualProgramRecovery.Recover(context, method, out var diagnostic));
         Assert.NotEmpty(diagnostic);
     }
 
-    private static void AddEngine(ModuleDefUser module) => AddEngine(module, decode: true);
+    /// <summary>
+    /// Gives the engine a class shaped like an exception clause, and optionally makes one.
+    /// </summary>
+    /// <remarks>
+    /// Declaring the class without making one is the other case worth testing: an engine that can
+    /// express guarded regions and expressed none says something a listing should report, and it
+    /// is not the same thing as an engine that cannot express them at all.
+    /// </remarks>
+    private static void Guard(ModuleDefUser module, MethodDef entry, bool made)
+    {
+        var clause = SyntheticContext.AddType(module, "Guard");
+        var places = Places
+            .Select(name => new FieldDefUser(
+                name, new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Public))
+            .ToList();
+        foreach (var place in places)
+            clause.Fields.Add(place);
+        var caught = new FieldDefUser(
+            "Caught",
+            new FieldSig(new ClassSig(module.CorLibTypes.GetTypeRef("System", "Type"))),
+            FieldAttributes.Public);
+        clause.Fields.Add(caught);
+        clause.Methods.Add(Constructor(module));
+        if (!made)
+            return;
+
+        var held = new Local(clause.ToTypeSig());
+        entry.Body.Variables.Add(held);
+        var written = new List<Instruction>
+        {
+            OpCodes.Newobj.ToInstruction(clause.FindDefaultConstructor()),
+            OpCodes.Stloc.ToInstruction(held)
+        };
+        for (var place = 0; place < places.Count; place++)
+        {
+            written.Add(OpCodes.Ldloc.ToInstruction(held));
+            written.Add(OpCodes.Ldc_I4.ToInstruction(place));
+            written.Add(OpCodes.Stfld.ToInstruction(places[place]));
+        }
+        written.Add(OpCodes.Ldloc.ToInstruction(held));
+        written.Add(OpCodes.Ldtoken.ToInstruction(clause));
+        written.Add(OpCodes.Call.ToInstruction(new MemberRefUser(
+            module,
+            "GetTypeFromHandle",
+            MethodSig.CreateStatic(
+                new ClassSig(module.CorLibTypes.GetTypeRef("System", "Type")),
+                new ValueTypeSig(module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle"))),
+            module.CorLibTypes.GetTypeRef("System", "Type"))));
+        written.Add(OpCodes.Stfld.ToInstruction(caught));
+        for (var at = 0; at < written.Count; at++)
+            entry.Body.Instructions.Insert(at, written[at]);
+    }
+
+    private static void AddEngine(ModuleDefUser module) =>
+        AddEngine(module, decode: true, guarded: false);
+
+    private static void AddGuardedEngine(ModuleDefUser module) =>
+        AddEngine(module, decode: true, guarded: true);
+
+    private static void AddGuardlessEngine(ModuleDefUser module) =>
+        AddEngine(module, decode: true, guarded: false, shaped: true);
+
+    /// <summary>
+    /// A method's guarded regions are no part of its operations, so a reading that only reads the
+    /// operations misses them entirely — and a body rebuilt from one would run the wrong code the
+    /// first time anything threw.
+    /// </summary>
+    [Fact]
+    public void TheGuardedRegionsTheEngineParsedAreRead()
+    {
+        using var context = SyntheticContext.Build(AddGuardedEngine);
+        var method = Assert.Single(VirtualizedMethodDetector.Detect(context.Module));
+
+        var recovered = VirtualProgramRecovery.Recover(context, method, out _);
+
+        Assert.NotNull(recovered);
+        var region = Assert.Single(recovered.Regions);
+        Assert.Equal([0, 1, 2, 3], region.Numbers);
+        Assert.Contains(
+            "over operations 0, 1, 2, 3",
+            string.Join("\n", recovered.Render(context.Module)),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Where an engine can express guarded regions and made none, that is worth saying outright:
+    /// finding none and being unable to look are different answers to the same question.
+    /// </summary>
+    [Fact]
+    public void AnEngineThatMadeNoRegionsSaysSoRatherThanLeavingItOpen()
+    {
+        using var context = SyntheticContext.Build(AddGuardlessEngine);
+        var method = Assert.Single(VirtualizedMethodDetector.Detect(context.Module));
+
+        var recovered = VirtualProgramRecovery.Recover(context, method, out _);
+
+        Assert.NotNull(recovered);
+        Assert.Empty(recovered.Regions);
+        Assert.Contains(
+            "made none of them",
+            string.Join("\n", recovered.Render(context.Module)),
+            StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// Builds a module holding a stub, an interpreter, and an encrypted program for it to decode.
     /// </summary>
-    private static void AddEngine(ModuleDefUser module, bool decode)
+    private static void AddEngine(
+        ModuleDefUser module,
+        bool decode,
+        bool guarded,
+        bool shaped = false)
     {
         var operation = SyntheticContext.AddType(module, "Operation");
         var code = new FieldDefUser(
@@ -212,6 +322,9 @@ public sealed class VirtualProgramRecoveryTests
         body.Add(done);
         body.Add(OpCodes.Ret.ToInstruction());
         engine.Methods.Add(entry);
+
+        if (guarded || shaped)
+            Guard(module, entry, made: guarded);
 
         var stub = new MethodDefUser(
             "Hidden",

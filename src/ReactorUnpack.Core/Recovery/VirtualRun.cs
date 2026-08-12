@@ -21,6 +21,7 @@ public sealed record VirtualRun(
     /// engine a handler could put a value it took.</summary>
     public IReadOnlySet<int> Stores { get; init; } = new HashSet<int>();
 
+
     /// <summary>Whether enough was seen for the counts to mean anything.</summary>
     public bool Learned => Watched >= Enough;
 
@@ -73,6 +74,9 @@ public sealed record VirtualRun(
 /// </remarks>
 internal sealed class VirtualRunWatcher
 {
+    /// <summary>How long the table was that the operation being named reached into.</summary>
+    private int? _holding;
+
     /// <summary>How many performances of one operation to keep before the rest are ignored.</summary>
     private const int Kept = 64;
 
@@ -389,9 +393,13 @@ internal sealed class VirtualRunWatcher
         var kept = 0;
         while (kept < _before.Count && kept < after.Count && _before[kept].Id == after[kept].Id)
             kept++;
+        var left = after.Skip(kept).ToList();
         seen.Add(new Performance(
+            left.Count > 0 && _before.Exists(one =>
+                one.Id == left[^1].Id ||
+                one.Inside.Count > 0 && left[^1].Inside.Overlaps(one.Inside)),
             _before.Skip(kept).ToList(),
-            after.Skip(kept).ToList(),
+            left,
             _operand,
             _was,
             Indexed(),
@@ -401,6 +409,12 @@ internal sealed class VirtualRunWatcher
     }
 
     /// <summary>Notes where each operation sits, taken as the first of them begins.</summary>
+    /// <summary>The engine the run used, so that it can be questioned as the run left it.</summary>
+    public StaticValue Engine { get; private set; } = StaticValue.Null;
+
+    /// <summary>The operations as the run's own engine holds them.</summary>
+    public List<StaticValue> Program { get; private set; } = [];
+
     private bool Learn(StaticValue engine)
     {
         if (VirtualProgramRecovery.FindProgram(_heap, _module, engine, _instructionType) is not
@@ -408,6 +422,8 @@ internal sealed class VirtualRunWatcher
         {
             return false;
         }
+        Engine = engine;
+        Program = [.. items];
         for (var index = 0; index < items.Count; index++)
             _indices[items[index].Bits] = index;
         if (VirtualSemantics.SlotType(_heap, _module, engine) is { } slotType)
@@ -609,6 +625,23 @@ internal sealed class VirtualRunWatcher
     /// <summary>A place the engine keeps values that its operations reach by number.</summary>
     private sealed record Table(StaticValue Reference, bool IsList);
 
+    /// <summary>How many places a table has, which is what tells one table from another.</summary>
+    /// <remarks>
+    /// A method's arguments are as many as its signature declares, and its locals are not, so the
+    /// length is the only thing about a table of the engine's that says which of the two it is.
+    /// </remarks>
+    private int? Length(Table table)
+    {
+        if (table.IsList)
+        {
+            return _heap.TryGetModelValue<List<StaticValue>>(table.Reference, "Items", out var items)
+                && items is not null
+                    ? items.Count
+                    : null;
+        }
+        return _heap.TryGetLength(table.Reference, out var length) ? length : null;
+    }
+
     /// <summary>What each table holds at the place this operation's operand points to.</summary>
     private Held?[] Indexed()
     {
@@ -646,7 +679,8 @@ internal sealed class VirtualRunWatcher
     /// </summary>
     /// <remarks>
     /// The last of those is what lets a value the engine wrapped be recognized as the one it was
-    /// given, which is how an operation is caught fetching an object rather than a number.
+    /// given, which is how an operation is caught fetching an object rather than a number, and how
+    /// one that copies what is already on the stack is told from one that makes something new.
     /// </remarks>
     private Held Hold(StaticValue slot)
     {
@@ -667,10 +701,17 @@ internal sealed class VirtualRunWatcher
                 }
             }
         }
+        // A wrapper of the engine's with nothing in any of its places holds null as surely as a
+        // null reference does, and the operation that leaves one is pushing null.
+        var carried = VirtualSemantics.Carrying(_heap, _module, slot, 0);
         return new Held(
             slot.Bits,
             VirtualSemantics.TryReadNumber(_heap, _module, slot, out var value) ? value : null,
-            inside);
+            inside)
+        {
+            Empty = carried.Nothing,
+            Carrying = carried.Type
+        };
     }
 
     /// <summary>What a value that has hold of nothing has hold of.</summary>
@@ -681,6 +722,9 @@ internal sealed class VirtualRunWatcher
     {
         /// <summary>Whether it is nothing at all, which an engine's stack can hold like any other.</summary>
         public bool Empty { get; init; }
+
+        /// <summary>What type the value is, read out of the engine's own wrapping of it.</summary>
+        public string? Carrying { get; init; }
     }
 
     /// <summary>One performance: what came off the stack, what went on, and what it carried.</summary>
@@ -690,6 +734,7 @@ internal sealed class VirtualRunWatcher
     /// <param name="Keeping">What it held after.</param>
     /// <param name="Element">What the array on the stack held at the index beside it, before.</param>
     private sealed record Performance(
+        bool Copied,
         IReadOnlyList<Held> Taken,
         IReadOnlyList<Held> Left,
         long? Operand,
@@ -698,6 +743,42 @@ internal sealed class VirtualRunWatcher
         Held? Kept,
         Held? Keeping,
         Held? Element);
+
+    /// <summary>
+    /// Whether the value an operation left is one it made rather than one it was handed.
+    /// </summary>
+    /// <remarks>
+    /// What type a duplication leaves is a fact about what was underneath it, not about the
+    /// duplication, and an operation that hands back what it was given would otherwise be written
+    /// down as always leaving whatever the run happened to have on the stack at the time. Only a
+    /// value the operation itself produced says anything about the operation.
+    /// </remarks>
+    private static bool Made(List<Performance> seen) =>
+        seen.Count >= Typed &&
+        seen.TrueForAll(one => one is { Copied: false, Left.Count: > 0 } &&
+            !one.Taken.Any(taken => taken.Id == one.Left[^1].Id));
+
+    /// <summary>How many sightings must agree before a value's type is claimed.</summary>
+    private const int Typed = 3;
+
+    /// <summary>
+    /// The type every sighting of an operation found on the value at the top, where they agreed.
+    /// </summary>
+    /// <remarks>
+    /// Disagreement is an answer of its own rather than noise: an add whose values came back Int32
+    /// four times and Int64 twice adds whatever it is given, and calling it an Int32 add would be
+    /// worse than saying nothing.
+    /// </remarks>
+    private static string? Agreed(
+        List<Performance> seen,
+        Func<Performance, IReadOnlyList<Held>> side)
+    {
+        var types = seen
+            .Select(one => side(one) is { Count: > 0 } values ? values[^1].Carrying : null)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return types.Count == 1 ? types[0] : null;
+    }
 
     private Dictionary<int, VirtualOperation> Effects()
     {
@@ -716,7 +797,14 @@ internal sealed class VirtualRunWatcher
                 _unmeasured[opcode] = Varies;
                 continue;
             }
-            found[opcode] = new VirtualOperation(opcode, pops, pushes, Name(seen, pops, pushes));
+            _holding = null;
+            var name = Name(seen, pops, pushes);
+            found[opcode] = new VirtualOperation(opcode, pops, pushes, name)
+            {
+                Holding = _holding,
+                Pushed = Made(seen) ? Agreed(seen, one => one.Left) : null,
+                Popped = Agreed(seen, one => one.Taken)
+            };
         }
         return found;
     }
@@ -759,9 +847,10 @@ internal sealed class VirtualRunWatcher
     /// </summary>
     /// <remarks>
     /// The claim is only made where the operation was seen reaching for more than one place, and
-    /// where what it carried was varied, so that a table of zeroes read by an operation that pushes
-    /// zero does not pass for one. A write additionally has to have changed something, since a
-    /// table that already held the value would look the same either way.
+    /// where what it carried was either the very thing the table held or, failing that, varied, so
+    /// that a table of zeroes read by an operation that pushes zero does not pass for one. A write
+    /// additionally has to have changed something, since a table that already held the value would
+    /// look the same either way.
     /// </remarks>
     private string? Reaching(List<Performance> seen, int pops, int pushes)
     {
@@ -776,17 +865,29 @@ internal sealed class VirtualRunWatcher
                 continue;
             }
 
-            if (pushes >= 1 && reached.TrueForAll(one => Alike(one.Was[table]!, one.Left[^1])) &&
-                Varied(reached.Select(one => one.Was[table]!.Value)))
+            // Carrying off the very object a table held is worth more than any number of numeric
+            // agreements, so one sighting of that settles it and numbers have to have varied.
+            // Without that, a table of arguments — a stream at one place and a zero at the next —
+            // reads as no table at all, because a zero and an object are not two numbers.
+            if (pushes >= 1)
             {
-                return "loads what its operand indexes";
+                var likeness = reached.Select(one => Like(one.Was[table]!, one.Left[^1])).ToList();
+                if (likeness.TrueForAll(like => like != Likeness.No) &&
+                    (likeness.Contains(Likeness.Same) ||
+                        Varied(reached.Select(one => one.Was[table]!.Value))))
+                {
+                    _holding = Length(_tables[table]);
+                    return "loads what its operand indexes";
+                }
             }
             if (pops >= 1 &&
                 reached.TrueForAll(one =>
                     one.Now[table] is not null && Alike(one.Now[table]!, one.Taken[^1])) &&
                 reached.Exists(one => !Alike(one.Was[table]!, one.Now[table]!)) &&
-                Varied(reached.Select(one => one.Now[table]!.Value)))
+                (reached.Exists(one => Like(one.Now[table]!, one.Taken[^1]) == Likeness.Same) ||
+                    Varied(reached.Select(one => one.Now[table]!.Value))))
             {
+                _holding = Length(_tables[table]);
                 return "stores where its operand indexes";
             }
         }

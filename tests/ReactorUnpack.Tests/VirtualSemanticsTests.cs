@@ -30,6 +30,8 @@ public sealed class VirtualSemanticsTests
     private const int Guarded = 99;
     private const int LoadLocal = 111;
     private const int StoreLocal = 122;
+    private const int LoadArgument = 133;
+    private const int Nothing = 144;
     private const int JumpTarget = 7;
 
     [Fact]
@@ -117,6 +119,36 @@ public sealed class VirtualSemanticsTests
         Assert.Equal(0, operations[Opaque].Pops);
         Assert.Equal(1, operations[Opaque].Pushes);
         Assert.Contains("pushes a", operations[Opaque].Describe(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A wrapper with nothing in any of its places is the engine holding null, and the operation
+    /// that leaves one is pushing null. Read as the type of whatever tag sits beside the empty
+    /// places, it would be reported as pushing a number it is not pushing.
+    /// </summary>
+    [Fact]
+    public void AWrapperWithNothingInItIsReadAsNullRatherThanAsWhatTagsItHolds()
+    {
+        var operations = Derive();
+
+        Assert.Equal("pushes nothing at all", operations[Nothing].Name);
+        Assert.Equal(0, operations[Nothing].Pops);
+        Assert.Equal(1, operations[Nothing].Pushes);
+    }
+
+    /// <summary>
+    /// Nothing about a table says what it is for, so the arguments of the method are told from its
+    /// locals by their number: as many as the method declares, and never reached past. The
+    /// distinction is worth making because it is the difference between a listing that says where
+    /// a value came from and one that says only that it came from somewhere.
+    /// </summary>
+    [Fact]
+    public void ATableAsLongAsTheMethodsArgumentsIsReadAsTheArguments()
+    {
+        var operations = Derive();
+
+        Assert.Equal("loads the argument it indexes", operations[LoadArgument].Name);
+        Assert.Equal("loads what its operand indexes", operations[LoadLocal].Name);
     }
 
     /// <summary>
@@ -276,23 +308,25 @@ public sealed class VirtualSemanticsTests
         var program = Field(module, "Program", listOfStep);
         var stack = Field(module, "Stack", listOfSlot);
         var locals = Field(module, "Locals", new SZArraySig(slot.ToTypeSig()));
+        var arguments = Field(module, "Arguments", new SZArraySig(slot.ToTypeSig()));
         var position = Field(module, "Position", module.CorLibTypes.Int32);
         var armed = Field(module, "Armed", module.CorLibTypes.Int32);
         engine.Fields.Add(program);
         engine.Fields.Add(stack);
         engine.Fields.Add(locals);
+        engine.Fields.Add(arguments);
         engine.Fields.Add(position);
         engine.Fields.Add(armed);
         engine.Methods.Add(Constructor(module));
 
         var execute = Execute(
             module, engine, operation, slot, cell, code, operand, stack, position, armed, locals,
-            held, low, raw, make, listOfSlot);
+            arguments, held, low, raw, make, listOfSlot);
         engine.Methods.Add(execute);
 
         var entry = Entry(
-            module, engine, operation, slot, code, operand, program, stack, locals, position, make,
-            execute, listOfStep, listOfSlot, withValues);
+            module, engine, operation, slot, code, operand, program, stack, locals, arguments,
+            position, make, execute, listOfStep, listOfSlot, withValues);
         engine.Methods.Add(entry);
         Stub(module, entry);
     }
@@ -331,7 +365,10 @@ public sealed class VirtualSemanticsTests
         (Discard, 0),
         (Length, 0),
         (Store, 0),
-        (Opaque, 0)
+        (Opaque, 0),
+        (Nothing, 0),
+        (LoadArgument, 0),
+        (LoadArgument, 1)
     ];
 
     /// <summary>What the engine's stack is given to work on before the program starts.</summary>
@@ -414,6 +451,7 @@ public sealed class VirtualSemanticsTests
         FieldDef position,
         FieldDef armed,
         FieldDef locals,
+        FieldDef arguments,
         FieldDef held,
         FieldDef low,
         FieldDef raw,
@@ -454,6 +492,8 @@ public sealed class VirtualSemanticsTests
         var tryGuarded = OpCodes.Nop.ToInstruction();
         var tryLoadLocal = OpCodes.Nop.ToInstruction();
         var tryStoreLocal = OpCodes.Nop.ToInstruction();
+        var tryLoadArgument = OpCodes.Nop.ToInstruction();
+        var tryNothing = OpCodes.Nop.ToInstruction();
 
         // add: take the top two apart, put their sum back.
         body.Add(OpCodes.Ldarg_1.ToInstruction());
@@ -563,7 +603,10 @@ public sealed class VirtualSemanticsTests
         body.Add(OpCodes.Bne_Un.ToInstruction(tryArm));
         body.Add(OpCodes.Ldarg_0.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(stack));
-        body.Add(OpCodes.Newobj.ToInstruction(slot.FindDefaultConstructor()));
+        body.Add(OpCodes.Ldnull.ToInstruction());
+        body.Add(OpCodes.Ldc_I4_2.ToInstruction());
+        body.Add(OpCodes.Newarr.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+        body.Add(OpCodes.Call.ToInstruction(make));
         body.Add(OpCodes.Callvirt.ToInstruction(add));
         body.Add(OpCodes.Br.ToInstruction(ret));
 
@@ -631,7 +674,7 @@ public sealed class VirtualSemanticsTests
         body.Add(OpCodes.Ldarg_1.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(code));
         body.Add(OpCodes.Ldc_I4.ToInstruction(StoreLocal));
-        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryLoadArgument));
         body.Add(OpCodes.Ldarg_0.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(locals));
         body.Add(OpCodes.Ldarg_1.ToInstruction());
@@ -640,6 +683,36 @@ public sealed class VirtualSemanticsTests
         PeekSlot(body, stack, count, item, 1);
         body.Add(OpCodes.Stelem_Ref.ToInstruction());
         Drop(body, stack, count, removeAt);
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // load argument: the same reach into a table, into the one holding what the method was
+        // called with rather than the one holding what it is working on.
+        body.Add(tryLoadArgument);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(LoadArgument));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryNothing));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(stack));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(arguments));
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(operand));
+        body.Add(OpCodes.Unbox_Any.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+        body.Add(OpCodes.Ldelem_Ref.ToInstruction());
+        body.Add(OpCodes.Callvirt.ToInstruction(add));
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // nothing: leaves one of the engine's wrappers with nothing in any of its places.
+        body.Add(tryNothing);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(Nothing));
+        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(stack));
+        body.Add(OpCodes.Newobj.ToInstruction(slot.FindDefaultConstructor()));
+        body.Add(OpCodes.Callvirt.ToInstruction(add));
         body.Add(ret);
         return execute;
     }
@@ -727,6 +800,7 @@ public sealed class VirtualSemanticsTests
         FieldDef program,
         FieldDef stack,
         FieldDef locals,
+        FieldDef arguments,
         FieldDef position,
         MethodDef make,
         MethodDef execute,
@@ -770,6 +844,30 @@ public sealed class VirtualSemanticsTests
             body.Add(OpCodes.Ldc_I4_4.ToInstruction());
             body.Add(OpCodes.Newarr.ToInstruction(slot.ToTypeSig().ToTypeDefOrRef()));
             body.Add(OpCodes.Stfld.ToInstruction(locals));
+
+            // As many places as the method has arguments, holding what a caller would have passed:
+            // something with no number in it, and a number, which between them are what makes a
+            // table of arguments unrecognizable by the values it holds alone.
+            body.Add(OpCodes.Ldloc.ToInstruction(self));
+            body.Add(OpCodes.Ldc_I4_2.ToInstruction());
+            body.Add(OpCodes.Newarr.ToInstruction(slot.ToTypeSig().ToTypeDefOrRef()));
+            body.Add(OpCodes.Stfld.ToInstruction(arguments));
+            body.Add(OpCodes.Ldloc.ToInstruction(self));
+            body.Add(OpCodes.Ldfld.ToInstruction(arguments));
+            body.Add(OpCodes.Ldc_I4_0.ToInstruction());
+            body.Add(OpCodes.Ldnull.ToInstruction());
+            body.Add(OpCodes.Ldc_I4_3.ToInstruction());
+            body.Add(OpCodes.Newarr.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+            body.Add(OpCodes.Call.ToInstruction(make));
+            body.Add(OpCodes.Stelem_Ref.ToInstruction());
+            body.Add(OpCodes.Ldloc.ToInstruction(self));
+            body.Add(OpCodes.Ldfld.ToInstruction(arguments));
+            body.Add(OpCodes.Ldc_I4_1.ToInstruction());
+            body.Add(OpCodes.Ldnull.ToInstruction());
+            body.Add(OpCodes.Ldc_I4_0.ToInstruction());
+            body.Add(OpCodes.Box.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+            body.Add(OpCodes.Call.ToInstruction(make));
+            body.Add(OpCodes.Stelem_Ref.ToInstruction());
 
             // A program whose operations work on values has to be given some, or it stops at the
             // first of them and there is nothing to watch it do.

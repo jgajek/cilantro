@@ -204,15 +204,48 @@ program is not going anywhere in it, which is what returning looks like from
 outside, and if it also puts what it took somewhere, that is the value it
 returns. And an operation that pushes something unreadable can still be looked
 inside: the engine wraps what it stacks, and the wrapper can be seen through to
-what kind of thing was in it. That brings each sample to 27 named of the 28
-reported on, the one holdout being an operation that pushes a value nothing
-identified.
+what kind of thing was in it.
+
+One reading needs the listing below to exist before it can be made, and is put
+back into the report once it has been. An operation nothing could perform and
+the run never reached still has to fit the depths of the stack around it, and
+those can leave it one possible effect and no other; where that effect is to
+take a value and leave nothing, and every instruction of that kind names a
+static field, the operation is writing the field. It is the counterpart of the
+operation the run watched reading one, and takes the same name. Neither half is
+a reading alone: consuming a value says nothing about where the value went, and
+naming a field says nothing about the direction.
+
+That brings each sample to all 29 of its operations named, but two of the names
+stopped short of an IL opcode, and both were the same mistake: looking at a
+value and reporting the container instead of what was in it. The engine wraps
+what it stacks, and a wrapper holding nothing still has a tag beside the empty
+places saying what kind of nothing it is — read as that tag, an operation
+pushing a null reference was reported as pushing a number. Looked at as a whole
+rather than field by field, a wrapper with nothing in any of its places is the
+engine holding null, and the operation that leaves one is `ldnull`.
+
+The other was a load from one of the engine's tables. Which table it was is the
+whole reading, since a method's arguments and its locals are kept the same way
+and neither table says what it is for; but the arguments are as many as the
+method declares and the locals are not, so the length tells them apart. Two
+things had to be fixed before the length could be trusted. A cold engine's
+tables are empty, so an operation that fetches from one has nothing to fetch and
+cannot be performed at all: they are sown with numbers first, far from anything
+the stack is seeded with, so that a value taken from a table is never mistaken
+for one taken from the stack. And the places under a table run on into whatever
+its values are made of, so counting those as entries made every table as long as
+its contents were deep. Counted properly, the table is as long as the method has
+arguments and every index into it is one of them, and the operation is `ldarg`
+rather than `ldloc` — the difference between a listing that says where a value
+came from and one that says only that it came from somewhere.
 
 All of that is then written out a second time in the assembly's own terms: the
 operations that were named as the IL they stand for, the operands that turned
 out to be tokens as the methods, fields and types they name, and the ones
-nothing settled as `??` beside what was counted about them. 99.8% of each
-sample's operations can be written this way.
+nothing settled as `??` beside its operand and what was counted about it. Every
+operation in each of the three samples can now be written this way, and none is
+left `??`.
 
 Reading it back is also what checks it. The dispatcher of a flattened program
 carries a table of places rather than a single one, and taking every arm of it
@@ -223,8 +256,12 @@ has to agree about how deep the stack is, or one of the readings is wrong. In
 the three samples the walk reaches every operation any path arrives at and finds
 no disagreement anywhere — which is a far stronger statement about the readings
 than any one of them could make alone. What no path arrives at is reported too,
-being four to fourteen operations per sample sitting after an unconditional jump
-with nothing pointing at them: code the protector emitted and never uses.
+and whether that is dead code or somewhere the reading cannot go is itself worth
+saying. A walk that was never once at a loss followed everything there was to
+follow, so what it did not arrive at cannot be arrived at. That is the case in
+all three samples: four to fourteen operations each, sitting after an
+unconditional jump with nothing pointing at them, code the protector emitted and
+never uses.
 
 The walk is also how the last unmeasured operations are settled. A program whose
 every other operation is known is a system of equations with one unknown in it —

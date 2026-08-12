@@ -456,21 +456,39 @@ it took and raises a flag, which is a return. And an operation whose pushed
 value cannot be read can still be looked inside, since the engine wraps what it
 stacks and the wrapper can be seen through.
 
-With those, 28 of the 29 operations in each sample are reported on and 27 are
-named. The one not reported on is an operation the machine could not follow and
-the run never reached; the one reported but unnamed pushes a value nothing
-identified. Both are settled a third way below.
+A fourth reading needs the listing below to have been written first, and is
+folded back into the report once it has. Where nothing could perform an
+operation and the run never reached one, the depths of the stack around it still
+leave it one possible effect; and where that effect is to take a value and leave
+nothing, and every instruction of that kind carries the token of a static field,
+there is one thing left for the operation to be. It is the counterpart of the
+operation the run watched reading a static field, and it is given the same name,
+because it is the same claim. Neither half would do on its own: that an
+operation consumes a value says nothing about where the value went, and that its
+operand names a field says nothing about which direction it goes in.
+
+With those, all 29 operations in each of the three samples are reported on and
+all 29 are named. The last two names to become specific enough to be an IL
+opcode were both the same error: reading a wrapper rather than what it held. A
+wrapper with nothing in any of its places is the engine holding null, whatever
+the tag beside the empty places says, so the operation that leaves one is
+`ldnull` and not the number it was reported as. And a load from one of the
+engine's tables is a load of an argument where the table is as long as the
+method declares arguments and no index reaches past it — which needed the
+tables sown with values first, since a cold engine's are empty and an operation
+that fetches from one then has nothing to fetch, and needed a table's length
+counted as its entries rather than as everything reachable through them.
 
 ### Reading the program back
 
 What all of that comes to is written out separately, in the assembly's own
 terms: each named operation as the IL it stands for, each token operand as what
-it names, and everything unsettled as `??` beside what was counted. 99.8% of
-each of the three samples comes out that way — 2,930 of 2,935, 2,947 of 2,952
-and 3,002 of 3,007. It is a report and stays one — the
-stubs are left exactly as they were, nothing is emitted, and the pass does not
-gate emission, because a program that could not be read back says nothing about
-whether the rest of the recovery is sound.
+it names, and everything unsettled as `??` beside its operand and what was
+counted. Every operation in each of the three samples now comes out that way —
+2,935, 2,952 and 3,007 of them, none left unread. It is a report and stays one
+— the stubs are left exactly as they were, nothing is emitted, and the pass does
+not gate emission, because a program that could not be read back says nothing
+about whether the rest of the recovery is sound.
 
 Writing it out turned up something the listing had been hiding. The dispatcher's
 jump carries a table of places rather than one, which is to say it is a switch —
@@ -491,11 +509,12 @@ shape, where hundreds of blocks converge on one dispatcher:
 | places two paths disagreed | 0 | 0 | 0 |
 | operations no path arrives at | 14 | 4 | 6 |
 
-The walk now stops nowhere. What it does not reach, it does not reach because
-nothing points at it: those operations sit after an unconditional jump, in no
-arm of the dispatcher's table, and are code the protector emitted and never
-uses. Nothing else in three programs of some three thousand operations
-contradicts anything else.
+The walk now stops nowhere, and that is what makes the last row a finding rather
+than a gap: a walk never at a loss followed everything there was to follow, so
+what it did not arrive at cannot be arrived at. Those operations sit after an
+unconditional jump, in no arm of the dispatcher's table, and are code the
+protector emitted and never uses. Nothing else in three programs of some three
+thousand operations contradicts anything else.
 
 That completeness is what settles the last two operations. With everything
 around them known, the depth of the stack where each begins is fixed by the

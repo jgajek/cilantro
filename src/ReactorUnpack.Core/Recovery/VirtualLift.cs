@@ -27,6 +27,8 @@ public static class VirtualLift
         ["pushes its operand"] = "ldc.i4",
         ["loads what its operand indexes"] = "ldloc",
         ["stores where its operand indexes"] = "stloc",
+        ["loads the argument it indexes"] = "ldarg",
+        ["stores into the argument it indexes"] = "starg",
         ["reads the static field it names"] = "ldsfld",
         ["writes the static field it names"] = "stsfld",
         ["reads an array element"] = "ldelem",
@@ -56,6 +58,64 @@ public static class VirtualLift
         ["neg"] = "neg",
         ["not"] = "not"
     };
+
+    /// <summary>
+    /// The IL each named effect becomes once the type of the value it makes is known.
+    /// </summary>
+    /// <remarks>
+    /// A constant and a conversion are the two places where the listing would otherwise throw away
+    /// what the recovery established. Every other operation's types follow from these and from the
+    /// signatures of the methods it calls, so these are the two worth spelling out.
+    /// </remarks>
+    private static readonly Dictionary<string, string> Widths = new(StringComparer.Ordinal)
+    {
+        ["System.SByte"] = "i1",
+        ["System.Byte"] = "u1",
+        ["System.Int16"] = "i2",
+        ["System.UInt16"] = "u2",
+        ["System.Char"] = "u2",
+        ["System.Int32"] = "i4",
+        ["System.UInt32"] = "u4",
+        ["System.Int64"] = "i8",
+        ["System.UInt64"] = "u8",
+        ["System.Single"] = "r4",
+        ["System.Double"] = "r8",
+        ["System.IntPtr"] = "i",
+        ["System.UIntPtr"] = "u"
+    };
+
+    /// <summary>Says a constant or a conversion in the width the recovery established for it.</summary>
+    private static string? Widened(
+        VirtualProgram program,
+        VirtualInstruction instruction,
+        string? mnemonic)
+    {
+        if (mnemonic is not ("ldc.i4" or "conv.?"))
+            return mnemonic;
+
+        // What the instruction itself carries beats what the operation was seen doing, being a fact
+        // about this one place in the program rather than about the operations of its kind.
+        var carried = instruction.Operand is VirtualOperand.Number { Type: { } written }
+            ? written
+            : null;
+        if (!program.Operations.TryGetValue(instruction.Opcode, out var operation) ||
+            (carried ?? operation.Pushed) is not { } pushed)
+        {
+            return mnemonic;
+        }
+        if (mnemonic == "ldc.i4")
+        {
+            return pushed switch
+            {
+                "System.String" => "ldstr",
+                "System.Int64" or "System.UInt64" => "ldc.i8",
+                "System.Single" => "ldc.r4",
+                "System.Double" => "ldc.r8",
+                _ => mnemonic
+            };
+        }
+        return Widths.TryGetValue(pushed, out var width) ? $"conv.{width}" : mnemonic;
+    }
 
     /// <summary>The mnemonics whose operand is a place in the program rather than a value.</summary>
     private static readonly HashSet<string> Jumps =
@@ -105,8 +165,9 @@ public static class VirtualLift
         {
             var mnemonic = Mnemonic(program, instruction);
             var operand = Operand(program, instruction, mnemonic, module, going, conjectured);
+            mnemonic = Widened(program, instruction, mnemonic);
             var said = mnemonic is null
-                ? $"??         op {instruction.Opcode}" +
+                ? $"??         op {instruction.Opcode} {operand}".TrimEnd() +
                     (forced.TryGetValue(instruction.Opcode, out var net)
                         ? $"        ; {net:+0;-0;0} on the stack, forced by the program"
                         : Counted(program, instruction))
@@ -304,6 +365,21 @@ public static class VirtualLift
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// What the program leaves each unmeasured operation no choice but to do, by opcode.
+    /// </summary>
+    /// <remarks>
+    /// Offered separately from the listing because it is a finding about the program rather than a
+    /// way of printing it: an effect settled this way can be put together with what the operand
+    /// names to reach a reading neither would support alone.
+    /// </remarks>
+    public static Dictionary<int, int> Solve(VirtualProgram program, ModuleDef module)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        var going = Destinations(program, []);
+        return Forced(program, going, Arities(program, module));
     }
 
     /// <summary>
@@ -548,7 +624,15 @@ public static class VirtualLift
             .ToList();
         if (missed.Count > 0)
         {
-            yield return $"  {missed.Count} operation(s) no path arrives at: " +
+            // Where the walk was never at a loss, everything it could follow it did follow, so
+            // what it did not arrive at cannot be arrived at: the operations are dead, which is
+            // a fact about the program rather than a limit of the reading.
+            var dead = stopped.Count == 0 && disagreed == 0;
+            yield return $"  {missed.Count} operation(s) " +
+                (dead
+                    ? "nothing in the program reaches, the walk having been at no point unable to " +
+                        "follow it: "
+                    : "no path arrives at: ") +
                 string.Join(", ", missed.Take(10)) + (missed.Count > 10 ? ", ..." : string.Empty);
         }
     }

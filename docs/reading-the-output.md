@@ -205,8 +205,9 @@ visible from those markings alone.
 
 Beside each listing is a `.lifted.il` file, which is the same program written in
 the assembly's own terms: `ldloc`, `add`, `stelem`, `call` with the method it
-calls named, `switch` with its arms. That is the file to read first — 99.8%
-of each program comes out this way — and the listing beside it is where to go
+calls named, `switch` with its arms. That is the file to read first — every
+operation in each of the three samples comes out this way — and the listing
+beside it is where to go
 when you want to know how a line was arrived at. Anything unsettled is written
 `??` with what was counted about it, so a line you cannot read is admitted
 rather than invented, and nothing in the file has been put back into the
@@ -224,9 +225,14 @@ Two other header lines are worth knowing. `the rest of the program leaves them
 no choice` lists operations nothing could measure whose effect on the stack is
 nevertheless fixed by the depths on either side of them — the number is what
 they add to the stack, not a reading of what they do, and those lines still say
-`??`. `operation(s) no path arrives at` lists code nothing reaches: in these
-samples it sits after an unconditional jump and in no arm of the dispatcher's
-table, which is to say the protector emitted it and never uses it.
+`??`. The other names what no path arrives at, and how it is worded is the
+distinction worth reading for. `operation(s) nothing in the program reaches`
+means the walk was never once at a loss, so everything there was to follow it
+followed and what is left over is unreachable — in these samples it sits after
+an unconditional jump and in no arm of the dispatcher's table, which is to say
+the protector emitted it and never uses it. `operation(s) no path arrives at`
+is the weaker statement, made where the walk stopped somewhere: the code may
+only be past the place it stopped.
 
 If it did not, and the control flow still looks flattened, the dispatcher stage
 declined on those methods. It only rewrites where it can prove the result is

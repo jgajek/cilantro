@@ -174,6 +174,51 @@ public sealed class VirtualLiftTests
         Assert.DoesNotContain("forced by the program", lifted, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// An operation the walk never arrives at is either dead code or somewhere the reading cannot
+    /// yet go, and which of the two it is decides whether the listing is complete. Where the walk
+    /// was never once at a loss, it followed everything there was to follow, and what is left over
+    /// is unreachable — a fact about the program rather than a hole in the report.
+    /// </summary>
+    [Fact]
+    public void WhatNoPathArrivesAtIsCalledDeadWhereTheWalkWasNeverAtALoss()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Jump, new VirtualOperand.Number(3)),
+            (Push, new VirtualOperand.Number(9)),
+            (Push, new VirtualOperand.Number(1))
+        ]);
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.Contains("reaches 3 of 4", lifted, StringComparison.Ordinal);
+        Assert.Contains("1 operation(s) nothing in the program reaches", lifted, StringComparison.Ordinal);
+        Assert.DoesNotContain("no path arrives at", lifted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Where the walk did stop somewhere, what it did not arrive at may only be past the place it
+    /// stopped, and calling that dead would be claiming a completeness the reading does not have.
+    /// </summary>
+    [Fact]
+    public void WhatNoPathArrivesAtIsLeftOpenWhereTheWalkStopped()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Mystery, new VirtualOperand.None()),
+            (Jump, new VirtualOperand.Number(4)),
+            (Push, new VirtualOperand.Number(9)),
+            (Push, new VirtualOperand.Number(1))
+        ]);
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.Contains("no path arrives at", lifted, StringComparison.Ordinal);
+    }
+
     private static VirtualProgram Program(
         ArtifactContext context,
         IReadOnlyList<(int Opcode, VirtualOperand Operand)> operations)
@@ -201,9 +246,67 @@ public sealed class VirtualLiftTests
     }
 
     /// <summary>A module with a stub to hang a program on and a method for a call to name.</summary>
+    /// <summary>
+    /// An operation nothing could perform is still readable where the program pins its effect and
+    /// its operand names a field: one takes a value and leaves nothing, the other says where the
+    /// value went, and neither says it alone.
+    /// </summary>
+    [Fact]
+    public void AnOperationTheProgramPinsAndWhoseOperandNamesAFieldIsReadAsAStore()
+    {
+        using var context = Module();
+        var field = context.Module.Types
+            .SelectMany(type => type.Fields)
+            .First(one => one.Name == "Kept");
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Switch, new VirtualOperand.Table([6])),
+            (Push, new VirtualOperand.Number(6)),
+            (Mystery, new VirtualOperand.Number(field.MDToken.ToInt32())),
+            (Jump, new VirtualOperand.Number(6)),
+            (Push, new VirtualOperand.Number(0)),
+            (Push, new VirtualOperand.Number(1))
+        ]);
+
+        var settled = VirtualProgramRecovery.Settled(program, context.Module);
+        var lifted = string.Join(
+            "\n",
+            VirtualLift.Render(program with { Operations = settled }, context.Module));
+
+        Assert.Equal("writes the static field it names", settled[Mystery].Name);
+        Assert.Contains("stsfld", lifted, StringComparison.Ordinal);
+        Assert.Contains("7 of 7 operations read as IL", lifted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The same operand, where nothing pins the operation's effect, says nothing: an operation
+    /// naming a field could as easily be reading it as writing it.
+    /// </summary>
+    [Fact]
+    public void AnOperationNamingAFieldIsNotReadAsAStoreOnTheNameAlone()
+    {
+        using var context = Module();
+        var field = context.Module.Types
+            .SelectMany(type => type.Fields)
+            .First(one => one.Name == "Kept");
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(7)),
+            (Mystery, new VirtualOperand.Number(field.MDToken.ToInt32())),
+            (Push, new VirtualOperand.Number(8))
+        ]);
+
+        var settled = VirtualProgramRecovery.Settled(program, context.Module);
+
+        Assert.False(settled.TryGetValue(Mystery, out var read) && read.Identified);
+    }
+
     private static ArtifactContext Module() => SyntheticContext.Build(module =>
     {
         var type = SyntheticContext.AddType(module, "Held");
+        type.Fields.Add(new FieldDefUser(
+            "Kept",
+            new FieldSig(module.CorLibTypes.Int32),
+            FieldAttributes.Public | FieldAttributes.Static));
         type.Methods.Add(Empty(module, "Stub"));
         var takes = Empty(module, "Takes");
         takes.MethodSig.Params.Add(module.CorLibTypes.Int32);
