@@ -224,7 +224,11 @@ public sealed record PipelineResult(
     string ChangesReportPath,
     string? OutputPath,
     IReadOnlyList<string> ExtractedPayloadPaths,
-    ArtifactReport Report);
+    ArtifactReport Report)
+{
+    /// <summary>Listings of the programs behind virtualized methods, one file per method.</summary>
+    public IReadOnlyList<string> VirtualProgramPaths { get; init; } = [];
+}
 
 public sealed class ReactorPipeline
 {
@@ -284,6 +288,7 @@ public sealed class ReactorPipeline
         // Cutting the loader loose comes last of the rewrites, because whether its state is still
         // observable depends on every recovery before it having replaced the code that read it.
         new LoaderCallElisionPass(),
+        new VirtualizationDisassemblyPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
         new RuntimeCleanupPass(),
@@ -371,6 +376,7 @@ public sealed class ReactorPipeline
 
         var payloadPaths = WritePayloads(context, reportDirectory, stem);
         WriteRenameMap(context, reportDirectory, stem);
+        var virtualProgramPaths = WriteVirtualPrograms(context, reportDirectory, stem);
 
         // Emission happens before the report is written so that a module which verifies in memory
         // but not once serialized is explained rather than silently withheld. Round-tripping is the
@@ -420,7 +426,10 @@ public sealed class ReactorPipeline
             changesPath,
             outputPath,
             payloadPaths,
-            report);
+            report)
+        {
+            VirtualProgramPaths = virtualProgramPaths
+        };
     }
 
     private static ArtifactReport BuildReport(
@@ -538,6 +547,41 @@ public sealed class ReactorPipeline
                 Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
             var path = Path.Combine(directory, $"{safeName}.dll");
             File.WriteAllBytes(path, payload.Bytes);
+            paths.Add(path);
+        }
+
+        return paths;
+    }
+
+    /// <summary>
+    /// Writes one listing per virtualized method, beside the report rather than inside it.
+    /// </summary>
+    /// <remarks>
+    /// These run to thousands of lines each, which would swamp a report meant to be read at a
+    /// glance. A file per method is also what an analyst wants to open in an editor and search.
+    /// </remarks>
+    private static List<string> WriteVirtualPrograms(
+        ArtifactContext context,
+        string reportDirectory,
+        string stem)
+    {
+        if (!context.TryGetFact<IReadOnlyList<VirtualProgram>>(
+                "virtualization.programs", out var programs) ||
+            programs is null ||
+            programs.Count == 0)
+        {
+            return [];
+        }
+
+        var directory = Path.Combine(reportDirectory, $"{stem}.virtualized");
+        Directory.CreateDirectory(directory);
+        var paths = new List<string>(programs.Count);
+        foreach (var program in programs)
+        {
+            var safeName = string.Concat(program.Method.Stub.Name.String.Select(character =>
+                Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
+            var path = Path.Combine(directory, $"{safeName}.vmprogram.txt");
+            File.WriteAllLines(path, program.Render(context.Module));
             paths.Add(path);
         }
 
@@ -679,12 +723,29 @@ public sealed class ReactorDetectionPass : DeobfuscationPass
                 Confidence: facts.Confidence));
         }
 
+        // Naming the virtualized methods is worth more than counting them: an analyst who knows
+        // which method is missing knows what the report does not cover.
+        var virtualized = VirtualizedMethodDetector.Detect(context.Module);
+        context.SetFact("virtualization.methods", virtualized);
+        foreach (var method in virtualized)
+        {
+            context.AddEvidence(new Evidence(
+                "virtualized-method",
+                $"Body replaced by program {method.ProgramId} of the interpreter at " +
+                $"{method.Entry.DeclaringType?.Name}::{method.Entry.Name}.",
+                $"{method.Stub.MDToken} {method.Stub.FullName}",
+                0.95));
+        }
+
         var status = facts.IsReactor6 ? PassStatus.Success : PassStatus.Unsupported;
         return (status, 0,
         [
             $"Detection confidence: {facts.Confidence:P0}",
             $"Generation: {facts.Generation}",
-            $"Capabilities: {string.Join(", ", facts.CapabilityNames)}"
+            $"Capabilities: {string.Join(", ", facts.CapabilityNames)}",
+            virtualized.Count == 0
+                ? "No method was found to have been replaced by interpreter bytecode."
+                : $"{virtualized.Count} method(s) were replaced by interpreter bytecode."
         ]);
     }
 

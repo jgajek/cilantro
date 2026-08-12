@@ -120,12 +120,19 @@ embedded payload assemblies.
 
 Being straight about this matters more than the feature list.
 
-- **Code virtualization.** If Reactor turned methods into bytecode for its own
-  interpreter, ReactorUnpack detects and reports it but does not turn that
-  bytecode back into readable methods. No public tool does. It can still pull
-  hidden files out of a sample whose unpacker is virtualized, because it runs
-  the interpreter rather than trying to undo it — that just takes a minute or so
-  instead of seconds.
+- **Code virtualization.** When a method has been turned into bytecode for a
+  custom interpreter, ReactorUnpack does not turn it back into a readable
+  method. No public tool does. What it does instead is name the affected methods
+  and write out the program behind each one: how many operations it has, and —
+  because operands that are metadata tokens are resolved — which methods,
+  fields, and types the hidden code reaches for. It also works out what many of
+  the operations do, by having the interpreter carry them out one at a time on
+  values chosen for the purpose, and where the jumps go, by watching the
+  interpreter run and noting which operation followed which. That is usually
+  enough to say what a method you cannot read is *for*. It can also still pull hidden files
+  out of a sample whose unpacker is virtualized, because it runs the interpreter
+  rather than trying to undo it; that just takes a minute or so instead of
+  seconds.
 - **Native-packed files.** If the sample is wrapped in a native stub rather than
   being a pure .NET file, it is detected and reported as unsupported rather than
   being mangled. See [docs/how-net-reactor-works.md](docs/how-net-reactor-works.md).

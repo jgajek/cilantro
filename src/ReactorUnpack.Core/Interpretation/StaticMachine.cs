@@ -93,6 +93,32 @@ public sealed class StaticMachine
     /// </remarks>
     private readonly List<MethodDef> _frames = [];
 
+    /// <summary>Steps the current frame spent inside the frames it called, for the profile.</summary>
+    private long _stepsInCalls;
+
+    /// <summary>
+    /// Called as each frame is entered, when something wants to watch interpretation happen.
+    /// </summary>
+    /// <remarks>
+    /// An obfuscator's own interpreter can be studied far more cheaply by watching it work than by
+    /// reading it: what its bytecode decodes to, and which handler each operation reaches, are
+    /// answered by the calls it makes. Nothing observes by default, and the cost when nothing does
+    /// is a null check per call.
+    /// </remarks>
+    public Action<MethodDef, IReadOnlyList<StaticValue>>? FrameEntered { get; set; }
+
+    /// <summary>Called as each frame is left, so an observer can follow the call structure.</summary>
+    public Action<MethodDef>? FrameExited { get; set; }
+
+    /// <summary>
+    /// Called before each instruction runs, for an observer that needs to see inside a frame.
+    /// </summary>
+    /// <remarks>
+    /// A virtualizer that inlines its handlers into one dispatch method makes no calls to watch, so
+    /// the only way to see which handler an operation reached is to watch which instructions it ran.
+    /// </remarks>
+    public Action<MethodDef, Instruction>? Stepped { get; set; }
+
     private FrameResult ExecuteFrame(
         MethodDef method,
         IReadOnlyList<StaticValue> arguments,
@@ -101,14 +127,22 @@ public sealed class StaticMachine
     {
         State.Evidence.EnterMethod(method);
         _frames.Add(method);
+        var entry = budget.ConsumedSteps;
+        var enclosing = _stepsInCalls;
+        _stepsInCalls = 0;
+        FrameEntered?.Invoke(method, arguments);
         try
         {
             return ExecuteFrameCore(method, arguments, budget, depth);
         }
         finally
         {
+            var total = budget.ConsumedSteps - entry;
+            MachineTrace.Frame(method, total - _stepsInCalls, total);
+            _stepsInCalls = enclosing + total;
             _frames.RemoveAt(_frames.Count - 1);
             State.Evidence.LeaveMethod();
+            FrameExited?.Invoke(method);
         }
     }
 
@@ -195,6 +229,7 @@ public sealed class StaticMachine
 
             var instruction = instructions[ip];
             var next = ip + 1;
+            Stepped?.Invoke(method, instruction);
             if (MachineTrace.Enabled)
             {
                 MachineTrace.Step(

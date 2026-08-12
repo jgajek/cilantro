@@ -162,6 +162,179 @@ Final managed payloads:
 - `Ptnifif.dll`, 154,112 bytes, SHA-256
   `e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2`.
 
+### Virtualized methods
+
+Three fixtures carry a code virtualizer under Reactor. It is detected by the
+shape of what it must leave behind rather than by recognizing the engine: a stub
+that packs every one of its arguments into an object array in order, passes a
+constant identifying which program to run, calls once, and returns. Nothing in
+that shape depends on the engine's names, its bytecode framing, or its version,
+and it holds across all three fixtures, whose engines share no names at all. It
+fires on none of the five fixtures that are not virtualized.
+
+Beyond naming the affected methods, the program behind each one is recovered by
+running the engine's own decoder under the machine and reading the decoded
+operations back off the heap. Writing a parser for the bytecode would mean
+writing one per engine; the module already contains one that is exactly right.
+What comes back is the whole program and not a trace of one run, because the
+engine decodes all of it before executing any of it, and the list is taken at
+the moment the first operation executes. The stub is entered with empty
+arguments and the run is then allowed to fail however it likes, so as little of
+the hidden code runs as possible.
+
+| Fixture | Virtualized methods | Operations | Distinct operations |
+| --- | --- | --- | --- |
+| `embedded_dotnet_Qafcakg.exe` | 1 | 2,935 | 29 |
+| `embedded_dotnet_Mlfhntkcvb.exe` | 1 | 2,952 | 29 |
+| `Qbjuef.exe` | 1 | 3,007 | 29 |
+
+Each program uses exactly 29 distinct operations, numbered sparsely below 175,
+and the three prologues are the same sequence under a renaming — the first
+eleven positions agree in shape across all three, sixteen between `Qafcakg` and
+`Qbjuef` — while no two of them agree on a single number. The opcode sets
+themselves overlap only four to six values out of 29. So the numbering is
+assigned per build, and a table of meanings learned from one sample would not
+merely fail on the next, it would misread it.
+
+The listing therefore reports the operation numbers, their operands, and —
+because an operand that is a metadata token resolves against this module — the
+methods, fields, and types the hidden code reaches for. For `Qafcakg` that is 29
+distinct named references, 28 of them into the module itself. Among them are a
+`CryptoStream` constructor, a method taking a `CipherMode`, and the crypter's
+own stream reader, which between them say what the method is for even before any
+of its operations are understood.
+
+### What the operations mean
+
+Meanings are derived per sample, from the engine in front of us. Its handlers
+belong to the engine rather than to any one program, so an operation can be
+performed on its own: the engine's live state is captured, its stack is seeded
+with values we chose, it is handed a single operation, and the stack it leaves
+is read back. The operation given to it is one the program really contains,
+taken from the decoded program, because an invented operand is what makes an
+operation that indexes a table fault instead of answering.
+
+Every conclusion rests on four trials with different values, and a name is given
+only where exactly one candidate survives all four. One trial is not enough: on
+7 and 3 subtraction and exclusive-or agree, and only a second trial separates
+them. The last trial repeats its top pair, because a conditional jump never
+fires when every value differs and would otherwise be recorded as an operation
+that merely consumes two values.
+
+An operation that refuses a stack of numbers does not say what it wanted, so the
+arrangements it might have wanted are offered in turn — an array beneath an
+index, an array on top, an array beneath an index and a value — and the one it
+accepts is reported alongside the effect, because an operation that will only
+run with an array beneath an index is indexing an array whatever else remains
+unknown about it. The arrays offered are a different length in every trial and
+filled with values that depend on where they sit, which is what separates an
+operation that reports a length from one that returns a constant, and one that
+reads an element from one that returns the index.
+
+The same nine meanings come out of all three engines, under numbering they do
+not share:
+
+| Meaning | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` |
+| --- | --- | --- | --- |
+| exclusive-or | 57 | 17 | 58 |
+| add | 87 | 58 | 68 |
+| subtract | 109 | 107 | 60 |
+| duplicate top | 48 | 42 | 157 |
+| array length | 51 | 53 | 173 |
+| writes an array element | 139 | 169 | 1 |
+| widen a value | 22, 88, 112 | 87, 102, 168 | 127, 154, 172 |
+
+Twenty of the 29 operations in each sample can be performed in isolation; the
+other nine fault without the surrounding program, and nothing is said about
+them. Of the twenty, nine are named and the other eleven are reported only as
+what was counted — how many values went in, how many came out, and whether the
+engine's own state changed.
+
+Whether the engine's state changed is not decoration. What is watched is its
+fields and
+arrays, not just the numbers it holds directly, because an operation that stores
+into a local writes an array element; and the state is put back between trials,
+because an operation that writes the same value every time otherwise appears to
+change something once and nothing afterwards. Both were real errors before they
+were fixed, and both produced the same kind of wrong answer: an operation that
+does something reported as doing nothing. That is worse than declining to name
+it, since a reader told an operation is inert will take the code after it for
+unreachable.
+
+For the same reason nothing is named on the strength of the stack alone. An
+operation that consumed a value and showed nothing else is reported as having
+done exactly that, rather than as discarding it, because a write to somewhere
+outside the walk — a static field, say — would look identical from here.
+
+Why the nine were declined is reported as well, since it is what says where to
+look next, and it is written into the listing under the operations. In every
+sample they divide the same way: three index something the surrounding program
+would have filled in, two want a value of a kind we do not know to offer, two
+throw, and two the machine could not follow. Only the first group looks out of
+reach by this method; the rest are gaps in what we know to put in front of the
+engine, or in the machine itself.
+
+### Where the operations go
+
+None of the above finds a jump, and no amount of asking would. An operation
+performed on its own cannot go anywhere: the engine's position is wherever the
+last real run left it, so a handler that works out a target from it produces a
+number nothing can check, and the operation is written down as having consumed
+its values and done nothing. That reading is not merely incomplete but
+misleading, since a reader told an operation is inert will take the code after
+it for unreachable.
+
+Several things that ought to have found it did not, and ruling them out is what
+left watching as the answer. Nothing the engine can reach behaves like a
+position: 79 integers across 121 places, eight levels out, were each set in turn
+to the index of the operation being performed, and none of them changed what any
+handler did. The one field that operations do write takes the same value every
+time, whatever the operand and whatever is on the stack. Nor is the state the
+problem. Entering the stub runs 6 of 2,935 operations, and both richer states
+are worse: run to the end it characterizes 13 operations rather than 20, and
+stopped halfway, 14.
+
+So the engine is watched instead. It has to be run once anyway for it to exist,
+and what is watched is not its state but the order it does things in: which
+operation is performed after which. If that is not the next one along, the one
+before it jumped, and it jumped somewhere that really is another operation of
+the same program. This needs no view of where the position is kept, which may be
+an offset, an index, or nowhere addressable at all.
+
+For that to show anything the program has to actually run, and handed the
+nothing that a stub is entered with, it stops at once — the method here is a
+stream reader, and its seventh operation builds a reader over the stream it was
+given. Its own caller has the real one. Entering there instead, the engine runs
+3,500 operations, and
+
+| | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` |
+| --- | --- | --- | --- |
+| operations watched | 3,500 | 3,484 | 3,400 |
+| jumps watched | 345 | 361 | 349 |
+| unconditional | 113 | 9 | 110 |
+| conditional | 28, 135, 143, 156 | 28, 37, 119, 143 | 77, 97, 143, 156 |
+
+An operation seen to be followed by something other than the next one every time
+is called a jump; one that sometimes is and sometimes is not, a conditional
+jump. Seen only once, it is called neither, because a jump that happened to be
+taken and one that is always taken look the same from a single sighting. Two
+operations per sample fall into that last group and are left unnamed.
+
+One run takes one path, so most jumps are never watched. Every watched jump went
+to the number the jumping operation carries — all 345 of them, in all three
+samples — so the ones that were not watched are read the same way, and marked
+`~>` in the listing against the `->` of a jump actually seen. The rule is
+adopted per operation number, needs three sightings that agree, and is abandoned
+if a single one disagrees. That resolves a further 141 to 171 jumps per sample.
+
+Nothing here assumes the operand is a target. It is a rule the engine was
+observed to follow, checked against where it really went, and reported as
+separate from what was seen.
+
+No listing is acted on. The stubs are left exactly as they were, and the pass
+does not gate emission, because a program that could not be read back says
+nothing about whether the rest of the recovery is sound.
+
 ### Protected strings
 
 The fixtures use a virtualized initializer for a UTF-16LE record table. The
@@ -206,7 +379,8 @@ hashes, pass counts, and independent dnlib reload.
 - JIT-hook writes that do not deterministically target every catalogued stub;
 - Reactor VM instructions or exception paths outside the bounded model;
 - non-unique or incompletely referenced VM-backed string tables;
-- code-virtualization lifting; and
+- code-virtualization lifting, which stops at a listing of the decoded program
+  annotated with each operation's derived effect, rather than IL; and
 - dynamic execution of protected assemblies.
 
 Native-stub unpacking (NecroBit native / QuickLZ) is a deferred capability, not

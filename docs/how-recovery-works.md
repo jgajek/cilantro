@@ -137,9 +137,35 @@ assemblies are pulled out and written to disk. The `Assembly.Load` call that the
 sample would have made is a capture point — the bytes are taken and the load
 never happens.
 
-**9. Remove the protector.** Covered in its own section below.
+**9. Read back what was virtualized.** A method a virtualizer emptied is found
+by the shape of the seam it had to leave: pack every argument into an array,
+pass a number saying which program to run, call once, return. Rather than
+parsing the engine's bytecode — which would mean a parser per engine — its own
+decoder is run under the machine and the decoded program is read back off the
+heap, whole, before any of it executes.
 
-**10. Verify, then emit.** Covered in the section after that.
+What the operations *mean* is then asked of the engine directly, because its
+handlers belong to it rather than to any one program: seed its stack with chosen
+values, hand it a single operation, read back the stack it leaves. Several
+trials with different values are needed before anything is named, since one
+trial cannot tell subtraction from exclusive-or.
+
+Where it *goes* cannot be asked, only watched: an operation performed on its own
+has no position to move. So the engine is run once more — entered at the stub's
+call site, whose arguments are the real ones — and what is recorded is the order
+it performs operations in. An operation followed by something other than the
+next one along jumped, and jumped somewhere that is really another operation of
+the same program. One run takes one path, so the jumps it did not take are read
+off the operation itself, but only where every jump that was watched turned out
+to have been decided that way.
+
+The result is an annotated listing rather than a method body, and operations the
+trials did not settle are reported as what was counted rather than guessed at.
+Nothing is rewritten on the strength of it.
+
+**10. Remove the protector.** Covered in its own section below.
+
+**11. Verify, then emit.** Covered in the section after that.
 
 ## Deleting Reactor's code without deleting the program's
 

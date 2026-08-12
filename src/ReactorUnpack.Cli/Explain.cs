@@ -50,7 +50,7 @@ internal static class Explain
         ("clrjit",
             "The .NET compiler itself is hooked to intercept code as it is prepared"),
         ("virtualization",
-            "Some methods are turned into bytecode for a custom interpreter (not undone)")
+            "Some methods are bytecode for a custom interpreter (listed, not turned back into code)")
     ];
 
     public static void Summarize(PipelineResult result, string inputPath)
@@ -159,6 +159,13 @@ internal static class Explain
             var folder = Near(Path.GetDirectoryName(result.ExtractedPayloadPaths[0])!, home);
             Console.WriteLine(
                 $"    Hidden files    {result.ExtractedPayloadPaths.Count} in {folder}");
+        }
+
+        if (result.VirtualProgramPaths.Count > 0)
+        {
+            var folder = Near(Path.GetDirectoryName(result.VirtualProgramPaths[0])!, home);
+            Console.WriteLine(
+                $"    Hidden code     {result.VirtualProgramPaths.Count} listing(s) in {folder}");
         }
 
         Console.WriteLine($"    Full report     {Near(result.AnalysisReportPath, home)}");

@@ -205,9 +205,33 @@ The strongest and least common option. Selected methods are translated into
 bytecode for a custom virtual machine that Reactor generates and embeds. The
 original IL does not exist anywhere, in any form, at any point.
 
-Undoing this means reverse-engineering a bespoke instruction set per sample.
-ReactorUnpack detects it and says so; it does not lift it, and neither does any
-other public tool.
+Undoing this means reverse-engineering a bespoke instruction set per sample —
+and it really is per sample: across the samples examined here, the same engine
+numbers the same operations differently in every build, so a table of opcode
+meanings learned from one is worthless on the next.
+
+ReactorUnpack does not lift it, and neither does any other public tool. It does
+name the affected methods, and it writes out the program behind each one by
+running the engine's own decoder rather than parsing its bytecode. That gives
+you the size and shape of the hidden code and, wherever an operand is a
+reference into the assembly, the name of what it points at.
+
+It also works out what some of the operations do, by having the engine perform
+them one at a time on values chosen for the purpose and watching what comes
+back. In the samples here that identifies arithmetic, stack manipulation,
+conversions, and reading and writing array elements; the rest are reported as
+how many values they consumed and produced and whether they moved the engine.
+
+Jumps are found another way, because an operation performed on its own has
+nowhere to go. The engine is watched running the program instead, and where the
+operation it performed next was not the next one along, the one before it
+jumped. That names the branches and gives their targets, most of them from a
+rule the engine was seen to follow rather than from the run itself, since one
+run only takes one path. You cannot read the method, but you can usually tell
+what it is for and how it is shaped.
+
+The same trick is what lets payload extraction work on a sample whose unpacker
+is virtualized: the interpreter is ordinary IL, so it can simply be run.
 
 ## Generations
 

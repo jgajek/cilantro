@@ -100,6 +100,18 @@ public readonly record struct StaticValue
     public bool IsInteger => Kind is StaticValueKind.Int32 or StaticValueKind.Int64;
     public bool IsFloatingPoint => Kind is StaticValueKind.Float32 or StaticValueKind.Float64;
     public bool IsKnown => Kind != StaticValueKind.Unknown;
+
+    /// <summary>
+    /// Renders the kind and the bits, and never throws.
+    /// </summary>
+    /// <remarks>
+    /// The accessors above reject a value of the wrong kind, which is what makes a misread loud
+    /// rather than silently wrong. A record struct's generated rendering reads every property, so
+    /// without this override merely mentioning a value in a diagnostic message throws for all but
+    /// one kind — and it throws hardest exactly when something has gone wrong and the value most
+    /// needs describing.
+    /// </remarks>
+    public override string ToString() => $"{Kind}:{Bits}";
 }
 
 public enum StaticExecutionStatus

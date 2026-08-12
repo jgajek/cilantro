@@ -25,6 +25,7 @@ public sealed record ReactorStructureFacts(
     int MethodStubCount,
     int StringResolverCount,
     int HighEntropyResourceCount,
+    int VirtualizedMethodCount,
     bool ReferencesClrJit,
     bool HasRuntimeModulePointerAccess,
     ReactorCapability Capabilities,
@@ -65,6 +66,7 @@ public static class ReactorStructureDetector
         var stringResolvers = methods.Count(IsStringResolver);
         var resourceInfos = ResourceInspector.Inspect(module);
         var highEntropyResources = resourceInfos.Count(resource => resource.Entropy >= 7.75);
+        var virtualized = VirtualizedMethodDetector.Detect(module).Count;
         var strings = methods
             .Where(method => method.HasBody)
             .SelectMany(method => method.Body.Instructions)
@@ -87,6 +89,7 @@ public static class ReactorStructureDetector
         if (stubs >= 10) capabilities |= ReactorCapability.MethodStubs;
         if (clrJit) capabilities |= ReactorCapability.JitHook;
         if (stubs >= 10 && highEntropyResources >= 2) capabilities |= ReactorCapability.AntiTamper;
+        if (virtualized > 0) capabilities |= ReactorCapability.Virtualization;
 
         var score = 0.0;
         if (delegates >= 10) score += 0.35;
@@ -109,6 +112,7 @@ public static class ReactorStructureDetector
             stubs,
             stringResolvers,
             highEntropyResources,
+            virtualized,
             clrJit,
             runtimePointer,
             capabilities,

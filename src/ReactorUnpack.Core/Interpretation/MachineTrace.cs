@@ -1,3 +1,5 @@
+using dnlib.DotNet;
+
 namespace ReactorUnpack.Core.Interpretation;
 
 /// <summary>Opt-in execution trace for diagnosing why a bootstrap interpretation diverges.
@@ -13,6 +15,8 @@ internal static class MachineTrace
     {
         if (Enabled)
             AppDomain.CurrentDomain.ProcessExit += (_, _) => Flush();
+        if (Profiling)
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => DumpProfile();
     }
 
     public static bool Enabled => !string.IsNullOrEmpty(Path);
@@ -61,6 +65,45 @@ internal static class MachineTrace
         if (Recent.Length == 0)
             return;
         Recent[_written++ % Recent.Length] = description;
+    }
+
+    private static readonly string? ProfilePath =
+        Environment.GetEnvironmentVariable("REACTOR_PROFILE_FILE");
+
+    /// <summary>
+    /// Where a run spends its steps, per method, when <c>REACTOR_PROFILE_FILE</c> asks.
+    /// </summary>
+    /// <remarks>
+    /// An obfuscator's interpreter is unmistakable in a profile and easy to miss by reading names:
+    /// it is the one method that executes tens of millions of steps while everything around it
+    /// executes thousands. Separating a frame's own steps from those of the frames it calls is what
+    /// distinguishes a dispatcher from the entry point that merely contains one.
+    /// </remarks>
+    private static readonly Dictionary<MethodDef, (long Self, long Total, long Calls)> Frames = [];
+
+    public static bool Profiling => !string.IsNullOrEmpty(ProfilePath);
+
+    public static void Frame(MethodDef method, long self, long total)
+    {
+        if (!Profiling)
+            return;
+        Frames.TryGetValue(method, out var running);
+        Frames[method] = (running.Self + self, running.Total + total, running.Calls + 1);
+    }
+
+    public static void DumpProfile()
+    {
+        if (!Profiling || Frames.Count == 0)
+            return;
+        var lines = Frames
+            .OrderByDescending(entry => entry.Value.Self)
+            .Select(entry =>
+                $"{entry.Value.Self,14} {entry.Value.Total,14} {entry.Value.Calls,9}  " +
+                $"{entry.Key.MDToken} {entry.Key.FullName}");
+        File.WriteAllLines(
+            ProfilePath!,
+            new[] { $"{"self",14} {"total",14} {"calls",9}  method" }.Concat(lines));
+        Frames.Clear();
     }
 
     /// <summary>

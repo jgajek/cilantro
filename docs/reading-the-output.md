@@ -17,6 +17,7 @@ dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 | `suspicious.analysis.json` | Everything the tool observed and did |
 | `suspicious.changes.json` | Every individual edit, one entry per change |
 | `suspicious.payloads/` | Files that were hidden inside the sample |
+| `suspicious.virtualized/` | One listing per method that was turned into interpreter bytecode |
 | `suspicious.renames.json` | Old-to-new name map, only with `--rename` |
 
 The folder is not named after the sample, so a directory of samples all report
@@ -162,7 +163,25 @@ use `--keep-runtime`.
 ### The methods are decrypted but still unreadable
 
 Check whether the summary reported code virtualization. If it did, those methods
-are bytecode for a custom interpreter and no tool will decompile them.
+are bytecode for a custom interpreter and no tool will decompile them. Look in
+`suspicious.virtualized/` — there is a listing per affected method. The
+operation numbers are that build's own and mean nothing anywhere else, but the
+listing tells you two useful things about them. Every operand that is a
+reference into the assembly is named, so a listing mentioning `CryptoStream` and
+a `CipherMode` is telling you what the method does even though you cannot read
+how. And a header explains what each operation was found to do — `add`, `xor`,
+`dup`, reading and writing array elements and so on where that could be
+established, and otherwise just how many values it consumed and produced, and
+what it insisted on being handed. Operations that could not be established are
+left unnamed rather than guessed at, and the header says why each one was left
+alone.
+
+Jumps are marked on the lines that make them, so you can follow the shape of the
+method even without reading it. `-> 1840` means the interpreter really was
+watched going there. `~> 1840` means it was not, on this run, but every jump of
+that kind that was watched went to the number the operation carries, so this one
+is read the same way. A loop, an early exit, or a switch with a hundred arms is
+visible from those markings alone.
 
 If it did not, and the control flow still looks flattened, the dispatcher stage
 declined on those methods. It only rewrites where it can prove the result is
