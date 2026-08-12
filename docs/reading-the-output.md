@@ -205,7 +205,7 @@ visible from those markings alone.
 
 Beside each listing is a `.lifted.il` file, which is the same program written in
 the assembly's own terms: `ldloc`, `add`, `stelem`, `call` with the method it
-calls named, `switch` with its arms. That is the file to read first — around 95%
+calls named, `switch` with its arms. That is the file to read first — 99.8%
 of each program comes out this way — and the listing beside it is where to go
 when you want to know how a line was arrived at. Anything unsettled is written
 `??` with what was counted about it, so a line you cannot read is admitted
@@ -219,6 +219,14 @@ every branch, and every place two paths meet has to agree about it. `every one
 it reaches twice it reaches at the same depth` across a few thousand operations
 is the strongest evidence the file offers that the reading is right. If it
 reports disagreements, treat the affected region with suspicion.
+
+Two other header lines are worth knowing. `the rest of the program leaves them
+no choice` lists operations nothing could measure whose effect on the stack is
+nevertheless fixed by the depths on either side of them — the number is what
+they add to the stack, not a reading of what they do, and those lines still say
+`??`. `operation(s) no path arrives at` lists code nothing reaches: in these
+samples it sits after an unconditional jump and in no arm of the dispatcher's
+table, which is to say the protector emitted it and never uses it.
 
 If it did not, and the control flow still looks flattened, the dispatcher stage
 declined on those methods. It only rewrites where it can prove the result is

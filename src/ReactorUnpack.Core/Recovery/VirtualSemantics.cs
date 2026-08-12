@@ -1,3 +1,4 @@
+using System.Globalization;
 using dnlib.DotNet;
 using ReactorUnpack.Core.Interpretation;
 
@@ -46,6 +47,16 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     /// </remarks>
     public IReadOnlyList<string>? Computes { get; init; }
 
+    /// <summary>Which of the engine's own places it was seen writing to, where it wrote one.</summary>
+    public IReadOnlyList<string>? Changes { get; init; }
+
+    /// <summary>What kind of thing it leaves, for a push whose value could not be read.</summary>
+    /// <remarks>
+    /// This is the poorest of the readings and is only reached when every better one has failed,
+    /// so it is kept apart from the name until then rather than standing in for one.
+    /// </remarks>
+    public string? Leaving { get; init; }
+
     /// <summary>
     /// Whether its effect on the stack was established at all, as against its working being read
     /// while the effect itself went unmeasured.
@@ -64,6 +75,11 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     public string Describe()
     {
         var said = Needs is null ? Brief : $"{Brief}, wants {Needs}";
+        if (Changes is { Count: > 0 } places)
+        {
+            said += $" (writes {string.Join(", ", places.Take(4))}" +
+                (places.Count > 4 ? ", ..." : string.Empty) + ")";
+        }
         if (Unmeasured is not null)
             said += $" ({Unmeasured})";
         return Computes is { Count: > 0 } working
@@ -311,6 +327,20 @@ public static class VirtualSemantics
     {
         /// <summary>Whether an array offered to it came back holding the value at the index given.</summary>
         public bool Stored { get; init; }
+
+        /// <summary>What kind of thing it left, where the value itself could not be read.</summary>
+        public List<string> Kinds { get; init; } = [];
+
+        /// <summary>The values put on the stack for it, so that what it kept can be recognized.</summary>
+        public IReadOnlyList<long> Identities { get; init; } = [];
+
+        /// <summary>Which of the engine's places changed, said as the walk found them.</summary>
+        /// <remarks>
+        /// That an operation changed something is the beginning of a reading rather than the end of
+        /// one. Where it wrote is what says whether it moved the engine along, put a result
+        /// somewhere, or stopped the program.
+        /// </remarks>
+        public IReadOnlyList<string> Where { get; init; } = [];
     }
 
     /// <summary>
@@ -483,10 +513,13 @@ public static class VirtualSemantics
             }
 
             var moved = new HashSet<long>();
+            var where = new List<string>();
             foreach (var place in Footprint(heap, module, engine, stack))
             {
-                if (!was.TryGetValue(place.Path, out var earlier) || earlier != place.Value.Bits)
-                    moved.Add(place.Value.Bits);
+                if (was.TryGetValue(place.Path, out var earlier) && earlier == place.Value.Bits)
+                    continue;
+                moved.Add(place.Value.Bits);
+                where.Add($"{place.Path}={place.Value.Bits}");
             }
 
             // How many of the values we put there are still where we put them says what the
@@ -503,11 +536,13 @@ public static class VirtualSemantics
             // operation pushed. Throwing the trial away over it would discard a measurement we have
             // in order to avoid admitting to one we do not.
             var after = new List<long?>();
+            var kinds = new List<string>();
             for (var index = kept; index < stack.Count; index++)
             {
                 after.Add(TryReadNumber(heap, module, stack[index], out var value)
                     ? value
                     : null);
+                kinds.Add(Kind(heap, module, stack[index]));
             }
             // An operation given an array, an index and a value that leaves the value in the array
             // at that index has stored it, which nothing about the stack alone would show: the
@@ -517,7 +552,13 @@ public static class VirtualSemantics
                 element.Kind == StaticValueKind.Int32 &&
                 element.Bits == seeds[arrayAt + 2];
 
-            trials.Add(new Trial(before, after, kept, moved) { Stored = stored });
+            trials.Add(new Trial(before, after, kept, moved)
+            {
+                Stored = stored,
+                Where = where,
+                Kinds = kinds,
+                Identities = identities
+            });
             Restore(heap, footprint);
         }
         return trials;
@@ -549,7 +590,14 @@ public static class VirtualSemantics
         }
         if (text.Contains("cast", StringComparison.OrdinalIgnoreCase))
             return WrongKind;
-        return "the machine could not follow it";
+
+        // Where nothing above recognizes the failure, the machine's own words are the only thing
+        // that says where the gap is, and a gap in the tool is worth reporting as precisely as one
+        // in the sample.
+        var said = text.Split('\n')[0].Trim();
+        return said.Length == 0
+            ? "the machine could not follow it"
+            : $"the machine could not follow it: {said[..Math.Min(said.Length, 300)]}";
     }
 
     private static VirtualOperation? Classify(
@@ -596,9 +644,146 @@ public static class VirtualSemantics
             };
         return new VirtualOperation(opcode, pops, pushes, name)
         {
+            Leaving = pushes == 1 && pops == 0 ? Leaves(trials) : null,
             TouchesState = !settled,
+            Changes = settled ? null : Changed(trials),
             Needs = shape.Plain ? null : shape.Needs
         };
+    }
+
+    /// <summary>
+    /// What an operation that pushes something unreadable pushes, said by kind.
+    /// </summary>
+    /// <remarks>
+    /// Reading the value is the better answer and is tried first. Where it cannot be read, what
+    /// kind of thing it is still tells a reader something, and one kind settles the matter: an
+    /// operation that leaves nothing at all, every time, whatever it was handed, pushes null.
+    /// </remarks>
+    private static string? Leaves(List<Trial> trials)
+    {
+        var kinds = trials
+            .Select(trial => trial.Kinds.Count == 1 ? trial.Kinds[0] : null)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (kinds.Count != 1 || kinds[0] is not { } kind)
+            return null;
+        if (kind == "nothing at all")
+            return "pushes nothing at all";
+        var named = kind.StartsWith("System.", StringComparison.Ordinal)
+            ? kind["System.".Length..]
+            : kind[(kind.LastIndexOfAny(['/', '.', '+']) + 1)..];
+        return $"pushes a{("AEIOU".Contains(named[0], StringComparison.Ordinal) ? "n" : string.Empty)} {named}";
+    }
+
+    /// <summary>Where an operation was seen writing, where it wrote the same place every time.</summary>
+    /// <remarks>
+    /// Only places every trial disturbed are reported. A place one trial changed and another did
+    /// not is as likely to be the engine reacting to the values we chose as it is to be the
+    /// operation's doing.
+    /// </remarks>
+    private static List<string>? Changed(List<Trial> trials)
+    {
+        var everywhere = trials[0].Where.Select(Site).Distinct(StringComparer.Ordinal).ToList();
+        foreach (var trial in trials.Skip(1))
+        {
+            var one = trial.Where.Select(Site).ToHashSet(StringComparer.Ordinal);
+            everywhere = everywhere.Where(one.Contains).ToList();
+        }
+        if (everywhere.Count == 0)
+            return null;
+
+        // What it wrote there matters as much as where. A place given the same number whatever it
+        // was handed is the engine being set rather than the operation's values being kept, and
+        // that is the difference between an operation that goes somewhere and one that returns.
+        return everywhere
+            .Order(StringComparer.Ordinal)
+            .Take(12)
+            .Select(place => $"{place}{What(trials, place)}")
+            .ToList();
+    }
+
+    /// <summary>What a place was given, where the same thing can be said of every trial.</summary>
+    /// <remarks>
+    /// Two answers are worth having and they mean opposite things. A place given the same number
+    /// whatever the operation was handed is the engine being set — a position moved, a flag raised
+    /// — and a place given back one of the values the operation took is the operation putting
+    /// something away.
+    /// </remarks>
+    private static string What(List<Trial> trials, string place)
+    {
+        var written = trials
+            .Select(trial => trial.Where.FirstOrDefault(one => Site(one) == place))
+            .Select(one => one is null ? null : (long?)long.Parse(
+                one.Split('=')[^1], CultureInfo.InvariantCulture))
+            .ToList();
+        if (written.Exists(value => value is null))
+            return string.Empty;
+
+        var taken = trials
+            .Select((trial, index) => trial.Identities.Skip(trial.Kept).Contains(written[index]!.Value))
+            .ToList();
+        if (taken.TrueForAll(one => one))
+            return "=what it took";
+        var values = written.Distinct().ToList();
+        return values.Count == 1
+            ? $"={values[0]!.Value.ToString(CultureInfo.InvariantCulture)}"
+            : string.Empty;
+    }
+
+    private static string Site(string written) => written.Split('=')[0];
+
+    /// <summary>
+    /// What sort of thing a value is, for saying something about one that cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// The engine keeps its stack in slots, so what is on it is the slot and what matters is what
+    /// the slot holds. A value that is no number is still a value of some kind, and naming the kind
+    /// is often the whole answer: an operation that always leaves nothing at all is pushing null.
+    /// </remarks>
+    private static string Kind(StaticHeap heap, ModuleDef module, StaticValue slot)
+    {
+        var held = slot;
+        for (var unwrapped = 0; unwrapped < 3; unwrapped++)
+        {
+            if (held.Kind != StaticValueKind.HeapReference ||
+                !heap.TryGetRuntimeTypeName(held, out var wrapper) ||
+                Inside(heap, module, held, wrapper) is not { } within)
+            {
+                break;
+            }
+            held = within;
+        }
+        if (held.Kind == StaticValueKind.Null)
+            return "nothing at all";
+        if (held.Kind != StaticValueKind.HeapReference)
+            return held.Kind.ToString();
+        return heap.TryGetRuntimeTypeName(held, out var typeName) ? typeName : "something";
+    }
+
+    /// <summary>
+    /// What one of the engine's own wrappers holds, where it holds exactly one thing.
+    /// </summary>
+    /// <remarks>
+    /// The engine does not put values on its stack; it puts its own objects there, each holding
+    /// one. Saying an operation pushed one of those says nothing, since they all do. What is worth
+    /// knowing is what was inside, so a wrapper with a single thing in it is looked through.
+    /// </remarks>
+    private static StaticValue? Inside(
+        StaticHeap heap,
+        ModuleDef module,
+        StaticValue wrapper,
+        string typeName)
+    {
+        var held = new List<StaticValue>();
+        foreach (var field in Fields(module, typeName))
+        {
+            if (heap.TryReadField(wrapper, field, out var stored) &&
+                stored.Kind != StaticValueKind.Null)
+            {
+                held.Add(stored);
+            }
+        }
+        return held.Count == 1 ? held[0] : null;
     }
 
     /// <summary>

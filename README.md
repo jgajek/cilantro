@@ -126,18 +126,21 @@ Being straight about this matters more than the feature list.
   and write out the program behind each one: how many operations it has, and —
   because operands that are metadata tokens are resolved — which methods,
   fields, and types the hidden code reaches for. It also works out what most of
-  the operations do — 28 of 29 in the samples here, 23 of them by name, calls
-  and object constructions among them — by
+  the operations do — 28 of 29 in the samples here, 27 of them by name, calls,
+  object constructions, returns and discards among them — by
   having the interpreter carry them out one at a time on values chosen for the
   purpose, by watching what they fetch, store and jump to while the program
   really runs, and by noting what the interpreter itself computed on their
   behalf, which is the closest thing to reading the hidden method's own source.
   All of that is then written out a second time as the IL it stands for —
-  around 95% of the operations in each sample — with the rest marked unknown
+  99.8% of the operations in each sample — with the rest marked unknown
   rather than guessed at. That listing checks itself: the dispatcher's jump
   table turns the program back into blocks, and walking the depth of the stack
-  through all of them reaches 96–99% of each sample without ever arriving at a
-  place two ways and disagreeing. It is a reading, not a decompilation, and
+  through all of them reaches every operation any path arrives at, in all three
+  samples, without ever reaching a place two ways and disagreeing. The walk is
+  also what settles the last operations nothing could measure: with everything
+  around them known, the depths leave them one possible effect and no other. It
+  is a reading, not a decompilation, and
   nothing is put back into the assembly on the strength of it — but it is
   usually more than enough to say what a method you cannot read is *for*. It can
   also still pull hidden files

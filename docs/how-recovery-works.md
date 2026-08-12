@@ -191,10 +191,27 @@ of them always a constructor. Those are the call and the object construction —
 between them a third of everything the method does — and each says which method
 it reaches for.
 
+Three more readings come from putting the two sources together, and each closes
+something neither could close alone. The trials watch every place the engine can
+reach and see nothing move; the run watches the handler execute and never sees
+it write a static field, which is the one place outside the engine it could put
+anything. An operation that takes a value, leaves nothing, and touches neither
+has discarded it — a reading the trials refuse on their own, and rightly, since
+on their own they cannot see everywhere. The jumps, meanwhile, give away where
+the engine keeps its position, being the operations that write it; so an
+operation that writes that same place a fixed number that is no part of the
+program is not going anywhere in it, which is what returning looks like from
+outside, and if it also puts what it took somewhere, that is the value it
+returns. And an operation that pushes something unreadable can still be looked
+inside: the engine wraps what it stacks, and the wrapper can be seen through to
+what kind of thing was in it. That brings each sample to 27 named of the 28
+reported on, the one holdout being an operation that pushes a value nothing
+identified.
+
 All of that is then written out a second time in the assembly's own terms: the
 operations that were named as the IL they stand for, the operands that turned
 out to be tokens as the methods, fields and types they name, and the ones
-nothing settled as `??` beside what was counted about them. Around 95% of each
+nothing settled as `??` beside what was counted about them. 99.8% of each
 sample's operations can be written this way.
 
 Reading it back is also what checks it. The dispatcher of a flattened program
@@ -203,9 +220,23 @@ turns the program back into blocks; from the first operation onwards the depth
 of the stack can then be walked through the whole thing, adding what each
 operation leaves and subtracting what it takes. Every place two paths arrive at
 has to agree about how deep the stack is, or one of the readings is wrong. In
-the three samples the walk reaches 96%, 99% and 99% of the program and finds no
-disagreement anywhere — which is a far stronger statement about the readings
-than any one of them could make alone.
+the three samples the walk reaches every operation any path arrives at and finds
+no disagreement anywhere — which is a far stronger statement about the readings
+than any one of them could make alone. What no path arrives at is reported too,
+being four to fourteen operations per sample sitting after an unconditional jump
+with nothing pointing at them: code the protector emitted and never uses.
+
+The walk is also how the last unmeasured operations are settled. A program whose
+every other operation is known is a system of equations with one unknown in it —
+the depth where an operation begins is fixed by the paths in, the depth where the
+next begins by the paths out, and the difference is its effect whether anything
+watched it or not. Flattening helps here rather than hindering, since every block
+ends by rejoining the dispatcher at a depth the dispatcher fixes, so the unknowns
+are pinned from both sides. A solved effect is then used to solve the next, but it
+has to answer for itself: if carrying it through contradicts a depth arrived at
+another way, it is withdrawn and the program solved again without it. This says
+an operation takes one more than it leaves; it does not say what it did with it,
+and nothing is named on the strength of it.
 
 The result is a listing rather than a method body. Nothing is rewritten on the
 strength of it, and nothing is emitted: a body that is nearly right is worse

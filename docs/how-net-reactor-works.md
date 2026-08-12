@@ -248,15 +248,18 @@ occasionally names an operation nothing else could. Two operations per sample
 have no fixed arity at all, which is how the call and the object construction
 give themselves away, those being told how many values to take by the method
 their operand names. Between all of it, 28 of the 29 operations in each sample
-are reported on and 23 named, and around 95% of a program can be written out as
+are reported on and 27 named, and 99.8% of a program can be written out as
 the IL it stands for.
 
 Whether that reading holds together can then be checked without knowing anything
 further. The dispatcher's jump turns out to carry a table of places rather than
 one, so the flattened program comes apart into blocks, and the depth of the
 stack can be walked through all of them: every place two paths meet has to agree
-about it. In these samples none disagrees. You cannot read the method, but you
-can usually tell what it is for and how it is shaped.
+about it. In these samples none disagrees, and the walk reaches everything any
+path arrives at. That completeness pays for itself, because a program whose
+every other operation is known leaves an unmeasured one only one possible effect:
+the depths on either side of it fix the difference. You cannot read the method,
+but you can usually tell what it is for and how it is shaped.
 
 The same trick is what lets payload extraction work on a sample whose unpacker
 is virtualized: the interpreter is ordinary IL, so it can simply be run.

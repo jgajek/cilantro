@@ -40,6 +40,9 @@ public static class VirtualLift
         ["dup"] = "dup",
         ["convert"] = "conv.?",
         ["pushes nothing at all"] = "ldnull",
+        ["discards what it takes"] = "pop",
+        ["returns the value it takes"] = "ret",
+        ["stops the program"] = "ret",
         ["add"] = "add",
         ["sub"] = "sub",
         ["mul"] = "mul",
@@ -67,7 +70,8 @@ public static class VirtualLift
         var going = Destinations(program, conjectured);
         var arity = Arities(program, module);
         var stopped = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-        var depths = Depths(program, going, arity, stopped);
+        var forced = Forced(program, going, arity);
+        var depths = Depths(program, going, arity, forced, stopped);
         var lifted = program.Instructions.Count(instruction => Mnemonic(program, instruction) is not null);
 
         yield return $"; {program.Method.Stub.FullName}";
@@ -93,7 +97,7 @@ public static class VirtualLift
                 "one should show up";
             yield return "; there as a disagreement about the depth of the stack.";
         }
-        foreach (var line in Reached(program, depths, stopped))
+        foreach (var line in Reached(program, depths, forced, stopped))
             yield return $"; {line}";
         yield return string.Empty;
 
@@ -102,7 +106,10 @@ public static class VirtualLift
             var mnemonic = Mnemonic(program, instruction);
             var operand = Operand(program, instruction, mnemonic, module, going, conjectured);
             var said = mnemonic is null
-                ? $"??         op {instruction.Opcode}{Counted(program, instruction)}"
+                ? $"??         op {instruction.Opcode}" +
+                    (forced.TryGetValue(instruction.Opcode, out var net)
+                        ? $"        ; {net:+0;-0;0} on the stack, forced by the program"
+                        : Counted(program, instruction))
                 : $"{mnemonic,-10} {operand}";
             yield return $"  {instruction.Index,5}:  {said}".TrimEnd();
         }
@@ -300,6 +307,122 @@ public static class VirtualLift
     }
 
     /// <summary>
+    /// What an operation nothing could measure must do, given everything around it.
+    /// </summary>
+    /// <remarks>
+    /// A program whose every other operation is known is a system of equations with one unknown in
+    /// it. The depth of the stack where an operation begins is fixed by the path in, the depth
+    /// where the next one begins is fixed by the path out, and the difference is the operation's
+    /// effect whether it was ever watched or not. In a flattened program the paths out are
+    /// plentiful, since every block ends by rejoining the dispatcher at a depth the dispatcher
+    /// fixes, so the unknowns are pinned from both sides.
+    ///
+    /// This gives a net effect and not a reading: it says an operation takes one more than it
+    /// leaves, not what it did with it. Nothing is named on the strength of it. What it does is
+    /// let the walk carry on through, which is what turns a check of most of the program into a
+    /// check of all of it.
+    /// </remarks>
+    private static Dictionary<int, int> Forced(
+        VirtualProgram program,
+        Dictionary<int, List<int>> going,
+        Dictionary<int, (int Pops, int Pushes)> arity)
+    {
+        var edges = new List<(int From, int To, int? Net)>();
+        foreach (var instruction in program.Instructions)
+        {
+            var index = instruction.Index;
+            if (Terminal(program, instruction))
+                continue;
+            int? net = arity.TryGetValue(index, out var counted)
+                ? counted.Pushes - counted.Pops
+                : null;
+            var name = program.Operations.TryGetValue(instruction.Opcode, out var known)
+                ? known.Name
+                : null;
+            if (name is not "branch" && index + 1 < program.Instructions.Count)
+                edges.Add((index, index + 1, net));
+            if (name is "branch" or "branch if" && going.TryGetValue(index, out var targets))
+            {
+                foreach (var target in targets)
+                    edges.Add((index, target, net));
+            }
+        }
+
+        // Depths spread along every edge whose effect is known, in both directions, since an
+        // operation's depth says as much about what comes before it as about what comes after.
+        // A solved effect is then used as if it were known, which is how one answer unlocks the
+        // next; but it has to answer for itself. If carrying it through the rest of the program
+        // contradicts a depth arrived at another way, the guess was wrong, and it is withdrawn and
+        // the whole thing solved again without it rather than left to spread.
+        var banned = new HashSet<int>();
+        for (var attempt = 0; attempt <= Withdrawals; attempt++)
+        {
+            if (Solve(program, edges, banned) is { } solved)
+                return solved;
+        }
+        return [];
+    }
+
+    /// <summary>How many wrong answers to withdraw before giving up on solving at all.</summary>
+    private const int Withdrawals = 4;
+
+    /// <summary>
+    /// Works the depths out from what is known, returning nothing if a solved effect turned out to
+    /// contradict the program, in which case it is added to what must not be assumed again.
+    /// </summary>
+    private static Dictionary<int, int>? Solve(
+        VirtualProgram program,
+        List<(int From, int To, int? Net)> edges,
+        HashSet<int> banned)
+    {
+        var depths = new Dictionary<int, int> { [0] = 0 };
+        var forced = new Dictionary<int, int>();
+        bool moved;
+        do
+        {
+            moved = false;
+            foreach (var (from, to, net) in edges)
+            {
+                var opcode = program.Instructions[from].Opcode;
+                var guessed = net is null && forced.ContainsKey(opcode);
+                var known = net ?? (guessed ? forced[opcode] : (int?)null);
+                if (known is { } step)
+                {
+                    if (depths.TryGetValue(from, out var before))
+                    {
+                        if (depths.TryGetValue(to, out var already))
+                        {
+                            if (already != before + step && guessed)
+                            {
+                                banned.Add(opcode);
+                                return null;
+                            }
+                        }
+                        else
+                        {
+                            depths[to] = before + step;
+                            moved = true;
+                        }
+                    }
+                    if (depths.TryGetValue(to, out var after) && depths.TryAdd(from, after - step))
+                        moved = true;
+                    continue;
+                }
+                if (banned.Contains(opcode) ||
+                    !depths.TryGetValue(from, out var entering) ||
+                    !depths.TryGetValue(to, out var leaving))
+                {
+                    continue;
+                }
+                forced[opcode] = leaving - entering;
+                moved = true;
+            }
+        }
+        while (moved);
+        return forced;
+    }
+
+    /// <summary>
     /// How deep the stack is at each operation the program can be walked to.
     /// </summary>
     /// <remarks>
@@ -313,6 +436,7 @@ public static class VirtualLift
         VirtualProgram program,
         Dictionary<int, List<int>> going,
         Dictionary<int, (int Pops, int Pushes)> arity,
+        Dictionary<int, int> forced,
         Dictionary<string, List<int>> stopped)
     {
         var depths = new Dictionary<int, int>();
@@ -332,17 +456,27 @@ public static class VirtualLift
             depths[index] = depth;
 
             var instruction = program.Instructions[index];
-            if (!arity.TryGetValue(index, out var counted))
+            if (Terminal(program, instruction))
+                continue;
+            int after;
+            if (arity.TryGetValue(index, out var counted))
+            {
+                if (depth - counted.Pops < 0)
+                {
+                    Stop(stopped, "a stack too shallow for what the operation takes", index);
+                    continue;
+                }
+                after = depth - counted.Pops + counted.Pushes;
+            }
+            else if (forced.TryGetValue(instruction.Opcode, out var net))
+            {
+                after = depth + net;
+            }
+            else
             {
                 Stop(stopped, "an operation whose effect is unknown", index);
                 continue;
             }
-            if (depth - counted.Pops < 0)
-            {
-                Stop(stopped, "a stack too shallow for what the operation takes", index);
-                continue;
-            }
-            var after = depth - counted.Pops + counted.Pushes;
 
             var name = program.Operations.TryGetValue(instruction.Opcode, out var known)
                 ? known.Name
@@ -369,12 +503,18 @@ public static class VirtualLift
         where.Add(index);
     }
 
+    /// <summary>Whether an operation ends the path it is on rather than handing it onwards.</summary>
+    private static bool Terminal(VirtualProgram program, VirtualInstruction instruction) =>
+        program.Operations.TryGetValue(instruction.Opcode, out var known) &&
+        known.Name is "returns the value it takes" or "stops the program";
+
     /// <summary>The depth given to an operation two paths disagreed about.</summary>
     private const int Disagreed = int.MinValue;
 
     private static IEnumerable<string> Reached(
         VirtualProgram program,
         Dictionary<int, int> depths,
+        Dictionary<int, int> forced,
         Dictionary<string, List<int>> stopped)
     {
         var walked = depths.Count;
@@ -384,11 +524,32 @@ public static class VirtualLift
                 ? "every one it reaches twice it reaches at the same depth."
                 : $"{disagreed} of them at two different depths, which means one of the readings " +
                     "is wrong.");
+        if (forced.Count > 0)
+        {
+            var said = forced
+                .OrderBy(entry => entry.Key)
+                .Select(entry => $"op {entry.Key} {entry.Value:+0;-0;0}");
+            yield return "  Nothing measured what these do, but the rest of the program leaves " +
+                $"them no choice: {string.Join(", ", said)} on the stack.";
+        }
         foreach (var (why, where) in stopped.OrderByDescending(entry => entry.Value.Count))
         {
             var at = string.Join(", ", where.Take(8));
             yield return $"  It stopped {where.Count} time(s) at {why}: {at}" +
                 (where.Count > 8 ? ", ..." : string.Empty);
+        }
+
+        // What no path arrives at is worth naming too. In a program whose blocks are all entered
+        // from one table, an operation nothing reaches is either dead or reached a way that has
+        // not been read, and either is something to look at rather than to leave unsaid.
+        var missed = program.Instructions
+            .Where(instruction => !depths.ContainsKey(instruction.Index))
+            .Select(instruction => instruction.Index)
+            .ToList();
+        if (missed.Count > 0)
+        {
+            yield return $"  {missed.Count} operation(s) no path arrives at: " +
+                string.Join(", ", missed.Take(10)) + (missed.Count > 10 ? ", ..." : string.Empty);
         }
     }
 }

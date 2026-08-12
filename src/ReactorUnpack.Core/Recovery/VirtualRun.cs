@@ -17,6 +17,10 @@ public sealed record VirtualRun(
     IReadOnlyDictionary<int, VirtualOperation> Effects,
     IReadOnlyDictionary<int, IReadOnlyList<string>> Computed)
 {
+    /// <summary>The operations watched writing a static field, which is the one place outside the
+    /// engine a handler could put a value it took.</summary>
+    public IReadOnlySet<int> Stores { get; init; } = new HashSet<int>();
+
     /// <summary>Whether enough was seen for the counts to mean anything.</summary>
     public bool Learned => Watched >= Enough;
 
@@ -108,6 +112,7 @@ internal sealed class VirtualRunWatcher
     private readonly Dictionary<int, List<Performance>> _performances = [];
     private readonly Dictionary<int, List<Dictionary<string, int>>> _worked = [];
     private readonly Dictionary<int, string> _unmeasured = [];
+    private readonly HashSet<int> _stores = [];
     private readonly Dictionary<int, (int Methods, int Constructors, int Seen)> _naming = [];
     private readonly Dictionary<long, MethodDef?> _calls = [];
     private Dictionary<string, int>? _working;
@@ -173,7 +178,7 @@ internal sealed class VirtualRunWatcher
                 };
             }
         }
-        return new VirtualRun(_watched, _jumps, _targets, effects, computed);
+        return new VirtualRun(_watched, _jumps, _targets, effects, computed) { Stores = _stores };
     }
 
     /// <summary>
@@ -311,6 +316,11 @@ internal sealed class VirtualRunWatcher
     /// </remarks>
     public void Stepped(MethodDef method, Instruction instruction)
     {
+        // A value taken off the stack and never seen again was discarded, unless it went somewhere
+        // outside the engine altogether. The one such place a handler could put it is a static
+        // field, and whether it ever writes one is worth knowing for that reason alone.
+        if (_performing >= 0 && instruction.OpCode.Code == Code.Stsfld)
+            _stores.Add(_performing);
         if (_working is null)
             return;
         if (Computing(instruction) is not { } did)

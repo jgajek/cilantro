@@ -445,18 +445,29 @@ account for around a thousand of `Qafcakg`'s 2,935 operations, each naming the
 method it reaches for, which is what turns an unreadable method into a legible
 account of what it does.
 
-With those, 28 of the 29 operations in each sample are reported on and 23 are
-named. The one remaining is an operation the machine could not follow and the
-run never reached, so nothing whatever is said about it. Five more are named
-only by what they took and left; one of those is the array construction above,
-whose working says what it is even though its effect was only counted.
+Three readings then come from putting the two sources together. An operation
+that takes a value, leaves nothing, changes nothing the trials can see and never
+writes a static field while the run watches it has nowhere left to have put what
+it took, so it discarded it — 142 operations of `Qafcakg` alone. The jumps give
+away where the engine keeps its position, being what they write; an operation
+that writes that place a fixed number that is no place in the program has
+stopped rather than gone anywhere, and the one that does so also hands back what
+it took and raises a flag, which is a return. And an operation whose pushed
+value cannot be read can still be looked inside, since the engine wraps what it
+stacks and the wrapper can be seen through.
+
+With those, 28 of the 29 operations in each sample are reported on and 27 are
+named. The one not reported on is an operation the machine could not follow and
+the run never reached; the one reported but unnamed pushes a value nothing
+identified. Both are settled a third way below.
 
 ### Reading the program back
 
 What all of that comes to is written out separately, in the assembly's own
 terms: each named operation as the IL it stands for, each token operand as what
-it names, and everything unsettled as `??` beside what was counted. 95%, 96% and
-95% of the three samples come out that way. It is a report and stays one — the
+it names, and everything unsettled as `??` beside what was counted. 99.8% of
+each of the three samples comes out that way — 2,930 of 2,935, 2,947 of 2,952
+and 3,002 of 3,007. It is a report and stays one — the
 stubs are left exactly as they were, nothing is emitted, and the pass does not
 gate emission, because a program that could not be read back says nothing about
 whether the rest of the recovery is sound.
@@ -476,13 +487,26 @@ shape, where hundreds of blocks converge on one dispatcher:
 
 | | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` |
 | --- | --- | --- | --- |
-| operations walked | 2,898 of 2,935 | 2,929 of 2,952 | 2,982 of 3,007 |
+| operations walked | 2,921 of 2,935 | 2,948 of 2,952 | 3,001 of 3,007 |
 | places two paths disagreed | 0 | 0 | 0 |
+| operations no path arrives at | 14 | 4 | 6 |
 
-Each walk stops in exactly three places, and they are the same three in all
-three samples: twice at the one operation nothing ever characterized, and once
-at an operation wanting more values than the walk had for it. Nothing else in
-three programs of some three thousand operations contradicts anything else.
+The walk now stops nowhere. What it does not reach, it does not reach because
+nothing points at it: those operations sit after an unconditional jump, in no
+arm of the dispatcher's table, and are code the protector emitted and never
+uses. Nothing else in three programs of some three thousand operations
+contradicts anything else.
+
+That completeness is what settles the last two operations. With everything
+around them known, the depth of the stack where each begins is fixed by the
+paths in and the depth where the next begins by the paths out, and the
+difference is the operation's effect whether anything measured it or not. In
+`Qafcakg` the operation the machine could not follow is pinned at one value
+taken and none left; in each sample two operations are settled this way. A
+solved effect is used to solve the next but has to survive being carried through
+the rest of the program, and is withdrawn if it contradicts a depth arrived at
+another way. It gives an effect and not a reading, so nothing is named on the
+strength of it.
 
 ### Protected strings
 

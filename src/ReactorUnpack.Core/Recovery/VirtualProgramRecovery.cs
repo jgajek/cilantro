@@ -316,7 +316,83 @@ public static class VirtualProgramRecovery
                 ? known with { Name = name, TouchesState = true }
                 : new VirtualOperation(opcode, 0, 0, name) { TouchesState = true };
         }
+
+        Stopping(merged);
+        Discarding(merged, flow);
+
+        // The last resort, taken only where the run and the trials both had nothing better: an
+        // operation that pushes something is at least pushing something of a particular kind.
+        foreach (var (opcode, operation) in merged)
+        {
+            if (operation is { Name: null, Leaving: { } kind })
+                merged[opcode] = operation with { Name = kind };
+        }
         return merged;
+    }
+
+    /// <summary>
+    /// Names the operation that ends the method, by where the jumps showed the position is kept.
+    /// </summary>
+    /// <remarks>
+    /// The jumps give away where the engine keeps its position, being the operations that write it.
+    /// An operation that writes the same place a fixed number that is no part of the program is
+    /// therefore not going anywhere in it, which is what returning looks like from outside; and if
+    /// it also puts what it took somewhere, that is the value it returns. Neither reading is
+    /// available to the stack alone, which sees only a value consumed.
+    /// </remarks>
+    private static void Stopping(Dictionary<int, VirtualOperation> merged)
+    {
+        var position = merged.Values
+            .Where(operation => operation.Name is "branch" or "branch if")
+            .SelectMany(operation => operation.Changes ?? [])
+            .Select(written => written.Split('=')[0])
+            .ToHashSet(StringComparer.Ordinal);
+        if (position.Count == 0)
+            return;
+
+        foreach (var (opcode, operation) in merged)
+        {
+            if (operation.Name is not null || operation.Changes is not { } changes)
+                continue;
+            var moved = changes.FirstOrDefault(written =>
+                position.Contains(written.Split('=')[0]) &&
+                written.Contains('=', StringComparison.Ordinal));
+            if (moved is null || moved.EndsWith("=what it took", StringComparison.Ordinal))
+                continue;
+            var kept = changes.Any(written =>
+                written.EndsWith("=what it took", StringComparison.Ordinal));
+            merged[opcode] = operation with
+            {
+                Name = kept && operation.Pops > 0
+                    ? "returns the value it takes"
+                    : "stops the program"
+            };
+        }
+    }
+
+    /// <summary>
+    /// Names the operation that throws a value away, which is what is left when nothing kept it.
+    /// </summary>
+    /// <remarks>
+    /// The trials decline this reading on their own, and rightly: an operation that consumed a
+    /// value and showed nothing else might have written it somewhere they cannot see. Between the
+    /// two readings there is nowhere left for it to have gone. The trials watch everything the
+    /// engine can reach and saw nothing change; the run watches the handler execute and never saw
+    /// it write a static field, which is the one place outside the engine it could have put
+    /// anything. An operation that takes a value, leaves nothing, and touches neither has discarded
+    /// it.
+    /// </remarks>
+    private static void Discarding(Dictionary<int, VirtualOperation> merged, VirtualRun flow)
+    {
+        foreach (var (opcode, operation) in merged)
+        {
+            var watched = flow.Effects.ContainsKey(opcode) || flow.Computed.ContainsKey(opcode);
+            if (operation is { Name: null, Measured: true, Pushes: 0, TouchesState: false } &&
+                operation.Pops > 0 && watched && !flow.Stores.Contains(opcode))
+            {
+                merged[opcode] = operation with { Name = "discards what it takes" };
+            }
+        }
     }
 
     private static string Say(VirtualRun flow)

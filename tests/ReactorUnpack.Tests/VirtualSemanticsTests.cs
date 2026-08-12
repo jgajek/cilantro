@@ -114,8 +114,9 @@ public sealed class VirtualSemanticsTests
     {
         var operations = Derive();
 
-        Assert.False(operations[Opaque].Identified);
-        Assert.Equal("pushes 1", operations[Opaque].Describe());
+        Assert.Equal(0, operations[Opaque].Pops);
+        Assert.Equal(1, operations[Opaque].Pushes);
+        Assert.Contains("pushes a", operations[Opaque].Describe(), StringComparison.Ordinal);
     }
 
     /// <summary>

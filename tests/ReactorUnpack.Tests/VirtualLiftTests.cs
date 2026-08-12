@@ -125,6 +125,55 @@ public sealed class VirtualLiftTests
         Assert.Contains("at the same depth", lifted, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// An operation nothing could measure is still pinned by everything around it, and being able
+    /// to say what it must do is the difference between checking most of a program and all of it.
+    /// </summary>
+    [Fact]
+    public void AnOperationNothingMeasuredIsSolvedForFromTheRestOfTheProgram()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Switch, new VirtualOperand.Table([6])),
+            (Push, new VirtualOperand.Number(6)),
+            (Mystery, new VirtualOperand.None()),
+            (Jump, new VirtualOperand.Number(6)),
+            (Push, new VirtualOperand.Number(0)),
+            (Push, new VirtualOperand.Number(1))
+        ]);
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.Contains("op 7 -1 on the stack", lifted, StringComparison.Ordinal);
+        Assert.Contains("-1 on the stack, forced by the program", lifted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An operation two paths pin differently has not been solved for, and saying nothing is the
+    /// only honest answer: a number that is wrong somewhere is worse than no number at all.
+    /// </summary>
+    [Fact]
+    public void AnOperationThePathsPinTwoWaysIsLeftUnsolved()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Switch, new VirtualOperand.Table([4, 6])),
+            (Push, new VirtualOperand.Number(6)),
+            (Jump, new VirtualOperand.Number(8)),
+            (Mystery, new VirtualOperand.None()),
+            (Jump, new VirtualOperand.Number(8)),
+            (Mystery, new VirtualOperand.None()),
+            (Push, new VirtualOperand.Number(1)),
+            (Push, new VirtualOperand.Number(2))
+        ]);
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.DoesNotContain("forced by the program", lifted, StringComparison.Ordinal);
+    }
+
     private static VirtualProgram Program(
         ArtifactContext context,
         IReadOnlyList<(int Opcode, VirtualOperand Operand)> operations)
