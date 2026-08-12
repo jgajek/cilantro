@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using ReactorUnpack.Core.Interpretation;
 
 namespace ReactorUnpack.Core.Recovery;
@@ -8,11 +9,13 @@ namespace ReactorUnpack.Core.Recovery;
 /// <param name="Jumps">By opcode, how often the next operation was not the following one.</param>
 /// <param name="Targets">By operation, where it was seen to go.</param>
 /// <param name="Effects">By opcode, what it did to the stack every time it was seen.</param>
+/// <param name="Computed">By opcode, what the engine's own code was seen working out.</param>
 public sealed record VirtualRun(
     int Watched,
     IReadOnlyDictionary<int, (int Taken, int Seen)> Jumps,
     IReadOnlyDictionary<int, int> Targets,
-    IReadOnlyDictionary<int, VirtualOperation> Effects)
+    IReadOnlyDictionary<int, VirtualOperation> Effects,
+    IReadOnlyDictionary<int, IReadOnlyList<string>> Computed)
 {
     /// <summary>Whether enough was seen for the counts to mean anything.</summary>
     public bool Learned => Watched >= Enough;
@@ -78,6 +81,9 @@ internal sealed class VirtualRunWatcher
     /// <summary>How many tables to watch, so that a program's own data does not crowd them out.</summary>
     private const int MostTables = 8;
 
+    /// <summary>How many performances of one operation to watch the engine's working through.</summary>
+    private const int Enough = 4;
+
     /// <summary>How many places in a table an operation must be seen reaching for.</summary>
     private const int Places = 2;
 
@@ -100,6 +106,8 @@ internal sealed class VirtualRunWatcher
     private readonly Dictionary<int, (int Taken, int Seen)> _jumps = [];
     private readonly Dictionary<int, int> _targets = [];
     private readonly Dictionary<int, List<Performance>> _performances = [];
+    private readonly Dictionary<int, List<Dictionary<string, int>>> _worked = [];
+    private Dictionary<string, int>? _working;
     private List<StaticValue>? _stack;
     private List<Table> _tables = [];
     private List<Held> _before = [];
@@ -131,7 +139,99 @@ internal sealed class VirtualRunWatcher
         _instructionType = instructionType;
     }
 
-    public VirtualRun Result() => new(_watched, _jumps, _targets, Effects());
+    public VirtualRun Result()
+    {
+        var computed = Computed();
+        var effects = Effects();
+        foreach (var (opcode, working) in computed)
+        {
+            effects[opcode] = effects.TryGetValue(opcode, out var known)
+                ? known with { Computes = working }
+                : new VirtualOperation(opcode, 0, 0, null)
+                {
+                    Computes = working,
+                    Measured = false
+                };
+        }
+        return new VirtualRun(_watched, _jumps, _targets, effects, computed);
+    }
+
+    /// <summary>
+    /// What each operation was seen working out that the others were not.
+    /// </summary>
+    /// <remarks>
+    /// Two filters make this readable, neither of which needs to know what the engine's plumbing
+    /// is. An operation is credited only with what it did every time it was performed, which drops
+    /// whatever the run happened to be doing around it. Then anything most operations also do is
+    /// dropped as housekeeping: taking the top of a stack, comparing two types, stepping a
+    /// position. What is left is what one operation does and its neighbours do not, which is the
+    /// only part that could be its meaning.
+    /// </remarks>
+    private Dictionary<int, IReadOnlyList<string>> Computed()
+    {
+        var always = new Dictionary<int, Dictionary<string, int>>();
+        foreach (var (opcode, runs) in _worked)
+        {
+            if (runs.Count < Counted)
+                continue;
+            var core = new Dictionary<string, int>(runs[0], StringComparer.Ordinal);
+            foreach (var run in runs.Skip(1))
+            {
+                foreach (var did in core.Keys.ToList())
+                    core[did] = Math.Min(core[did], run.GetValueOrDefault(did));
+            }
+            always[opcode] = core;
+        }
+        if (always.Count == 0)
+            return [];
+
+        var shared = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var did in always.Values.SelectMany(core => core.Keys))
+        {
+            shared.TryGetValue(did, out var count);
+            shared[did] = count + 1;
+        }
+        var common = Math.Max(2, always.Count / 4);
+
+        var found = new Dictionary<int, IReadOnlyList<string>>();
+        foreach (var (opcode, core) in always)
+        {
+            var residue = core
+                .Where(did => shared[did.Key] <= common)
+                .OrderByDescending(did => did.Value)
+                .ThenBy(did => did.Key, StringComparer.Ordinal)
+                .Take(Most)
+                .Select(did => did.Value > 1
+                    ? $"{Shorten(did.Key)} x{did.Value}"
+                    : Shorten(did.Key))
+                .ToList();
+            if (residue.Count > 0)
+                found[opcode] = residue;
+        }
+        return found;
+    }
+
+    /// <summary>A called method said as briefly as it can be and still be recognized.</summary>
+    private static string Shorten(string called)
+    {
+        var cut = called.IndexOf('(', StringComparison.Ordinal);
+        var name = cut > 0 ? called[..cut] : called;
+        var space = name.LastIndexOf(' ');
+        name = space > 0 ? name[(space + 1)..] : name;
+
+        var split = name.IndexOf("::", StringComparison.Ordinal);
+        if (split < 0)
+            return name;
+        var owner = name[..split];
+        var generic = owner.IndexOf('`', StringComparison.Ordinal);
+        if (generic > 0)
+            owner = owner[..generic];
+        var dot = owner.LastIndexOf('.');
+        return (dot > 0 ? owner[(dot + 1)..] : owner) + name[split..];
+    }
+
+    /// <summary>How much of an operation's working to report before it stops being a summary.</summary>
+    private const int Most = 4;
 
     public void Entered(MethodDef method, IReadOnlyList<StaticValue> arguments)
     {
@@ -167,11 +267,66 @@ internal sealed class VirtualRunWatcher
         _performing = _opcode;
         _performingDepth = _depth;
         _operand = VirtualSemantics.Operand(_heap, operation, _operandField);
+
+        // Watching what the handler computes costs a callback per instruction it runs, so it is
+        // only done until each operation has been seen enough times to say what it always does.
+        _worked.TryGetValue(_opcode, out var already);
+        _working = already is null || already.Count < Enough ? [] : null;
         _before = Stack();
         _was = Indexed();
         _kept = Keeps();
         _element = Element();
     }
+
+    /// <summary>
+    /// Notes an instruction the engine really executed while performing an operation.
+    /// </summary>
+    /// <remarks>
+    /// What the handler computes is the operation's meaning stated outright, and it is only
+    /// readable this way: in the file the handlers are one method of several thousand instructions,
+    /// flattened into blocks threaded together by a state variable, and most of what they call goes
+    /// through a proxy whose target is decided as it runs. The machine has already passed through
+    /// all of that by the time it gets here.
+    /// </remarks>
+    public void Stepped(MethodDef method, Instruction instruction)
+    {
+        if (_working is null)
+            return;
+        if (Computing(instruction) is not { } did)
+            return;
+        _working.TryGetValue(did, out var count);
+        _working[did] = count + 1;
+    }
+
+    /// <summary>
+    /// What an executed instruction says about meaning, which is nothing unless it computes.
+    /// </summary>
+    /// <remarks>
+    /// Loads, stores, and jumps are how any code is held together and say the same thing in every
+    /// handler. Arithmetic, comparison and conversion are what one handler does that another does
+    /// not, and a call out of the assembly is the engine asking for something by name.
+    /// </remarks>
+    private static string? Computing(Instruction instruction)
+    {
+        var code = instruction.OpCode.Code;
+        if (code is Code.Call or Code.Callvirt or Code.Newobj)
+        {
+            return instruction.Operand is IMethod called && called.DeclaringType?.Scope is AssemblyRef
+                ? called.FullName
+                : null;
+        }
+        var name = instruction.OpCode.Name;
+        if (name is null)
+            return null;
+        return Computations.Contains(name.Split('.')[0]) ? name : null;
+    }
+
+    /// <summary>The instruction names that say what an operation is rather than how it is built.</summary>
+    private static readonly HashSet<string> Computations = new(StringComparer.Ordinal)
+    {
+        "add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr", "neg", "not",
+        "ceq", "cgt", "clt", "conv", "beq", "bne", "blt", "bgt", "ble", "bge"
+    };
 
     public void Exited(MethodDef method)
     {
@@ -180,6 +335,13 @@ internal sealed class VirtualRunWatcher
             return;
         var performing = _performing;
         _performing = -1;
+        if (_working is { Count: > 0 })
+        {
+            if (!_worked.TryGetValue(performing, out var runs))
+                _worked[performing] = runs = [];
+            runs.Add(_working);
+        }
+        _working = null;
 
         // With nowhere to read the stack, every operation looks like it did nothing, which is the
         // one answer worse than no answer at all.

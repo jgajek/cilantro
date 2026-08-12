@@ -192,7 +192,8 @@ public static class VirtualProgramRecovery
         // rather than questioned: an operation performed in isolation cannot jump anywhere, but one
         // performed in the middle of a real run moves the engine to somewhere that can be checked.
         var flow = new VirtualRun(0, new Dictionary<int, (int, int)>(),
-            new Dictionary<int, int>(), new Dictionary<int, VirtualOperation>());
+            new Dictionary<int, int>(), new Dictionary<int, VirtualOperation>(),
+            new Dictionary<int, IReadOnlyList<string>>());
         var stalled = attempt.Performed * StalledShare < attempt.Program.Count;
         var roots = stalled
             ? Callers(context.Module, method.Stub).Take(CallersTried)
@@ -218,7 +219,7 @@ public static class VirtualProgramRecovery
         var operations = Merge(probed.Operations, flow);
         var byOperand = Rules(attempt.Decoded, flow);
         var refused = probed.Refused
-            .Where(entry => !operations.ContainsKey(entry.Key))
+            .Where(entry => !operations.TryGetValue(entry.Key, out var known) || !known.Measured)
             .ToDictionary(entry => entry.Key, entry => entry.Value);
         diagnostic = $"The engine decoded {attempt.Decoded.Count} operation(s) of program " +
             $"{method.ProgramId}, read back from its own " +
@@ -287,8 +288,14 @@ public static class VirtualProgramRecovery
         {
             if (!merged.TryGetValue(opcode, out var known))
                 merged[opcode] = watched;
-            else if (known.Name is null && watched.Name is not null)
-                merged[opcode] = known with { Name = watched.Name };
+            else
+            {
+                merged[opcode] = known with
+                {
+                    Name = known.Name ?? watched.Name,
+                    Computes = watched.Computes
+                };
+            }
         }
 
         foreach (var (opcode, counted) in flow.Jumps)
@@ -319,7 +326,8 @@ public static class VirtualProgramRecovery
         var jumping = flow.Jumps.Count(entry => entry.Value.Taken > 0);
         var named = flow.Effects.Values.Count(effect => effect.Name is not null);
         return $"Watching {flow.Watched} operation(s) run measured {flow.Effects.Count} of them, " +
-            $"{named} by name, and showed {jumping} jumping to {flow.Targets.Count} target(s).";
+            $"{named} by name, read the working of {flow.Computed.Count}, and showed {jumping} " +
+            $"jumping to {flow.Targets.Count} target(s).";
     }
 
     /// <summary>
@@ -345,9 +353,11 @@ public static class VirtualProgramRecovery
             known.InstructionType);
         machine.FrameEntered = watcher.Entered;
         machine.FrameExited = watcher.Exited;
+        machine.Stepped = watcher.Stepped;
         machine.Execute(root, arguments);
         machine.FrameEntered = null;
         machine.FrameExited = null;
+        machine.Stepped = null;
         return watcher.Result();
     }
 

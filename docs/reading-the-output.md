@@ -179,8 +179,17 @@ the program to have set something up first, and the only way to catch an
 operation loading or storing — `loads what its operand indexes` and its opposite
 are the virtualizer's locals, and `reads the static field it names` says which
 field on the line itself.
-Operations that neither settled are left unnamed rather than guessed at, and the
-header says why each one was left alone.
+Operations that none of it settled are left unnamed rather than guessed at, and
+the header says why each one was left alone.
+
+Some entries also say what the operation `computes`. That is what the
+interpreter itself was seen working out while carrying the operation out, with
+the housekeeping every operation does subtracted — `computes clt` under a
+`branch if` is the comparison the branch is made on, and `computes
+Module::ResolveType, Array::CreateInstance` is an operation making an array of a
+type named in the program. An entry reading `effect not established` has had its
+working read but not its effect on the stack, and is not claiming to do
+nothing.
 
 Jumps are marked on the lines that make them, so you can follow the shape of the
 method even without reading it. `-> 1840` means the interpreter really was

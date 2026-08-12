@@ -171,8 +171,20 @@ seen to load, and one whose value turns up in a place that did not hold it
 before has been seen to store. Between asking and watching, each sample comes to
 26 of 29 operations accounted for and 21 named, rather than 20 and nine.
 
-The result is an annotated listing rather than a method body, and operations the
-trials did not settle are reported as what was counted rather than guessed at.
+One more thing is taken from that run, and it is the closest to reading the
+engine's own account of itself. Its handlers cannot be read out of the file:
+they are one flattened method of several thousand instructions, and over half of
+what they call goes through a proxy whose target is picked as it runs. But the
+machine performing an operation has already resolved the proxies and walked the
+flattening, so what it executes on the operation's behalf is recorded —
+arithmetic, comparisons, conversions, and calls that leave the assembly. What
+every operation does is then subtracted as housekeeping, leaving what one does
+and its neighbours do not. That is what says a conditional branch compares for
+less-than, or that an operation nothing else could name resolves a type and
+makes an array of it.
+
+The result is an annotated listing rather than a method body, and operations
+none of it settled are reported as what was counted rather than guessed at.
 Nothing is rewritten on the strength of it.
 
 **10. Remove the protector.** Covered in its own section below.

@@ -128,9 +128,11 @@ Being straight about this matters more than the feature list.
   fields, and types the hidden code reaches for. It also works out what most of
   the operations do — 26 of 29 in the samples here, 21 of them by name — by
   having the interpreter carry them out one at a time on values chosen for the
-  purpose, and by watching what they fetch, store and jump to while the program
-  really runs. That is usually enough to say what a method you cannot read is
-  *for*. It can also still pull hidden files
+  purpose, by watching what they fetch, store and jump to while the program
+  really runs, and by noting what the interpreter itself computed on their
+  behalf, which is the closest thing to reading the hidden method's own source.
+  That is usually enough to say what a method you cannot read is *for*. It can
+  also still pull hidden files
   out of a sample whose unpacker is virtualized, because it runs the interpreter
   rather than trying to undo it; that just takes a minute or so instead of
   seconds.

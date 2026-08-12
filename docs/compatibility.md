@@ -384,6 +384,56 @@ of it open is the one that cannot mislead a reader into taking live code for
 unreachable. Two operations per sample are named that way, and they are the last
 two that had been left unnamed.
 
+### What the handler works out
+
+The readings above treat the engine as a black box, which invites the obvious
+question: why not read its handlers instead? The answer is in what the
+handlers are. In `Qafcakg` every one of them is inside a single method of 7,386
+IL instructions with 1,133 distinct branch targets, control-flow flattened
+behind a `switch` of 806 arms over a state variable. The opcode is read exactly
+once, at `IL_5A97`, and the instruction after it assigns a state number and
+jumps back to that switch; the opcode's own switch, 176 arms wide, sits far away
+and is reachable only through the state machine, guarded by calls whose false
+branch returns to it. So a handler is not a region that can be read but a chain
+of fragments threaded through a thousand blocks.
+
+Nor would reading them tell you what they call. Of 1,143 calls in that method,
+18 go to the framework. 652 — more than half of all of them — go to one method,
+the delegate proxy resolver, which picks its target at run time out of an
+encrypted table. Statically those call sites say "call something". A further 156
+go to a predicate whose only job is to send the state machine somewhere else.
+
+None of that stands in the way of the machine, which resolves the proxies as it
+goes, and by the time it is performing an operation it has already walked the
+flattening. So while an operation is being performed, what the engine executes
+is recorded: arithmetic, comparisons, conversions, and calls that leave the
+assembly. Two filters make it readable, neither needing to know what the
+plumbing is. An operation is credited only with what it did on every performance
+watched, and then anything most operations also do is dropped — taking the top
+of a stack, comparing two types, stepping a position. What is left is what one
+operation does that its neighbours do not.
+
+It arrives at the same answers by a different road, which is the point of
+running it. The operation the trials called `xor` is watched executing `xor`;
+`add`, `add`; `array length`, `Array::get_Length`. Where the two disagreed one
+would be wrong, and they do not.
+
+It also reaches past them. An operation the trials could only count — one value
+in, one out — is watched calling `Module::ResolveType` and
+`Array::CreateInstance`, which is `newarr` and nothing else. And a conditional
+branch, which no measurement of the stack can see the condition of, is watched
+computing `clt`. In all three samples:
+
+| | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` |
+| --- | --- | --- | --- |
+| makes an array of a named type | 82 | 97 | 66 |
+| branch on less-than | 28 | 28 | 97 |
+| branch on a longer comparison | 135 | 119 | 77 |
+
+Two of the three operations that nothing else reached have their working read
+this way. Their effect on the stack is still unmeasured, and the listing says so
+rather than reporting them as doing nothing.
+
 No listing is acted on. The stubs are left exactly as they were, and the pass
 does not gate emission, because a program that could not be read back says
 nothing about whether the rest of the recovery is sound.

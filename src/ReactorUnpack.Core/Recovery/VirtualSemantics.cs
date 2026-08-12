@@ -35,14 +35,39 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     /// </remarks>
     public string? Needs { get; init; }
 
+    /// <summary>
+    /// What the engine's own code was seen computing while it performed this operation, over and
+    /// above the working every operation does.
+    /// </summary>
+    /// <remarks>
+    /// This is the operation's meaning stated in the engine's own terms rather than deduced from
+    /// the outside, and it is the only reading that says what a conditional branch is conditional
+    /// on. It says nothing on its own about what the operation did with the result.
+    /// </remarks>
+    public IReadOnlyList<string>? Computes { get; init; }
+
+    /// <summary>
+    /// Whether its effect on the stack was established at all, as against its working being read
+    /// while the effect itself went unmeasured.
+    /// </summary>
+    public bool Measured { get; init; } = true;
+
     /// <summary>The effect in the shortest form that is still true.</summary>
-    public string Describe() => Needs is null ? Brief : $"{Brief}, wants {Needs}";
+    public string Describe()
+    {
+        var said = Needs is null ? Brief : $"{Brief}, wants {Needs}";
+        return Computes is { Count: > 0 } working
+            ? $"{said}; computes {string.Join(", ", working)}"
+            : said;
+    }
 
     /// <summary>The effect without what it had to be handed, short enough to sit beside a line.</summary>
     public string Brief
     {
         get
         {
+            if (!Measured)
+                return "effect not established";
             var stack = Name ?? (Pops, Pushes) switch
             {
                 (0, 0) => TouchesState ? "changes engine state" : "no effect seen",
@@ -69,11 +94,12 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
 /// meanings learned from one sample would misread the next rather than fail on it. Meanings have to
 /// be derived from the sample in hand.
 ///
-/// Reading them out of the engine is not practical: its executor is one control-flow flattened
-/// method of several thousand instructions driven by a switch over a state variable, so finding the
-/// code for an operation means unflattening the obfuscator's own interpreter first. Watching the
-/// program run does not work either, because a program stops early without the real inputs it was
-/// compiled for, and only reaches a handful of its operations.
+/// Reading them out of the file is not practical: the executor is one control-flow flattened method
+/// of several thousand instructions driven by a switch over a state variable, and most of what it
+/// calls goes through a proxy whose target is decided as it runs, so finding the code for an
+/// operation means undoing the obfuscator's protection of its own interpreter first. What the
+/// engine executes while it runs is another matter, and is read elsewhere; here it is asked
+/// questions instead.
 ///
 /// So the engine is asked instead. Its handlers belong to it rather than to any one program, which
 /// means an operation can be performed in isolation: seed the engine's stack with values we chose,

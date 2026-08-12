@@ -194,6 +194,34 @@ public sealed class VirtualSemanticsTests
         Assert.Equal("stores where its operand indexes", operations[StoreLocal].Name);
     }
 
+    /// <summary>
+    /// What an operation means is written in the engine's own handler, and the handler is what the
+    /// machine walks through to perform it. Reading it off the file is another matter — in a real
+    /// engine the handlers are one flattened method behind proxies resolved as it runs — but by the
+    /// time the machine is performing an operation it has already been through all of that.
+    /// </summary>
+    [Fact]
+    public void WhatTheHandlerWorksOutIsReadFromWhatTheEngineExecuted()
+    {
+        var operations = Derive();
+
+        Assert.Contains("add", operations[Add].Computes ?? []);
+    }
+
+    /// <summary>
+    /// An engine spends most of its instructions on the same housekeeping whatever operation it is
+    /// performing, and reporting that as meaning would bury the part that is one.
+    /// </summary>
+    [Fact]
+    public void WorkingEveryOperationDoesIsNotReportedAsWhatOneOfThemMeans()
+    {
+        var operations = Derive();
+
+        Assert.DoesNotContain(
+            operations[Opaque].Computes ?? [],
+            working => working.StartsWith("List::", StringComparison.Ordinal));
+    }
+
     private static VirtualProgram Recover()
     {
         using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
@@ -298,6 +326,7 @@ public sealed class VirtualSemanticsTests
         (LoadLocal, 3),
         (Add, 0),
         (Duplicate, 0),
+        (Add, 0),
         (Discard, 0),
         (Length, 0),
         (Store, 0),

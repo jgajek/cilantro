@@ -236,7 +236,16 @@ against what the engine was holding elsewhere: its own tables at the place the
 operand names, the field the operand names, the array underneath an index. That
 is what identifies the loads and stores, which no amount of isolated trials
 would, and it brings each sample to 26 of 29 operations accounted for and 21 of
-them named. You cannot read the method, but you can usually tell what it is for
+them named.
+
+Reading the engine's handlers instead is not an option in the file — they are
+one flattened method of several thousand instructions, and most of what they
+call goes through a proxy that picks its target at run time — but it is an
+option while it runs, because the interpreter has already resolved all of that.
+What it computes on an operation's behalf is recorded, and what every operation
+does is subtracted as housekeeping. That corroborates the names arrived at from
+the outside, gives conditional branches the comparison they are made on, and
+occasionally names an operation nothing else could. You cannot read the method, but you can usually tell what it is for
 and how it is shaped.
 
 The same trick is what lets payload extraction work on a sample whose unpacker
