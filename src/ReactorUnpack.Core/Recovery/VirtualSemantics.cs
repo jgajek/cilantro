@@ -7,9 +7,13 @@ namespace ReactorUnpack.Core.Recovery;
 /// <param name="Operations">The ones the engine would perform on their own, by opcode.</param>
 /// <param name="Declined">Why the others were left alone, in the listing's voice.</param>
 /// <param name="Summary">The same in one sentence, for the log.</param>
+/// <param name="Refused">
+/// Why each operation the trials could not perform was left alone, by opcode rather than in total,
+/// because watching the engine run may yet account for some of them.
+/// </param>
 public sealed record VirtualSemanticsReport(
     IReadOnlyDictionary<int, VirtualOperation> Operations,
-    IReadOnlyList<string> Declined,
+    IReadOnlyDictionary<int, string> Refused,
     string Summary);
 
 /// <summary>What one of a virtualizer's operations turned out to do.</summary>
@@ -91,10 +95,18 @@ public static class VirtualSemantics
     private const int ArrayLength = 8;
 
     private static VirtualSemanticsReport Nothing(string summary) =>
-        new(new Dictionary<int, VirtualOperation>(), [], summary);
+        new(new Dictionary<int, VirtualOperation>(), new Dictionary<int, string>(), summary);
+
+    /// <summary>The reasons operations were left alone, gathered so that each is said once.</summary>
+    internal static List<string> Counted(IReadOnlyDictionary<int, string> refused) =>
+        refused
+            .GroupBy(entry => entry.Value, StringComparer.Ordinal)
+            .OrderByDescending(group => group.Count())
+            .Select(group => $"{group.Count()} because {group.Key}")
+            .ToList();
 
     /// <summary>Puts the refusals into the listing's voice, as a note under the operations.</summary>
-    private static List<string> Wording(List<string> reasons) =>
+    internal static List<string> Wording(List<string> reasons) =>
         reasons.Count == 0
             ? []
             : new[] { string.Empty, "Nothing is said about the rest:" }
@@ -196,7 +208,7 @@ public static class VirtualSemantics
         }
 
         var derived = new Dictionary<int, VirtualOperation>();
-        var declined = new Dictionary<string, int>(StringComparer.Ordinal);
+        var declined = new Dictionary<int, string>();
         foreach (var (opcode, example) in examples.OrderBy(entry => entry.Key))
         {
             var operand = Operand(heap, example, operandField);
@@ -231,10 +243,9 @@ public static class VirtualSemantics
                 derived[opcode] = found;
                 continue;
             }
-            if (reason.Length == 0)
-                reason = "its trials did not agree with each other";
-            declined.TryGetValue(reason, out var seen);
-            declined[reason] = seen + 1;
+            declined[opcode] = reason.Length == 0
+                ? "its trials did not agree with each other"
+                : reason;
         }
 
         var named = derived.Values.Count(operation => operation.Name is not null);
@@ -242,13 +253,9 @@ public static class VirtualSemantics
             ? "The engine performed none of its operations in isolation, so none were given meaning."
             : $"{derived.Count} of {examples.Count} operation(s) were performed in isolation, " +
                 $"{named} of them identified by name.";
-        var reasons = declined
-            .OrderByDescending(entry => entry.Value)
-            .Select(entry => $"{entry.Value} because {entry.Key}")
-            .ToList();
-        if (reasons.Count > 0)
-            summary += " The rest were left alone: " + string.Join("; ", reasons) + ".";
-        return new VirtualSemanticsReport(derived, Wording(reasons), summary);
+        if (declined.Count > 0)
+            summary += " The rest were left alone: " + string.Join("; ", Counted(declined)) + ".";
+        return new VirtualSemanticsReport(derived, declined, summary);
     }
 
     /// <summary>One performance of an operation: what was on the stack, and what was left.</summary>
@@ -374,7 +381,7 @@ public static class VirtualSemantics
         }
     }
 
-    private static long? Operand(StaticHeap heap, StaticValue operation, FieldDef? operandField)
+    internal static long? Operand(StaticHeap heap, StaticValue operation, FieldDef? operandField)
     {
         if (operandField is null || !heap.TryReadField(operation, operandField, out var stored))
             return null;
@@ -729,7 +736,7 @@ public static class VirtualSemantics
     /// to ignore. It holds because the values put on the stack are small enough that every width
     /// reads the same, which is also why they are chosen small.
     /// </remarks>
-    private static bool TryReadNumber(
+    internal static bool TryReadNumber(
         StaticHeap heap,
         ModuleDef module,
         StaticValue slot,
@@ -774,7 +781,7 @@ public static class VirtualSemantics
     /// <summary>
     /// Names the type the engine treats as a value, by what its arguments and locals are made of.
     /// </summary>
-    private static string? SlotType(StaticHeap heap, ModuleDef module, StaticValue engine)
+    internal static string? SlotType(StaticHeap heap, ModuleDef module, StaticValue engine)
     {
         if (!heap.TryGetRuntimeTypeName(engine, out var stateType))
             return null;
@@ -801,7 +808,7 @@ public static class VirtualSemantics
             method.Parameters[0].Type.FullName == "System.Type" &&
             method.Parameters[1].Type.FullName == "System.Object");
 
-    private static List<StaticValue>? FindStack(
+    internal static List<StaticValue>? FindStack(
         StaticHeap heap,
         ModuleDef module,
         StaticValue engine,

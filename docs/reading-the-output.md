@@ -172,9 +172,12 @@ a `CipherMode` is telling you what the method does even though you cannot read
 how. And a header explains what each operation was found to do — `add`, `xor`,
 `dup`, reading and writing array elements and so on where that could be
 established, and otherwise just how many values it consumed and produced, and
-what it insisted on being handed. Operations that could not be established are
-left unnamed rather than guessed at, and the header says why each one was left
-alone.
+what it insisted on being handed. Some of that comes from the interpreter being
+made to perform the operation on chosen values, and some from watching it
+perform the operation in the middle of the real program, which is the only way
+to reach the ones that need the program to have set something up first.
+Operations that neither settled are left unnamed rather than guessed at, and the
+header says why each one was left alone.
 
 Jumps are marked on the lines that make them, so you can follow the shape of the
 method even without reading it. `-> 1840` means the interpreter really was

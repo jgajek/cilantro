@@ -245,10 +245,10 @@ not share:
 | widen a value | 22, 88, 112 | 87, 102, 168 | 127, 154, 172 |
 
 Twenty of the 29 operations in each sample can be performed in isolation; the
-other nine fault without the surrounding program, and nothing is said about
-them. Of the twenty, nine are named and the other eleven are reported only as
-what was counted — how many values went in, how many came out, and whether the
-engine's own state changed.
+other nine fault without the surrounding program, and the next section reaches
+six of those another way. Of the twenty, nine are named and the other eleven are
+reported only as what was counted — how many values went in, how many came out,
+and whether the engine's own state changed.
 
 Whether the engine's state changed is not decoration. What is watched is its
 fields and
@@ -330,6 +330,29 @@ if a single one disagrees. That resolves a further 141 to 171 jumps per sample.
 Nothing here assumes the operand is a target. It is a rule the engine was
 observed to follow, checked against where it really went, and reported as
 separate from what was seen.
+
+### What the operations do, from the run itself
+
+Six of those nine are not out of reach after all, because the program performs
+them perfectly well in the middle of a run. The same run that showed where the
+operations go shows what they do, read off the engine's own
+stack either side of each operation. Which values were left untouched underneath
+is settled by identity rather than by depth, so an operation is measured by what
+it really took and left rather than by the difference between two heights.
+
+The two ways of asking answer different questions and are kept apart for it.
+Trials choose values, so they can vary them freely and rule meanings out; a real
+run cannot be made to try anything, and repeats itself. Watching reaches
+operations trials cannot perform at all, and cannot reach an operation the run
+never took. Between them, 26 of the 29 operations in each sample are accounted
+for, leaving three: two that threw and one the machine could not follow, none of
+which the run reached either.
+
+Naming from a real run is held to the same standard, with one addition: a
+meaning is only accepted where the values it held across were themselves varied,
+since an operation performed twice on the same numbers agrees with almost
+anything. That is enough to add one meaning the trials missed — an operation that
+pushes the number it carries — and to measure five more by what they moved.
 
 No listing is acted on. The stubs are left exactly as they were, and the pass
 does not gate emission, because a program that could not be read back says

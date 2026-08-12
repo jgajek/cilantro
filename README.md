@@ -125,11 +125,12 @@ Being straight about this matters more than the feature list.
   method. No public tool does. What it does instead is name the affected methods
   and write out the program behind each one: how many operations it has, and —
   because operands that are metadata tokens are resolved — which methods,
-  fields, and types the hidden code reaches for. It also works out what many of
-  the operations do, by having the interpreter carry them out one at a time on
-  values chosen for the purpose, and where the jumps go, by watching the
-  interpreter run and noting which operation followed which. That is usually
-  enough to say what a method you cannot read is *for*. It can also still pull hidden files
+  fields, and types the hidden code reaches for. It also works out what most of
+  the operations do — 26 of 29 in the samples here — by having the interpreter
+  carry them out one at a time on values chosen for the purpose, and by watching
+  what they do while the program really runs; and where the jumps go, by noting
+  which operation the interpreter went to next. That is usually enough to say
+  what a method you cannot read is *for*. It can also still pull hidden files
   out of a sample whose unpacker is virtualized, because it runs the interpreter
   rather than trying to undo it; that just takes a minute or so instead of
   seconds.

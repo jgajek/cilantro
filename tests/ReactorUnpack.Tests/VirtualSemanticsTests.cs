@@ -26,6 +26,8 @@ public sealed class VirtualSemanticsTests
     private const int Length = 55;
     private const int Store = 66;
     private const int Opaque = 77;
+    private const int Arm = 88;
+    private const int Guarded = 99;
     private const int JumpTarget = 7;
 
     [Fact]
@@ -161,6 +163,21 @@ public sealed class VirtualSemanticsTests
         Assert.DoesNotContain(3, recovered.Targets.Keys);
     }
 
+    /// <summary>
+    /// An operation that only works once the program has set the engine up cannot be asked
+    /// anything: the state it wants is put back between trials. Watching it work in place is the
+    /// only way to measure it, and measuring it is the difference between a listing that accounts
+    /// for every operation and one with holes in it.
+    /// </summary>
+    [Fact]
+    public void AnOperationTheTrialsCannotPerformIsMeasuredByWatchingItWork()
+    {
+        var operations = Derive();
+
+        Assert.Equal(1, operations[Guarded].Pops);
+        Assert.Equal(1, operations[Guarded].Pushes);
+    }
+
     private static VirtualProgram Recover()
     {
         using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
@@ -215,19 +232,21 @@ public sealed class VirtualSemanticsTests
         var stack = Field(module, "Stack", listOfSlot);
         var locals = Field(module, "Locals", new SZArraySig(slot.ToTypeSig()));
         var position = Field(module, "Position", module.CorLibTypes.Int32);
+        var armed = Field(module, "Armed", module.CorLibTypes.Int32);
         engine.Fields.Add(program);
         engine.Fields.Add(stack);
         engine.Fields.Add(locals);
         engine.Fields.Add(position);
+        engine.Fields.Add(armed);
         engine.Methods.Add(Constructor(module));
 
         var execute = Execute(
-            module, engine, operation, slot, cell, code, operand, stack, position, held, low, raw,
-            make, listOfSlot);
+            module, engine, operation, slot, cell, code, operand, stack, position, armed, held, low,
+            raw, make, listOfSlot);
         engine.Methods.Add(execute);
 
         var entry = Entry(
-            module, engine, operation, slot, code, operand, program, stack, locals, position,
+            module, engine, operation, slot, code, operand, program, stack, locals, position, make,
             execute, listOfStep, listOfSlot, withValues);
         engine.Methods.Add(entry);
         Stub(module, entry);
@@ -250,12 +269,19 @@ public sealed class VirtualSemanticsTests
         (Jump, JumpTarget),
         (Duplicate, 0),
         (Discard, 0),
+        (Arm, 0),
+        (Guarded, 0),
+        (Guarded, 0),
         (Add, 0),
         (Duplicate, 0),
+        (Discard, 0),
         (Length, 0),
         (Store, 0),
         (Opaque, 0)
     ];
+
+    /// <summary>What the engine's stack is given to work on before the program starts.</summary>
+    private static readonly int[] Seeded = [3, 5, 9, 17, 33, 65];
 
     private static GenericInstSig List(ModuleDefUser module, TypeSig element) =>
         new(new ClassSig(module.CorLibTypes.GetTypeRef(
@@ -332,6 +358,7 @@ public sealed class VirtualSemanticsTests
         FieldDef operand,
         FieldDef stack,
         FieldDef position,
+        FieldDef armed,
         FieldDef held,
         FieldDef low,
         FieldDef raw,
@@ -368,6 +395,8 @@ public sealed class VirtualSemanticsTests
         var tryLength = OpCodes.Nop.ToInstruction();
         var tryStore = OpCodes.Nop.ToInstruction();
         var tryOpaque = OpCodes.Nop.ToInstruction();
+        var tryArm = OpCodes.Nop.ToInstruction();
+        var tryGuarded = OpCodes.Nop.ToInstruction();
 
         // add: take the top two apart, put their sum back.
         body.Add(OpCodes.Ldarg_1.ToInstruction());
@@ -474,10 +503,52 @@ public sealed class VirtualSemanticsTests
         body.Add(OpCodes.Ldarg_1.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(code));
         body.Add(OpCodes.Ldc_I4.ToInstruction(Opaque));
-        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryArm));
         body.Add(OpCodes.Ldarg_0.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(stack));
         body.Add(OpCodes.Newobj.ToInstruction(slot.FindDefaultConstructor()));
+        body.Add(OpCodes.Callvirt.ToInstruction(add));
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // arm: readies the engine for the operation below, which is what an operation that only
+        // works in the middle of a program looks like.
+        body.Add(tryArm);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(Arm));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryGuarded));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldc_I4_1.ToInstruction());
+        body.Add(OpCodes.Stfld.ToInstruction(armed));
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // guarded: refuses unless the program armed it, so it cannot be performed in isolation —
+        // the state it wants is put back between trials — but it runs perfectly well in place.
+        body.Add(tryGuarded);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(Guarded));
+        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        var allowed = OpCodes.Nop.ToInstruction();
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(armed));
+        body.Add(OpCodes.Brtrue.ToInstruction(allowed));
+        body.Add(OpCodes.Newobj.ToInstruction(new MemberRefUser(
+            module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void),
+            module.CorLibTypes.GetTypeRef("System", "Exception"))));
+        body.Add(OpCodes.Throw.ToInstruction());
+        body.Add(allowed);
+        Peek(body, stack, held, low, count, item, 1);
+        body.Add(OpCodes.Stloc.ToInstruction(left));
+        Drop(body, stack, count, removeAt);
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(stack));
+        body.Add(OpCodes.Ldnull.ToInstruction());
+        body.Add(OpCodes.Ldloc.ToInstruction(left));
+        body.Add(OpCodes.Ldc_I4_1.ToInstruction());
+        body.Add(OpCodes.Add.ToInstruction());
+        body.Add(OpCodes.Box.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+        body.Add(OpCodes.Call.ToInstruction(make));
         body.Add(OpCodes.Callvirt.ToInstruction(add));
         body.Add(ret);
         return execute;
@@ -567,6 +638,7 @@ public sealed class VirtualSemanticsTests
         FieldDef stack,
         FieldDef locals,
         FieldDef position,
+        MethodDef make,
         MethodDef execute,
         GenericInstSig listOfStep,
         GenericInstSig listOfSlot,
@@ -608,6 +680,21 @@ public sealed class VirtualSemanticsTests
             body.Add(OpCodes.Ldc_I4_4.ToInstruction());
             body.Add(OpCodes.Newarr.ToInstruction(slot.ToTypeSig().ToTypeDefOrRef()));
             body.Add(OpCodes.Stfld.ToInstruction(locals));
+
+            // A program whose operations work on values has to be given some, or it stops at the
+            // first of them and there is nothing to watch it do.
+            var pushSlot = Member(module, listOfSlot, "Add", MethodSig.CreateInstance(
+                module.CorLibTypes.Void, new GenericVar(0)));
+            foreach (var seeded in Seeded)
+            {
+                body.Add(OpCodes.Ldloc.ToInstruction(self));
+                body.Add(OpCodes.Ldfld.ToInstruction(stack));
+                body.Add(OpCodes.Ldnull.ToInstruction());
+                body.Add(OpCodes.Ldc_I4.ToInstruction(seeded));
+                body.Add(OpCodes.Box.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+                body.Add(OpCodes.Call.ToInstruction(make));
+                body.Add(OpCodes.Callvirt.ToInstruction(pushSlot));
+            }
         }
 
         var addStep = Member(module, listOfStep, "Add", MethodSig.CreateInstance(

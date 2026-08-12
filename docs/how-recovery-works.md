@@ -159,6 +159,13 @@ the same program. One run takes one path, so the jumps it did not take are read
 off the operation itself, but only where every jump that was watched turned out
 to have been decided that way.
 
+That run answers the other question too. An operation that reaches for something
+the surrounding program prepared cannot be performed on a stack we arranged, but
+it runs perfectly well in place, so the engine's stack is read either side of
+each operation as it goes — matched by identity, so that what was left untouched
+underneath is not counted. Between asking and watching, 26 of the 29 operations
+in each sample are accounted for rather than 20.
+
 The result is an annotated listing rather than a method body, and operations the
 trials did not settle are reported as what was counted rather than guessed at.
 Nothing is rewritten on the strength of it.

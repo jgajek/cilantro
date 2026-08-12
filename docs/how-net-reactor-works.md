@@ -227,8 +227,13 @@ nowhere to go. The engine is watched running the program instead, and where the
 operation it performed next was not the next one along, the one before it
 jumped. That names the branches and gives their targets, most of them from a
 rule the engine was seen to follow rather than from the run itself, since one
-run only takes one path. You cannot read the method, but you can usually tell
-what it is for and how it is shaped.
+run only takes one path.
+
+The same run also measures the operations that refuse to be performed out of
+context — the ones that reach for something the program had set up — by reading
+the engine's stack either side of each one. Together the two approaches account
+for 26 of the 29 operations in each sample here. You cannot read the method, but
+you can usually tell what it is for and how it is shaped.
 
 The same trick is what lets payload extraction work on a sample whose unpacker
 is virtualized: the interpreter is ordinary IL, so it can simply be run.
