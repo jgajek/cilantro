@@ -107,6 +107,9 @@ internal sealed class VirtualRunWatcher
     private readonly Dictionary<int, int> _targets = [];
     private readonly Dictionary<int, List<Performance>> _performances = [];
     private readonly Dictionary<int, List<Dictionary<string, int>>> _worked = [];
+    private readonly Dictionary<int, string> _unmeasured = [];
+    private readonly Dictionary<int, (int Methods, int Constructors, int Seen)> _naming = [];
+    private readonly Dictionary<long, MethodDef?> _calls = [];
     private Dictionary<string, int>? _working;
     private List<StaticValue>? _stack;
     private List<Table> _tables = [];
@@ -147,11 +150,28 @@ internal sealed class VirtualRunWatcher
         {
             effects[opcode] = effects.TryGetValue(opcode, out var known)
                 ? known with { Computes = working }
-                : new VirtualOperation(opcode, 0, 0, null)
+                : new VirtualOperation(opcode, 0, 0, Called(opcode))
                 {
                     Computes = working,
-                    Measured = false
+                    Measured = false,
+                    Unmeasured = _unmeasured.GetValueOrDefault(opcode)
                 };
+        }
+
+        Making(effects);
+
+        // An operation may have been watched calling without the engine having computed anything
+        // worth reporting on its behalf, and it is named all the same.
+        foreach (var opcode in _unmeasured.Keys)
+        {
+            if (!effects.ContainsKey(opcode) && Called(opcode) is { } calling)
+            {
+                effects[opcode] = new VirtualOperation(opcode, 0, 0, calling)
+                {
+                    Measured = false,
+                    Unmeasured = _unmeasured[opcode]
+                };
+            }
         }
         return new VirtualRun(_watched, _jumps, _targets, effects, computed);
     }
@@ -266,6 +286,7 @@ internal sealed class VirtualRunWatcher
         // calls out to other methods, and an operation is only over when its own frame is.
         _performing = _opcode;
         _performingDepth = _depth;
+        Naming(_opcode, VirtualSemantics.Operand(_heap, operation, _operandField));
         _operand = VirtualSemantics.Operand(_heap, operation, _operandField);
 
         // Watching what the handler computes costs a callback per instruction it runs, so it is
@@ -482,6 +503,78 @@ internal sealed class VirtualRunWatcher
         return Hold(_state.ReadStaticField(field));
     }
 
+    /// <summary>
+    /// Names an operation the engine was watched asking the framework to make an array for.
+    /// </summary>
+    /// <remarks>
+    /// One value in and one out says nothing on its own, but an operation that resolves a type and
+    /// then has the framework make an array of it has said what it is in as many words. The count
+    /// it takes is the length and the one it leaves is the array.
+    /// </remarks>
+    private static void Making(Dictionary<int, VirtualOperation> effects)
+    {
+        foreach (var (opcode, operation) in effects)
+        {
+            if (operation is { Name: null, Measured: true, Pops: 1, Pushes: 1 } &&
+                operation.Computes is { } working &&
+                working.Any(did => did.StartsWith("Array::CreateInstance", StringComparison.Ordinal)))
+            {
+                effects[opcode] = operation with { Name = "makes an array of the type it names" };
+            }
+        }
+    }
+
+    /// <summary>Notes whether an operation's operand names a method of the assembly.</summary>
+    private void Naming(int opcode, long? operand)
+    {
+        _naming.TryGetValue(opcode, out var counted);
+        var method = operand is { } token ? Calling(token) : null;
+        _naming[opcode] = (
+            counted.Methods + (method is not null ? 1 : 0),
+            counted.Constructors + (method is { IsConstructor: true } ? 1 : 0),
+            counted.Seen + 1);
+    }
+
+    private MethodDef? Calling(long token)
+    {
+        if (_calls.TryGetValue(token, out var known))
+            return known;
+        MethodDef? method = null;
+        if (token is >= int.MinValue and <= int.MaxValue)
+        {
+            try
+            {
+                method = (_module.ResolveToken((int)token) as IMethod)?.ResolveMethodDef();
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or InvalidOperationException)
+            {
+                method = null;
+            }
+        }
+        return _calls[token] = method;
+    }
+
+    /// <summary>
+    /// An operation whose arity is decided by something other than itself, and whose operand names
+    /// a method, is calling that method: what it takes off the stack is that method's arguments.
+    /// </summary>
+    private string? Called(int opcode)
+    {
+        if (_unmeasured.GetValueOrDefault(opcode) != Varies ||
+            !_naming.TryGetValue(opcode, out var counted) ||
+            counted.Seen < Counted || counted.Methods < counted.Seen)
+        {
+            return null;
+        }
+        return counted.Constructors == counted.Seen
+            ? "makes a new object with the constructor it names"
+            : "calls the method it names";
+    }
+
+    /// <summary>Why an operation whose arity was not the same twice was not measured.</summary>
+    private const string Varies = "taking a different number of values each time it ran";
+
     private FieldDef? Named(long token)
     {
         if (_named.TryGetValue(token, out var known))
@@ -602,11 +695,17 @@ internal sealed class VirtualRunWatcher
         foreach (var (opcode, seen) in _performances)
         {
             if (seen.Count < Counted)
+            {
+                _unmeasured[opcode] = "having been performed only once where it was watched";
                 continue;
+            }
             var pops = seen[0].Taken.Count;
             var pushes = seen[0].Left.Count;
-            if (seen.Any(one => one.Taken.Count != pops || one.Left.Count != pushes))
+            if (seen.Exists(one => one.Taken.Count != pops || one.Left.Count != pushes))
+            {
+                _unmeasured[opcode] = Varies;
                 continue;
+            }
             found[opcode] = new VirtualOperation(opcode, pops, pushes, Name(seen, pops, pushes));
         }
         return found;

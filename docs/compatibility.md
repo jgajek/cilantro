@@ -339,8 +339,7 @@ operations go shows what they do, read off the engine's own stack either side of
 each operation. Which values were left untouched underneath is settled by
 identity rather than by depth, so an operation is measured by what it really
 took and left rather than by the difference between two heights. That accounts
-for 26 of the 29 operations in each sample, leaving three: two that threw and
-one the machine could not follow, none of which the run reached either.
+for 26 of the 29 operations in each sample.
 
 The two ways of asking answer different questions and are kept apart for it.
 Trials choose values, so they can vary them freely and rule meanings out; a real
@@ -430,13 +429,60 @@ computing `clt`. In all three samples:
 | branch on less-than | 28 | 28 | 97 |
 | branch on a longer comparison | 135 | 119 | 77 |
 
-Two of the three operations that nothing else reached have their working read
-this way. Their effect on the stack is still unmeasured, and the listing says so
-rather than reporting them as doing nothing.
+### Operations with no fixed effect
 
-No listing is acted on. The stubs are left exactly as they were, and the pass
-does not gate emission, because a program that could not be read back says
-nothing about whether the rest of the recovery is sound.
+Two operations per sample took a different number of values every time they ran,
+which is why nothing above could measure them: there is no arity to establish.
+That is itself the finding. An operation whose arity is decided by something
+other than the operation is being told how many values to take, and both of them
+carry an operand that names a method of the assembly — one of them always a
+constructor. They are the call and the object construction, and they are named
+from those two facts together, with what could not be measured said alongside
+rather than papered over.
+
+They are also the most informative operations in a listing. Between them they
+account for around a thousand of `Qafcakg`'s 2,935 operations, each naming the
+method it reaches for, which is what turns an unreadable method into a legible
+account of what it does.
+
+With those, 28 of the 29 operations in each sample are reported on and 23 are
+named. The one remaining is an operation the machine could not follow and the
+run never reached, so nothing whatever is said about it. Five more are named
+only by what they took and left; one of those is the array construction above,
+whose working says what it is even though its effect was only counted.
+
+### Reading the program back
+
+What all of that comes to is written out separately, in the assembly's own
+terms: each named operation as the IL it stands for, each token operand as what
+it names, and everything unsettled as `??` beside what was counted. 95%, 96% and
+95% of the three samples come out that way. It is a report and stays one — the
+stubs are left exactly as they were, nothing is emitted, and the pass does not
+gate emission, because a program that could not be read back says nothing about
+whether the rest of the recovery is sound.
+
+Writing it out turned up something the listing had been hiding. The dispatcher's
+jump carries a table of places rather than one, which is to say it is a switch —
+355 arms in `Qafcakg` — and the working already read off its handler is the
+bounds check that goes with one: `conv.i8`, `blt` twice, `bge`. Every operation
+in a flattened program is reached through that table, so before it was read the
+program was a dozen operations and a wall; after, it is blocks.
+
+That is what makes the reading checkable. Stack depth is walked from the first
+operation through every branch, adding what each leaves and subtracting what
+each takes, and every place two paths arrive at has to agree on the depth or
+some reading along the way is wrong. It is a demanding test in a program of this
+shape, where hundreds of blocks converge on one dispatcher:
+
+| | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` |
+| --- | --- | --- | --- |
+| operations walked | 2,898 of 2,935 | 2,929 of 2,952 | 2,982 of 3,007 |
+| places two paths disagreed | 0 | 0 | 0 |
+
+Each walk stops in exactly three places, and they are the same three in all
+three samples: twice at the one operation nothing ever characterized, and once
+at an operation wanting more values than the walk had for it. Nothing else in
+three programs of some three thousand operations contradicts anything else.
 
 ### Protected strings
 

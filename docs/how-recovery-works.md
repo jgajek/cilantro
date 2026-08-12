@@ -169,7 +169,8 @@ place the operand names, the field the operand names, the array on the stack
 under an index. An operation caught carrying off what one of them held has been
 seen to load, and one whose value turns up in a place that did not hold it
 before has been seen to store. Between asking and watching, each sample comes to
-26 of 29 operations accounted for and 21 named, rather than 20 and nine.
+26 of 29 operations accounted for and 21 named, rather than 20 and nine — and
+the last of them are reached below.
 
 One more thing is taken from that run, and it is the closest to reading the
 engine's own account of itself. Its handlers cannot be read out of the file:
@@ -183,9 +184,33 @@ and its neighbours do not. That is what says a conditional branch compares for
 less-than, or that an operation nothing else could name resolves a type and
 makes an array of it.
 
-The result is an annotated listing rather than a method body, and operations
-none of it settled are reported as what was counted rather than guessed at.
-Nothing is rewritten on the strength of it.
+Two operations in each sample never settle to an arity, and that is not a
+failure to measure but the measurement: an operation told how many values to
+take is being told by something, and theirs name a method of the assembly, one
+of them always a constructor. Those are the call and the object construction —
+between them a third of everything the method does — and each says which method
+it reaches for.
+
+All of that is then written out a second time in the assembly's own terms: the
+operations that were named as the IL they stand for, the operands that turned
+out to be tokens as the methods, fields and types they name, and the ones
+nothing settled as `??` beside what was counted about them. Around 95% of each
+sample's operations can be written this way.
+
+Reading it back is also what checks it. The dispatcher of a flattened program
+carries a table of places rather than a single one, and taking every arm of it
+turns the program back into blocks; from the first operation onwards the depth
+of the stack can then be walked through the whole thing, adding what each
+operation leaves and subtracting what it takes. Every place two paths arrive at
+has to agree about how deep the stack is, or one of the readings is wrong. In
+the three samples the walk reaches 96%, 99% and 99% of the program and finds no
+disagreement anywhere — which is a far stronger statement about the readings
+than any one of them could make alone.
+
+The result is a listing rather than a method body. Nothing is rewritten on the
+strength of it, and nothing is emitted: a body that is nearly right is worse
+than none, since an analyst told a method does something it does not will act on
+it, where one told an operation is unknown will go and look.
 
 **10. Remove the protector.** Covered in its own section below.
 

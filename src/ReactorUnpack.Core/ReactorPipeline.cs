@@ -583,6 +583,13 @@ public sealed class ReactorPipeline
             var path = Path.Combine(directory, $"{safeName}.vmprogram.txt");
             File.WriteAllLines(path, program.Render(context.Module));
             paths.Add(path);
+
+            // The reading is kept in its own file rather than folded into the listing, because the
+            // two answer different questions: the listing is the evidence, and this is what it
+            // comes to.
+            var lifted = Path.Combine(directory, $"{safeName}.lifted.il");
+            File.WriteAllLines(lifted, VirtualLift.Render(program, context.Module));
+            paths.Add(lifted);
         }
 
         return paths;

@@ -52,10 +52,20 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     /// </summary>
     public bool Measured { get; init; } = true;
 
+    /// <summary>Why its effect was not established, when it was not.</summary>
+    /// <remarks>
+    /// This is a finding rather than an apology. An operation that took a different number of
+    /// values every time it was performed is one whose arity is decided by something other than
+    /// the operation, which is what a call looks like from here.
+    /// </remarks>
+    public string? Unmeasured { get; init; }
+
     /// <summary>The effect in the shortest form that is still true.</summary>
     public string Describe()
     {
         var said = Needs is null ? Brief : $"{Brief}, wants {Needs}";
+        if (Unmeasured is not null)
+            said += $" ({Unmeasured})";
         return Computes is { Count: > 0 } working
             ? $"{said}; computes {string.Join(", ", working)}"
             : said;
@@ -67,7 +77,7 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
         get
         {
             if (!Measured)
-                return "effect not established";
+                return Name ?? "effect not established";
             var stack = Name ?? (Pops, Pushes) switch
             {
                 (0, 0) => TouchesState ? "changes engine state" : "no effect seen",

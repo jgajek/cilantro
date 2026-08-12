@@ -235,8 +235,7 @@ the engine's stack either side of each one, and matching what came and went
 against what the engine was holding elsewhere: its own tables at the place the
 operand names, the field the operand names, the array underneath an index. That
 is what identifies the loads and stores, which no amount of isolated trials
-would, and it brings each sample to 26 of 29 operations accounted for and 21 of
-them named.
+would.
 
 Reading the engine's handlers instead is not an option in the file — they are
 one flattened method of several thousand instructions, and most of what they
@@ -245,8 +244,19 @@ option while it runs, because the interpreter has already resolved all of that.
 What it computes on an operation's behalf is recorded, and what every operation
 does is subtracted as housekeeping. That corroborates the names arrived at from
 the outside, gives conditional branches the comparison they are made on, and
-occasionally names an operation nothing else could. You cannot read the method, but you can usually tell what it is for
-and how it is shaped.
+occasionally names an operation nothing else could. Two operations per sample
+have no fixed arity at all, which is how the call and the object construction
+give themselves away, those being told how many values to take by the method
+their operand names. Between all of it, 28 of the 29 operations in each sample
+are reported on and 23 named, and around 95% of a program can be written out as
+the IL it stands for.
+
+Whether that reading holds together can then be checked without knowing anything
+further. The dispatcher's jump turns out to carry a table of places rather than
+one, so the flattened program comes apart into blocks, and the depth of the
+stack can be walked through all of them: every place two paths meet has to agree
+about it. In these samples none disagrees. You cannot read the method, but you
+can usually tell what it is for and how it is shaped.
 
 The same trick is what lets payload extraction work on a sample whose unpacker
 is virtualized: the interpreter is ordinary IL, so it can simply be run.

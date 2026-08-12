@@ -17,7 +17,7 @@ dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 | `suspicious.analysis.json` | Everything the tool observed and did |
 | `suspicious.changes.json` | Every individual edit, one entry per change |
 | `suspicious.payloads/` | Files that were hidden inside the sample |
-| `suspicious.virtualized/` | One listing per method that was turned into interpreter bytecode |
+| `suspicious.virtualized/` | Per method turned into interpreter bytecode: the program read as IL, and the listing it was read from |
 | `suspicious.renames.json` | Old-to-new name map, only with `--rename` |
 
 The folder is not named after the sample, so a directory of samples all report
@@ -188,8 +188,13 @@ the housekeeping every operation does subtracted — `computes clt` under a
 `branch if` is the comparison the branch is made on, and `computes
 Module::ResolveType, Array::CreateInstance` is an operation making an array of a
 type named in the program. An entry reading `effect not established` has had its
-working read but not its effect on the stack, and is not claiming to do
-nothing.
+working read but not its effect on the stack, and is not claiming to do nothing.
+
+`calls the method it names` and `makes a new object with the constructor it
+names` are usually the most useful lines in the file: each names the method
+being reached for, and together they are often a third of the program. They are
+recognized by having no settled number of values, which is what being handed a
+method's arguments looks like, so their entries say that much too.
 
 Jumps are marked on the lines that make them, so you can follow the shape of the
 method even without reading it. `-> 1840` means the interpreter really was
@@ -197,6 +202,23 @@ watched going there. `~> 1840` means it was not, on this run, but every jump of
 that kind that was watched went to the number the operation carries, so this one
 is read the same way. A loop, an early exit, or a switch with a hundred arms is
 visible from those markings alone.
+
+Beside each listing is a `.lifted.il` file, which is the same program written in
+the assembly's own terms: `ldloc`, `add`, `stelem`, `call` with the method it
+calls named, `switch` with its arms. That is the file to read first — around 95%
+of each program comes out this way — and the listing beside it is where to go
+when you want to know how a line was arrived at. Anything unsettled is written
+`??` with what was counted about it, so a line you cannot read is admitted
+rather than invented, and nothing in the file has been put back into the
+assembly.
+
+Its header is worth a look before you trust it. It says how much was read, how
+many jump targets are conjectural (marked `?` on the line), and how far the
+stack could be walked: the depth is tracked from the first operation through
+every branch, and every place two paths meet has to agree about it. `every one
+it reaches twice it reaches at the same depth` across a few thousand operations
+is the strongest evidence the file offers that the reading is right. If it
+reports disagreements, treat the affected region with suspicion.
 
 If it did not, and the control flow still looks flattened, the dispatcher stage
 declined on those methods. It only rewrites where it can prove the result is
