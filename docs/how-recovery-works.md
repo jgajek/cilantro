@@ -163,8 +163,13 @@ That run answers the other question too. An operation that reaches for something
 the surrounding program prepared cannot be performed on a stack we arranged, but
 it runs perfectly well in place, so the engine's stack is read either side of
 each operation as it goes — matched by identity, so that what was left untouched
-underneath is not counted. Between asking and watching, 26 of the 29 operations
-in each sample are accounted for rather than 20.
+underneath is not counted. What it took and left is then matched against what
+the engine was holding elsewhere at that moment: its tables of values at the
+place the operand names, the field the operand names, the array on the stack
+under an index. An operation caught carrying off what one of them held has been
+seen to load, and one whose value turns up in a place that did not hold it
+before has been seen to store. Between asking and watching, each sample comes to
+26 of 29 operations accounted for and 21 named, rather than 20 and nine.
 
 The result is an annotated listing rather than a method body, and operations the
 trials did not settle are reported as what was counted rather than guessed at.

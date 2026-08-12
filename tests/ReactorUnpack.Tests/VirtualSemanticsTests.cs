@@ -28,6 +28,8 @@ public sealed class VirtualSemanticsTests
     private const int Opaque = 77;
     private const int Arm = 88;
     private const int Guarded = 99;
+    private const int LoadLocal = 111;
+    private const int StoreLocal = 122;
     private const int JumpTarget = 7;
 
     [Fact]
@@ -178,6 +180,20 @@ public sealed class VirtualSemanticsTests
         Assert.Equal(1, operations[Guarded].Pushes);
     }
 
+    /// <summary>
+    /// An engine keeps what its program is working on somewhere, and reaches it by number. Which
+    /// operations put things there and take them back out is most of what a listing is worth, and
+    /// it can only be seen by watching, since the trials never vary an operand.
+    /// </summary>
+    [Fact]
+    public void OperationsThatReachIntoTheEnginesTablesAreNamedForIt()
+    {
+        var operations = Derive();
+
+        Assert.Equal("loads what its operand indexes", operations[LoadLocal].Name);
+        Assert.Equal("stores where its operand indexes", operations[StoreLocal].Name);
+    }
+
     private static VirtualProgram Recover()
     {
         using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
@@ -241,8 +257,8 @@ public sealed class VirtualSemanticsTests
         engine.Methods.Add(Constructor(module));
 
         var execute = Execute(
-            module, engine, operation, slot, cell, code, operand, stack, position, armed, held, low,
-            raw, make, listOfSlot);
+            module, engine, operation, slot, cell, code, operand, stack, position, armed, locals,
+            held, low, raw, make, listOfSlot);
         engine.Methods.Add(execute);
 
         var entry = Entry(
@@ -272,6 +288,14 @@ public sealed class VirtualSemanticsTests
         (Arm, 0),
         (Guarded, 0),
         (Guarded, 0),
+        (StoreLocal, 0),
+        (StoreLocal, 1),
+        (StoreLocal, 2),
+        (StoreLocal, 3),
+        (LoadLocal, 0),
+        (LoadLocal, 1),
+        (LoadLocal, 2),
+        (LoadLocal, 3),
         (Add, 0),
         (Duplicate, 0),
         (Discard, 0),
@@ -359,6 +383,7 @@ public sealed class VirtualSemanticsTests
         FieldDef stack,
         FieldDef position,
         FieldDef armed,
+        FieldDef locals,
         FieldDef held,
         FieldDef low,
         FieldDef raw,
@@ -397,6 +422,8 @@ public sealed class VirtualSemanticsTests
         var tryOpaque = OpCodes.Nop.ToInstruction();
         var tryArm = OpCodes.Nop.ToInstruction();
         var tryGuarded = OpCodes.Nop.ToInstruction();
+        var tryLoadLocal = OpCodes.Nop.ToInstruction();
+        var tryStoreLocal = OpCodes.Nop.ToInstruction();
 
         // add: take the top two apart, put their sum back.
         body.Add(OpCodes.Ldarg_1.ToInstruction());
@@ -528,7 +555,7 @@ public sealed class VirtualSemanticsTests
         body.Add(OpCodes.Ldarg_1.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(code));
         body.Add(OpCodes.Ldc_I4.ToInstruction(Guarded));
-        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryLoadLocal));
         var allowed = OpCodes.Nop.ToInstruction();
         body.Add(OpCodes.Ldarg_0.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(armed));
@@ -550,6 +577,39 @@ public sealed class VirtualSemanticsTests
         body.Add(OpCodes.Box.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
         body.Add(OpCodes.Call.ToInstruction(make));
         body.Add(OpCodes.Callvirt.ToInstruction(add));
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // load: put on the stack whatever the engine is keeping at the place the operand names.
+        body.Add(tryLoadLocal);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(LoadLocal));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryStoreLocal));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(stack));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(locals));
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(operand));
+        body.Add(OpCodes.Unbox_Any.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+        body.Add(OpCodes.Ldelem_Ref.ToInstruction());
+        body.Add(OpCodes.Callvirt.ToInstruction(add));
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // store: take the top of the stack and keep it at the place the operand names.
+        body.Add(tryStoreLocal);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(StoreLocal));
+        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(locals));
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(operand));
+        body.Add(OpCodes.Unbox_Any.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+        PeekSlot(body, stack, count, item, 1);
+        body.Add(OpCodes.Stelem_Ref.ToInstruction());
+        Drop(body, stack, count, removeAt);
         body.Add(ret);
         return execute;
     }

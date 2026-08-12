@@ -607,7 +607,7 @@ public static class VirtualSemantics
             ? "dup"
             : null;
 
-    private static readonly (string Name, Func<long, long> Apply)[] UnaryCandidates =
+    internal static readonly (string Name, Func<long, long> Apply)[] UnaryCandidates =
     [
         ("neg", value => -value),
         ("not", value => ~value)
@@ -628,7 +628,7 @@ public static class VirtualSemantics
             .Select(candidate => candidate.Name));
     }
 
-    private static readonly (string Name, Func<long, long, long> Apply)[] BinaryCandidates =
+    internal static readonly (string Name, Func<long, long, long> Apply)[] BinaryCandidates =
     [
         ("add", (left, right) => left + right),
         ("sub", (left, right) => left - right),
@@ -807,6 +807,10 @@ public static class VirtualSemantics
             method.ReturnType.FullName == slotType &&
             method.Parameters[0].Type.FullName == "System.Type" &&
             method.Parameters[1].Type.FullName == "System.Object");
+
+    /// <summary>The fields a type of this module declares, for walking an engine's state.</summary>
+    internal static IEnumerable<FieldDef> Reachable(ModuleDef module, string typeName) =>
+        Fields(module, typeName);
 
     internal static List<StaticValue>? FindStack(
         StaticHeap heap,

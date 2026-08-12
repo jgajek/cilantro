@@ -231,8 +231,8 @@ filled with values that depend on where they sit, which is what separates an
 operation that reports a length from one that returns a constant, and one that
 reads an element from one that returns the index.
 
-The same nine meanings come out of all three engines, under numbering they do
-not share:
+Nine meanings come out of the trials, and the same nine out of all three
+engines, under numbering they do not share:
 
 | Meaning | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` |
 | --- | --- | --- | --- |
@@ -245,10 +245,10 @@ not share:
 | widen a value | 22, 88, 112 | 87, 102, 168 | 127, 154, 172 |
 
 Twenty of the 29 operations in each sample can be performed in isolation; the
-other nine fault without the surrounding program, and the next section reaches
-six of those another way. Of the twenty, nine are named and the other eleven are
-reported only as what was counted — how many values went in, how many came out,
-and whether the engine's own state changed.
+other nine fault without the surrounding program, and the run reaches six of
+those another way. Of the twenty, nine are named here and the other eleven are
+reported as what was counted — how many values went in, how many came out, and
+whether the engine's own state changed — until the run names most of them too.
 
 Whether the engine's state changed is not decoration. What is watched is its
 fields and
@@ -335,24 +335,54 @@ separate from what was seen.
 
 Six of those nine are not out of reach after all, because the program performs
 them perfectly well in the middle of a run. The same run that showed where the
-operations go shows what they do, read off the engine's own
-stack either side of each operation. Which values were left untouched underneath
-is settled by identity rather than by depth, so an operation is measured by what
-it really took and left rather than by the difference between two heights.
+operations go shows what they do, read off the engine's own stack either side of
+each operation. Which values were left untouched underneath is settled by
+identity rather than by depth, so an operation is measured by what it really
+took and left rather than by the difference between two heights. That accounts
+for 26 of the 29 operations in each sample, leaving three: two that threw and
+one the machine could not follow, none of which the run reached either.
 
 The two ways of asking answer different questions and are kept apart for it.
 Trials choose values, so they can vary them freely and rule meanings out; a real
-run cannot be made to try anything, and repeats itself. Watching reaches
-operations trials cannot perform at all, and cannot reach an operation the run
-never took. Between them, 26 of the 29 operations in each sample are accounted
-for, leaving three: two that threw and one the machine could not follow, none of
-which the run reached either.
+run cannot be made to try anything, and repeats itself. What the run has instead
+is somewhere to put things. An operation performed in isolation has an engine
+around it that holds nothing and is going nowhere, so the only meanings it can
+demonstrate are the ones that begin and end on the stack — which is why the
+trials find arithmetic and little else. In place, the same operation is seen
+fetching and storing, and where it fetched from is as much of its meaning as
+what it did.
 
-Naming from a real run is held to the same standard, with one addition: a
-meaning is only accepted where the values it held across were themselves varied,
-since an operation performed twice on the same numbers agrees with almost
-anything. That is enough to add one meaning the trials missed — an operation that
-pushes the number it carries — and to measure five more by what they moved.
+So a value taken off the stack or left on it is matched against what the engine
+had elsewhere at that moment: its own tables of values at the place the operand
+names, the static field the operand names, the array sitting on the stack under
+an index. A match is only believed where the operation was seen doing it more
+than once, on more than one place, and carrying values that were not all alike —
+except where the value is an object rather than a number, since an operation
+caught carrying off the very object a field was holding is not a coincidence
+that repetition could improve on. A write additionally has to have changed
+something, a table that already held the value being indistinguishable from one
+never written to.
+
+That takes each sample from nine meanings named to 21, and the same 21 come out
+of all three engines:
+
+| Meaning | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` |
+| --- | --- | --- | --- |
+| loads what its operand indexes | 136 | 74 | 78 |
+| stores where its operand indexes | 45 | 89 | 139 |
+| reads the static field it names | 59 | 140 | 18 |
+| reads an array element | 18 | 120 | 30 |
+| pushes its operand | 43 | 57 | 79 |
+| branch | 113 | 9 | 110 |
+| branch if | 28, 31, 85, 135, 143, 156 | 28, 37, 119, 123, 124, 143 | 14, 77, 97, 143, 156, 165 |
+
+An operation watched jumping only once is not called a jump on that alone, since
+one that happened to be taken and one always taken look alike from a single
+sighting. But an operation that also consumed values decided something with
+them, and between the two readings available the one that leaves both ways out
+of it open is the one that cannot mislead a reader into taking live code for
+unreachable. Two operations per sample are named that way, and they are the last
+two that had been left unnamed.
 
 No listing is acted on. The stubs are left exactly as they were, and the pass
 does not gate emission, because a program that could not be read back says

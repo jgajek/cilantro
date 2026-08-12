@@ -231,9 +231,13 @@ run only takes one path.
 
 The same run also measures the operations that refuse to be performed out of
 context — the ones that reach for something the program had set up — by reading
-the engine's stack either side of each one. Together the two approaches account
-for 26 of the 29 operations in each sample here. You cannot read the method, but
-you can usually tell what it is for and how it is shaped.
+the engine's stack either side of each one, and matching what came and went
+against what the engine was holding elsewhere: its own tables at the place the
+operand names, the field the operand names, the array underneath an index. That
+is what identifies the loads and stores, which no amount of isolated trials
+would, and it brings each sample to 26 of 29 operations accounted for and 21 of
+them named. You cannot read the method, but you can usually tell what it is for
+and how it is shaped.
 
 The same trick is what lets payload extraction work on a sample whose unpacker
 is virtualized: the interpreter is ordinary IL, so it can simply be run.

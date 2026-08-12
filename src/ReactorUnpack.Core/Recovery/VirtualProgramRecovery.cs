@@ -291,9 +291,19 @@ public static class VirtualProgramRecovery
                 merged[opcode] = known with { Name = watched.Name };
         }
 
-        foreach (var (opcode, _) in flow.Jumps)
+        foreach (var (opcode, counted) in flow.Jumps)
         {
-            if (flow.Describe(opcode) is not { } name)
+            // An operation watched jumping only once is not called a jump on that alone, since one
+            // that happened to be taken and one always taken look alike from a single sighting. But
+            // an operation that also consumed values decided something with them, and the reading
+            // that keeps both ways out of it open is the one that cannot mislead.
+            var name = flow.Describe(opcode);
+            if (name is null && counted.Taken > 0 &&
+                merged.TryGetValue(opcode, out var performed) && performed.Pops > 0)
+            {
+                name = "branch if";
+            }
+            if (name is null)
                 continue;
             merged[opcode] = merged.TryGetValue(opcode, out var known)
                 ? known with { Name = name, TouchesState = true }
@@ -330,7 +340,7 @@ public static class VirtualProgramRecovery
         }
 
         var watcher = new VirtualRunWatcher(
-            context.Module, machine.State.Heap, known.Dispatcher, known.OpcodeField,
+            context.Module, machine.State, known.Dispatcher, known.OpcodeField,
             OperandField(context.Module, known.OpcodeField, known.InstructionType),
             known.InstructionType);
         machine.FrameEntered = watcher.Entered;

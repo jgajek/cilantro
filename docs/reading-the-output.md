@@ -173,9 +173,12 @@ how. And a header explains what each operation was found to do — `add`, `xor`,
 `dup`, reading and writing array elements and so on where that could be
 established, and otherwise just how many values it consumed and produced, and
 what it insisted on being handed. Some of that comes from the interpreter being
-made to perform the operation on chosen values, and some from watching it
-perform the operation in the middle of the real program, which is the only way
-to reach the ones that need the program to have set something up first.
+made to perform the operation on chosen values, and some from watching it in the
+middle of the real program, which is the only way to reach the ones that need
+the program to have set something up first, and the only way to catch an
+operation loading or storing — `loads what its operand indexes` and its opposite
+are the virtualizer's locals, and `reads the static field it names` says which
+field on the line itself.
 Operations that neither settled are left unnamed rather than guessed at, and the
 header says why each one was left alone.
 
