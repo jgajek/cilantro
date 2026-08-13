@@ -8,6 +8,7 @@ using dnlib.DotNet.Emit;
 using dnlib.DotNet.Writer;
 using ReactorUnpack.Core.Analysis;
 using ReactorUnpack.Core.Codec;
+using ReactorUnpack.Core.Interpretation;
 using ReactorUnpack.Core.Passes;
 using ReactorUnpack.Core.Pipeline;
 using ReactorUnpack.Core.Recovery;
@@ -83,7 +84,25 @@ public sealed record ArtifactReport(
     IReadOnlyList<PassResult> Passes,
     RecoveryReportMetrics Recovery,
     bool VerificationPassed,
-    IReadOnlyList<string> VerificationDiagnostics);
+    IReadOnlyList<string> VerificationDiagnostics,
+    HostProfileReport? HostProfile = null);
+
+/// <summary>One thing the run was told about the host, and whether it was told it.</summary>
+public sealed record HostFactReport(string Key, string Answer, bool Answered, int Times);
+
+/// <summary>
+/// Which host profile a run used and which of its facts the run actually consulted.
+/// </summary>
+/// <remarks>
+/// Recovery can depend on these, so a reader has to be able to see them. Listing what was asked
+/// rather than what the profile contains is the useful half: a profile describing forty things of
+/// which a sample looked at two says that the other thirty-eight had no bearing on the result, and a
+/// question that went unanswered names the fact that would carry the interpretation further.
+/// </remarks>
+public sealed record HostProfileReport(
+    string Name,
+    string Sha256,
+    IReadOnlyList<HostFactReport> Consulted);
 
 public sealed record RecoveryReportMetrics(
     int RestoredMethodBodies,
@@ -105,12 +124,48 @@ public sealed record RecoveryReportMetrics(
     int VirtualDepthDisagreements = 0,
     int ConstantStringSites = 0);
 
+/// <summary>Raised when an assembly offered to the interpreter cannot be trusted as given.</summary>
+public sealed class TrustedLibraryException : Exception
+{
+    public TrustedLibraryException()
+    {
+    }
+
+    public TrustedLibraryException(string message) : base(message)
+    {
+    }
+
+    public TrustedLibraryException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
+/// An assembly of somebody else's that the interpreter is allowed to run the IL of.
+/// </summary>
+/// <remarks>
+/// Interpreting a library is not the same kind of act as interpreting the sample. The sample is the
+/// thing under examination and nothing about it is taken on trust; a library is a known quantity
+/// whose behaviour is not in question, supplied because the sample calls into it and the call cannot
+/// otherwise be followed. What is recorded here is the identity of the file that was supplied, so
+/// that a reader can tell which build of it the result depended on and fetch the same one.
+/// </remarks>
+public sealed record TrustedLibrary(
+    string Path,
+    string Name,
+    string Version,
+    string PublicKeyToken,
+    string Sha256,
+    bool MatchesReference);
+
 public sealed class ArtifactContext : IDisposable
 {
     private readonly List<Evidence> _evidence = [];
     private readonly List<ChangeRecord> _changes = [];
     private readonly List<PassResult> _passResults = [];
     private readonly Dictionary<string, object> _facts = new(StringComparer.Ordinal);
+    private readonly List<ModuleDefMD> _trustedModules = [];
 
     private ArtifactContext(string inputPath, byte[] originalBytes, ModuleDefMD module)
     {
@@ -134,17 +189,100 @@ public sealed class ArtifactContext : IDisposable
     public IReadOnlyList<ChangeRecord> Changes => new ReadOnlyCollection<ChangeRecord>(_changes);
     public IReadOnlyList<PassResult> PassResults => new ReadOnlyCollection<PassResult>(_passResults);
 
-    public static ArtifactContext Load(string path)
+    /// <summary>The assemblies the interpreter may run the IL of besides the sample itself.</summary>
+    public IReadOnlyList<TrustedLibrary> Libraries { get; private set; } = [];
+
+    /// <summary>The metadata of those assemblies, which is what the machine is handed.</summary>
+    public IReadOnlyList<ModuleDefMD> TrustedModules =>
+        new ReadOnlyCollection<ModuleDefMD>(_trustedModules);
+
+    public static ArtifactContext Load(string path, IReadOnlyList<string>? libraryPaths = null)
     {
         var fullPath = Path.GetFullPath(path);
         var bytes = File.ReadAllBytes(fullPath);
+        // One resolution context for the sample and everything supplied alongside it, because a
+        // reference from the sample into a library only resolves to a body the machine can run if
+        // both of them were read by the same resolver.
+        var resolution = ModuleDef.CreateModuleContext();
         var options = new ModuleCreationOptions
         {
             TryToLoadPdbFromDisk = false,
-            Context = ModuleDef.CreateModuleContext()
+            Context = resolution
         };
         var module = ModuleDefMD.Load(bytes, options);
-        return new ArtifactContext(fullPath, bytes, module);
+        var context = new ArtifactContext(fullPath, bytes, module);
+        if (libraryPaths is { Count: > 0 })
+            context.LoadLibraries(libraryPaths, resolution, options);
+        return context;
+    }
+
+    private void LoadLibraries(
+        IReadOnlyList<string> paths,
+        ModuleContext resolution,
+        ModuleCreationOptions options)
+    {
+        if (resolution.AssemblyResolver is not AssemblyResolver resolver)
+            throw new TrustedLibraryException(
+                "The resolver cannot be told about a library, so none can be trusted.");
+        var referenced = Module.GetAssemblyRefs()
+            .GroupBy(reference => reference.Name.String, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var loaded = new List<TrustedLibrary>();
+        foreach (var path in paths)
+        {
+            var full = Path.GetFullPath(path);
+            if (!File.Exists(full))
+                throw new TrustedLibraryException($"No such library: {path}");
+            var bytes = File.ReadAllBytes(full);
+            ModuleDefMD library;
+            try
+            {
+                library = ModuleDefMD.Load(bytes, options);
+            }
+            catch (BadImageFormatException ex)
+            {
+                throw new TrustedLibraryException(
+                    $"{Path.GetFileName(full)} is not a .NET assembly, so there is no IL in it " +
+                    "to interpret.",
+                    ex);
+            }
+
+            var assembly = library.Assembly;
+            if (assembly is null)
+            {
+                library.Dispose();
+                throw new TrustedLibraryException(
+                    $"{Path.GetFileName(full)} is a module rather than an assembly.");
+            }
+
+            // A library the sample never mentions cannot be the one it calls into, so accepting it
+            // would widen what the machine may run without widening what it can read. Saying so is
+            // more useful than silently loading a file that will never be reached.
+            if (!referenced.TryGetValue(assembly.Name.String, out var reference))
+            {
+                // The versions are listed too, because the reader of this message is deciding which
+                // file to go and find.
+                var names = string.Join(", ", referenced.Values
+                    .Select(candidate => $"{candidate.Name} {candidate.Version}")
+                    .Order(StringComparer.Ordinal));
+                library.Dispose();
+                throw new TrustedLibraryException(
+                    $"{assembly.Name} is not referenced by {Module.Name}, which references: " +
+                    $"{names}.");
+            }
+
+            resolver.AddToCache(assembly);
+            _trustedModules.Add(library);
+            loaded.Add(new TrustedLibrary(
+                full,
+                assembly.Name,
+                assembly.Version.ToString(),
+                Convert.ToHexStringLower(assembly.PublicKeyToken?.Data ?? []),
+                Convert.ToHexStringLower(SHA256.HashData(bytes)),
+                assembly.Version == reference.Version));
+        }
+
+        Libraries = loaded;
     }
 
     public void AddEvidence(Evidence evidence) => _evidence.Add(evidence);
@@ -163,7 +301,12 @@ public sealed class ArtifactContext : IDisposable
         return false;
     }
 
-    public void Dispose() => Module.Dispose();
+    public void Dispose()
+    {
+        Module.Dispose();
+        foreach (var library in _trustedModules)
+            library.Dispose();
+    }
 }
 
 public interface IDeobfuscationPass
@@ -222,7 +365,9 @@ public sealed record PipelineOptions(
     bool RemoveRuntime = true,
     bool RenameSymbols = false,
     string? OutputPath = null,
-    string? ReportDirectory = null);
+    string? ReportDirectory = null,
+    string? HostProfilePath = null,
+    IReadOnlyList<string>? LibraryPaths = null);
 
 public sealed record PipelineResult(
     bool Success,
@@ -308,9 +453,15 @@ public sealed class ReactorPipeline
     public PipelineResult Run(string inputPath, PipelineOptions? options = null)
     {
         options ??= new PipelineOptions();
-        using var context = ArtifactContext.Load(inputPath);
+        using var context = ArtifactContext.Load(inputPath, options.LibraryPaths);
         context.SetFact("options.removeRuntime", options.RemoveRuntime);
         context.SetFact("options.renameSymbols", options.RenameSymbols);
+        context.SetFact(
+            BootstrapMachine.HostEnvironmentFact,
+            new HostEnvironment(options.HostProfilePath is { } profile
+                ? HostProfile.Load(profile)
+                : HostProfile.Default));
+        RecordLibraries(context);
 
         foreach (var planned in PipelinePlanner.Plan(_passes))
         {
@@ -466,6 +617,8 @@ public sealed class ReactorPipeline
         context.TryGetFact<int>("virtualization.operationsWalked", out var virtualWalked);
         context.TryGetFact<int>("virtualization.depthDisagreements", out var virtualDisagreements);
         context.TryGetFact<int>("strings.constantSites", out var constantStringSites);
+        context.TryGetFact<HostEnvironment>(
+            BootstrapMachine.HostEnvironmentFact, out var host);
         return new ArtifactReport(
             Version,
             context.InputPath,
@@ -502,8 +655,48 @@ public sealed class ReactorPipeline
                 virtualDisagreements,
                 constantStringSites),
             verification.Passed,
-            verification.Diagnostics);
+            verification.Diagnostics,
+            Consulted(host));
     }
+
+    /// <summary>
+    /// Says in the report which libraries the interpreter was allowed to run, and which build.
+    /// </summary>
+    /// <remarks>
+    /// A result that depended on somebody else's code should name the copy of it that was used,
+    /// because a different build of the same library is a different program. A build that is not
+    /// the one the sample was compiled against is worth saying out loud rather than refusing over:
+    /// the reference carries a version the loader would have redirected anyway, and the analyst who
+    /// supplied the file is better placed than the tool to know whether it is close enough.
+    /// </remarks>
+    private static void RecordLibraries(ArtifactContext context)
+    {
+        foreach (var library in context.Libraries)
+        {
+            context.AddEvidence(new Evidence(
+                "trusted-library",
+                $"{library.Name} {library.Version} was supplied for the interpreter to run, from " +
+                $"{Path.GetFileName(library.Path)} (SHA-256 {library.Sha256})." +
+                (library.MatchesReference
+                    ? string.Empty
+                    : " The sample was built against a different version of it."),
+                library.Path,
+                library.MatchesReference ? 1.0 : 0.6));
+        }
+    }
+
+    private static HostProfileReport? Consulted(HostEnvironment? host) => host is null
+        ? null
+        : new HostProfileReport(
+            host.Profile.Name,
+            host.Profile.Sha256,
+            host.Questions
+                .Select(question => new HostFactReport(
+                    question.Key,
+                    question.Answer.Describe(),
+                    question.Answer.IsAnswered,
+                    question.Times))
+                .ToArray());
 
     /// <summary>
     /// Counts the switch-flattener-shaped methods that survive in the final module, so the corpus

@@ -58,8 +58,100 @@ synthetic native pointers, static/instance fields, branches, switches, and
 single-level deterministic finally flow. Framework calls are deny-by-default.
 Allowlisted models cover resources, streams/readers, encoding, hashing,
 decompression, symmetric crypto, synthetic module/process metadata, Marshal
-operations, and virtual memory writes. Unknown branches, unmodeled calls,
-symbolic writes, malformed ranges, and exhausted budgets stop recovery.
+operations, and virtual memory writes. They also cover the types a sample passes
+through on the way there: `StringBuilder`, formatted number-to-text conversion,
+`ToString` decided by the receiver rather than the call site, `TimeSpan` and
+`DateTime` arithmetic, named mutexes, certificates held as the bytes they
+were built from, format strings filled in, weak references that hold what they
+were given, and URLs parsed by the framework's own parser. Unknown branches,
+unmodeled calls, symbolic writes, malformed ranges, and exhausted budgets stop
+recovery.
+
+An `async` method is run by driving its state machine, which means the builder,
+the task and the awaiter are modeled and `MoveNext` is interpreted like any other
+body. Every awaiter reports finished, because nothing here runs on another thread
+and so anything a task stands for has already happened; that is the path the
+compiler wrote for a task which completed before it was awaited. A task this
+machine did not produce is refused rather than read for a result, and an async
+method that ended in an exception stops where its result is read.
+
+The network is a boundary rather than a gap. What only arranges a connection is
+modeled — TLS settings, request headers, timeouts, endpoints, address parsing,
+socket options — and the request itself stops the interpretation, naming the host
+and port it was about to reach. That name is usually the most useful thing a run
+over a stager produces, so it is in the refusal rather than left implicit. A name
+lookup is a question about the network the machine is on and may be stated in a
+profile as `net:dns:<host>`.
+
+Two families of framework answer are deliberately withheld rather than
+approximated. A number written with a format that places group separators or a
+decimal mark reads differently under different cultures, and nothing states which
+culture the machine the sample expects is running under, so only the decimal and
+hexadecimal families are answered. A certificate's subject, issuer, or public key
+takes a full X.509 parse of attacker-supplied bytes, which this tool will not run
+over its own input; the encoded bytes, their hash where they are a bare
+certificate, and equality against another certificate are answered instead.
+
+### Declared host facts
+
+Questions about the machine the sample believes it is running on are answered
+from a host profile, and from nowhere else. The built-in profile states the
+clock, the identifier seed, the debugger verdicts, the process id, the runtime
+module and version, the FIPS policy, and that nothing else on the machine holds a
+named mutex — the last following from the modeled world having one process, which
+is the same process every other probe is answered about. `--host-profile` overlays
+a JSON file of additional
+facts keyed by family: `env:`, `time:`, `guid:`, `debugger:`, `process:`,
+`runtime:`, `native:`, `wmi:`, `registry:`, `volume:`, `net:`. A key in no family
+is rejected when the profile is read.
+
+A fact is text, a whole number, `true`, `false`, `null` for "not there", or
+`{ "base64": "..." }` for bytes. The last matters for a stager that keeps its
+next stage in a binary registry value: an analyst who has that value has the
+payload, and stating it is how the interpretation gets to it. The bytes are part
+of what the profile's hash covers.
+
+Support contract for a stated fact:
+
+- A stated fact is used like any other known value. It may be folded, may decide
+  a branch, and may reach the emitted assembly. It is not marked in the output.
+- Every value derived from one carries `Host` provenance, so the report can trace
+  a recovered constant back to the fact it rests on.
+- Every question asked is recorded with the answer given, and the report carries
+  the profile's name and the SHA-256 of its contents alongside the input's hash.
+  Recovery that depended on a profile is reproducible only with that profile.
+- A question the profile does not answer is refused with the key that would
+  answer it. Nothing is inferred from the analysis host, which is not Windows.
+- `Environment.Default` encoding, unlisted platform invokes, and anything else
+  whose answer is a machine's rather than a file's remain refused.
+
+### Trusted third-party assemblies
+
+`--library` supplies an assembly whose IL the interpreter may run. The assembly
+must be referenced by the sample by name, or it is refused; its name, version,
+public key token and SHA-256 are recorded as `trusted-library` evidence, and a
+version that differs from the reference is reported rather than refused. Virtual
+dispatch and type-ancestry queries search the sample and the supplied assemblies
+together, so a call into a library's own abstract method resolves.
+
+Measured on protobuf-net 2.4 driving a sample's payload path, a call to
+`Serializer.Deserialize<T>` now runs to its result. Doing that meant modelling
+what a serializer does rather than what a program does: reflection over the
+sample's own contract types, custom attributes read off them, and
+`Reflection.Emit` — the generated serializer is assembled into a real method body
+and then interpreted. Generic arguments are carried into the machine's `Type`
+model, so a library reflecting over its own `typeof(T)` sees the type the call
+site supplied.
+
+Known limits:
+
+- Static-field and type-initialisation state is keyed by full name with no
+  assembly component, so a library and a sample that both define a type of the
+  same full name would share state.
+- There is no per-library step budget; a library shares the run's budget.
+- Emitted IL is assembled for the shapes the serializer generator uses. An emit
+  the assembler cannot form into a runnable body is refused rather than
+  approximated.
 
 Every method mutation has a full-body transaction. Instructions, branch
 operands, locals, max-stack settings, and exception handlers are restored

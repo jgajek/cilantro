@@ -108,6 +108,51 @@ ReactorUnpack suspicious.exe --verbose
 
 Run `ReactorUnpack --help` for the rest. There are only a handful.
 
+### When the sample asks about the machine
+
+Malware asks where it is: the machine name, a disk serial number, whether a
+debugger is attached. This tool runs on Linux and never runs the sample, so there
+is no such machine to read the answers off. It answers from a **host profile**
+instead, and says which answers it used.
+
+Out of the box the profile states only the few things the tool has always
+answered. Anything else stops the run, naming the fact that would let it
+continue — `wmi:Win32_BIOS.SerialNumber`, say. Put the facts you know in a file
+and hand it over:
+
+```
+ReactorUnpack suspicious.exe --host-profile profiles/windows-10-workstation.json
+```
+
+The summary's `ASSUMED` block lists what was asked and what it was told, and the
+report carries the profile's hash next to the sample's, because a stated fact is
+used like any other value and can end up in the cleaned copy.
+
+A fact can be bytes, written as `{ "base64": "..." }`. That is what to use when
+the sample keeps its next stage in a binary registry value: paste the value in and
+the run unpacks the stage out of it.
+
+### When the payload is not in the file
+
+Some samples download the next stage instead of carrying it. The reader follows
+them as far as the connection — including through `async` methods, which it drives
+to completion — and then stops and says where the connection was going, host and
+port. There is nothing to unpack in such a file, and the address is the thing
+worth having.
+
+### When the sample unpacks itself through a library
+
+Some samples decrypt themselves using a third-party assembly they reference but
+do not carry. Supply it and the reader can follow the call:
+
+```
+ReactorUnpack suspicious.exe --library ./protobuf-net.dll
+```
+
+The assembly has to be one the sample actually references, its hash is recorded
+in the report, and nothing in it is executed — its IL is read the same way the
+sample's is. Repeat the option for more than one.
+
 ## What it handles
 
 .NET Reactor 6, which covers the large majority of Reactor-protected samples in

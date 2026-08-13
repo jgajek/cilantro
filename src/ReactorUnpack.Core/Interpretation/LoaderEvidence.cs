@@ -13,7 +13,9 @@ public enum LoaderObservationKind
     /// <summary>The loader asked whether a debugger is present.</summary>
     DebuggerProbe,
     /// <summary>The loader requested process termination.</summary>
-    Termination
+    Termination,
+    /// <summary>The loader asked something about the computer it believes it is running on.</summary>
+    HostQuestion
 }
 
 /// <summary>

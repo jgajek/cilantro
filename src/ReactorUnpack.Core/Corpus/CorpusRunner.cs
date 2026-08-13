@@ -40,7 +40,9 @@ public sealed record CorpusSample(
     int? MaximumProgramMethodSurplus = null,
     int? MaximumSurplusResources = null,
     bool RequireOracleResourceParity = false,
-    int? MinimumConstantStringSites = null);
+    int? MinimumConstantStringSites = null,
+    string? HostProfile = null,
+    IReadOnlyList<string>? Libraries = null);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -163,6 +165,9 @@ public static class CorpusRunner
         string outputDirectory)
     {
         var manifest = LoadManifest(manifestPath);
+        // A profile or a library named by an entry is named relative to the manifest that names it,
+        // so a corpus is one thing that can be moved rather than a file plus a working directory.
+        var manifestDirectory = Path.GetDirectoryName(Path.GetFullPath(manifestPath)) ?? ".";
         Directory.CreateDirectory(outputDirectory);
         var samplesByHash = manifest.Samples.ToDictionary(
             sample => sample.Sha256,
@@ -180,8 +185,8 @@ public static class CorpusRunner
             {
                 var sample = scheduled[index];
                 var path = Path.Combine(sampleDirectory, sample.LocalName);
-                outcomes[index] =
-                    RunSample(sample, path, sampleDirectory, outputDirectory, samplesByHash);
+                outcomes[index] = RunSample(
+                    sample, path, sampleDirectory, outputDirectory, manifestDirectory, samplesByHash);
             });
 
         var report = new CorpusRunReport(
@@ -201,6 +206,7 @@ public static class CorpusRunner
         string path,
         string sampleDirectory,
         string outputDirectory,
+        string manifestDirectory,
         Dictionary<string, CorpusSample> samplesByHash)
     {
         if (!File.Exists(path))
@@ -220,7 +226,11 @@ public static class CorpusRunner
             AnalyzeOnly: analysisOnly,
             PreserveTokens: true,
             OutputPath: outputPath,
-            ReportDirectory: sampleOutputDirectory));
+            ReportDirectory: sampleOutputDirectory,
+            HostProfilePath: Beside(manifestDirectory, sample.HostProfile),
+            LibraryPaths: sample.Libraries
+                ?.Select(library => Beside(manifestDirectory, library)!)
+                .ToArray()));
         var capabilities = result.Report.Evidence
             .Where(evidence => evidence.Category == "capability")
             .Select(evidence => evidence.Message)
@@ -604,6 +614,11 @@ public static class CorpusRunner
                 "different stack depths, so one of the readings is wrong.");
         }
     }
+
+    /// <summary>Resolves a path the manifest named against the manifest's own folder.</summary>
+    private static string? Beside(string manifestDirectory, string? path) => path is null
+        ? null
+        : Path.GetFullPath(Path.Combine(manifestDirectory, path));
 
     private static CorpusSampleOutcome Missing(CorpusSample sample) =>
         new(sample.Id, sample.Tier, "missing", sample.Sha256, false, "unknown", [], [],

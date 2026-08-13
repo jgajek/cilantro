@@ -82,8 +82,35 @@ internal static class Explain
 
         Protection(capabilities);
         Recovered(report);
+        Assumed(report);
         Written(result, home);
         Caveats(result);
+    }
+
+    /// <summary>
+    /// What the run was told about the machine, as opposed to what it worked out from the file.
+    /// </summary>
+    /// <remarks>
+    /// A recovered string that came out of a decrypter is a fact about the sample. A recovered
+    /// string that came out of a decrypter keyed on the computer's serial number is a fact about the
+    /// sample and a serial number somebody typed in, and a reader who does not know the second half
+    /// cannot judge the first. Only what was consulted is listed, because a profile mostly describes
+    /// things this sample never asked about.
+    /// </remarks>
+    private static void Assumed(ArtifactReport report)
+    {
+        if (report.HostProfile is not { } profile || profile.Consulted.Count == 0)
+            return;
+        var answered = profile.Consulted.Where(fact => fact.Answered).ToArray();
+        var refused = profile.Consulted.Where(fact => !fact.Answered).ToArray();
+        Console.WriteLine($"  ASSUMED   about the machine, from the \"{profile.Name}\" profile");
+        Console.WriteLine();
+        var width = profile.Consulted.Max(fact => fact.Key.Length);
+        foreach (var fact in answered)
+            Console.WriteLine($"    {fact.Key.PadRight(width)}   {fact.Answer}");
+        foreach (var fact in refused)
+            Console.WriteLine($"    {fact.Key.PadRight(width)}   not stated, so the code that asked was not read");
+        Console.WriteLine();
     }
 
     /// <summary>

@@ -70,6 +70,50 @@ they had nothing left to do. See "Why is Reactor's code still there?" below.
 
 **Obfuscated names replaced.** Only with `--rename`.
 
+## The ASSUMED section
+
+```
+  ASSUMED   about the machine, from the "windows-10-workstation" profile
+
+    env:UserName                            "mhoffman"
+    native:user32!SetProcessDPIAware        1
+    wmi:Win32_PhysicalMemory.SerialNumber   not stated, so the code that asked was not read
+```
+
+Protected code asks questions about the computer it is running on — the time, the
+machine name, a disk serial number — and the tool cannot read the answers off the
+machine it is running on, which is not the one the sample expects. So the answers
+are declared, and this is what was declared and consulted. Facts nobody asked
+about are not listed.
+
+A value shown here was used like any other: it can decide a branch and it can end
+up in the cleaned copy. If that matters for what you are doing, the full report
+carries the profile's name and a hash of its contents next to the input's hash, so
+you can tell which answers a result depended on.
+
+A line reading **not stated** is the useful one. It names a fact that stopped the
+interpretation, spelled exactly as a profile would spell it. Write it into a JSON
+file and pass `--host-profile` to get further:
+
+```json
+{ "facts": { "wmi:Win32_PhysicalMemory.SerialNumber": "8FA2C31B" } }
+```
+
+`profiles/windows-10-workstation.json` is a filled-in example. Facts a profile
+does not mention keep their built-in answers, so a profile only has to state what
+it knows.
+
+A fact can also be bytes, which is how a value that is not text gets stated:
+
+```json
+{ "facts": { "registry:HKEY_CURRENT_USER\\Software\\X!blob": { "base64": "H4sIAAAA..." } } }
+```
+
+That is the line to write when a **not stated** entry names a registry value
+holding a blob. A stager that stores its next stage there is unpacked from the
+bytes you paste in, so the payload comes out of the run rather than out of a
+manual decode.
+
 ## The NOTES section
 
 Notes appear when a stage did not fully succeed. A line beginning `-` is a stage
@@ -96,11 +140,14 @@ hand over a result it cannot stand behind.
 | `Passes` | Each stage with status, change count, and diagnostics |
 | `Recovery` | The counters shown in the summary |
 | `VerificationPassed`, `VerificationDiagnostics` | Whether the output was accepted, and why not |
+| `HostProfile` | Which profile answered questions about the machine, its hash, and every fact consulted |
 
-Two categories in `Evidence` are worth knowing. `capability` entries are the
+Three categories in `Evidence` are worth knowing. `capability` entries are the
 protections that were detected, and they are what the summary turns into English.
 `metadata-anomaly` entries are the deliberate metadata damage Reactor introduces
-to break tools — useful for detection rules.
+to break tools — useful for detection rules. `trusted-library` entries name each
+assembly supplied with `--library`, with the version and SHA-256 of the exact file
+whose code was read.
 
 `Resources` includes an entropy figure per resource. Values near 8.0 mean
 encrypted or compressed; that is how the encrypted bundles stand out.

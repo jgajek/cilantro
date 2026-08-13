@@ -18,7 +18,12 @@ public enum ProvenanceKind
     Conversion,
     Comparison,
     Call,
-    Intrinsic
+    Intrinsic,
+
+    /// <summary>
+    /// The value was stated by the host profile rather than derived from the sample's own bytes.
+    /// </summary>
+    Host
 }
 
 public readonly record struct ProvenanceNode(

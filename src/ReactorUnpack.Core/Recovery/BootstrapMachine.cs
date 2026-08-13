@@ -16,9 +16,10 @@ namespace ReactorUnpack.Core.Recovery;
 /// interpretations comparable.
 ///
 /// The environment is deliberately minimal and closed: only this module's resources, identity,
-/// pointer size, file bytes, and mapped image are visible. Every other ambient input the loader
-/// might consult is absent rather than invented, so an interpretation that depends on one stops
-/// instead of producing a value that happens to be wrong.
+/// pointer size, file bytes, and mapped image are visible, together with whatever the run's host
+/// profile states about the computer. Every other ambient input the loader might consult is absent
+/// rather than invented, so an interpretation that depends on one stops instead of producing a value
+/// that happens to be wrong.
 /// </remarks>
 public static class BootstrapMachine
 {
@@ -36,6 +37,15 @@ public static class BootstrapMachine
     /// pass interprets the module in the same one.
     /// </summary>
     private const string FileRefusedFact = "bootstrap.moduleFileRefused";
+
+    /// <summary>
+    /// The key under which the run's host profile and the record of what it was asked are kept.
+    /// </summary>
+    /// <remarks>
+    /// One environment for the whole run, shared by every machine seeded here, so that the report
+    /// can say what the run consulted rather than what one pass out of twenty happened to ask.
+    /// </remarks>
+    public const string HostEnvironmentFact = "host.environment";
 
     /// <summary>
     /// Creates a seeded machine and runs the loader initializers, or explains why it could not.
@@ -133,6 +143,10 @@ public static class BootstrapMachine
         machine = null;
         diagnostic = string.Empty;
         var candidate = new StaticMachine(Limits(maximumSteps), modelTypeInitialization: true);
+        if (context.TryGetFact<HostEnvironment>(HostEnvironmentFact, out var host) && host is not null)
+            candidate.State.RegisterHostEnvironment(host);
+        foreach (var library in context.TrustedModules)
+            candidate.State.RegisterTrustedModule(library);
         foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>())
             candidate.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
         candidate.State.RegisterAssemblyIdentity(

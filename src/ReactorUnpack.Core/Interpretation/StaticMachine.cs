@@ -123,7 +123,8 @@ public sealed class StaticMachine
         MethodDef method,
         IReadOnlyList<StaticValue> arguments,
         StaticWorkBudget budget,
-        int depth)
+        int depth,
+        GenericScope? generics = null)
     {
         State.Evidence.EnterMethod(method);
         _frames.Add(method);
@@ -133,7 +134,7 @@ public sealed class StaticMachine
         FrameEntered?.Invoke(method, arguments);
         try
         {
-            return ExecuteFrameCore(method, arguments, budget, depth);
+            return ExecuteFrameCore(method, arguments, budget, depth, generics);
         }
         finally
         {
@@ -150,7 +151,8 @@ public sealed class StaticMachine
         MethodDef method,
         IReadOnlyList<StaticValue> arguments,
         StaticWorkBudget budget,
-        int depth)
+        int depth,
+        GenericScope? generics)
     {
         if (depth > _limits.MaximumRecursionDepth)
             return FrameResult.Fail(
@@ -264,7 +266,8 @@ public sealed class StaticMachine
                         stack.Add(TrackOrigin(method, instruction, text, "string"));
                         break;
                     case Code.Ldtoken:
-                        State.Heap.TryAllocateMetadataHandle(instruction.Operand, out var token);
+                        State.Heap.TryAllocateMetadataHandle(
+                            Denoted(instruction.Operand, generics), out var token);
                         stack.Add(State.Provenance.Origin(
                             token,
                             ProvenanceKind.Metadata,
@@ -893,17 +896,7 @@ public sealed class StaticMachine
                                 break;
                             }
                             var expected = (instruction.Operand as ITypeDefOrRef)?.FullName;
-                            var matches = expected == "System.Object" ||
-                                State.Heap.TryGetRuntimeTypeName(value, out var actual) &&
-                                (string.Equals(actual, expected, StringComparison.Ordinal) ||
-                                 InheritsModel(actual, expected) ||
-                                 DerivesFrom(actual, expected) ||
-                                 ArraySatisfies(actual, expected) ||
-                                 actual == "System.Delegate" &&
-                                 (instruction.Operand as ITypeDefOrRef)?
-                                     .ResolveTypeDef()?.BaseType?.FullName is
-                                         "System.MulticastDelegate" or "System.Delegate");
-                            if (matches)
+                            if (Castable(value, expected, instruction.Operand as ITypeDefOrRef))
                             {
                                 stack.Add(value);
                                 break;
@@ -919,9 +912,30 @@ public sealed class StaticMachine
                     case Code.Unbox_Any:
                         {
                             var boxed = Pop(stack);
-                            if (!State.Heap.TryUnbox(boxed, out var value))
-                                throw new InvalidOperationException("unbox.any target is not a concrete box.");
-                            stack.Add(value);
+                            if (State.Heap.TryUnbox(boxed, out var value))
+                            {
+                                stack.Add(value);
+                                break;
+                            }
+                            // A cast to a generic parameter is written as unbox.any whatever the
+                            // parameter turns out to be, and when it turns out to be a reference
+                            // type the instruction is a cast and nothing is unboxed. What the
+                            // parameter stands for is known here, so which of the two this is is
+                            // known too.
+                            var cast = Denoted(instruction.Operand, generics) as TypeSig ??
+                                (instruction.Operand as ITypeDefOrRef)?.ToTypeSig();
+                            if (cast is null || cast.IsValueType || cast.ContainsGenericParameter)
+                            {
+                                throw new InvalidOperationException(
+                                    "unbox.any target is not a concrete box.");
+                            }
+                            if (boxed.Kind != StaticValueKind.Null &&
+                                !Castable(boxed, cast.FullName, cast.ToTypeDefOrRef()))
+                            {
+                                throw new InvalidOperationException(
+                                    $"Modeled object cannot be cast to {cast.FullName}.");
+                            }
+                            stack.Add(boxed);
                             break;
                         }
                     case Code.Unbox:
@@ -971,7 +985,12 @@ public sealed class StaticMachine
                             else if (definition is not null && definition.HasBody &&
                                 BelongsToSubject(definition, method))
                             {
-                                callResult = ExecuteFrame(definition, callArguments, budget, depth + 1);
+                                callResult = ExecuteFrame(
+                                    definition,
+                                    callArguments,
+                                    budget,
+                                    depth + 1,
+                                    GenericScope.For(target, generics));
                             }
                             else if (definition is not null &&
                                 BelongsToSubject(definition, method) &&
@@ -1889,7 +1908,8 @@ public sealed class StaticMachine
             : [receiver, .. callArguments[1..]];
         if (definition is { HasBody: true })
         {
-            result = ExecuteFrame(definition, arguments, budget, depth + 1);
+            result = ExecuteFrame(
+                definition, arguments, budget, depth + 1, GenericScope.For(target, null));
             return true;
         }
 
@@ -1946,7 +1966,9 @@ public sealed class StaticMachine
     /// to run them.
     /// </remarks>
     private bool BelongsToSubject(MethodDef definition, MethodDef caller) =>
-        definition.Module == caller.Module || definition.Module == State.ModuleMetadata;
+        definition.Module == caller.Module ||
+        definition.Module == State.ModuleMetadata ||
+        State.IsTrusted(definition.Module);
 
     /// <summary>
     /// Supplies a framework constant that the machine models rather than stores.
@@ -1957,18 +1979,68 @@ public sealed class StaticMachine
     /// program building a method reads them by name and hands them straight back, so the machine
     /// only needs to remember which one it was told about.
     /// </remarks>
+    /// <summary>
+    /// What a metadata operand denotes in the frame that loaded it.
+    /// </summary>
+    /// <remarks>
+    /// <c>typeof(T)</c> compiles to a token for the parameter rather than for a type, and what it
+    /// means depends on who called. Resolving it here means everything downstream — the reflection
+    /// models, the type questions, the enum handling — sees the type the program is actually working
+    /// with and needs to know nothing about generics.
+    /// </remarks>
+    /// <summary>Whether what is on the stack can stand as an instance of the named type.</summary>
+    private bool Castable(StaticValue value, string? expected, ITypeDefOrRef? named) =>
+        expected == "System.Object" ||
+        State.Heap.TryGetRuntimeTypeName(value, out var actual) &&
+        (string.Equals(actual, expected, StringComparison.Ordinal) ||
+            InheritsModel(actual, expected) ||
+            DerivesFrom(actual, expected) ||
+            ArraySatisfies(actual, expected) ||
+            actual == "System.Delegate" &&
+            named?.ResolveTypeDef()?.BaseType?.FullName is
+                "System.MulticastDelegate" or "System.Delegate");
+
+    private static object Denoted(object operand, GenericScope? generics)
+    {
+        if (generics is null || operand is not ITypeDefOrRef named)
+            return operand;
+        var signature = named.ToTypeSig();
+        return signature?.ContainsGenericParameter == true &&
+            generics.Bind(signature) is { } bound &&
+            !bound.ContainsGenericParameter
+                ? bound
+                : operand;
+    }
+
+    /// <summary>
+    /// Reads a static field of a type the machine models rather than interprets.
+    /// </summary>
+    /// <remarks>
+    /// Some of the framework's best-known values are fields and not properties, and a field read has
+    /// no call for an intrinsic to answer. Left alone they read as the zero this machine gives an
+    /// external static it has never seen written, which is null for a reference — so a program that
+    /// opens a registry hive gets nothing back and fails at its next step, several frames from the
+    /// field that was actually the problem. Each one here is a value the framework fixes, so naming
+    /// it is reading it rather than assuming it.
+    /// </remarks>
     private bool TryReadModeledStatic(IField field, out StaticValue value)
     {
         value = StaticValue.Unknown;
-        if (field.DeclaringType?.FullName != "System.Reflection.Emit.OpCodes" ||
-            !ReflectionEmitIntrinsic.Opcodes.ContainsKey(field.Name.String) ||
-            !State.Heap.TryAllocateObject("System.Reflection.Emit.OpCode", out value))
+        var declaring = field.DeclaringType?.FullName;
+        var name = field.Name.String;
+        if (declaring == "System.Reflection.Emit.OpCodes")
         {
-            return false;
+            if (!ReflectionEmitIntrinsic.Opcodes.ContainsKey(name) ||
+                !State.Heap.TryAllocateObject("System.Reflection.Emit.OpCode", out value))
+                return false;
+            State.Heap.TrySetModelValue(value, "OpCode", name);
+            return true;
         }
 
-        State.Heap.TrySetModelValue(value, "OpCode", field.Name.String);
-        return true;
+        if (declaring == "Microsoft.Win32.Registry")
+            return RegistryIntrinsic.TryOpenHive(State.Heap, name, out value);
+        return declaring == "System.String" && name == "Empty" &&
+            State.Heap.TryAllocateString(string.Empty, out value);
     }
 
     /// <summary>
@@ -2000,7 +2072,8 @@ public sealed class StaticMachine
         StaticValue[] callArguments = definition.IsStatic
             ? [.. arguments]
             : [receiver, .. arguments];
-        var result = ExecuteFrame(definition, callArguments, budget, depth + 1);
+        var result = ExecuteFrame(
+            definition, callArguments, budget, depth + 1, GenericScope.For(bound, null));
         return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
     }
 
@@ -2020,13 +2093,33 @@ public sealed class StaticMachine
     {
         if (method.ResolveMethodDef() is { HasBody: true } definition)
         {
-            var result = ExecuteFrame(definition, [.. arguments], budget, depth + 1);
+            var result = ExecuteFrame(
+                definition, [.. arguments], budget, depth + 1, GenericScope.For(method, null));
             return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
         }
 
         return _intrinsics.TryResolve(method, out var intrinsic)
             ? intrinsic.Invoke(Assisting(budget, depth), method, [.. arguments])
             : IntrinsicResult.Invalid($"{method.FullName} has no body to run.");
+    }
+
+    /// <summary>
+    /// The metadata a type or an override may be looked up in.
+    /// </summary>
+    /// <remarks>
+    /// A machine allowed to run a library's IL has to be able to dispatch inside it, because the
+    /// first thing a library of any size does is call one of its own abstract methods. Searching
+    /// only the sample would resolve that to nothing and stop the interpretation one call into code
+    /// that was supplied precisely so it could be followed.
+    /// </remarks>
+    private IEnumerable<ModuleDef> Searchable(ModuleDef first)
+    {
+        yield return first;
+        foreach (var trusted in State.TrustedModules)
+        {
+            if (trusted != first)
+                yield return trusted;
+        }
     }
 
     private MethodDef? ResolveVirtualTarget(
@@ -2037,8 +2130,9 @@ public sealed class StaticMachine
         var expected = target.ResolveMethodDef();
         var comparer = new SigComparer();
         if (State.Heap.TryGetRuntimeTypeName(instance, out var runtimeTypeName) &&
-            module.GetTypes().FirstOrDefault(type =>
-                type.FullName == runtimeTypeName) is { } runtimeType)
+            Searchable(module)
+                .SelectMany(searched => searched.GetTypes())
+                .FirstOrDefault(type => type.FullName == runtimeTypeName) is { } runtimeType)
         {
             for (var type = runtimeType; type is not null; type = type.BaseType?.ResolveTypeDef())
             {
@@ -2055,7 +2149,8 @@ public sealed class StaticMachine
                 }
             }
         }
-        var uniqueOverrides = module.GetTypes()
+        var uniqueOverrides = Searchable(module)
+            .SelectMany(searched => searched.GetTypes())
             .SelectMany(type => type.Methods)
             .Where(candidate => expected is not null &&
                 candidate.HasBody && !candidate.IsAbstract &&
@@ -2196,30 +2291,12 @@ public sealed class StaticMachine
             return false;
         if (_ancestry.TryGetValue((actual, expected), out var known))
             return known;
-
-        const int deepEnoughForAnyHierarchy = 64;
-        var pending = new Queue<TypeDef>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var found = false;
-        if (metadata.Find(actual, false) is { } start)
-            pending.Enqueue(start);
-        while (pending.Count != 0 && seen.Count < deepEnoughForAnyHierarchy && !found)
-        {
-            var type = pending.Dequeue();
-            if (!seen.Add(type.FullName))
-                continue;
-            found = string.Equals(type.FullName, expected, StringComparison.Ordinal);
-            if (type.BaseType?.ResolveTypeDef() is { } baseType)
-                pending.Enqueue(baseType);
-            foreach (var contract in type.Interfaces)
-            {
-                if (contract.Interface?.ResolveTypeDef() is { } resolved)
-                    pending.Enqueue(resolved);
-            }
-        }
-
-        _ancestry[(actual, expected)] = found;
-        return found;
+        // A hierarchy that cannot be read far enough to tell is treated here as no, which is what
+        // the machine did before there was anything else to say. The reflective form of the same
+        // question refuses instead, because a program that asked it is deciding something with the
+        // answer rather than moving a value from one shape to another.
+        return _ancestry[(actual, expected)] =
+            Ancestry.Reaches(Searchable(metadata), metadata, actual, expected) == true;
     }
 
     /// <summary>

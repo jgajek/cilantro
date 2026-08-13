@@ -1159,6 +1159,39 @@ public sealed class StaticMachineState
     public void Observe(LoaderObservationKind kind, string detail, bool? verdict = null) =>
         Evidence.Observe(kind, detail, verdict);
 
+    private HostEnvironment? _host;
+    private readonly HashSet<string> _hostQuestionsObserved = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What this machine says when interpreted code asks about the computer it is running on.
+    /// </summary>
+    /// <remarks>
+    /// A machine nobody handed a profile to still has one, holding the answers the intrinsics used
+    /// to give on their own. That keeps every machine answerable by the same route whether or not a
+    /// pipeline is standing behind it, which matters because passes build machines directly.
+    /// </remarks>
+    public HostEnvironment Host => _host ??= new HostEnvironment(HostProfile.Default);
+
+    public void RegisterHostEnvironment(HostEnvironment host) =>
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+
+    /// <summary>
+    /// Asks the host profile something, and records that the question came up.
+    /// </summary>
+    /// <remarks>
+    /// Recorded once per distinct question rather than once per asking, because a loop that reads
+    /// the tick count a thousand times has told a reader everything it is going to tell them the
+    /// first time, and the account of a run should not be mostly one repeated line. How often it was
+    /// asked is kept alongside, where it costs nothing.
+    /// </remarks>
+    public bool TryAskHost(string key, out HostAnswer answer)
+    {
+        var answered = Host.TryAnswer(key, out answer);
+        if (_hostQuestionsObserved.Add(key))
+            Observe(LoaderObservationKind.HostQuestion, $"{key} => {answer.Describe()}", answered);
+        return answered;
+    }
+
     /// <summary>
     /// Reports that the running frame handed the runtime something that outlives it.
     /// </summary>
@@ -1326,6 +1359,25 @@ public sealed class StaticMachineState
     public ModuleDef? ModuleMetadata { get; private set; }
 
     public void RegisterModuleMetadata(ModuleDef module) => ModuleMetadata = module;
+
+    private readonly HashSet<ModuleDef> _trustedModules = [];
+
+    /// <summary>
+    /// Assemblies other than the sample whose IL this machine may run.
+    /// </summary>
+    /// <remarks>
+    /// The sample is interpreted because it is the thing being examined. A library is interpreted
+    /// for the opposite reason: it is not in question, and the sample's call into it cannot be
+    /// followed any other way. Neither is executed. The distinction is kept because it decides what
+    /// the machine will step into, and widening that silently would mean a run could end up
+    /// following code nobody chose to supply.
+    /// </remarks>
+    public IReadOnlyCollection<ModuleDef> TrustedModules => _trustedModules;
+
+    public void RegisterTrustedModule(ModuleDef module) =>
+        _trustedModules.Add(module ?? throw new ArgumentNullException(nameof(module)));
+
+    public bool IsTrusted(ModuleDef? module) => module is not null && _trustedModules.Contains(module);
 
     public void RegisterPointerSize(int pointerSize)
     {

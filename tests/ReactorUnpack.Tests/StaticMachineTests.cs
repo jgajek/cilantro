@@ -540,16 +540,16 @@ public sealed class StaticMachineTests
     public void RejectsExternalCallsThatAreNotAllowlisted()
     {
         using var module = NewModule();
-        var environment = new TypeRefUser(
+        var console = new TypeRefUser(
             module,
             "System",
-            "Environment",
+            "Console",
             module.CorLibTypes.AssemblyRef);
         var external = new MemberRefUser(
             module,
-            "get_TickCount",
+            "Read",
             MethodSig.CreateStatic(module.CorLibTypes.Int32),
-            environment);
+            console);
         var method = NewMethod(
             module,
             "External",

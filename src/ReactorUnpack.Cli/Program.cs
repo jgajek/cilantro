@@ -1,6 +1,7 @@
 ﻿using ReactorUnpack.Cli;
 using ReactorUnpack.Core;
 using ReactorUnpack.Core.Corpus;
+using ReactorUnpack.Core.Interpretation;
 
 return ReactorCommand.Run(args);
 
@@ -29,7 +30,9 @@ internal static class ReactorCommand
         var verbose = false;
         string? output = null;
         string? reportDirectory = null;
+        string? hostProfile = null;
         string? input = null;
+        var libraries = new List<string>();
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -63,6 +66,15 @@ internal static class ReactorCommand
                     if (!TryTakeValue(args, ref index, out reportDirectory))
                         return Fail($"{args[index]} needs a folder path after it.");
                     break;
+                case "--host-profile":
+                    if (!TryTakeValue(args, ref index, out hostProfile))
+                        return Fail($"{args[index]} needs a file path after it.");
+                    break;
+                case "--library":
+                    if (!TryTakeValue(args, ref index, out var library))
+                        return Fail($"{args[index]} needs a file path after it.");
+                    libraries.Add(library!);
+                    break;
                 default:
                     if (args[index].StartsWith('-'))
                         return Fail($"Unknown option: {args[index]}");
@@ -89,7 +101,9 @@ internal static class ReactorCommand
                 RemoveRuntime: removeRuntime,
                 RenameSymbols: renameSymbols,
                 OutputPath: output,
-                ReportDirectory: reportDirectory));
+                ReportDirectory: reportDirectory,
+                HostProfilePath: hostProfile,
+                LibraryPaths: libraries));
 
             if (verbose)
                 Explain.PassLog(result.Report);
@@ -107,6 +121,12 @@ internal static class ReactorCommand
             return Fail(
                 $"{Path.GetFileName(input)} is not a .NET assembly. ReactorUnpack only reads " +
                 ".NET executables and libraries.");
+        }
+        // These two say what is wrong with what was handed in, so the message is the whole of the
+        // answer and prefixing it with the name of a class only gets in the reader's way.
+        catch (Exception ex) when (ex is HostProfileException or TrustedLibraryException)
+        {
+            return Fail(ex.Message);
         }
         catch (Exception ex)
         {
@@ -196,6 +216,8 @@ internal static class ReactorCommand
                   --keep-runtime       Leave Reactor's own code in place instead of removing it
                   --rename             Give obfuscated names readable placeholders
                   --fail-on-partial    Write nothing unless every stage fully succeeded
+                  --host-profile FILE  State what the Windows machine the sample expects looks like
+                  --library FILE       Let the reader follow calls into this assembly (repeatable)
               -h, --help               Show this
                   --version            Print the version
 

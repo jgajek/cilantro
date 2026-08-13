@@ -48,13 +48,48 @@ decompression, symmetric ciphers, a few `Marshal` operations, and synthetic stan
 for things like "which module am I in". Anything not on that list stops
 interpretation rather than being guessed at or skipped.
 
+Much of that list is unglamorous by necessity. A sample rarely goes straight from
+its entry point to the thing worth recovering: it builds a string a character at a
+time, writes a byte as two hex digits, takes a mutex to see whether a copy of
+itself is already running, times something. None of that is interesting to read and
+all of it is on the way, so each has to be modelled or the path stops short of the
+part that matters. Where the answer would depend on something nobody has stated —
+the culture that decides whether a formatted number uses a comma or a full stop —
+the call is refused instead, because a plausible string that then gets hashed or
+compared is worse than stopping.
+
 A few of the modelled answers are about the world rather than about the file, and
-those are answered the same way every time: the clock reads a fixed instant, no
-debugger is attached, and a sleep takes no time. Protected code asks the second
-question inside the type initializer that builds its virtual machine, so refusing
-to answer it does not leave the tool neutral — it loses the program, the string
-table, and whatever is behind them. The question is recorded when it is asked, so
-a report still says the loader looked.
+those come from a **host profile**: a list of things somebody has stated about the
+Windows machine the sample believes it is running on. The built-in profile states
+only what the tool has always answered — the clock reads a fixed instant, no
+debugger is attached, the process is number 1 and the only one, the runtime is
+4.8 — and answers
+nothing else. Protected code asks the debugger question inside the type
+initializer that builds its virtual machine, so refusing to answer it does not
+leave the tool neutral; it loses the program, the string table, and whatever is
+behind them. Every question is recorded when it is asked, so a report says both
+what the sample wanted to know and what it was told.
+
+Questions the profile does not answer are refused exactly as any unmodelled call
+is, and the refusal names the fact that would answer it: `env:MachineName`,
+`wmi:Win32_BIOS.SerialNumber`, `native:user32!GetForegroundWindow`. Passing
+`--host-profile` with a file stating those turns the refusal into an answer. A
+fact can be bytes, written as `{ "base64": "..." }`, because some of what a
+machine holds is not text — a stager that keeps its next stage in a binary
+registry value is recovered by stating that value, and then the payload comes out
+of the profile the same way it would have come out of the registry.
+Nothing about that is a guess by the tool: a stated fact is used freely, and can
+end up folded into the emitted assembly, which is why the report carries the
+profile's name and hash next to the input's. What the tool will not do is invent
+one. A machine name nobody has stated stops the interpretation rather than
+becoming `WORKSTATION-1`.
+
+The same reasoning covers somebody else's library. A sample that unpacks itself
+through a third-party assembly cannot be followed past the call unless that
+assembly is available, and it is not inside the file. `--library` supplies one:
+the tool checks that the sample actually references it, records its version and
+hash, and then treats its IL as interpretable in the same way the sample's own is.
+Nothing is executed, and a library the sample never mentions is refused.
 
 One of those answers is about the file, and it has two right values. Protected
 code hashes the assembly it is running in and compares the hash against a
@@ -74,6 +109,24 @@ A call that leaves the runtime altogether is a different matter. A platform
 invoke has no body to interpret and no model that could stand in for what the
 operating system would do, so it stops the interpretation and is reported as what
 it is — the boundary of the runtime rather than a gap in the allowlist.
+
+The network is that same boundary, and it is worth reaching. A stager keeps its
+next stage on a server, and everything it does before the connection —
+configuring TLS, setting headers and timeouts, parsing the address, building the
+endpoint — is arithmetic on objects and is modelled, so the interpretation gets
+all the way to the connection. There it stops, and the refusal says where the
+connection was going: `https://logs.example.invalid:8443/ping`, or a host and
+port. For a sample whose payload is not in the file at all, that address is what
+the run has to show, and it is a better answer than a stage that says only that
+nothing was recovered.
+
+Async is not a boundary, though it looks like one. A modern loader is
+`async Task<byte[]>` all the way down, and the awaiting is a compiler-written
+state machine whose steps are ordinary IL. The machine drives it: the builder and
+the task are modelled, and every awaiter reports that what it waits for has
+finished — which is true here, because nothing runs on another thread, so whatever
+a task stands for either already happened or already refused. `MoveNext` is then
+interpreted like any other body and the method runs to its result.
 
 That refusal is the safety property, and it is also load-bearing for correctness.
 Because the machine refuses every call it does not model, a routine that
