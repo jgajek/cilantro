@@ -32,6 +32,12 @@ public static class BootstrapMachine
         MaximumRenderedProvenanceNodes: 96);
 
     /// <summary>
+    /// The key under which the choice between the two environments below is remembered, so every
+    /// pass interprets the module in the same one.
+    /// </summary>
+    private const string FileRefusedFact = "bootstrap.moduleFileRefused";
+
+    /// <summary>
     /// Creates a seeded machine and runs the loader initializers, or explains why it could not.
     /// </summary>
     public static bool TryRunInitializers(
@@ -43,18 +49,68 @@ public static class BootstrapMachine
         if (!TrySeed(context, maximumSteps, out machine, out diagnostic) || machine is null)
             return false;
 
-        var candidate = machine;
+        RunInitializers(context, machine);
+        if (machine.State.ModuleFileIsAbsent || Refusal(machine) is not { } refusal)
+            return true;
+
+        // The module hashed the file it was read from and rejected it, so this file is not the one
+        // the protector signed. Its own code covers that case by skipping the check when the
+        // assembly has no file, which is the environment a payload unpacked by another module runs
+        // in. Interpreting it there is what lets the rest of the module be read; interpreting it
+        // here would only produce the refusal again, in every pass.
+        RecordRefusal(context, refusal);
+        if (!TrySeed(context, maximumSteps, out machine, out diagnostic) || machine is null)
+            return false;
+
+        RunInitializers(context, machine);
+        return true;
+    }
+
+    private static void RunInitializers(ArtifactContext context, StaticMachine machine)
+    {
         if (context.Module.GlobalType.FindStaticConstructor() is { HasBody: true } moduleInitializer)
-            candidate.Execute(moduleInitializer);
+            machine.Execute(moduleInitializer);
         foreach (var holder in context.Module.GetTypes()
                      .Where(type => type != context.Module.GlobalType &&
                          ReactorStructureDetector.IsResolverKeyHolder(type)))
         {
             if (holder.FindStaticConstructor() is { HasBody: true } holderInitializer)
-                candidate.Execute(holderInitializer);
+                machine.Execute(holderInitializer);
         }
+    }
 
-        return true;
+    /// <summary>
+    /// The refused verification, if the module read its own file and then rejected what it read.
+    /// </summary>
+    /// <remarks>
+    /// Both halves are required. A verification that failed over something other than the module
+    /// file says nothing about where the module lives, and a module that read its file and accepted
+    /// it is already being interpreted in the environment it was built for.
+    /// </remarks>
+    private static LoaderObservation? Refusal(StaticMachine machine)
+    {
+        var observations = machine.State.LoaderEvidence.Observations;
+        return observations.Any(observation =>
+                observation.Kind == LoaderObservationKind.ModuleFileRead)
+            ? observations.FirstOrDefault(observation =>
+                observation.Kind == LoaderObservationKind.SignatureVerification &&
+                observation.Verdict == false)
+            : null;
+    }
+
+    private static void RecordRefusal(ArtifactContext context, LoaderObservation refusal)
+    {
+        if (context.TryGetFact<bool>(FileRefusedFact, out _))
+            return;
+        context.SetFact(FileRefusedFact, true);
+        context.AddEvidence(new Evidence(
+            "interpretation-environment",
+            "The module's integrity check rejected the file it was read from, so it was " +
+            "interpreted as an assembly loaded from memory, which is the case its own check " +
+            "skips. Recovery therefore describes the module as it behaves when another module " +
+            "loads it, not as it behaves when run from this file.",
+            refusal.Detail,
+            0.9));
     }
 
     /// <summary>
@@ -84,8 +140,11 @@ public static class BootstrapMachine
             context.Module.Assembly?.PublicKeyToken?.Data ?? []);
         candidate.State.RegisterPointerSize(context.OriginalImage.IsPe32Plus ? 8 : 4);
         candidate.State.RegisterModuleMetadata(context.Module);
-        candidate.State.RegisterModuleFile(
-            Path.GetFullPath(context.InputPath), context.OriginalBytes);
+        if (context.TryGetFact<bool>(FileRefusedFact, out _))
+            candidate.State.RegisterModuleBytes(context.OriginalBytes);
+        else
+            candidate.State.RegisterModuleFile(
+                Path.GetFullPath(context.InputPath), context.OriginalBytes);
         if (!candidate.State.TryRegisterImage(
                 context.OriginalImage.CreateMappedImage(), context.OriginalImage.ImageBase))
         {

@@ -12,7 +12,7 @@
       "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings"],
       "oracleSha256": null,
       "minimumVirtualOperationsRead": 1.0,
-      "minimumVirtualOperationsWalked": 0.99,
+      "minimumVirtualOperationsWalked": 0.998,
       "requireConsistentVirtualStack": true
     },
     {
@@ -24,7 +24,7 @@
       "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings"],
       "oracleSha256": null,
       "minimumVirtualOperationsRead": 1.0,
-      "minimumVirtualOperationsWalked": 0.994,
+      "minimumVirtualOperationsWalked": 0.995,
       "requireConsistentVirtualStack": true
     },
     {
@@ -36,7 +36,7 @@
       "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings", "dispatcher-control-flow"],
       "oracleSha256": null,
       "minimumVirtualOperationsRead": 1.0,
-      "minimumVirtualOperationsWalked": 0.99,
+      "minimumVirtualOperationsWalked": 0.998,
       "requireConsistentVirtualStack": true
     },
     {
@@ -105,6 +105,7 @@
       "maximumRemainingStubs": 0,
       "maximumMutationCount": 20000,
       "maximumUnreachableInstructions": 0,
+      "minimumConstantStringSites": 153,
       "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
     },
     {
@@ -118,8 +119,8 @@
       "maximumRemainingStubs": 0,
       "minimumTokensRestored": 13,
       "maximumMutationCount": 20000,
-      "minimumVirtualOperationsRead": 0.995,
-      "minimumVirtualOperationsWalked": 0.997,
+      "minimumVirtualOperationsRead": 0.999,
+      "minimumVirtualOperationsWalked": 0.998,
       "requireConsistentVirtualStack": true,
       "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
     },

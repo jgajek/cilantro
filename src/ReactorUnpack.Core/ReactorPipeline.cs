@@ -102,7 +102,8 @@ public sealed record RecoveryReportMetrics(
     int VirtualOperations = 0,
     int VirtualOperationsRead = 0,
     int VirtualOperationsWalked = 0,
-    int VirtualDepthDisagreements = 0);
+    int VirtualDepthDisagreements = 0,
+    int ConstantStringSites = 0);
 
 public sealed class ArtifactContext : IDisposable
 {
@@ -464,6 +465,7 @@ public sealed class ReactorPipeline
         context.TryGetFact<int>("virtualization.operationsRead", out var virtualRead);
         context.TryGetFact<int>("virtualization.operationsWalked", out var virtualWalked);
         context.TryGetFact<int>("virtualization.depthDisagreements", out var virtualDisagreements);
+        context.TryGetFact<int>("strings.constantSites", out var constantStringSites);
         return new ArtifactReport(
             Version,
             context.InputPath,
@@ -497,7 +499,8 @@ public sealed class ReactorPipeline
                 virtualOperations,
                 virtualRead,
                 virtualWalked,
-                virtualDisagreements),
+                virtualDisagreements,
+                constantStringSites),
             verification.Passed,
             verification.Diagnostics);
     }

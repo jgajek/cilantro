@@ -56,6 +56,20 @@ to answer it does not leave the tool neutral — it loses the program, the strin
 table, and whatever is behind them. The question is recorded when it is asked, so
 a report still says the loader looked.
 
+One of those answers is about the file, and it has two right values. Protected
+code hashes the assembly it is running in and compares the hash against a
+signature it carries, and the assembly it is running in does not always have a
+file: an assembly handed to `Assembly.Load` as bytes reports no location, and a
+payload unpacked by another module is loaded exactly that way. The protector has
+to keep working there, so its own check tests for the empty location before it
+tries to open anything. The machine therefore interprets a module the way that
+module was reached. A file on disk is a file on disk; but where a module read its
+own file, hashed it, and rejected it, it is interpreted again as an assembly with
+no file of its own, which is what a payload recovered from inside another file
+actually is. That is the other half of the protector's own check rather than a way
+around it, and both attempts are recorded, so the report says the module looked
+and says what it concluded.
+
 A call that leaves the runtime altogether is a different matter. A platform
 invoke has no body to interpret and no model that could stand in for what the
 operating system would do, so it stops the interpretation and is reported as what

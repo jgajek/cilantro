@@ -45,6 +45,13 @@ partially decrypted assembly is misleading rather than useful.
 Also all-or-nothing: either every site is proven and replaced, or none are, so
 you never have to wonder whether a particular string can be trusted.
 
+**String calls decoded.** Some samples keep their text behind a decoder of their
+own rather than behind Reactor's, called with a number where a string belongs.
+This counts the calls that were run and replaced with the string they return.
+There is no "of `m`" here because there is no set of sites to have covered: a
+decoder is proven constant and folded, or it is left alone and named in the
+report.
+
 **Hidden calls resolved.** Metadata references that were being looked up at run
 time to hide a dependency, turned back into direct references. Raises the number
 of working cross-references in your decompiler.

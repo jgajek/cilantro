@@ -731,7 +731,7 @@ public sealed class NumberIntrinsic : IStaticIntrinsic
 
     public bool Matches(IMethod method) =>
         Numbers.Contains(method.DeclaringType.FullName) &&
-        method.Name.String is "ToString" or "Equals" or "GetHashCode" or "CompareTo";
+        method.Name.String is "ToString" or "Equals" or "GetHashCode" or "CompareTo" or "Parse";
 
     public IntrinsicResult Invoke(
         IntrinsicContext context,
@@ -739,6 +739,17 @@ public sealed class NumberIntrinsic : IStaticIntrinsic
         IReadOnlyList<StaticValue> arguments)
     {
         var heap = context.State.Heap;
+        // A number read back out of its own text is exact wherever the text is known, and a runtime
+        // that carries numbers around in a table of names does exactly that with them.
+        if (method.Name == "Parse" && arguments.Count == 1 &&
+            heap.TryGetString(arguments[0], out var spelled))
+        {
+            return Parsed(method.DeclaringType.FullName, spelled.Trim(), out var parsed)
+                ? IntrinsicResult.Completed(parsed)
+                : IntrinsicResult.Invalid(
+                    $"\"{spelled}\" does not spell a {method.DeclaringType.FullName}.");
+        }
+
         if (arguments.Count == 0 || Read(heap, arguments[0]) is not { } self)
             return IntrinsicResult.Invalid($"{method.FullName} was called on an unreadable value.");
 
@@ -766,6 +777,53 @@ public sealed class NumberIntrinsic : IStaticIntrinsic
                     method.Name == "Equals" ? self == other ? 1 : 0 : self.CompareTo(other)));
             default:
                 return IntrinsicResult.Invalid($"Unsupported number operation {method.Name}.");
+        }
+    }
+
+    /// <summary>The value a piece of text spells, in the type that was asked to read it.</summary>
+    /// <remarks>
+    /// Each type reads its own text, so text that names a number outside the range of the type
+    /// reading it is not that number: the framework refuses it, and so does this.
+    /// </remarks>
+    private static bool Parsed(string declared, string text, out StaticValue value)
+    {
+        value = StaticValue.Unknown;
+        const NumberStyles whole = NumberStyles.Integer;
+        var culture = CultureInfo.InvariantCulture;
+        switch (declared)
+        {
+            case "System.Boolean" when bool.TryParse(text, out var truth):
+                value = StaticValue.FromInt32(truth ? 1 : 0);
+                return true;
+            case "System.Char" when text.Length == 1:
+                value = StaticValue.FromInt32(text[0]);
+                return true;
+            case "System.SByte" when sbyte.TryParse(text, whole, culture, out var signedByte):
+                value = StaticValue.FromInt32(signedByte);
+                return true;
+            case "System.Byte" when byte.TryParse(text, whole, culture, out var singleByte):
+                value = StaticValue.FromInt32(singleByte);
+                return true;
+            case "System.Int16" when short.TryParse(text, whole, culture, out var narrow):
+                value = StaticValue.FromInt32(narrow);
+                return true;
+            case "System.UInt16" when ushort.TryParse(text, whole, culture, out var unsignedNarrow):
+                value = StaticValue.FromInt32(unsignedNarrow);
+                return true;
+            case "System.Int32" when int.TryParse(text, whole, culture, out var number):
+                value = StaticValue.FromInt32(number);
+                return true;
+            case "System.UInt32" when uint.TryParse(text, whole, culture, out var unsigned):
+                value = StaticValue.FromInt32(unchecked((int)unsigned));
+                return true;
+            case "System.Int64" when long.TryParse(text, whole, culture, out var wide):
+                value = StaticValue.FromInt64(wide);
+                return true;
+            case "System.UInt64" when ulong.TryParse(text, whole, culture, out var unsignedWide):
+                value = StaticValue.FromInt64(unchecked((long)unsignedWide));
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -856,21 +914,6 @@ public sealed class MonitorIntrinsic : IStaticIntrinsic
     }
 }
 
-/// <summary>
-/// Follows code that writes code, by assembling what it emits into a body the machine can run.
-/// </summary>
-/// <remarks>
-/// An obfuscator runtime reaches for <c>Reflection.Emit</c> when it needs a method that did not
-/// exist at build time — most often a thunk that adapts one signature to another so a call can be
-/// routed through a delegate. Refusing to follow it would stop the machine at the exact point the
-/// program starts being interesting.
-///
-/// Nothing here interprets what the emitted code is for. The instructions are collected as they
-/// are handed over, assembled into an ordinary method body once the program asks for a delegate
-/// over them, and then run by the same interpreter that runs every other body. That means the
-/// model does not depend on the emitted code having any particular shape: a thunk works because a
-/// thunk is valid IL, and so would anything else the program chose to emit instead.
-/// </remarks>
 /// <summary>
 /// Answers code that asks whether it is being watched.
 /// </summary>
@@ -1011,6 +1054,26 @@ public sealed class StackFrameIntrinsic : IStaticIntrinsic
             : IntrinsicResult.Invalid($"Could not allocate a {modelType}.");
 }
 
+/// <summary>
+/// Follows code that writes code, by assembling what it emits into a body the machine can run.
+/// </summary>
+/// <remarks>
+/// An obfuscator runtime reaches for <c>Reflection.Emit</c> when it needs a method that did not
+/// exist at build time — a thunk that adapts one signature to another so a call can be routed
+/// through a delegate, or, where Reactor decrypts strings, the decoder itself, built an instruction
+/// at a time and then called by name. Refusing to follow it would stop the machine at the exact
+/// point the program starts being interesting.
+///
+/// Nothing here interprets what the emitted code is for. The instructions are collected as they are
+/// handed over, assembled into an ordinary method body once the program asks to run them, and then
+/// run by the same interpreter that runs every other body. That means the model does not depend on
+/// the emitted code having any particular shape: a thunk works because a thunk is valid IL, and so
+/// does a decoder.
+///
+/// The scaffolding around the method — a dynamic assembly, the module in it, the type in that — is
+/// modeled as the places they are and nothing more, because that is all the program does with them:
+/// it asks each one for the next, and asks the last for a method to fill in.
+/// </remarks>
 public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
 {
     /// <summary>
@@ -1018,13 +1081,58 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     /// </summary>
     private static readonly TypeSig Placeholder = new ModuleDefUser("<unnamed>").CorLibTypes.Object;
 
-    private const string Emitted = "EmittedInstructions";
-    private const string Signature = "EmittedSignature";
+    private const string Built = "EmittedMethod";
     private const string Owner = "EmittingMethod";
+    private const string Members = "EmittedMembers";
+    private const string Spelling = "EmittedName";
+    private const string Held = "LocalIndex";
+
+    /// <summary>
+    /// Marks where a label was placed, in among the instructions it was placed between.
+    /// </summary>
+    private const string Placed = "<label>";
+
+    /// <summary>
+    /// Model value recording that a member reference's shape was read rather than assumed.
+    /// </summary>
+    internal const string Confirmed = "SignatureConfirmed";
+
+    /// <summary>
+    /// A label, by the number the generator handed out for it.
+    /// </summary>
+    private sealed record Marker(int Id);
+
+    /// <summary>
+    /// A local, by the position the generator gave it.
+    /// </summary>
+    private sealed record Position(int Index);
+
+    /// <summary>
+    /// A method as it is being built up, from the first thing declared about it to the last
+    /// instruction emitted into it.
+    /// </summary>
+    private sealed class Program
+    {
+        public string Name { get; set; } = "Invoke";
+        public bool IsStatic { get; set; } = true;
+        public TypeSig? Returns { get; set; }
+        public List<TypeSig> Takes { get; set; } = [];
+        public List<TypeSig> Locals { get; } = [];
+        public int Labels { get; set; }
+        public List<(string OpCode, object? Operand)> Body { get; } = [];
+    }
 
     public bool Matches(IMethod method) =>
         method.DeclaringType?.FullName is
-            "System.Reflection.Emit.DynamicMethod" or "System.Reflection.Emit.ILGenerator";
+            "System.Reflection.Emit.DynamicMethod" or
+            "System.Reflection.Emit.ILGenerator" or
+            "System.Reflection.Emit.AssemblyBuilder" or
+            "System.Reflection.Emit.ModuleBuilder" or
+            "System.Reflection.Emit.TypeBuilder" or
+            "System.Reflection.Emit.MethodBuilder" or
+            "System.Reflection.Emit.LocalBuilder" ||
+        (method.DeclaringType?.FullName == "System.AppDomain" &&
+            method.Name == "DefineDynamicAssembly");
 
     public IntrinsicResult Invoke(
         IntrinsicContext context,
@@ -1040,17 +1148,45 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
             return IntrinsicResult.Invalid($"Emit operation {name} has no receiver.");
         switch (name)
         {
+            case "DefineDynamicAssembly":
+                return Allocate(heap, "System.Reflection.Emit.AssemblyBuilder");
+            case "DefineDynamicModule":
+                return Allocate(heap, "System.Reflection.Emit.ModuleBuilder");
+            case "DefineType":
+                return Open(heap, arguments);
+            case "DefineMethod":
+                return Declare(heap, arguments, onto: true);
             case ".ctor":
-                heap.TrySetModelValue(arguments[0], Emitted, new List<(string, object?)>());
-                heap.TrySetModelValue(arguments[0], Signature, Describe(heap, arguments));
-                return IntrinsicResult.Completed();
+                return Declare(heap, arguments, onto: false);
+            case "SetReturnType" when arguments.Count == 2:
+            case "SetParameters" when arguments.Count == 2:
+                return Shape(heap, name, arguments);
             case "GetILGenerator":
                 if (!heap.TryAllocateObject("System.Reflection.Emit.ILGenerator", out var generator))
                     return IntrinsicResult.Invalid("Could not allocate an il generator.");
                 heap.TrySetModelValue(generator, Owner, arguments[0]);
                 return IntrinsicResult.Completed(generator);
+            case "DeclareLocal" when arguments.Count == 2:
+                return Reserve(heap, arguments);
+            case "get_LocalIndex" when arguments.Count == 1:
+                return heap.TryGetModelValue(arguments[0], Held, out int position)
+                    ? IntrinsicResult.Completed(StaticValue.FromInt32(position))
+                    : IntrinsicResult.Invalid("The local is not one this machine handed out.");
+            // A label is the number the generator gave it, which is what the framework's own Label
+            // carries and all that a branch to it or a mark of it needs to say which one it means.
+            case "DefineLabel" when arguments.Count == 1:
+                if (!TryProgram(heap, arguments[0], out var labelling) || labelling is null)
+                    return IntrinsicResult.Invalid("A label was asked for with no method to hold it.");
+                return IntrinsicResult.Completed(StaticValue.FromInt32(labelling.Labels++));
+            case "MarkLabel" when arguments.Count == 2 && arguments[1].IsInteger:
+                if (!TryProgram(heap, arguments[0], out var marking) || marking is null)
+                    return IntrinsicResult.Invalid("A label was placed with no method to hold it.");
+                marking.Body.Add((Placed, new Marker(arguments[1].AsInt32())));
+                return IntrinsicResult.Completed();
             case "Emit":
-                return Record(heap, arguments);
+                return Record(heap, method, arguments);
+            case "CreateType" or "CreateTypeInfo" when arguments.Count == 1:
+                return Close(context, arguments[0]);
             case "CreateDelegate":
                 return Bind(context, arguments);
             case "DefineParameter":
@@ -1060,31 +1196,137 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
         }
     }
 
+    private static IntrinsicResult Allocate(StaticHeap heap, string shape) =>
+        heap.TryAllocateObject(shape, out var built)
+            ? IntrinsicResult.Completed(built)
+            : IntrinsicResult.Invalid($"Could not allocate a {shape}.");
+
     /// <summary>
-    /// Notes the return and parameter types a dynamic method was declared with.
+    /// Opens a type for the program to define methods on.
     /// </summary>
-    private static (TypeSig? Returns, TypeSig[] Takes) Describe(
-        StaticHeap heap,
-        IReadOnlyList<StaticValue> arguments)
+    private static IntrinsicResult Open(StaticHeap heap, IReadOnlyList<StaticValue> arguments)
     {
-        var returns = arguments.Count > 2 ? Signatures(heap, arguments[2]) : null;
-        var takes = new List<TypeSig>();
-        if (arguments.Count > 3 && heap.TryGetLength(arguments[3], out var count))
+        if (!heap.TryAllocateObject("System.Reflection.Emit.TypeBuilder", out var built))
+            return IntrinsicResult.Invalid("Could not allocate a type builder.");
+        heap.TrySetModelValue(built, Members, new List<StaticValue>());
+        heap.TrySetModelValue(
+            built,
+            Spelling,
+            arguments.Count > 1 && heap.TryGetString(arguments[1], out var spelled)
+                ? spelled
+                : "Emitted");
+        return IntrinsicResult.Completed(built);
+    }
+
+    /// <summary>
+    /// Notes a method the program is about to fill in, and what it has said about it so far.
+    /// </summary>
+    /// <remarks>
+    /// A dynamic method arrives fully described where a method on a type builder does not — its
+    /// return and parameter types are set afterwards, a call each — so both are recorded as what is
+    /// known now and left open to be told more. The two are told apart by what the program supplied
+    /// after the name: attributes for the one, a return type for the other.
+    /// </remarks>
+    private static IntrinsicResult Declare(
+        StaticHeap heap,
+        IReadOnlyList<StaticValue> arguments,
+        bool onto)
+    {
+        var program = new Program();
+        if (arguments.Count > 1 && heap.TryGetString(arguments[1], out var spelled))
+            program.Name = spelled;
+        var described = 2;
+        if (arguments.Count > 2 && arguments[2].IsInteger)
         {
-            for (var index = 0; index < count; index++)
-            {
-                // Every declared parameter gets a slot even when its type cannot be named here.
-                // The body loads arguments by position, so dropping one would silently shift every
-                // argument after it and hand the callee the wrong values.
-                takes.Add(
-                    heap.TryReadArray(arguments[3], index, out var element) &&
-                    Signatures(heap, element) is { } parameter
-                        ? parameter
-                        : Placeholder);
-            }
+            program.IsStatic = (arguments[2].AsInt32() & (int)MethodAttributes.Static) != 0;
+            described = 3;
         }
 
-        return (returns, [.. takes]);
+        if (arguments.Count > described)
+            program.Returns = Signatures(heap, arguments[described]);
+        if (arguments.Count > described + 1)
+            program.Takes = Taken(heap, arguments[described + 1]);
+        if (!onto)
+        {
+            heap.TrySetModelValue(arguments[0], Built, program);
+            return IntrinsicResult.Completed();
+        }
+
+        if (!heap.TryAllocateObject("System.Reflection.Emit.MethodBuilder", out var builder))
+            return IntrinsicResult.Invalid("Could not allocate a method builder.");
+        heap.TrySetModelValue(builder, Built, program);
+        if (heap.TryGetModelValue<List<StaticValue>>(arguments[0], Members, out var members) &&
+            members is not null)
+        {
+            members.Add(builder);
+        }
+
+        return IntrinsicResult.Completed(builder);
+    }
+
+    /// <summary>
+    /// Records the return or parameter types a method was given after it was declared.
+    /// </summary>
+    private static IntrinsicResult Shape(
+        StaticHeap heap,
+        string name,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        if (!TryProgram(heap, arguments[0], out var program) || program is null)
+            return IntrinsicResult.Invalid($"{name} names no method this machine is building.");
+        if (name == "SetReturnType")
+            program.Returns = Signatures(heap, arguments[1]);
+        else
+            program.Takes = Taken(heap, arguments[1]);
+        return IntrinsicResult.Completed();
+    }
+
+    /// <summary>
+    /// Reserves a local in the body being built and hands back the slot it was given.
+    /// </summary>
+    private static IntrinsicResult Reserve(StaticHeap heap, IReadOnlyList<StaticValue> arguments)
+    {
+        if (!TryProgram(heap, arguments[0], out var program) || program is null)
+            return IntrinsicResult.Invalid("A local was declared with no method to hold it.");
+        if (!heap.TryAllocateObject("System.Reflection.Emit.LocalBuilder", out var local))
+            return IntrinsicResult.Invalid("Could not allocate a local builder.");
+        heap.TrySetModelValue(local, Held, program.Locals.Count);
+        program.Locals.Add(Signatures(heap, arguments[1]) ?? Placeholder);
+        return IntrinsicResult.Completed(local);
+    }
+
+    /// <summary>
+    /// The method a builder, or a generator over one, is filling in.
+    /// </summary>
+    private static bool TryProgram(StaticHeap heap, StaticValue builder, out Program? program) =>
+        heap.TryGetModelValue(builder, Built, out program) && program is not null ||
+        heap.TryGetModelValue(builder, Owner, out StaticValue owning) &&
+            heap.TryGetModelValue(owning, Built, out program) &&
+            program is not null;
+
+    /// <summary>
+    /// The parameter types an array of types names, keeping a slot for each.
+    /// </summary>
+    /// <remarks>
+    /// Every declared parameter gets a slot even when its type cannot be named here. The body loads
+    /// arguments by position, so dropping one would silently shift every argument after it and hand
+    /// the callee the wrong values.
+    /// </remarks>
+    private static List<TypeSig> Taken(StaticHeap heap, StaticValue types)
+    {
+        var takes = new List<TypeSig>();
+        if (!heap.TryGetLength(types, out var count))
+            return takes;
+        for (var index = 0; index < count; index++)
+        {
+            takes.Add(
+                heap.TryReadArray(types, index, out var element) &&
+                Signatures(heap, element) is { } parameter
+                    ? parameter
+                    : Placeholder);
+        }
+
+        return takes;
     }
 
     /// <summary>
@@ -1100,13 +1342,22 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     /// definition is the answer; where it belongs to the framework there is nothing to resolve, so
     /// a reference is built from what the lookup itself supplied — the type, the name, and the
     /// parameter types — which is exactly what the machine's own dispatch matches on.
+    ///
+    /// What the lookup cannot supply is whether the method is called on an instance and whether it
+    /// hands anything back, and both of those decide how a call to it leaves the stack. The
+    /// framework running this process says so, and is the same framework the protected program was
+    /// built against. Where it does not recognize the member the reference is still handed back, but
+    /// as one whose shape was assumed rather than read, which is a difference that matters to a
+    /// caller assembling a body around it.
     /// </remarks>
     internal static IMemberRef? Bind(
         IntrinsicContext context,
         string lookup,
         string memberName,
-        IReadOnlyList<StaticValue> arguments)
+        IReadOnlyList<StaticValue> arguments,
+        out bool confirmed)
     {
+        confirmed = false;
         var heap = context.State.Heap;
         if (context.State.ModuleMetadata is not { } module ||
             Signatures(heap, arguments[0]) is not { } declaring)
@@ -1116,30 +1367,104 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
 
         if (declaring.ToTypeDefOrRef().ResolveTypeDef() is { } defined)
         {
-            return lookup == "GetField"
-                ? defined.FindField(memberName)
-                : defined.FindMethod(memberName);
+            if (lookup == "GetField")
+                return defined.FindField(memberName);
+            var found = defined.FindMethod(memberName);
+            confirmed = found is not null;
+            return found;
         }
 
-        if (lookup == "GetField")
+        if (lookup == "GetField" || !TryTaken(heap, arguments, out var takes))
             return null;
-        var takes = new List<TypeSig>();
-        if (arguments.Count >= 3 && heap.TryGetLength(arguments[2], out var count))
-        {
-            for (var index = 0; index < count; index++)
-            {
-                if (!heap.TryReadArray(arguments[2], index, out var parameter) ||
-                    Signatures(heap, parameter) is not { } named)
-                    return null;
-                takes.Add(named);
-            }
-        }
-
-        return new MemberRefUser(
+        var assumed = new MemberRefUser(
             module,
             memberName,
             MethodSig.CreateStatic(module.CorLibTypes.Object, [.. takes]),
             declaring.ToTypeDefOrRef());
+        if (LoaderFrameworkIntrinsic.Framework(assumed) is not { } present)
+            return assumed;
+        confirmed = true;
+        var returns = present is System.Reflection.MethodInfo answering
+            ? Describes(module, answering.ReturnType)
+            : module.CorLibTypes.Void;
+        return new MemberRefUser(
+            module,
+            memberName,
+            present.IsStatic
+                ? MethodSig.CreateStatic(returns, [.. takes])
+                : MethodSig.CreateInstance(returns, [.. takes]),
+            declaring.ToTypeDefOrRef());
+    }
+
+    /// <summary>
+    /// The parameter types a lookup narrowed itself by, wherever it put them.
+    /// </summary>
+    /// <remarks>
+    /// The lookup overloads differ in what comes before the parameter types — binding flags, a
+    /// binder, modifiers — so the array is found by what it holds rather than by where it sits. A
+    /// lookup by name alone narrows itself by nothing, which is not a failure to read it.
+    /// </remarks>
+    private static bool TryTaken(
+        StaticHeap heap,
+        IReadOnlyList<StaticValue> arguments,
+        out List<TypeSig> takes)
+    {
+        takes = [];
+        for (var index = arguments.Count - 1; index >= 1; index--)
+        {
+            if (!heap.TryGetArrayElementType(arguments[index], out var element) ||
+                element != "System.Type")
+                continue;
+            if (!heap.TryGetLength(arguments[index], out var count))
+                return false;
+            for (var at = 0; at < count; at++)
+            {
+                if (!heap.TryReadArray(arguments[index], at, out var parameter) ||
+                    Signatures(heap, parameter) is not { } named)
+                    return false;
+                takes.Add(named);
+            }
+
+            return true;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The signature this module would use for a type the framework named.
+    /// </summary>
+    private static TypeSig Describes(ModuleDef module, Type described)
+    {
+        var corlib = module.CorLibTypes;
+        if (described.IsArray && described.GetElementType() is { } element)
+            return new SZArraySig(Describes(module, element));
+        return described.FullName switch
+        {
+            "System.Void" => corlib.Void,
+            "System.Boolean" => corlib.Boolean,
+            "System.Char" => corlib.Char,
+            "System.SByte" => corlib.SByte,
+            "System.Byte" => corlib.Byte,
+            "System.Int16" => corlib.Int16,
+            "System.UInt16" => corlib.UInt16,
+            "System.Int32" => corlib.Int32,
+            "System.UInt32" => corlib.UInt32,
+            "System.Int64" => corlib.Int64,
+            "System.UInt64" => corlib.UInt64,
+            "System.Single" => corlib.Single,
+            "System.Double" => corlib.Double,
+            "System.String" => corlib.String,
+            "System.Object" => corlib.Object,
+            "System.IntPtr" => corlib.IntPtr,
+            "System.UIntPtr" => corlib.UIntPtr,
+            _ => new TypeRefUser(
+                    module,
+                    described.Namespace ?? string.Empty,
+                    described.Name,
+                    corlib.AssemblyRef)
+                .ToTypeSig()
+        };
     }
 
     internal static TypeSig? Signatures(StaticHeap heap, StaticValue type) =>
@@ -1155,15 +1480,18 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     /// <summary>
     /// Appends one emitted instruction to the body being built.
     /// </summary>
-    private static IntrinsicResult Record(StaticHeap heap, IReadOnlyList<StaticValue> arguments)
+    /// <remarks>
+    /// What an operand means is settled by the overload the program called rather than by what the
+    /// value looks like, because the same integer stands for a constant in one overload and a
+    /// local's position in another.
+    /// </remarks>
+    private static IntrinsicResult Record(
+        StaticHeap heap,
+        IMethod method,
+        IReadOnlyList<StaticValue> arguments)
     {
-        if (!heap.TryGetModelValue<StaticValue>(arguments[0], Owner, out var into) ||
-            !heap.TryGetModelValue<List<(string, object?)>>(into, Emitted, out var body) ||
-            body is null)
-        {
+        if (!TryProgram(heap, arguments[0], out var program) || program is null)
             return IntrinsicResult.Invalid("Emit was called on a generator with no method.");
-        }
-
         if (arguments.Count < 2 ||
             !heap.TryGetModelValue(arguments[1], "OpCode", out string? opcode) ||
             opcode is null)
@@ -1171,20 +1499,76 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
             return IntrinsicResult.Invalid("Emit was given an opcode the machine does not know.");
         }
 
-        object? operand = null;
-        if (arguments.Count > 2)
+        if (arguments.Count == 2)
         {
-            operand =
-                arguments[2].Kind == StaticValueKind.Int32 ? arguments[2].AsInt32() :
-                heap.TryGetModelValue<object>(arguments[2], "Metadata", out var referenced)
-                    ? referenced
-                    : null;
-            if (operand is null)
-                return IntrinsicResult.Invalid($"Emit {opcode} was given an unmodeled operand.");
+            program.Body.Add((opcode, null));
+            return IntrinsicResult.Completed();
         }
 
-        body.Add((opcode, operand));
+        var handed = arguments[2];
+        object? operand;
+        switch (method.MethodSig?.Params is { Count: 2 } declared ? declared[1].FullName : null)
+        {
+            case "System.Reflection.Emit.Label" when handed.IsInteger:
+                operand = new Marker(handed.AsInt32());
+                break;
+            case "System.Reflection.Emit.LocalBuilder":
+                operand = heap.TryGetModelValue(handed, Held, out int position)
+                    ? new Position(position)
+                    : null;
+                break;
+            case "System.String":
+                operand = heap.TryGetString(handed, out var literal) ? literal : null;
+                break;
+            case "System.Int64" when handed.IsInteger:
+                operand = handed.AsInt64();
+                break;
+            case "System.Single" when handed.IsKnown:
+                operand = (float)handed.AsFloat64();
+                break;
+            case "System.Double" when handed.IsKnown:
+                operand = handed.AsFloat64();
+                break;
+            case "System.Byte" or "System.SByte" or "System.Int16" or "System.Int32"
+                when handed.IsInteger:
+                operand = handed.AsInt32();
+                break;
+            default:
+                operand = heap.TryGetModelValue<object>(handed, "Metadata", out var referenced)
+                    ? referenced
+                    : null;
+                // A call assembled around a reference whose shape the machine had to assume would
+                // pop the wrong number of values, and every instruction after it would run on
+                // whatever was left underneath them. That is a wrong answer rather than a refused
+                // one, so the assumption is refused here instead.
+                if (operand is IMethod and not MethodDef &&
+                    !(heap.TryGetModelValue(handed, Confirmed, out bool confirmed) && confirmed))
+                {
+                    return IntrinsicResult.Invalid(
+                        $"Emit {opcode} was given a member whose shape is not confirmed.");
+                }
+
+                break;
+        }
+
+        if (operand is null)
+            return IntrinsicResult.Invalid(
+                $"Emit {opcode} was given an unmodeled operand{Naming(heap, handed)}.");
+        program.Body.Add((opcode, operand));
         return IntrinsicResult.Completed();
+    }
+
+    /// <summary>
+    /// What a member model says about itself, for a message about not being able to use it.
+    /// </summary>
+    private static string Naming(StaticHeap heap, StaticValue model)
+    {
+        if (!heap.TryGetModelValue(model, "MemberName", out string? member) || member is null)
+            return string.Empty;
+        heap.TryGetModelValue(model, "DeclaringType", out StaticValue declaring);
+        return heap.TryGetModelValue(declaring, "TypeName", out string? owner) && owner is not null
+            ? $" ({owner}::{member})"
+            : $" ({member})";
     }
 
     /// <summary>
@@ -1195,12 +1579,10 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
         IReadOnlyList<StaticValue> arguments)
     {
         var heap = context.State.Heap;
-        if (!heap.TryGetModelValue<List<(string, object?)>>(arguments[0], Emitted, out var body) ||
-            body is null)
+        if (!heap.TryGetModelValue<Program>(arguments[0], Built, out var program) || program is null)
             return IntrinsicResult.Invalid("A delegate was asked for over a method with no body.");
-        heap.TryGetModelValue<(TypeSig? Returns, TypeSig[] Takes)>(
-            arguments[0], Signature, out var signature);
-        if (!TryAssemble(body, signature, out var assembled) || assembled is null)
+        var host = Scratch("Method");
+        if (!TryAssemble(program, host, out var assembled) || assembled is null)
             return IntrinsicResult.Invalid("The emitted instructions do not form a runnable body.");
 
         var shape =
@@ -1216,54 +1598,203 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     }
 
     /// <summary>
-    /// Builds a real method out of emitted instructions, in a module of its own.
+    /// Closes a built type, turning every method defined on it into one the machine can run.
     /// </summary>
     /// <remarks>
-    /// The assembled method deliberately does not join the module under analysis. That module is
-    /// evidence and the machine never writes to it, so the body lives in a scratch module and the
-    /// interpreter is told to treat calls out of it as calls within the subject.
+    /// The created type is what the program calls into afterwards, and it calls in by name, so the
+    /// model carries the assembled type as its metadata: a lookup for a member on it then reaches
+    /// the same definition a lookup on any other type reaches, and the interpreter runs it the same
+    /// way.
     /// </remarks>
-    private static bool TryAssemble(
-        List<(string OpCode, object? Operand)> emitted,
-        (TypeSig? Returns, TypeSig[] Takes) signature,
-        out MethodDef? assembled)
+    private static IntrinsicResult Close(IntrinsicContext context, StaticValue builder)
     {
-        assembled = null;
-        var scratch = new ModuleDefUser("<emitted>");
-        var corlib = scratch.CorLibTypes;
-        var host = new TypeDefUser("<emitted>", "Method", corlib.Object.TypeDefOrRef);
-        scratch.Types.Add(host);
-        var method = new MethodDefUser(
-            "Invoke",
-            MethodSig.CreateStatic(signature.Returns ?? corlib.Void, signature.Takes ?? []),
-            MethodImplAttributes.IL,
-            MethodAttributes.Public | MethodAttributes.Static);
-        host.Methods.Add(method);
-        method.Body = new CilBody();
-        foreach (var (name, operand) in emitted)
+        var heap = context.State.Heap;
+        if (!heap.TryGetModelValue<List<StaticValue>>(builder, Members, out var members) ||
+            members is null)
         {
-            if (!Opcodes.TryGetValue(name, out var opcode))
-                return false;
-            var instruction = operand switch
-            {
-                null => new Instruction(opcode),
-                int immediate => new Instruction(opcode, immediate),
-                IMethod called => new Instruction(opcode, called),
-                IField accessed => new Instruction(opcode, accessed),
-                ITypeDefOrRef named => new Instruction(opcode, named),
-                TypeSig described => new Instruction(opcode, described.ToTypeDefOrRef()),
-                _ => null
-            };
-            if (instruction is null)
-                return false;
-            method.Body.Instructions.Add(instruction);
+            return IntrinsicResult.Invalid("A type was created that was never opened.");
         }
 
-        method.Body.UpdateInstructionOffsets();
+        heap.TryGetModelValue(builder, Spelling, out string? spelled);
+        var host = Scratch(spelled ?? "Emitted");
+        foreach (var member in members)
+        {
+            if (!heap.TryGetModelValue<Program>(member, Built, out var program) || program is null)
+                return IntrinsicResult.Invalid("A method was defined that was never built.");
+            if (!TryAssemble(program, host, out _))
+                return IntrinsicResult.Invalid(
+                    $"The instructions emitted into {program.Name} do not form a runnable body.");
+        }
+
+        if (!heap.TryAllocateObject("System.Type", out var created))
+            return IntrinsicResult.Invalid("Could not allocate the created type.");
+        heap.TrySetModelValue(created, "TypeName", host.FullName);
+        heap.TrySetModelValue(created, "Metadata", host);
+        return IntrinsicResult.Completed(created);
+    }
+
+    /// <summary>
+    /// A type to assemble emitted methods into, in a module of its own.
+    /// </summary>
+    /// <remarks>
+    /// The assembled methods deliberately do not join the module under analysis. That module is
+    /// evidence and the machine never writes to it, so the bodies live in a scratch module and the
+    /// interpreter is told to treat calls out of it as calls within the subject.
+    /// </remarks>
+    private static TypeDefUser Scratch(string name)
+    {
+        var scratch = new ModuleDefUser("<emitted>");
+        var host = new TypeDefUser("<emitted>", name, scratch.CorLibTypes.Object.TypeDefOrRef);
+        scratch.Types.Add(host);
+        return host;
+    }
+
+    /// <summary>
+    /// Builds a real method out of emitted instructions.
+    /// </summary>
+    private static bool TryAssemble(Program program, TypeDef host, out MethodDef? assembled)
+    {
+        assembled = null;
+        var corlib = host.Module.CorLibTypes;
+        var returns = program.Returns ?? corlib.Void;
+        TypeSig[] takes = [.. program.Takes];
+        var method = new MethodDefUser(
+            program.Name,
+            program.IsStatic
+                ? MethodSig.CreateStatic(returns, takes)
+                : MethodSig.CreateInstance(returns, takes),
+            MethodImplAttributes.IL,
+            program.IsStatic
+                ? MethodAttributes.Public | MethodAttributes.Static
+                : MethodAttributes.Public);
+        host.Methods.Add(method);
+        var body = new CilBody { InitLocals = true };
+        method.Body = body;
         method.Parameters.UpdateParameterTypes();
+        foreach (var declared in program.Locals)
+            body.Variables.Add(new Local(declared));
+
+        var placed = new Dictionary<int, int>();
+        var branches = new List<(Instruction Branch, int Label)>();
+        foreach (var (name, operand) in program.Body)
+        {
+            if (name == Placed)
+            {
+                if (operand is not Marker marker)
+                    return false;
+                placed[marker.Id] = body.Instructions.Count;
+                continue;
+            }
+
+            if (!Opcodes.TryGetValue(name, out var opcode) ||
+                Assemble(opcode, operand, method, body) is not { } instruction)
+            {
+                return false;
+            }
+
+            if (operand is Marker branched)
+                branches.Add((instruction, branched.Id));
+            body.Instructions.Add(instruction);
+        }
+
+        // A branch can only be pointed at its target once every instruction is in place. A label
+        // that was branched to but never placed, or placed past the end, leaves the body without
+        // anywhere to go, which is not a body.
+        foreach (var (branch, label) in branches)
+        {
+            if (!placed.TryGetValue(label, out var at) || at >= body.Instructions.Count)
+                return false;
+            branch.Operand = body.Instructions[at];
+        }
+
+        body.UpdateInstructionOffsets();
         assembled = method;
         return true;
     }
+
+    /// <summary>
+    /// One emitted instruction, holding its operand in the form its own opcode calls for.
+    /// </summary>
+    /// <remarks>
+    /// The program hands an operand over as whatever the <c>Emit</c> overload it called takes, which
+    /// is not always the form the instruction holds: a local arrives as a builder or as a bare
+    /// position, and both mean the slot at that position in the body being built.
+    /// </remarks>
+    private static Instruction? Assemble(
+        OpCode opcode,
+        object? operand,
+        MethodDef method,
+        CilBody body)
+    {
+        switch (opcode.OperandType)
+        {
+            case OperandType.InlineNone:
+                return operand is null ? Holding(opcode, null) : null;
+            case OperandType.InlineVar:
+            case OperandType.ShortInlineVar:
+            {
+                var index = operand switch
+                {
+                    Position position => position.Index,
+                    int number => number,
+                    _ => -1
+                };
+                if (index < 0)
+                    return null;
+                if (opcode.Code is Code.Ldloc or Code.Ldloc_S or Code.Ldloca or Code.Ldloca_S or
+                    Code.Stloc or Code.Stloc_S)
+                {
+                    return index < body.Variables.Count
+                        ? Holding(opcode, body.Variables[index])
+                        : null;
+                }
+
+                return index < method.Parameters.Count
+                    ? Holding(opcode, method.Parameters[index])
+                    : null;
+            }
+
+            case OperandType.ShortInlineI:
+                return operand is not int narrow
+                    ? null
+                    : Holding(
+                        opcode,
+                        opcode.Code == Code.Ldc_I4_S ? (sbyte)narrow : (byte)narrow);
+            case OperandType.InlineI:
+                return operand is int immediate ? Holding(opcode, immediate) : null;
+            case OperandType.InlineI8:
+                return operand is long wide ? Holding(opcode, wide) : null;
+            case OperandType.ShortInlineR:
+                return operand is float single ? Holding(opcode, single) : null;
+            case OperandType.InlineR:
+                return operand is double real ? Holding(opcode, real) : null;
+            case OperandType.InlineString:
+                return operand is string literal ? Holding(opcode, literal) : null;
+            case OperandType.InlineMethod:
+                return operand is IMethod called ? Holding(opcode, called) : null;
+            case OperandType.InlineField:
+                return operand is IField accessed ? Holding(opcode, accessed) : null;
+            case OperandType.InlineType:
+            case OperandType.InlineTok:
+                return operand switch
+                {
+                    ITypeDefOrRef named => Holding(opcode, named),
+                    TypeSig described => Holding(opcode, described.ToTypeDefOrRef()),
+                    IMethod token => Holding(opcode, token),
+                    IField field => Holding(opcode, field),
+                    _ => null
+                };
+            case OperandType.InlineBrTarget:
+            case OperandType.ShortInlineBrTarget:
+                // Where it branches to is filled in once the instruction its label marks is known.
+                return operand is Marker ? Holding(opcode, null) : null;
+            default:
+                return null;
+        }
+    }
+
+    private static Instruction Holding(OpCode opcode, object? operand) =>
+        new(opcode) { Operand = operand };
 
     /// <summary>
     /// Every opcode by the name the framework's <c>OpCodes</c> class gives it.
@@ -1883,6 +2414,28 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? IntrinsicResult.Completed(domain)
                 : AllocationFailure("current application domain");
         }
+        // The application domain doubles as somewhere to leave a value for later, and a runtime that
+        // works something out once and then wants it again uses it as exactly that. Storing a value
+        // and reading it back is the whole of the behaviour, so it is modeled as the association it
+        // is — and a slot nothing was left in reads as nothing, which is what the framework says too.
+        if (name is "SetData" or "GetData" && arguments.Count >= 2 &&
+            context.State.Heap.TryGetString(arguments[1], out var slot))
+        {
+            var heap = context.State.Heap;
+            if (name == "GetData")
+            {
+                return IntrinsicResult.Completed(
+                    heap.TryGetModelValue(arguments[0], $"Data:{slot}", out StaticValue stored)
+                        ? stored
+                        : StaticValue.Null);
+            }
+
+            if (arguments.Count < 3)
+                return IntrinsicResult.Invalid("AppDomain.SetData was given nothing to store.");
+            return heap.TrySetModelValue(arguments[0], $"Data:{slot}", arguments[2])
+                ? IntrinsicResult.Completed()
+                : IntrinsicResult.Invalid("Application-domain data is not modeled.");
+        }
         if ((name.StartsWith("add_", StringComparison.Ordinal) ||
              name.StartsWith("remove_", StringComparison.Ordinal)) &&
             arguments.Count == 2)
@@ -2016,20 +2569,33 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             AttachDefinition(context, runtimeType, typeName);
             return IntrinsicResult.Completed(runtimeType);
         }
+        // A constructor is looked up the same way as any other member, minus the name: there is only
+        // one name it could be asking for.
         if (type == "System.Type" &&
-            name is "GetField" or "GetMethod" &&
+            name is "GetField" or "GetMethod" or "GetConstructor" &&
             arguments.Count >= 2 &&
-            heap.TryGetString(arguments[1], out var memberName))
+            (name == "GetConstructor"
+                ? ".ctor"
+                : heap.TryGetString(arguments[1], out var asked) ? asked : null)
+                is { } memberName)
         {
-            var memberType = name == "GetField"
-                ? "System.Reflection.FieldInfo"
-                : "System.Reflection.MethodInfo";
+            var memberType = name switch
+            {
+                "GetField" => "System.Reflection.FieldInfo",
+                "GetConstructor" => "System.Reflection.ConstructorInfo",
+                _ => "System.Reflection.MethodInfo"
+            };
             if (!heap.TryAllocateObject(memberType, out var member))
                 return AllocationFailure("runtime member");
             heap.TrySetModelValue(member, "MemberName", memberName);
             heap.TrySetModelValue(member, "DeclaringType", arguments[0]);
-            if (ReflectionEmitIntrinsic.Bind(context, name, memberName, arguments) is { } bound)
+            if (ReflectionEmitIntrinsic.Bind(context, name, memberName, arguments, out var confirmed)
+                is { } bound)
+            {
                 heap.TrySetModelValue(member, "Metadata", bound);
+                heap.TrySetModelValue(member, ReflectionEmitIntrinsic.Confirmed, confirmed);
+            }
+
             return IntrinsicResult.Completed(member);
         }
         // Binding a delegate reflectively reaches the same state a delegate constructor would, so
@@ -2097,60 +2663,30 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         // A runtime that resolved a member by token then asks what shape it is. Every answer is in
         // the metadata the model already carries, so describing the signature is reading the file
         // rather than assuming anything about the machine.
-        // Reflective invocation is a call like any other once the target is known, so it is run
-        // rather than refused. The argument array is unpacked exactly as the runtime would, and a
-        // constructor gets a fresh instance to work on and yields it.
         if (name == "Invoke" && arguments.Count >= 2 && context.Call is { } call &&
             heap.TryGetModelValue<object>(arguments[0], "Metadata", out var invoked) &&
             invoked is IMethod called)
         {
-            // The target may be defined here or merely referred to. Where there is a definition it
-            // carries the parameter types and the constructor flag; where there is not, the
-            // reference's own signature says the same things.
-            var invokedMethod = called.ResolveMethodDef();
-            var packed = arguments[^1];
-            var supplied = new List<StaticValue>();
-            if (packed.Kind != StaticValueKind.Null)
-            {
-                if (!heap.TryGetLength(packed, out var count))
-                    return IntrinsicResult.Invalid("The argument array is not modeled.");
-                for (var index = 0; index < count; index++)
-                {
-                    if (!heap.TryReadArray(packed, index, out var element))
-                        return IntrinsicResult.Invalid("The argument array could not be read.");
-                    supplied.Add(Unwrap(heap, element, Expects(called, invokedMethod, index)));
-                }
-            }
-
-            if (called.Name.String is ".ctor" or ".cctor")
-            {
-                if (!heap.TryAllocateObject(called.DeclaringType.FullName, out var fresh))
-                    return AllocationFailure("reflectively constructed object");
-                var built = call(called, [fresh, .. supplied]);
-                return built.Status == StaticExecutionStatus.Completed
-                    ? IntrinsicResult.Completed(fresh)
-                    : built;
-            }
-
             // MethodBase.Invoke takes the receiver first; a static target ignores it.
-            var receiver = arguments.Count >= 3 ? arguments[^2] : StaticValue.Null;
-            var unbound = invokedMethod?.IsStatic ?? called.MethodSig?.HasThis != true;
-            var returned = call(called, unbound ? supplied : [receiver, .. supplied]);
-
-            // Invoke's own return type is object, so a method that returns a number returns it
-            // boxed. The caller goes on to treat it as an object, and handing back a bare number
-            // would fail the moment it does.
-            var returns = invokedMethod?.ReturnType ?? called.MethodSig?.RetType;
-            if (returned.Status != StaticExecutionStatus.Completed ||
-                returns?.IsPrimitive != true ||
-                returned.Value.Kind == StaticValueKind.HeapReference)
-            {
-                return returned;
-            }
-
-            return heap.TryAllocateBox(returns.FullName, returned.Value, out var boxed)
-                ? IntrinsicResult.Completed(boxed)
-                : IntrinsicResult.Invalid("Could not allocate a boxed return value.");
+            return Reflectively(
+                context,
+                call,
+                called,
+                arguments.Count >= 3 ? arguments[^2] : StaticValue.Null,
+                arguments[^1]);
+        }
+        // A type the program built for itself has no reference anything could call, so it calls in
+        // by name. The name is looked up in the type the machine assembled, and from there it is the
+        // same call as any other.
+        if (type == "System.Type" && name == "InvokeMember" && arguments.Count >= 6 &&
+            context.Call is { } through &&
+            heap.TryGetString(arguments[1], out var invokedName) &&
+            heap.TryGetModelValue<object>(arguments[0], "Metadata", out var hosting) &&
+            hosting is TypeDef host)
+        {
+            return host.FindMethod(invokedName) is { } member
+                ? Reflectively(context, through, member, arguments[4], arguments[5])
+                : IntrinsicResult.Invalid($"{host.FullName} has no member named {invokedName}.");
         }
         // Reflective field access reaches the same storage the machine already uses for ordinary
         // field access, so a program that sets a field by reflection and reads it directly sees one
@@ -2255,6 +2791,67 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return AllocationFailure("metadata object");
         heap.TrySetModelValue(result, "Metadata", metadata);
         return IntrinsicResult.Completed(result);
+    }
+
+    /// <summary>
+    /// Makes a reflective call, unpacking its arguments exactly as the runtime would.
+    /// </summary>
+    /// <remarks>
+    /// Reflective invocation is a call like any other once the target is known, so it is run rather
+    /// than refused. A constructor gets a fresh instance to work on and yields it.
+    /// </remarks>
+    private static IntrinsicResult Reflectively(
+        IntrinsicContext context,
+        MethodInvoker call,
+        IMethod called,
+        StaticValue receiver,
+        StaticValue packed)
+    {
+        var heap = context.State.Heap;
+        // The target may be defined here or merely referred to. Where there is a definition it
+        // carries the parameter types and the constructor flag; where there is not, the reference's
+        // own signature says the same things.
+        var invokedMethod = called.ResolveMethodDef();
+        var supplied = new List<StaticValue>();
+        if (packed.Kind != StaticValueKind.Null)
+        {
+            if (!heap.TryGetLength(packed, out var count))
+                return IntrinsicResult.Invalid("The argument array is not modeled.");
+            for (var index = 0; index < count; index++)
+            {
+                if (!heap.TryReadArray(packed, index, out var element))
+                    return IntrinsicResult.Invalid("The argument array could not be read.");
+                supplied.Add(Unwrap(heap, element, Expects(called, invokedMethod, index)));
+            }
+        }
+
+        if (called.Name.String is ".ctor" or ".cctor")
+        {
+            if (!heap.TryAllocateObject(called.DeclaringType.FullName, out var fresh))
+                return AllocationFailure("reflectively constructed object");
+            var built = call(called, [fresh, .. supplied]);
+            return built.Status == StaticExecutionStatus.Completed
+                ? IntrinsicResult.Completed(fresh)
+                : built;
+        }
+
+        var unbound = invokedMethod?.IsStatic ?? called.MethodSig?.HasThis != true;
+        var returned = call(called, unbound ? supplied : [receiver, .. supplied]);
+
+        // A reflective call's own return type is object, so a method that returns a number returns
+        // it boxed. The caller goes on to treat it as an object, and handing back a bare number
+        // would fail the moment it does.
+        var returns = invokedMethod?.ReturnType ?? called.MethodSig?.RetType;
+        if (returned.Status != StaticExecutionStatus.Completed ||
+            returns?.IsPrimitive != true ||
+            returned.Value.Kind == StaticValueKind.HeapReference)
+        {
+            return returned;
+        }
+
+        return heap.TryAllocateBox(returns.FullName, returned.Value, out var boxed)
+            ? IntrinsicResult.Completed(boxed)
+            : IntrinsicResult.Invalid("Could not allocate a boxed return value.");
     }
 
     /// <summary>
@@ -2468,7 +3065,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// An overload that cannot be told from its fellows by name and count is not answered, because
     /// the ones that differ could differ in the answer.
     /// </remarks>
-    private static System.Reflection.MethodBase? Framework(MemberRef reference)
+    internal static System.Reflection.MethodBase? Framework(MemberRef reference)
     {
         if (reference.DeclaringType?.FullName is not { } owner ||
             WellKnown(owner, reference.Module) is not { } present)
@@ -2650,10 +3247,37 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// obtained by reflection and one obtained from a token. A name from elsewhere is left as a
     /// name, since there is no definition here to speak for it.
     /// </remarks>
+    /// <summary>
+    /// Gives a type reached by name the metadata a type reached by token would have carried.
+    /// </summary>
+    /// <remarks>
+    /// The two are the same type, and a program that looks a member up on one goes on to use it
+    /// exactly as it would have used a member of the other, so the model has to be able to name it
+    /// either way. Where this module defines the type its definition is the answer. Where the
+    /// framework in hand recognizes the name, a reference to it is — the same thing a token to a
+    /// framework type resolves to, and enough to name a member on it.
+    /// </remarks>
     private static void AttachDefinition(IntrinsicContext context, StaticValue model, string typeName)
     {
-        if (context.State.ModuleMetadata?.Find(typeName, false) is { } definition)
+        if (context.State.ModuleMetadata is not { } module)
+            return;
+        if (module.Find(typeName, false) is { } definition)
+        {
             context.State.Heap.TrySetModelValue(model, "Metadata", definition);
+            return;
+        }
+
+        if (WellKnown(typeName, module) is { IsNested: false } present)
+        {
+            context.State.Heap.TrySetModelValue(
+                model,
+                "Metadata",
+                new TypeRefUser(
+                    module,
+                    present.Namespace ?? string.Empty,
+                    present.Name,
+                    module.CorLibTypes.AssemblyRef));
+        }
     }
 
     /// <summary>
@@ -3039,9 +3663,78 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             };
             return IntrinsicResult.Completed(StaticValue.FromInt32(matched ? 1 : 0));
         }
+        if (name == "Split" && arguments.Count == 2 &&
+            context.State.Heap.TryGetString(arguments[0], out text))
+            return SplitString(context, text, arguments[1]);
         if (name == ".ctor")
             return MakeString(context.State.Heap, arguments);
         return IntrinsicResult.Invalid($"Unsupported String operation {name}.");
+    }
+
+    /// <summary>
+    /// Splits a string on the separators it was handed.
+    /// </summary>
+    /// <remarks>
+    /// A runtime that carries a list of names in a single string splits it before it can use any of
+    /// them, so this stands between the machine reading such a list and the machine reading anything
+    /// the list names. Only the overloads whose separators can be read for certain are answered: the
+    /// others differ in whether their last argument counts the parts or says what to do with the
+    /// empty ones, and the two cannot be told apart from the value alone.
+    /// </remarks>
+    private static IntrinsicResult SplitString(
+        IntrinsicContext context,
+        string text,
+        StaticValue separator)
+    {
+        var heap = context.State.Heap;
+        var separators = new List<string>();
+        if (heap.TryGetLength(separator, out var count))
+        {
+            for (var index = 0; index < count; index++)
+            {
+                if (!heap.TryReadArray(separator, index, out var held))
+                    return IntrinsicResult.Invalid("A separator to split on could not be read.");
+                if (heap.TryGetString(held, out var spelled))
+                    separators.Add(spelled);
+                else if (held.IsInteger && held.IsKnown)
+                    separators.Add(((char)(ushort)held.AsInt32()).ToString());
+                else
+                    return IntrinsicResult.Invalid("A separator to split on is not known.");
+            }
+        }
+        else if (heap.TryGetString(separator, out var only))
+        {
+            separators.Add(only);
+        }
+        else if (separator.IsInteger && separator.IsKnown)
+        {
+            separators.Add(((char)(ushort)separator.AsInt32()).ToString());
+        }
+        else if (separator.Kind != StaticValueKind.Null)
+        {
+            return IntrinsicResult.Invalid("What to split on is not modeled.");
+        }
+
+        // No separators at all means whitespace, which is what the framework makes of an empty set.
+        var parts = separators.Count == 0
+            ? text.Split((char[]?)null)
+            : text.Split([.. separators], StringSplitOptions.None);
+        if (!heap.TryAllocateArray(
+                context.State.ModuleMetadata?.CorLibTypes.String,
+                parts.Length,
+                out var array))
+        {
+            return AllocationFailure("String.Split");
+        }
+
+        for (var index = 0; index < parts.Length; index++)
+        {
+            if (!heap.TryAllocateString(parts[index], out var part) ||
+                !heap.TryWriteArray(array, index, part))
+                return AllocationFailure("String.Split");
+        }
+
+        return IntrinsicResult.Completed(array);
     }
 
     private static IntrinsicResult InvokeVersion(
@@ -4313,6 +5006,13 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             context.State.Heap.TrySetModelValue(assembly, HomeModuleMark, true);
             return IntrinsicResult.Completed(assembly);
         }
+        // Nothing started this run. A protected library is loaded by something else, and in an
+        // interpretation there is no process for anything to have been the entry point of. The
+        // framework answers null in exactly that situation — a run begun from unmanaged code — and
+        // code that asks handles null for that reason, so this is an answer rather than a guess at
+        // an assembly the machine has never seen.
+        if (name == "GetEntryAssembly" && arguments.Count == 0)
+            return IntrinsicResult.Completed(StaticValue.Null);
         // Loading an assembly from a byte array is where a packer stops being a packer: whatever it
         // decrypted, decompressed, or reassembled, this is the call in which it names the result as
         // the thing to run. The bytes are taken and the load is not performed, and the caller gets a
@@ -4328,9 +5028,13 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             context.State.Heap.TrySetModelValue(loaded, LoadedImage, image);
             return IntrinsicResult.Completed(loaded);
         }
+        // An assembly loaded from bytes has no location, and the framework says so with an empty
+        // string rather than by failing, so that is what the machine says too.
         if (name == "get_Location" && arguments.Count == 1)
             return context.State.Heap.TryAllocateString(
-                context.State.ModulePath.Length != 0
+                context.State.ModuleFileIsAbsent
+                    ? string.Empty
+                    : context.State.ModulePath.Length != 0
                     ? context.State.ModulePath
                     : context.State.AssemblyName + ".dll",
                 out var location)

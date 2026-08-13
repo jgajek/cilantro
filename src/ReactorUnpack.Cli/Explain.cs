@@ -124,6 +124,10 @@ internal static class Explain
                 $"{recovery.ReplacedStringSites:N0} of {recovery.StringCallSites:N0}"));
         }
 
+        // Counted separately from the line above because it is a different protection: the strings
+        // are behind the program's own decoder rather than behind Reactor's resolver, so there is no
+        // set of call sites to have covered all of, only calls read and replaced.
+        Add(lines, "String calls decoded", recovery.ConstantStringSites);
         Add(lines, "Hidden calls resolved", recovery.TokensRestored);
         Add(lines, "Hidden true/false values resolved", recovery.BooleansRecovered);
         Add(lines, "Junk instructions removed", recovery.UnreachableInstructionsRemoved);

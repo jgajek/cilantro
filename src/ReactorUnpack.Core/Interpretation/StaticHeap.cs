@@ -1341,7 +1341,33 @@ public sealed class StaticMachineState
         ArgumentException.ThrowIfNullOrEmpty(path);
         ModulePath = path;
         ModuleFileBytes = bytes.ToArray();
+        ModuleFileIsAbsent = false;
     }
+
+    /// <summary>
+    /// Registers the analysed assembly as one that has no file of its own, which is what an
+    /// assembly handed to <c>Assembly.Load</c> as bytes is.
+    /// </summary>
+    /// <remarks>
+    /// The framework reports an empty location for such an assembly, and nothing can open it by
+    /// path. Protected code that hashes its own file tests for that before it tries, because the
+    /// protector has to keep working when what it protected is loaded from memory, and a payload
+    /// unpacked by another module is loaded exactly that way. Modeling the case is therefore the
+    /// other half of the check rather than a way around it, and it is the half that applies to a
+    /// module recovered from inside another file, which never was a file itself.
+    ///
+    /// The bytes stay registered because code that skips the file still reads the image it was
+    /// loaded from, and they are the same bytes either way.
+    /// </remarks>
+    public void RegisterModuleBytes(ReadOnlySpan<byte> bytes)
+    {
+        ModulePath = string.Empty;
+        ModuleFileBytes = bytes.ToArray();
+        ModuleFileIsAbsent = true;
+    }
+
+    /// <summary>Whether the analysed assembly is modelled as having no file of its own.</summary>
+    public bool ModuleFileIsAbsent { get; private set; }
 
     public bool TryGetOrAllocateRuntimeSingleton(string typeName, out StaticValue value)
     {

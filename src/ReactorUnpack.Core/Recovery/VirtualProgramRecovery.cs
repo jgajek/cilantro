@@ -288,6 +288,17 @@ public static class VirtualProgramRecovery
     /// <summary>How many call sites to try before settling for the run we have.</summary>
     private const int CallersTried = 2;
 
+    /// <summary>
+    /// How many runs of the engine are worth watching before another one stops paying for itself.
+    /// </summary>
+    /// <remarks>
+    /// Each one costs an interpretation of the loader and a run of the program, which is the most
+    /// expensive thing this pass does. Two is where the return is: one run entered where the program
+    /// enters it and one entered at the stub see different parts of the engine, and a third mostly
+    /// sees again what the second already showed.
+    /// </remarks>
+    private const int ViewsWanted = 2;
+
     /// <summary>How many watched jumps of a kind must agree before the rest are read the same way.</summary>
     private const int AgreementsNeeded = 3;
 
@@ -311,21 +322,30 @@ public static class VirtualProgramRecovery
         var flow = new VirtualRun(0, new Dictionary<int, (int, int)>(),
             new Dictionary<int, int>(), new Dictionary<int, VirtualOperation>(),
             new Dictionary<int, IReadOnlyList<string>>());
+        // Where the stub's own run went nowhere, the call sites are watched as well rather than
+        // instead. Neither view is the better one: entering the stub reaches operations the program
+        // never asks for, and entering a call site follows jumps the stub's run never takes. What
+        // either run sees the engine do is a fact about the engine, so they are put together.
         var stalled = attempt.Performed * StalledShare < attempt.Program.Count;
-        var roots = stalled
-            ? Callers(context.Module, method.Stub).Take(CallersTried)
+        List<MethodDef> roots = stalled
+            ? [method.Stub, .. Callers(context.Module, method.Stub).Take(CallersTried)]
             : [method.Stub];
-        Watched? watched = null;
+        var runs = new List<Watched>();
         foreach (var root in roots)
         {
             if (Watch(context, root, attempt) is { } one)
-            {
-                watched = one;
-                flow = one.Run;
-                if (flow.Learned)
-                    break;
-            }
+                runs.Add(one);
+            if (runs.Count == ViewsWanted)
+                break;
         }
+
+        // The run that got furthest is the one whose engine the operations are questioned in, and
+        // the one whose word is taken wherever two runs saw the same operation differently: it saw
+        // it more often, under a program doing what it really does.
+        runs.Sort((left, right) => right.Run.Watched.CompareTo(left.Run.Watched));
+        var watched = runs.Count == 0 ? null : runs[0];
+        foreach (var one in runs)
+            flow = Merged(flow, one.Run);
 
         var operandField = OperandField(
             context.Module, attempt.OpcodeField, attempt.InstructionType);
@@ -345,7 +365,11 @@ public static class VirtualProgramRecovery
         diagnostic = $"The engine decoded {attempt.Decoded.Count} operation(s) of program " +
             $"{method.ProgramId}, read back from its own " +
             $"{attempt.InstructionType.Split('/')[^1]} list. It performed {attempt.Performed} of " +
-            $"them before stopping. " + probed.Summary + " " + Say(flow);
+            "them before stopping" +
+            // What stopped the run is what limits everything read from it, so it is said here
+            // rather than left to be guessed at from the counts.
+            (attempt.Stopped.Length == 0 ? ". " : $", because {attempt.Stopped} ") +
+            probed.Summary + " " + Say(flow);
         var program = new VirtualProgram(method, attempt.InstructionType, attempt.Decoded)
         {
             Operations = operations,
@@ -1039,6 +1063,44 @@ public static class VirtualProgramRecovery
     }
 
     /// <summary>
+    /// Everything two runs of the engine saw, as one account.
+    /// </summary>
+    /// <remarks>
+    /// Sightings add up. How often an operation was seen to jump and how often it was seen at all
+    /// are counts, so they are summed, and an operation seen taken twice in one run and not taken
+    /// once in another is a conditional jump on the strength of both. Everything else is what one
+    /// run saw and the other did not, so the accounts are unioned, with the run that watched more of
+    /// the engine keeping what both of them saw. That matters for where an operation goes, because a
+    /// conditional jump really does go to more than one place and only one of them fits in the
+    /// reading, so the sighting kept should be the one from the run that saw the engine doing what
+    /// the program does rather than what an argument of nothing led it to do.
+    /// </remarks>
+    private static VirtualRun Merged(VirtualRun watched, VirtualRun also)
+    {
+        var jumps = new Dictionary<int, (int Taken, int Seen)>(watched.Jumps);
+        foreach (var (opcode, counted) in also.Jumps)
+        {
+            var already = jumps.GetValueOrDefault(opcode);
+            jumps[opcode] = (already.Taken + counted.Taken, already.Seen + counted.Seen);
+        }
+
+        var targets = new Dictionary<int, int>(watched.Targets);
+        foreach (var (index, target) in also.Targets)
+            targets.TryAdd(index, target);
+        var effects = new Dictionary<int, VirtualOperation>(watched.Effects);
+        foreach (var (opcode, effect) in also.Effects)
+            effects.TryAdd(opcode, effect);
+        var computed = new Dictionary<int, IReadOnlyList<string>>(watched.Computed);
+        foreach (var (opcode, working) in also.Computed)
+            computed.TryAdd(opcode, working);
+        return new VirtualRun(
+            watched.Watched + also.Watched, jumps, targets, effects, computed)
+        {
+            Stores = new HashSet<int>(watched.Stores.Union(also.Stores))
+        };
+    }
+
+    /// <summary>
     /// A run of the program and the engine it left behind, which is worth more than the run.
     /// </summary>
     /// <remarks>
@@ -1063,7 +1125,8 @@ public static class VirtualProgramRecovery
         string InstructionType,
         List<StaticValue> Program,
         List<VirtualInstruction> Decoded,
-        int Performed);
+        int Performed,
+        string Stopped);
 
     /// <summary>
     /// Runs the engine from one entry point and reads back the program it decoded.
@@ -1141,7 +1204,8 @@ public static class VirtualProgramRecovery
             diagnostic = string.Empty;
             return new Attempt(
                 root, machine, candidate.Key, entered[0], opcodeField, instructionType, items,
-                decoded, candidate.Value.Count);
+                decoded, candidate.Value.Count,
+                ran.Succeeded ? string.Empty : ran.Diagnostic ?? string.Empty);
         }
 
         // Where the run itself stopped short, that is the reason the frames say nothing, and it is

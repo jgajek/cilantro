@@ -445,6 +445,24 @@ account for around a thousand of `Qafcakg`'s 2,935 operations, each naming the
 method it reaches for, which is what turns an unreadable method into a legible
 account of what it does.
 
+A call whose arity never varied is the same finding arrived at the other way. An
+engine watched performing one has measured the method rather than the operation,
+so where the run only ever reached one site the operation looks like an ordinary
+fixed-arity operation, and reading its other sites that way reads them wrong. Two
+things settle it: every operand the operation carries has to name a method of the
+assembly, which an operation carrying local slots or constants fails, and what was
+measured of the operation has to be exactly what one of those methods' signatures
+says. The second is the test rather than the premise — an operation measured
+taking one value and leaving one, whose operands name a property getter and a
+four-argument method, is a call if the getter accounts for the measurement, and if
+none of the methods it names does then it is something else and stays unread. The
+payload sample `Lqcuzgc` has one such operation at 50 sites, and they are the
+protector's own signature check: `TransformFinalBlock`, `ReadBytes`,
+`set_Position`, `VerifyHash`. Read as the one-argument call the run happened to
+watch, they left the walk contradicting itself at five places in the middle of
+that check; read as the calls they are, the listing goes from 4,801 operations to
+4,851 and the contradictions to none.
+
 Three readings then come from putting the two sources together. An operation
 that takes a value, leaves nothing, changes nothing the trials can see and never
 writes a static field while the run watches it has nowhere left to have put what

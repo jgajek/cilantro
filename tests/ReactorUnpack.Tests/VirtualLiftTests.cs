@@ -126,6 +126,80 @@ public sealed class VirtualLiftTests
     }
 
     /// <summary>
+    /// An engine watched performing a call has measured the method rather than the operation, so an
+    /// operation whose every operand names a method is read as a call and each site given the arity
+    /// of the method there. Carrying the one measurement to every site instead reads the rest of
+    /// them wrong, which is what happened in the middle of a protector's own signature check.
+    /// </summary>
+    [Fact]
+    public void AnOperationWhoseEveryOperandNamesAMethodIsReadAsACallOfIt()
+    {
+        using var context = Module();
+        var methods = context.Module.Types.SelectMany(type => type.Methods).ToArray();
+        var takes = methods.First(method => method.Name == "Takes");
+        var gives = methods.First(method => method.Name == "Gives");
+        var program = Measured(
+            Program(context, [
+                (Push, new VirtualOperand.Number(1)),
+                (Push, new VirtualOperand.Number(2)),
+                (Mystery, new VirtualOperand.Number(takes.MDToken.ToInt32())),
+                (Mystery, new VirtualOperand.Number(gives.MDToken.ToInt32())),
+                (Store, new VirtualOperand.Number(0))
+            ]),
+            pops: 0,
+            pushes: 1);
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.Contains(
+            "1 operation(s) are read as calls of the method they name",
+            lifted,
+            StringComparison.Ordinal);
+        Assert.Contains("call       ", lifted, StringComparison.Ordinal);
+        Assert.Contains("reaches 5 of 5", lifted, StringComparison.Ordinal);
+        Assert.Contains("at the same depth", lifted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The names alone are not enough. Where no method the operation names would leave the stack the
+    /// way the operation was watched leaving it, the operation is something else that happens to
+    /// carry a token, and it stays unread.
+    /// </summary>
+    [Fact]
+    public void AnOperationNoMethodItNamesAccountsForIsNotReadAsACall()
+    {
+        using var context = Module();
+        var methods = context.Module.Types.SelectMany(type => type.Methods).ToArray();
+        var takes = methods.First(method => method.Name == "Takes");
+        var gives = methods.First(method => method.Name == "Gives");
+        var program = Measured(
+            Program(context, [
+                (Push, new VirtualOperand.Number(1)),
+                (Push, new VirtualOperand.Number(2)),
+                (Mystery, new VirtualOperand.Number(takes.MDToken.ToInt32())),
+                (Mystery, new VirtualOperand.Number(gives.MDToken.ToInt32())),
+                (Store, new VirtualOperand.Number(0))
+            ]),
+            pops: 2,
+            pushes: 1);
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.DoesNotContain("read as calls of the method they name", lifted, StringComparison.Ordinal);
+        Assert.Contains("??         op 7", lifted, StringComparison.Ordinal);
+    }
+
+    /// <summary>The same program with the mystery operation watched taking and leaving what it says.</summary>
+    private static VirtualProgram Measured(VirtualProgram program, int pops, int pushes) =>
+        program with
+        {
+            Operations = new Dictionary<int, VirtualOperation>(program.Operations)
+            {
+                [Mystery] = new(Mystery, pops, pushes, null)
+            }
+        };
+
+    /// <summary>
     /// An operation nothing could measure is still pinned by everything around it, and being able
     /// to say what it must do is the difference between checking most of a program and all of it.
     /// </summary>
@@ -370,6 +444,17 @@ public sealed class VirtualLiftTests
         takes.ParamDefs.Add(new ParamDefUser("left", 1));
         takes.ParamDefs.Add(new ParamDefUser("right", 2));
         type.Methods.Add(takes);
+        var gives = new MethodDefUser(
+            "Gives",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static)
+        {
+            Body = new CilBody()
+        };
+        gives.Body.Instructions.Add(OpCodes.Ldc_I4_0.ToInstruction());
+        gives.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        type.Methods.Add(gives);
     });
 
     private static MethodDefUser Empty(ModuleDefUser module, string name)

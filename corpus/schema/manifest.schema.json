@@ -59,7 +59,19 @@
           "maximumSurplusMethods": { "type": ["integer", "null"] },
           "maximumProgramMethodSurplus": { "type": ["integer", "null"], "minimum": 0 },
           "maximumSurplusResources": { "type": ["integer", "null"] },
-          "expectUnsupportedReason": { "type": ["string", "null"], "minLength": 1 }
+          "expectUnsupportedReason": { "type": ["string", "null"], "minLength": 1 },
+          "minimumConstantStringSites": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumVirtualOperationsRead": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minimumVirtualOperationsWalked": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "requireConsistentVirtualStack": { "type": "boolean" }
         },
         "additionalProperties": false
       }

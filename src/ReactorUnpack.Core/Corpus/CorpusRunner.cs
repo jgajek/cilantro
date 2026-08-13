@@ -39,7 +39,8 @@ public sealed record CorpusSample(
     int? MaximumSurplusMethods = null,
     int? MaximumProgramMethodSurplus = null,
     int? MaximumSurplusResources = null,
-    bool RequireOracleResourceParity = false);
+    bool RequireOracleResourceParity = false,
+    int? MinimumConstantStringSites = null);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -547,6 +548,14 @@ public static class CorpusRunner
             recovery.RemainingUnreachableInstructions > maxUnreachable)
             diagnostics.Add(
                 $"Remaining unreachable instructions {recovery.RemainingUnreachableInstructions} exceed {maxUnreachable}.");
+
+        // A module whose strings are behind its own decoders rather than the protector's resolver has
+        // no resolver coverage to gate on, and this is what stands in for it there.
+        if (sample.MinimumConstantStringSites is int folded &&
+            recovery.ConstantStringSites < folded)
+            diagnostics.Add(
+                $"Call sites replaced with the string they return {recovery.ConstantStringSites} " +
+                $"is below {folded}.");
         CheckVirtualization(sample, recovery, diagnostics);
     }
 

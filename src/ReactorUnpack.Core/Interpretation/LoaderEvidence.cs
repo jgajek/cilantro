@@ -149,6 +149,49 @@ internal sealed class LoaderEvidenceRecorder
             MarkStack(static effects => effects.ScratchRegion = true);
     }
 
+    /// <summary>
+    /// Sets aside what has been recorded under one method until the returned scope is disposed, so
+    /// that what runs in between answers for itself.
+    /// </summary>
+    /// <remarks>
+    /// The account is kept per method for the life of the machine, which is what a caller asking
+    /// "what does this method's subtree touch" wants. A caller asking "what would removing this one
+    /// call remove" wants something else, because the loader has usually called the same method
+    /// already and the machine remembers it. Neither reading is wrong; they are different questions,
+    /// and this is how the second one is asked. Nothing is lost: what was set aside is merged back
+    /// with whatever the run added.
+    /// </remarks>
+    public Aside SetAside(uint token) => new(this, token);
+
+    public readonly struct Aside : IDisposable
+    {
+        private readonly LoaderEvidenceRecorder _recorder;
+        private readonly uint _token;
+        private readonly MutableEffects? _earlier;
+
+        internal Aside(LoaderEvidenceRecorder recorder, uint token)
+        {
+            _recorder = recorder;
+            _token = token;
+            _earlier = recorder._effects.Remove(token, out var effects) ? effects : null;
+        }
+
+        public void Dispose()
+        {
+            if (_earlier is null)
+                return;
+            if (_recorder._effects.TryGetValue(_token, out var during))
+            {
+                _earlier.StaticFields.UnionWith(during.StaticFields);
+                _earlier.Registrations.UnionWith(during.Registrations);
+                _earlier.MappedImage |= during.MappedImage;
+                _earlier.ScratchRegion |= during.ScratchRegion;
+            }
+
+            _recorder._effects[_token] = _earlier;
+        }
+    }
+
     public LoaderInterpretationEvidence Snapshot() => new(
         _observations.ToArray(),
         _effects.ToDictionary(

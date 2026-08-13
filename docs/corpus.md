@@ -28,18 +28,32 @@ Reactor in turn, so recovering the outer sample only reaches the next wrapper,
 and they are in the corpus in their own right for that reason.
 
 They are protected in two different ways, and each is held to what it reaches.
-`Ptnifif` is a JIT-hook build: all 313 of its protected bodies come back, no
-stub is left, and its own payload does not, because the paths that would produce
-it call into `user32` and then build an assembly with `Reflection.Emit` — one is
-outside the runtime the machine models and the other is code that does not exist
-until it runs. `Lqcuzgc` is a virtualizing build whose string decryption and
-payload unpacking are both inside the virtual machine, so what is locked for it
-is the reading of that machine: every operation but a handful written as IL, the
-walk reaching all but the dead blocks, and the depths agreeing everywhere. Its
-strings and its payload are not recovered, and both are declined in the report
-rather than guessed at. Nothing in the virtual machine runs far enough to
-produce them: the program checks its own file against a signature it carries,
-and under interpretation that check throws before the decryption it guards.
+`Ptnifif` is a JIT-hook build: all 313 of its protected bodies come back and no
+stub is left. Its strings are not behind Reactor's own resolver but behind a
+decoder of the program's own, built at run time with `Reflection.Emit` and asked
+for a string by number; the machine emits and runs it, and 153 call sites are
+replaced with the 137 strings it answers with. Its own payload does not come
+back, because the paths that would produce it call into `user32` and then ask
+Windows about the machine it is running on, which is outside the runtime the
+machine models.
+
+`Lqcuzgc` is a virtualizing build whose string decryption and payload unpacking
+are both inside the virtual machine, so what is locked for it is the reading of
+that machine: 4,851 of its 4,854 operations written as IL, the walk reaching
+4,846 and stopping nowhere, the depths agreeing everywhere, and the 8 operations
+left over being code no path arrives at. Its strings and its payload are still
+declined rather than guessed at, and its self-check is no longer what stands in
+the way: the module is interpreted as the assembly with no file of its own that a
+recovered payload is, which is the case its own code makes room for, and under
+that reading nothing in the loader throws.
+
+What stands in the way of its strings is two things above the decoder. Each call
+site computes the key rather than carrying it — three constants combined with
+`xor` and `sub`, and then an integer field of the second protector's state object
+mixed in — and that object is never built during the loader initialization the
+machine runs, so none of its fields is proven and the key is not a constant to
+fold. Behind that, the table those keys index is parsed by the virtualized method,
+so reading a string means running the engine far enough to have built it.
 
 Validation-only deobfuscated counterparts:
 

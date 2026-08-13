@@ -153,14 +153,15 @@ public static class VirtualLift
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(module);
         var going = Destinations(program, []);
-        var arity = Arities(program, module);
+        var calling = Calling(program, module);
+        var arity = Arities(program, module, calling);
         var depths = Depths(
             program, going, arity, Forced(program, going, arity, Bounds(program, module)),
             new Dictionary<string, List<int>>(StringComparer.Ordinal), []);
         return new Reading(
             program.Instructions.Count,
             program.Instructions.Count(
-                instruction => Mnemonic(program, instruction, module) is not null),
+                instruction => Mnemonic(program, instruction, module, calling) is not null),
             depths.Count,
             depths.Values.Count(depth => depth == Disagreed));
     }
@@ -172,13 +173,14 @@ public static class VirtualLift
 
         var conjectured = new HashSet<int>();
         var going = Destinations(program, conjectured);
-        var arity = Arities(program, module);
+        var calling = Calling(program, module);
+        var arity = Arities(program, module, calling);
         var stopped = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         var forced = Forced(program, going, arity, Bounds(program, module));
         var handlers = new HashSet<int>();
         var depths = Depths(program, going, arity, forced, stopped, handlers);
         var lifted = program.Instructions.Count(
-            instruction => Mnemonic(program, instruction, module) is not null);
+            instruction => Mnemonic(program, instruction, module, calling) is not null);
 
         yield return $"; {program.Method.Stub.FullName}";
         yield return $"; program {program.Method.ProgramId}, read as IL";
@@ -203,13 +205,22 @@ public static class VirtualLift
                 "one should show up";
             yield return "; there as a disagreement about the depth of the stack.";
         }
+        if (calling.Count > 0)
+        {
+            yield return $"; {calling.Count} operation(s) are read as calls of the method they " +
+                "name, nothing having named them:";
+            yield return "; every operand of theirs names a method of this assembly, and one of " +
+                "those methods accounts";
+            yield return "; for the effect measured of them.";
+        }
         foreach (var line in Reached(program, depths, forced, stopped, handlers))
             yield return $"; {line}";
         yield return string.Empty;
 
         foreach (var instruction in program.Instructions)
         {
-            var mnemonic = Widened(program, instruction, Mnemonic(program, instruction, module));
+            var mnemonic = Widened(
+                program, instruction, Mnemonic(program, instruction, module, calling));
             var operand = Operand(program, instruction, mnemonic, module, going, conjectured);
             var said = mnemonic is null
                 ? $"??         op {instruction.Opcode} {operand}".TrimEnd() +
@@ -230,12 +241,13 @@ public static class VirtualLift
     private static string? Mnemonic(
         VirtualProgram program,
         VirtualInstruction instruction,
-        ModuleDef module)
+        ModuleDef module,
+        HashSet<int> calling)
     {
         if (!program.Operations.TryGetValue(instruction.Opcode, out var known) ||
             known.Name is not { } name)
         {
-            return null;
+            return calling.Contains(instruction.Opcode) ? "call" : null;
         }
         if (name is "branch" or "branch if" && instruction.Operand is VirtualOperand.Table)
             return "switch";
@@ -448,14 +460,16 @@ public static class VirtualLift
     /// </remarks>
     private static Dictionary<int, (int Pops, int Pushes)> Arities(
         VirtualProgram program,
-        ModuleDef module)
+        ModuleDef module,
+        HashSet<int> calling)
     {
         var found = new Dictionary<int, (int, int)>();
         foreach (var instruction in program.Instructions)
         {
             if (!program.Operations.TryGetValue(instruction.Opcode, out var known))
                 continue;
-            if (known.Name is not ("calls the method it names" or
+            if (!calling.Contains(instruction.Opcode) &&
+                known.Name is not ("calls the method it names" or
                 "makes a new object with the constructor it names"))
             {
                 if (known.Measured)
@@ -469,13 +483,72 @@ public static class VirtualLift
             }
             if (called.MethodSig is not { } signature)
                 continue;
-            var arguments = signature.Params.Count;
-            found[instruction.Index] = called.Name == ".ctor"
-                ? (arguments, 1)
-                : (arguments + (signature.HasThis ? 1 : 0),
-                    signature.RetType.ElementType == ElementType.Void ? 0 : 1);
+            found[instruction.Index] = Takes(called, signature);
         }
         return found;
+    }
+
+    /// <summary>What a call of a method leaves the stack, from how the method is written down.</summary>
+    private static (int Pops, int Pushes) Takes(IMethod called, MethodSig signature)
+    {
+        var arguments = signature.Params.Count;
+        return called.Name == ".ctor"
+            ? (arguments, 1)
+            : (arguments + (signature.HasThis ? 1 : 0),
+                signature.RetType.ElementType == ElementType.Void ? 0 : 1);
+    }
+
+    /// <summary>
+    /// The operations that are calls of the method they name, worked out rather than watched.
+    /// </summary>
+    /// <remarks>
+    /// What a call takes off the stack is decided by the method it names, so an engine watched
+    /// performing one has measured that method rather than the operation, and carrying the
+    /// measurement to the operation's other sites reads every one of them wrong. It is worth working
+    /// out which operations these are, because the protector's own signature check is written in
+    /// them: a program that hashes a file and verifies it does so by calling methods with three and
+    /// four arguments, and reading each of those as the one-argument call that was watched leaves the
+    /// walk contradicting itself in the middle of the very code worth reading.
+    ///
+    /// Two things have to hold. Every operand the operation carries has to name a method this
+    /// assembly knows, which an operation carrying local slots or constants will fail. And what was
+    /// measured of the operation has to be exactly what one of those methods' signatures says, which
+    /// is the test rather than the premise: an operation watched taking one value and leaving one,
+    /// whose operands name a property getter and a four-argument method, is a call if the getter
+    /// accounts for the measurement, and if none of them does then it is something else and stays
+    /// unread.
+    /// </remarks>
+    private static HashSet<int> Calling(VirtualProgram program, ModuleDef module)
+    {
+        var named = new Dictionary<int, List<(int Pops, int Pushes)>>();
+        var refused = new HashSet<int>();
+        foreach (var instruction in program.Instructions)
+        {
+            var opcode = instruction.Opcode;
+            if (refused.Contains(opcode))
+                continue;
+            if (!program.Operations.TryGetValue(opcode, out var known) ||
+                known.Name is not null ||
+                !known.Measured ||
+                instruction.Operand is not VirtualOperand.Number number ||
+                Called(number.Value, module) is not { MethodSig: { } signature } called)
+            {
+                refused.Add(opcode);
+                named.Remove(opcode);
+                continue;
+            }
+            if (!named.TryGetValue(opcode, out var arities))
+                named[opcode] = arities = [];
+            arities.Add(Takes(called, signature));
+        }
+
+        return
+        [
+            .. named.Where(one =>
+                    one.Value.Contains(
+                        (program.Operations[one.Key].Pops, program.Operations[one.Key].Pushes)))
+                .Select(one => one.Key)
+        ];
     }
 
     /// <remarks>
@@ -514,7 +587,11 @@ public static class VirtualLift
     {
         ArgumentNullException.ThrowIfNull(program);
         var going = Destinations(program, []);
-        return Forced(program, going, Arities(program, module), Bounds(program, module));
+        return Forced(
+            program,
+            going,
+            Arities(program, module, Calling(program, module)),
+            Bounds(program, module));
     }
 
     /// <summary>
@@ -931,12 +1008,16 @@ public static class VirtualLift
         HashSet<int> handlers)
     {
         var walked = depths.Count;
-        var disagreed = depths.Values.Count(depth => depth == Disagreed);
+        var disagreed = depths
+            .Where(reached => reached.Value == Disagreed)
+            .Select(reached => reached.Key)
+            .Order()
+            .ToList();
         yield return $"Walking the stack from the first operation reaches {walked} of " +
-            $"{program.Instructions.Count}, and " + (disagreed == 0
+            $"{program.Instructions.Count}, and " + (disagreed.Count == 0
                 ? "every one it reaches twice it reaches at the same depth."
-                : $"{disagreed} of them at two different depths, which means one of the readings " +
-                    "is wrong.");
+                : $"{disagreed.Count} of them at two different depths, which means one of the " +
+                    $"readings is wrong: {string.Join(", ", Runs(disagreed))}.");
         if (handlers.Count > 0)
         {
             yield return $"  {handlers.Count} place(s) a guarded region covers are walked as " +
@@ -970,7 +1051,7 @@ public static class VirtualLift
             // Where the walk was never at a loss, everything it could follow it did follow, so
             // what it did not arrive at cannot be arrived at: the operations are dead, which is
             // a fact about the program rather than a limit of the reading.
-            var dead = stopped.Count == 0 && disagreed == 0;
+            var dead = stopped.Count == 0 && disagreed.Count == 0;
 
             // As runs rather than as numbers, because operations nothing reaches come in stretches
             // — a whole handler, a whole block — and the stretch is the thing to go and look at.

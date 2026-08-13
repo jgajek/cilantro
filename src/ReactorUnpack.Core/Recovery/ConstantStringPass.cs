@@ -35,6 +35,16 @@ namespace ReactorUnpack.Core.Recovery;
 /// every decoder in a module put together, so one machine per candidate is not affordable. Opposite
 /// orders buy back what sharing a machine would otherwise cost: a method whose answer depended on
 /// what ran before it is exactly the method the two orders disagree about.
+///
+/// The other shape a hidden string takes is one decoder for the whole module, asked for a string by
+/// number: the startup path builds a table of every string the program uses, and each call site
+/// pushes its index and calls the decoder. Such a decoder carries no literal of its own — the table
+/// it reads is somewhere else entirely, sometimes behind code the module generates as it starts —
+/// so the account of what makes a call replaceable has to be made per call rather than per method.
+/// It is the same account: the index is a literal in the caller's own body, so the decoder is asked
+/// exactly the questions the program asks it, and an answer is kept only when both machines give it
+/// and the frame left nothing behind. Only indexes that appear literally are asked, which is what
+/// keeps a table with no bound on its size from being enumerated.
 /// </remarks>
 public sealed class ConstantStringPass : DeobfuscationPass
 {
@@ -50,6 +60,11 @@ public sealed class ConstantStringPass : DeobfuscationPass
 
     /// <summary>How many refusals are worth spelling out before the list stops informing.</summary>
     private const int MaximumReasonsReported = 8;
+
+    /// <summary>
+    /// How many answers a keyed decoder is worth asking for, across the whole module.
+    /// </summary>
+    private const int MaximumAnswers = 2048;
 
     public override string Name => "constant-strings";
 
@@ -72,8 +87,9 @@ public sealed class ConstantStringPass : DeobfuscationPass
         }
 
         var candidates = Candidates(context.Module);
-        if (candidates.Length == 0)
-            return (PassStatus.Success, 0, ["No method has the shape of a single-string decoder."]);
+        var asked = Asked(context.Module, Keyed(context.Module));
+        if (candidates.Length == 0 && asked.Count == 0)
+            return (PassStatus.Success, 0, ["No method has the shape of a string decoder."]);
 
         if (!BootstrapMachine.TryRunInitializers(context, MaximumSteps, out var forwards, out var why) ||
             forwards is null ||
@@ -105,12 +121,16 @@ public sealed class ConstantStringPass : DeobfuscationPass
                 proven[token] = first.Text;
         }
 
-        if (proven.Count == 0)
+        var answers = Agreed(
+            Read(forwards, context.Module, asked),
+            Read(backwards, context.Module, Reversed(asked)),
+            refused);
+        if (proven.Count == 0 && answers.Count == 0)
         {
             return (PassStatus.Success, 0,
             [
-                $"None of the {candidates.Length} candidate decoder(s) was proven to return a " +
-                "fixed string.",
+                $"None of the {candidates.Length + asked.Count} candidate decoder(s) was proven " +
+                "to return a fixed string.",
                 .. refused.Take(MaximumReasonsReported)
             ]);
         }
@@ -130,6 +150,21 @@ public sealed class ConstantStringPass : DeobfuscationPass
                 if (text is not null)
                 {
                     transaction.Capture(instruction);
+                    instruction.OpCode = OpCodes.Ldstr;
+                    instruction.Operand = text;
+                }
+                else if (index > 0 &&
+                    Asks(instructions[index - 1], instruction, out var decoder, out var key) &&
+                    answers.TryGetValue((decoder, key), out text) &&
+                    !targeted.Contains(instruction))
+                {
+                    // The key is pushed and consumed on the spot, so the pair is one expression.
+                    // Blanking the push keeps every offset and every branch target where it was,
+                    // and a jump that lands on it still leaves one string behind.
+                    transaction.Capture(instructions[index - 1]);
+                    transaction.Capture(instruction);
+                    instructions[index - 1].OpCode = OpCodes.Nop;
+                    instructions[index - 1].Operand = null;
                     instruction.OpCode = OpCodes.Ldstr;
                     instruction.Operand = text;
                 }
@@ -173,6 +208,7 @@ public sealed class ConstantStringPass : DeobfuscationPass
         }
 
         transaction.Commit();
+        context.SetFact("strings.constantSites", changes);
         foreach (var (token, text) in proven.OrderBy(entry => entry.Key))
         {
             context.AddEvidence(new Evidence(
@@ -182,10 +218,23 @@ public sealed class ConstantStringPass : DeobfuscationPass
                 1.0));
         }
 
+        // A keyed decoder answers as many strings as the program asks it for, and listing them one
+        // by one would bury the rest of the report. The strings themselves are in the change log,
+        // each against the call site it replaced.
+        foreach (var group in answers.GroupBy(entry => entry.Key.Token).OrderBy(group => group.Key))
+        {
+            context.AddEvidence(new Evidence(
+                "constant-string-table",
+                $"{group.Key:X8} answers {group.Count()} requested key(s) with a fixed string.",
+                $"{group.Key:X8}",
+                1.0));
+        }
+
         return (PassStatus.Success, changes,
         [
-            $"Proved {proven.Count} of {candidates.Length} candidate decoder(s) constant and " +
-            $"replaced {changes} call(s) with the string.",
+            $"Proved {proven.Count} of {candidates.Length} candidate decoder(s) constant, read " +
+            $"{answers.Count} string(s) out of {asked.Count} keyed decoder(s), and replaced " +
+            $"{changes} call(s) with the string.",
             refused.Count == 0
                 ? "Every candidate was proven."
                 : $"{refused.Count} candidate(s) were left alone: " +
@@ -218,6 +267,119 @@ public sealed class ConstantStringPass : DeobfuscationPass
                     instruction.OpCode.Code == Code.Ldstr))
             .OrderBy(method => method.MDToken.Raw)
             .Take(MaximumCandidates)];
+
+    /// <summary>
+    /// Methods shaped like a table decoder: a number in, a string out.
+    /// </summary>
+    /// <remarks>
+    /// There is no literal to require here, because a decoder of this shape does not carry the
+    /// strings it hands out. What bounds the cost instead is that only the keys the module names
+    /// literally are ever asked for, so a decoder nothing calls with a constant costs nothing.
+    /// </remarks>
+    private static MethodDef[] Keyed(ModuleDef module) =>
+        [.. module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Where(method => method is
+                {
+                    HasBody: true,
+                    IsStatic: true,
+                    HasGenericParameters: false
+                } &&
+                method.MethodSig?.Params.Count == 1 &&
+                method.MethodSig.Params[0].ElementType == ElementType.I4 &&
+                method.ReturnType.FullName == "System.String" &&
+                method.Body.Instructions.Count <= MaximumBodySize)
+            .OrderBy(method => method.MDToken.Raw)
+            .Take(MaximumCandidates)];
+
+    /// <summary>The keys each keyed decoder is asked for literally, in the order they appear.</summary>
+    private static Dictionary<uint, List<int>> Asked(ModuleDef module, MethodDef[] keyed)
+    {
+        var wanted = keyed.ToDictionary(method => method.MDToken.Raw, _ => new List<int>());
+        var budget = MaximumAnswers;
+        foreach (var method in module.GetTypes().SelectMany(type => type.Methods)
+                     .Where(method => method.HasBody))
+        {
+            var instructions = method.Body.Instructions;
+            for (var index = 1; index < instructions.Count && budget > 0; index++)
+            {
+                if (!Asks(instructions[index - 1], instructions[index], out var token, out var key) ||
+                    !wanted.TryGetValue(token, out var keys) ||
+                    keys.Contains(key))
+                {
+                    continue;
+                }
+
+                keys.Add(key);
+                budget--;
+            }
+        }
+
+        return wanted.Where(entry => entry.Value.Count != 0)
+            .ToDictionary(entry => entry.Key, entry => entry.Value);
+    }
+
+    private static Dictionary<uint, List<int>> Reversed(Dictionary<uint, List<int>> asked) =>
+        asked.Reverse().ToDictionary(
+            entry => entry.Key,
+            entry => Enumerable.Reverse(entry.Value).ToList());
+
+    /// <summary>
+    /// Whether one instruction pushes a literal key that the next hands to a keyed decoder.
+    /// </summary>
+    private static bool Asks(
+        Instruction pushed,
+        Instruction called,
+        out uint decoder,
+        out int key)
+    {
+        decoder = 0;
+        key = 0;
+        if (!pushed.IsLdcI4() ||
+            called.OpCode.Code != Code.Call ||
+            called.Operand is not IMethod target ||
+            target.MethodSig?.Params.Count != 1)
+        {
+            return false;
+        }
+
+        decoder = target.MDToken.Raw;
+        key = pushed.GetLdcI4Value();
+        return true;
+    }
+
+    /// <summary>
+    /// The answers both machines gave, for the keys where they gave the same one and the frame left
+    /// nothing behind.
+    /// </summary>
+    private static Dictionary<(uint Token, int Key), string> Agreed(
+        Dictionary<(uint Token, int Key), Answer> ahead,
+        Dictionary<(uint Token, int Key), Answer> behind,
+        List<string> refused)
+    {
+        var agreed = new Dictionary<(uint Token, int Key), string>();
+        var unreadable = new Dictionary<uint, int>();
+        foreach (var (asked, first) in ahead)
+        {
+            var second = behind[asked];
+            if (first.Text is null || second.Text is null)
+                unreadable[asked.Token] = unreadable.GetValueOrDefault(asked.Token) + 1;
+            else if (!string.Equals(first.Text, second.Text, StringComparison.Ordinal))
+                refused.Add($"{asked.Token:X8}({asked.Key}): it answered differently the second time");
+            else if (first.Marked || second.Marked)
+                refused.Add(
+                    $"{asked.Token:X8}: it leaves something behind that removing the call " +
+                    "would remove too");
+            else
+                agreed[asked] = first.Text;
+        }
+
+        // One decoder with a few keys it will not answer is ordinary — a program asks for indexes
+        // it never reaches. Counting them per decoder says that without filling the report.
+        foreach (var (token, count) in unreadable.OrderBy(entry => entry.Key))
+            refused.Add($"{token:X8}: {count} of its key(s) yielded no readable string");
+        return agreed;
+    }
 
     /// <summary>
     /// Runs a candidate twice from separately built states and keeps the answer only if both runs
@@ -316,30 +478,97 @@ public sealed class ConstantStringPass : DeobfuscationPass
     {
         var answers = new Dictionary<uint, Answer>();
         foreach (var candidate in candidates)
-        {
-            var answered = machine.Execute(candidate);
-            if (!answered.Succeeded)
-            {
-                answers[candidate.MDToken.Raw] = new Answer(
-                    null, false, answered.Diagnostic ?? "the interpretation did not complete");
-                continue;
-            }
-            if (!machine.State.Heap.TryGetString(answered.Value, out var read) || read is null)
-            {
-                answers[candidate.MDToken.Raw] = new Answer(
-                    null, false, "what it returned was not a readable string");
-                continue;
-            }
+            answers[candidate.MDToken.Raw] = Ask(machine, candidate, []);
+        return answers;
+    }
 
-            var effects = machine.State.LoaderEvidence.EffectsOf(candidate.MDToken.Raw);
-            answers[candidate.MDToken.Raw] = new Answer(
-                read,
-                effects.WroteStaticField || effects.WroteMappedImage ||
-                    effects.Registrations.Count != 0,
-                string.Empty);
+    /// <summary>What one machine made of each key it was asked for, in the order it was asked.</summary>
+    private static Dictionary<(uint Token, int Key), Answer> Read(
+        StaticMachine machine,
+        ModuleDef module,
+        Dictionary<uint, List<int>> asked)
+    {
+        var decoders = module.GetTypes().SelectMany(type => type.Methods)
+            .Where(method => asked.ContainsKey(method.MDToken.Raw))
+            .ToDictionary(method => method.MDToken.Raw);
+        var answers = new Dictionary<(uint Token, int Key), Answer>();
+        foreach (var (token, keys) in asked)
+        {
+            var decoder = decoders[token];
+            var settled = Settled(machine, decoder);
+            foreach (var key in keys)
+            {
+                answers[(token, key)] = settled
+                    ? Ask(machine, decoder, [StaticValue.FromInt32(key)])
+                    : new Answer(
+                        null,
+                        false,
+                        "initializing its type does more than set that type up, so the call has " +
+                        "to stay to trigger it");
+            }
         }
 
         return answers;
+    }
+
+    /// <summary>
+    /// Initializes the decoder's type, and reports whether doing so only set that type up.
+    /// </summary>
+    /// <remarks>
+    /// A type initializer runs once, triggered by whoever gets there first, so charging it to the
+    /// first call that happened to be interpreted would refuse every decoder for something no call
+    /// of it is responsible for. Running it up front puts those writes where they belong and leaves
+    /// each call answering for itself.
+    ///
+    /// Whether it can be left untriggered is a separate question, and it is the reason the account
+    /// is read here. Folding every call away can mean nothing triggers the initializer at all. For
+    /// the type's own fields that is exactly what the runtime's rules make harmless, since anything
+    /// that reads one runs the initializer first. An initializer that reaches further — patching the
+    /// image, handing the runtime a handler, writing somebody else's field — is doing work the
+    /// program depends on happening, and the call that triggers it has to stay.
+    /// </remarks>
+    private static bool Settled(StaticMachine machine, MethodDef decoder)
+    {
+        if (decoder.DeclaringType?.FindStaticConstructor() is not { HasBody: true } initializer)
+            return true;
+        if (machine.State.GetTypeInitializationStatus(decoder.DeclaringType) ==
+            TypeInitializationStatus.Uninitialized)
+        {
+            machine.Execute(initializer);
+        }
+
+        var effects = machine.State.LoaderEvidence.EffectsOf(initializer.MDToken.Raw);
+        var own = $"{decoder.DeclaringType.FullName}::";
+        return !effects.WroteMappedImage &&
+            effects.Registrations.Count == 0 &&
+            effects.StaticFieldsWritten.All(field =>
+                field.Contains(own, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Interprets one decoder and reports its answer, together with whether the call left anything
+    /// behind that removing it would take with it.
+    /// </summary>
+    private static Answer Ask(
+        StaticMachine machine,
+        MethodDef decoder,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        // The loader calls these decoders too, and the machine remembers what every call under this
+        // method touched. Setting that aside for the duration is what makes the account below about
+        // this call rather than about the module's startup.
+        using var alone = machine.State.Evidence.SetAside(decoder.MDToken.Raw);
+        var answered = machine.Execute(decoder, arguments);
+        if (!answered.Succeeded)
+            return new Answer(null, false, answered.Diagnostic ?? "the interpretation did not complete");
+        if (!machine.State.Heap.TryGetString(answered.Value, out var read) || read is null)
+            return new Answer(null, false, "what it returned was not a readable string");
+        var effects = machine.State.LoaderEvidence.EffectsOf(decoder.MDToken.Raw);
+        return new Answer(
+            read,
+            effects.WroteStaticField || effects.WroteMappedImage ||
+                effects.Registrations.Count != 0,
+            string.Empty);
     }
 
     private sealed record Answer(string? Text, bool Marked, string Why);
