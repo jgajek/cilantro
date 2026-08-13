@@ -4,6 +4,18 @@ using ReactorUnpack.Core;
 
 namespace ReactorUnpack.Tests;
 
+/// <summary>
+/// What a whole run produces on the samples its results are pinned to.
+/// </summary>
+/// <remarks>
+/// Determinism is deliberately not tested here, though it was once. Running each sample twice and
+/// comparing cost eleven of the suite's twenty-six minutes to prove, for two samples, what
+/// <see cref="CorpusTests.CorpusOutcomesAreDeterministic"/> proves for eleven: it runs the corpus
+/// twice at once and requires the outcomes, each carrying the SHA-256 of the emitted assembly, to
+/// come out byte for byte identical. The payload bytes are held by the hashes pinned below, which
+/// catch a payload that changed for any reason at all rather than only one that differs between two
+/// runs of the same build.
+/// </remarks>
 public sealed class PipelineTests
 {
     public static TheoryData<string, string, string, int, string, int> Samples => new()
@@ -105,51 +117,6 @@ public sealed class PipelineTests
         }
     }
 
-    [SampleTheory]
-    [Trait(Cost.Key, Cost.High)]
-    [MemberData(nameof(Samples))]
-    public void EmissionIsDeterministic(
-        string filename,
-        string _,
-        string expectedPayloadHash,
-        int expectedPayloadLength,
-        string expectedFinalHash,
-        int expectedFinalLength)
-    {
-        var sample = FindSample(filename);
-        var firstDirectory = CreateTemporaryDirectory();
-        var secondDirectory = CreateTemporaryDirectory();
-        var first = Path.Combine(firstDirectory, "cleaned.exe");
-        var second = Path.Combine(secondDirectory, "cleaned.exe");
-
-        try
-        {
-            var pipeline = new ReactorPipeline();
-            pipeline.Run(sample, new PipelineOptions(OutputPath: first, ReportDirectory: firstDirectory));
-            pipeline.Run(sample, new PipelineOptions(OutputPath: second, ReportDirectory: secondDirectory));
-
-            Assert.Equal(
-                SHA256.HashData(File.ReadAllBytes(first)),
-                SHA256.HashData(File.ReadAllBytes(second)));
-            var firstPayloads = Directory.GetFiles(
-                Path.Combine(firstDirectory, $"{Path.GetFileNameWithoutExtension(filename)}.payloads"));
-            var secondPayloads = Directory.GetFiles(
-                Path.Combine(secondDirectory, $"{Path.GetFileNameWithoutExtension(filename)}.payloads"));
-            Assert.Equal(2, firstPayloads.Length);
-            Assert.Equal(2, secondPayloads.Length);
-            AssertPayload(firstPayloads, expectedPayloadHash, expectedPayloadLength);
-            AssertPayload(firstPayloads, expectedFinalHash, expectedFinalLength);
-            Assert.Equal(
-                firstPayloads.Order().Select(File.ReadAllBytes).Select(SHA256.HashData),
-                secondPayloads.Order().Select(File.ReadAllBytes).Select(SHA256.HashData));
-        }
-        finally
-        {
-            Directory.Delete(firstDirectory, true);
-            Directory.Delete(secondDirectory, true);
-        }
-    }
-
     [SampleFact]
     public void ProxyCodecDecodesAndValidatesAllRecords()
     {
@@ -193,13 +160,6 @@ public sealed class PipelineTests
 
     private static PassResult Pass(PipelineResult result, string name) =>
         Assert.Single(result.Report.Passes, pass => pass.Pass == name);
-
-    private static void AssertPayload(IEnumerable<string> paths, string expectedHash, int expectedLength)
-    {
-        var path = Assert.Single(paths, candidate =>
-            Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(candidate))) == expectedHash);
-        Assert.Equal(expectedLength, new FileInfo(path).Length);
-    }
 
     private static string FindSample(string filename) => Checkout.Sample(filename);
 

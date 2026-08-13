@@ -64,8 +64,8 @@ internal static class Checkout
 /// What the expensive tests are marked with, so a working session need not run them.
 /// </summary>
 /// <remarks>
-/// Six tests interpret whole samples and account for essentially all of the suite's running time; the
-/// other three hundred finish in about fifteen seconds together. Anyone changing a message, a name or
+/// Five tests interpret whole samples and account for essentially all of the suite's running time; the
+/// other three hundred finish in about twenty seconds together. Anyone changing a message, a name or
 /// a report field wants those three hundred and wants them now, so the costly ones carry a trait and
 /// can be left out by name:
 /// <code>dotnet test ReactorUnpack.slnx -c Release --filter "Cost!=High"</code>

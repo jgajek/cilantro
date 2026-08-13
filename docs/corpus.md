@@ -94,24 +94,36 @@ where a wholly absent corpus is a choice the repository made.
 
 ## What the suite costs
 
-Where the samples are present the suite takes about fourteen minutes, and six
-tests account for all but fifteen seconds of it:
+Where the samples are present the suite takes about nine minutes, and five tests
+account for all but twenty seconds of it:
 
-| Test | Time |
+| Test | Share of the work |
 | --- | --- |
-| `PipelineTests.EmissionIsDeterministic` (two samples) | 11.1 min |
-| `CorpusTests.CorpusOutcomesAreDeterministic` | 8.0 min |
-| `VmStringRecoveryTests.Qbjuef...` | 2.9 min |
-| `PipelineTests.PipelineRecoversProfiledSamples` (two samples) | 2.8 min |
-| `AntiTamperNeutralizationTests.RemovesProvenIntegrityCheck...` | 0.9 min |
-| `CorpusTests.MethodProtectedGenerationIsDetectedAndFullyRecovered` | 0.2 min |
+| `CorpusTests.CorpusOutcomesAreDeterministic` | the corpus, twice over |
+| `PipelineTests.PipelineRecoversProfiledSamples` | two samples, fully emitted |
+| `VmStringRecoveryTests.Qbjuef...` | one sample, string tables read |
+| `AntiTamperNeutralizationTests.RemovesProvenIntegrityCheck...` | one sample, analysed |
+| `CorpusTests.MethodProtectedGenerationIsDetectedAndFullyRecovered` | one sample, analysed |
 
-The times overlap because the suite runs classes in parallel, and they are longer
-than the same work done alone: a dozen interpretations at once contend for memory
-bandwidth. Each of the six is marked `Cost=High` and can be left out with
+They are described by work rather than by seconds because the seconds are not a
+property of the test: the same sample recovery has been measured at 108 seconds
+in one run and 418 in the next, unchanged, because a dozen interpretations running
+at once contend for memory bandwidth far more than for cores. What is stable is
+that these five are minutes and the other 318 are twenty seconds together.
+
+Each of the five is marked `Cost=High` and can be left out with
 `--filter "Cost!=High"`, which is the loop to work in. None of them can run in
 continuous integration, since the samples are not in the repository, so a person
 running the full suite is the only thing that closes those gates.
+
+Determinism is proven once, here, rather than per sample elsewhere.
+`CorpusOutcomesAreDeterministic` runs the whole corpus twice at once and requires
+the two outcome files to be byte-for-byte identical; because each outcome carries
+the SHA-256 of the assembly emitted for that sample, that one comparison covers
+emission for every sample in the corpus. Pinned hashes do the rest: a payload or
+an output that changed for any reason fails the expectations in `PipelineTests`
+and the manifest's own output locks, which is a stricter test than comparing two
+runs of one build against each other.
 
 `detected` ReasonLabs entries are release candidates rather than
 analysis-only fixtures. They pass only when all protected application bodies
