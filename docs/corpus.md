@@ -79,6 +79,19 @@ emit verified output. Manifest gates can additionally require exact restored
 body counts, zero remaining stubs, complete string-site coverage, bounded
 mutation counts, a regression-locked output hash, and normalized oracle parity.
 
+## The suite where there are no samples
+
+A checkout with an empty `samples/` directory still runs the suite. Tests that
+read a real sample are marked as such and are skipped where there are none, so
+`dotnet test` reports them as skipped with the reason instead of failing on a file
+nobody could have supplied. That is how CI runs: green there means everything
+checkable without samples was checked, and the skipped count is the measure of
+what was not. Restoring the samples runs the same tests for real.
+
+A checkout that has samples but not the one a test names fails rather than skips.
+That is a corpus that has drifted from the suite, which is worth hearing about,
+where a wholly absent corpus is a choice the repository made.
+
 `detected` ReasonLabs entries are release candidates rather than
 analysis-only fixtures. They pass only when all protected application bodies
 are restored and verified. Qbjuef remains exploratory until its complete

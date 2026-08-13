@@ -308,6 +308,13 @@ dotnet test ReactorUnpack.slnx -c Release
 Use `-c Release` for the tests. Most of the suite is the analysis engine working
 through real samples, which an unoptimised build runs about five times slower.
 
+The samples themselves are malware and are not in the repository, so a fresh
+checkout has none. The tests that read one are skipped there rather than failed,
+and say so with a reason, which is how CI runs: green means everything checkable
+without samples was checked, and the skip count says what was not. Put samples in
+`samples/` and the same command runs them too — see
+[docs/corpus.md](docs/corpus.md).
+
 ## Contributing
 
 Samples are the bottleneck, not ideas. If you have a Reactor-protected sample

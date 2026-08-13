@@ -26,7 +26,7 @@ public sealed class PipelineTests
         }
     };
 
-    [Theory]
+    [SampleTheory]
     [MemberData(nameof(Samples))]
     public void PipelineRecoversProfiledSamples(
         string filename,
@@ -104,7 +104,7 @@ public sealed class PipelineTests
         }
     }
 
-    [Theory]
+    [SampleTheory]
     [MemberData(nameof(Samples))]
     public void EmissionIsDeterministic(
         string filename,
@@ -148,7 +148,7 @@ public sealed class PipelineTests
         }
     }
 
-    [Fact]
+    [SampleFact]
     public void ProxyCodecDecodesAndValidatesAllRecords()
     {
         var sample = FindSample("embedded_dotnet_Mlfhntkcvb.exe");
@@ -199,22 +199,7 @@ public sealed class PipelineTests
         Assert.Equal(expectedLength, new FileInfo(path).Length);
     }
 
-    private static string FindSample(string filename)
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, "samples", filename);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new FileNotFoundException($"Could not locate test sample {filename}.");
-    }
+    private static string FindSample(string filename) => Checkout.Sample(filename);
 
     private static string CreateTemporaryDirectory()
     {

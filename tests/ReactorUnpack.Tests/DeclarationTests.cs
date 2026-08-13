@@ -300,7 +300,7 @@ public sealed class DeclarationTests
     /// The same fact stated in a profile and in a set of declarations is refused rather than settled by
     /// precedence, because whichever file lost would have lost silently.
     /// </summary>
-    [Fact]
+    [SampleFact]
     public void TheFactsCannotBeStatedInTwoPlacesAtOnce()
     {
         var directory = Temporary();
@@ -333,7 +333,7 @@ public sealed class DeclarationTests
     /// cheapest way to prove the environment now arrives: only a machine that read the declarations can
     /// stop for a budget nothing else set.
     /// </summary>
-    [Fact]
+    [SampleFact]
     public void WhatTheRunWasToldReachesTheMachineThatRecoversMethodBodies()
     {
         var directory = Temporary();
@@ -361,19 +361,7 @@ public sealed class DeclarationTests
         }
     }
 
-    private static string Sample(string filename)
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, "samples", filename);
-            if (File.Exists(candidate))
-                return candidate;
-            directory = directory.Parent;
-        }
-
-        throw new FileNotFoundException($"Could not locate test sample {filename}.");
-    }
+    private static string Sample(string filename) => Checkout.Sample(filename);
 
     private static string Temporary()
     {

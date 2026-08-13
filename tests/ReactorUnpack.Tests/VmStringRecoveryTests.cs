@@ -100,7 +100,7 @@ public sealed class VmStringRecoveryTests
         Assert.Contains("distinct reaching constants", diagnostic, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [SampleFact]
     public void QbjuefSerializedVmCapturesUniqueTableAndRewritesEverySiteAtomically()
     {
         var reportDirectory = Path.Combine(
@@ -108,7 +108,7 @@ public sealed class VmStringRecoveryTests
         try
         {
             var result = new ReactorPipeline().Run(
-                FindSample("Qbjuef.exe"),
+                Checkout.Sample("Qbjuef.exe"),
                 new PipelineOptions(AnalyzeOnly: true, ReportDirectory: reportDirectory));
 
             var capture = Assert.Single(
@@ -154,18 +154,4 @@ public sealed class VmStringRecoveryTests
         method.Body.Variables.Add(new Local(module.CorLibTypes.Int32));
         return method;
     }
-
-    private static string FindSample(string name)
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, "samples", name);
-            if (File.Exists(candidate))
-                return candidate;
-            directory = directory.Parent;
-        }
-        throw new FileNotFoundException($"Could not locate sample {name}.");
-    }
-
 }

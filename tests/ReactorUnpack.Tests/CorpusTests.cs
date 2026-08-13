@@ -10,9 +10,8 @@ public sealed class CorpusTests
     [Fact]
     public void ManifestDefinesUniqueHashVerifiedTiers()
     {
-        var root = FindRepositoryRoot();
         var manifest = CorpusRunner.LoadManifest(
-            Path.Combine(root, "corpus", "reactor-6-nonvirt.manifest.json"));
+            Path.Combine(Checkout.Root, "corpus", "reactor-6-nonvirt.manifest.json"));
 
         Assert.Equal(1, manifest.ManifestVersion);
         Assert.Equal(11, manifest.Samples.Count);
@@ -26,10 +25,10 @@ public sealed class CorpusTests
             sample => Assert.Matches("^[a-f0-9]{64}$", sample.Sha256));
     }
 
-    [Fact]
+    [SampleFact]
     public void StructuralDiscoveryDerivesQbjuefProxyCodec()
     {
-        using var context = ArtifactContext.Load(FindSample("Qbjuef.exe"));
+        using var context = ArtifactContext.Load(Checkout.Sample("Qbjuef.exe"));
         var facts = ReactorStructureDetector.Analyze(context.Module);
 
         Assert.True(facts.IsReactor6);
@@ -45,10 +44,10 @@ public sealed class CorpusTests
         Assert.Equal(146, profile.Bindings.Count);
     }
 
-    [Fact]
+    [SampleFact]
     public void MethodProtectedGenerationIsDetectedAndFullyRecovered()
     {
-        var sample = FindSample("Reason.PAC.dll");
+        var sample = Checkout.Sample("Reason.PAC.dll");
         var outputDirectory = Path.Combine(
             Path.GetTempPath(),
             $"ReactorUnpack.CorpusTests.{Guid.NewGuid():N}");
@@ -79,16 +78,15 @@ public sealed class CorpusTests
         }
     }
 
-    [Fact]
+    [SampleFact]
     public void CorpusOutcomesAreDeterministic()
     {
-        var root = FindRepositoryRoot();
         var first = Path.Combine(Path.GetTempPath(), $"reactor-corpus-{Guid.NewGuid():N}");
         var second = Path.Combine(Path.GetTempPath(), $"reactor-corpus-{Guid.NewGuid():N}");
         try
         {
-            var manifest = Path.Combine(root, "corpus", "reactor-6-nonvirt.manifest.json");
-            var samples = Path.Combine(root, "samples");
+            var manifest = Path.Combine(Checkout.Root, "corpus", "reactor-6-nonvirt.manifest.json");
+            var samples = Checkout.Samples;
             // The two runs go at once, which is the point rather than a shortcut. A run already
             // analyses several samples in parallel, so overlapping the pair leaves the two copies
             // of each sample interleaved differently against everything else in flight; agreeing
@@ -127,19 +125,4 @@ public sealed class CorpusTests
         }
     }
 
-    private static string FindSample(string filename) =>
-        Path.Combine(FindRepositoryRoot(), "samples", filename);
-
-    private static string FindRepositoryRoot()
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "ReactorUnpack.slnx")))
-                return current.FullName;
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Repository root not found.");
-    }
 }

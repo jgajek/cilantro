@@ -5,20 +5,18 @@ namespace ReactorUnpack.Tests;
 
 public sealed class NativePackDetectionTests
 {
-    [Fact]
+    [SampleFact]
     public void ManagedReactorSampleIsNotFlaggedAsNativePacked()
     {
-        var path = Path.Combine(FindRepositoryRoot(), "samples", "Qbjuef.exe");
-        using var module = ModuleDefMD.Load(path);
+        using var module = ModuleDefMD.Load(Checkout.Sample("Qbjuef.exe"));
 
         Assert.False(NativePackDetector.TryDescribe(module, out _));
     }
 
-    [Fact]
+    [SampleFact]
     public void ClearingTheIlOnlyFlagIsReportedAsNativePacked()
     {
-        var path = Path.Combine(FindRepositoryRoot(), "samples", "Qbjuef.exe");
-        var patched = ClearIlOnly(File.ReadAllBytes(path));
+        var patched = ClearIlOnly(File.ReadAllBytes(Checkout.Sample("Qbjuef.exe")));
         using var module = ModuleDefMD.Load(patched);
 
         Assert.True(NativePackDetector.TryDescribe(module, out var reason));
@@ -57,18 +55,5 @@ public sealed class NativePackDetectionTests
         }
 
         throw new InvalidOperationException("RVA is outside every section.");
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "ReactorUnpack.slnx")))
-                return current.FullName;
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Repository root not found.");
     }
 }

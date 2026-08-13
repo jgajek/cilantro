@@ -7,7 +7,7 @@ namespace ReactorUnpack.Tests;
 
 public sealed class AntiTamperNeutralizationTests
 {
-    [Fact]
+    [SampleFact]
     public void RemovesProvenIntegrityCheckOnJitHookSample()
     {
         var result = RunAnalyze("Reason.PAC.dll");
@@ -21,7 +21,7 @@ public sealed class AntiTamperNeutralizationTests
             evidence => evidence.Category == "antitamper-neutralized");
     }
 
-    [Fact]
+    [SampleFact]
     public void LeavesAlreadyCleanOracleUntouched()
     {
         var result = RunAnalyze("Reason.PAC.oracle.dll");
@@ -84,7 +84,7 @@ public sealed class AntiTamperNeutralizationTests
 
     private static PipelineResult RunAnalyze(string filename)
     {
-        var sample = Path.Combine(FindRepositoryRoot(), "samples", filename);
+        var sample = Checkout.Sample(filename);
         var directory = Path.Combine(
             Path.GetTempPath(), $"ReactorUnpack.AntiTamper.{Guid.NewGuid():N}");
         try
@@ -149,16 +149,4 @@ public sealed class AntiTamperNeutralizationTests
         };
     }
 
-    private static string FindRepositoryRoot()
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "ReactorUnpack.slnx")))
-                return current.FullName;
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Repository root not found.");
-    }
 }

@@ -24,6 +24,9 @@ jobs:
       - name: Build
         run: dotnet build ReactorUnpack.slnx -c Release --no-restore
 
+      # A public checkout has no samples, so the tests that read one are skipped here rather than
+      # failed, and the run reports how many and why. Where the samples are present the same command
+      # runs every one of them.
       - name: Test
         run: dotnet test ReactorUnpack.slnx -c Release --no-restore --no-build
 
