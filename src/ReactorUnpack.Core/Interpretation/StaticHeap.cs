@@ -1159,21 +1159,39 @@ public sealed class StaticMachineState
     public void Observe(LoaderObservationKind kind, string detail, bool? verdict = null) =>
         Evidence.Observe(kind, detail, verdict);
 
-    private HostEnvironment? _host;
+    private RunEnvironment? _environment;
     private readonly HashSet<string> _hostQuestionsObserved = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What this machine was told, and where it is writing down what it could not get past.
+    /// </summary>
+    /// <remarks>
+    /// A machine nobody handed one to still has one, holding the answers the intrinsics used to give
+    /// on their own and a ledger of its own refusals. That keeps every machine answerable and
+    /// readable by the same route whether or not a pipeline is standing behind it, which matters
+    /// because passes build machines directly.
+    /// </remarks>
+    public RunEnvironment Environment => _environment ??= new RunEnvironment();
 
     /// <summary>
     /// What this machine says when interpreted code asks about the computer it is running on.
     /// </summary>
-    /// <remarks>
-    /// A machine nobody handed a profile to still has one, holding the answers the intrinsics used
-    /// to give on their own. That keeps every machine answerable by the same route whether or not a
-    /// pipeline is standing behind it, which matters because passes build machines directly.
-    /// </remarks>
-    public HostEnvironment Host => _host ??= new HostEnvironment(HostProfile.Default);
+    public HostEnvironment Host => Environment.Host;
+
+    /// <summary>What stopped this machine, in a form a caller can act on.</summary>
+    public BlockerLedger Blockers => Environment.Blockers;
+
+    /// <summary>What was declared about this run, which is nothing unless somebody said so.</summary>
+    public RunDeclarations Declarations => Environment.Declarations;
+
+    /// <summary>Whether this run refuses where it would otherwise assume its way past something.</summary>
+    public bool Strict => Environment.Strict;
 
     public void RegisterHostEnvironment(HostEnvironment host) =>
-        _host = host ?? throw new ArgumentNullException(nameof(host));
+        _environment = Environment.With(host ?? throw new ArgumentNullException(nameof(host)));
+
+    public void RegisterRunEnvironment(RunEnvironment environment) =>
+        _environment = environment ?? throw new ArgumentNullException(nameof(environment));
 
     /// <summary>
     /// Asks the host profile something, and records that the question came up.

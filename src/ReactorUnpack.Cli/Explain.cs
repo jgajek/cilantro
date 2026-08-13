@@ -60,6 +60,11 @@ internal static class Explain
         Console.WriteLine();
         Console.WriteLine($"  File     {Path.GetFileName(inputPath)}  ({Size(report.InputLength)})");
         Console.WriteLine($"  SHA-256  {report.InputSha256}");
+        // Said at the top rather than buried, because it is the one thing that changes how the rest of
+        // this page should be read: a triage run answers more and vouches for less.
+        Console.WriteLine(report.Strict
+            ? "  Reading  strict: nothing assumed, stopping wherever the tool cannot follow"
+            : "  Reading  triage: a plausible machine assumed, unreadable calls stepped over");
         Console.WriteLine();
 
         var capabilities = report.Evidence
@@ -83,8 +88,49 @@ internal static class Explain
         Protection(capabilities);
         Recovered(report);
         Assumed(report);
+        Blocked(result, home);
         Written(result, home);
         Caveats(result);
+    }
+
+    /// <summary>
+    /// What stopped the run, and the exact thing to write down to get past it.
+    /// </summary>
+    /// <remarks>
+    /// The point of printing these is that the next run can be better than this one. So each is
+    /// printed with its remedy attached rather than as a complaint, and the ones with no remedy say so
+    /// instead of being left out, because "this needs a change to the tool" is also an answer. Only the
+    /// first few are shown: a run stops in one place for one reason, and the rest are usually the same
+    /// reason met again on another path.
+    /// </remarks>
+    private static void Blocked(PipelineResult result, string home)
+    {
+        if (result.Report.Blockers is not { Count: > 0 } blockers)
+            return;
+        Console.WriteLine("  BLOCKED   what stopped the run, and what would get past it");
+        Console.WriteLine();
+        const int shown = 6;
+        foreach (var blocker in blockers.Take(shown))
+        {
+            Console.WriteLine(
+                $"    {blocker.Kind}  {blocker.Key}" +
+                (blocker.Times > 1 ? $"  (x{blocker.Times})" : string.Empty));
+            if (blocker.Where is { } where)
+                Console.WriteLine($"      in {where}");
+            Console.WriteLine(blocker.Declare is { } declare
+                ? $"      declare: {declare}"
+                : "      no declaration fixes this; it needs a change to the tool");
+        }
+
+        if (blockers.Count > shown)
+            Console.WriteLine($"    ... and {blockers.Count - shown} more");
+        if (result.BlockerReportPath is { } path)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"    All of them, in full: {Near(path, home)}");
+        }
+
+        Console.WriteLine();
     }
 
     /// <summary>
@@ -99,17 +145,75 @@ internal static class Explain
     /// </remarks>
     private static void Assumed(ArtifactReport report)
     {
-        if (report.HostProfile is not { } profile || profile.Consulted.Count == 0)
+        var declarations = report.Declarations;
+        if (report.HostProfile is { Consulted.Count: > 0 } profile)
+        {
+            var answered = profile.Consulted.Where(fact => fact.Answered).ToArray();
+            var refused = profile.Consulted.Where(fact => !fact.Answered).ToArray();
+            Console.WriteLine($"  ASSUMED   about the machine, from the \"{profile.Name}\" profile");
+            Console.WriteLine();
+            // Padded to the longest key, up to a point: a registry path can be a hundred characters
+            // wide, and letting one of those set the column pushes every answer off the page.
+            var width = Math.Min(56, profile.Consulted.Max(fact => fact.Key.Length));
+            foreach (var fact in answered)
+            {
+                // Marked rather than sorted into two lists, because the reader is checking one fact
+                // they care about and wants to know about that one without hunting for it twice.
+                Console.WriteLine(
+                    $"    {fact.Key.PadRight(width)}   {fact.Answer}" +
+                    (fact.Stated ? "  (you stated this)" : "  (assumed)"));
+            }
+
+            foreach (var fact in refused)
+                Console.WriteLine($"    {fact.Key.PadRight(width)}   not stated, so the code that asked was not read");
+            Console.WriteLine();
+        }
+
+        // A call nobody followed is the other half of what the reading rests on, and unlike a fact
+        // there is nothing to print in place of it — only the name of what went unread.
+        if (report.ContinuedPast is { Count: > 0 } continued)
+        {
+            Console.WriteLine("  ASSUMED   not to matter: calls the tool cannot read, stepped over");
+            Console.WriteLine();
+            const int shown = 6;
+            foreach (var call in continued.Take(shown))
+            {
+                Console.WriteLine(
+                    $"    {call.Key}" +
+                    (call.Times > 1 ? $"  (x{call.Times})" : string.Empty));
+            }
+
+            if (continued.Count > shown)
+                Console.WriteLine($"    ... and {continued.Count - shown} more");
+            Console.WriteLine();
+            Console.WriteLine("    Each returned nothing the run could know. Run again with --strict");
+            Console.WriteLine("    to stop at these instead of assuming past them.");
+            Console.WriteLine();
+        }
+
+        if (declarations is null)
             return;
-        var answered = profile.Consulted.Where(fact => fact.Answered).ToArray();
-        var refused = profile.Consulted.Where(fact => !fact.Answered).ToArray();
-        Console.WriteLine($"  ASSUMED   about the machine, from the \"{profile.Name}\" profile");
+        // A declared call outcome is the one input that can put a value into the interpretation which
+        // no code produced, so it is said out loud even when everything else went well.
+        if (declarations.DeclaredCallsUsed.Count > 0)
+        {
+            Console.WriteLine("  ASSUMED   about calls the tool does not model, because you said so");
+            Console.WriteLine();
+            foreach (var call in declarations.DeclaredCallsUsed)
+                Console.WriteLine($"    {call}");
+            Console.WriteLine();
+        }
+
+        // A declaration nobody asked about is nearly always a key spelled differently from the one the
+        // run asks under, and an hour is easily lost to that if nothing says it went unused.
+        if (declarations.DeclaredCallsUnused.Count == 0)
+            return;
+        Console.WriteLine("  UNUSED    declared, but nothing asked");
         Console.WriteLine();
-        var width = profile.Consulted.Max(fact => fact.Key.Length);
-        foreach (var fact in answered)
-            Console.WriteLine($"    {fact.Key.PadRight(width)}   {fact.Answer}");
-        foreach (var fact in refused)
-            Console.WriteLine($"    {fact.Key.PadRight(width)}   not stated, so the code that asked was not read");
+        foreach (var call in declarations.DeclaredCallsUnused)
+            Console.WriteLine($"    {call}");
+        if (!declarations.CallsAllowed)
+            Console.WriteLine("    (declared calls were not allowed; pass --allow-declared-calls)");
         Console.WriteLine();
     }
 

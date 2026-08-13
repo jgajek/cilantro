@@ -176,7 +176,8 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
                 context.OriginalImage,
                 candidate,
                 out var interpreted,
-                out var interpreterDiagnostic) ||
+                out var interpreterDiagnostic,
+                BootstrapMachine.Environment(context)) ||
             interpreted is null)
         {
             why = interpreterDiagnostic;

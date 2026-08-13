@@ -38,6 +38,16 @@ public enum HostAnswerKind
 /// <summary>One thing a host profile says about the machine the sample believes it is running on.</summary>
 public sealed record HostAnswer(HostAnswerKind Kind, string Text, long Number)
 {
+    /// <summary>
+    /// Whether a person said this, as opposed to it being what the tool assumes.
+    /// </summary>
+    /// <remarks>
+    /// Per answer rather than per profile, because a supplied profile inherits everything it did not
+    /// mention. Somebody who states a machine name has not thereby vouched for the clock reading
+    /// 2020, and a report that credited them with it would be putting words in their mouth.
+    /// </remarks>
+    public bool Stated { get; init; }
+
     public static HostAnswer Unanswered { get; } = new(HostAnswerKind.Unanswered, string.Empty, 0);
     public static HostAnswer Absent { get; } = new(HostAnswerKind.Absent, string.Empty, 0);
 
@@ -191,6 +201,22 @@ public sealed class HostProfile
         ["runtime:FipsEnforced"] = HostAnswer.Of(false)
     });
 
+    /// <summary>
+    /// A plausible Windows workstation, which is what the tool assumes when nobody describes one.
+    /// </summary>
+    /// <remarks>
+    /// Every answer here is an invention, and none of it is checkable against anything. It is still
+    /// the better default: a sample nobody has met before asks these questions on the way to the part
+    /// worth reading, and refusing them loses the program rather than leaving the tool neutral. What
+    /// keeps it honest is that the report says which of these a run consulted and marks each as
+    /// assumed rather than stated, so a reading that rests on one can be seen to.
+    ///
+    /// It states nothing that could be material. There is no registry value holding bytes and no file
+    /// content, because a made-up machine name costs a reader a plausible detail whereas a made-up
+    /// payload would cost them a wrong answer to the only question they asked.
+    /// </remarks>
+    public static HostProfile Workstation { get; } = Embedded();
+
     public static HostProfile Load(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -216,7 +242,17 @@ public sealed class HostProfile
     /// its author never thought about. Overlaying instead keeps a profile to the size of what it is
     /// actually asserting.
     /// </remarks>
-    public static HostProfile Parse(string json, string name)
+    public static HostProfile Parse(string json, string name) => Parse(json, name, stated: true);
+
+    /// <summary>
+    /// Reads a profile, saying whether what it holds is somebody's assertion or the tool's own.
+    /// </summary>
+    /// <remarks>
+    /// The built-in portrait of a workstation is written as a profile and read by this same code, so
+    /// that what ships and what a caller may pass are the same kind of thing. It is not stated by
+    /// anybody, though, which is the one thing that has to differ.
+    /// </remarks>
+    internal static HostProfile Parse(string json, string name, bool stated)
     {
         ArgumentNullException.ThrowIfNull(json);
         JsonDocument document;
@@ -259,18 +295,47 @@ public sealed class HostProfile
                 }
             }
 
-            if (facts is not { } stated)
+            if (facts is not { } written)
                 throw new HostProfileException("A host profile must have a \"facts\" section.");
-            foreach (var fact in stated.EnumerateObject())
-                answers[Checked(fact.Name)] = Read(fact.Name, fact.Value);
+            foreach (var fact in written.EnumerateObject())
+                answers[Checked(fact.Name)] = Read(fact.Name, fact.Value) with { Stated = stated };
             return new HostProfile(declared, answers);
         }
+    }
+
+    /// <summary>
+    /// Reads the facts stated inside a larger document, such as a run's declarations.
+    /// </summary>
+    /// <remarks>
+    /// The facts are the same facts wherever they are written down, so they are read by the same
+    /// code: a family that is checked in a profile is checked in declarations, and an answer of bytes
+    /// is spelled the one way in both.
+    /// </remarks>
+    public static HostProfile FromFacts(JsonElement facts, string name)
+    {
+        if (facts.ValueKind != JsonValueKind.Object)
+            throw new HostProfileException("The stated facts must be a JSON object of key to value.");
+        var answers = new Dictionary<string, HostAnswer>(Default._answers, StringComparer.Ordinal);
+        foreach (var fact in facts.EnumerateObject())
+            answers[Checked(fact.Name)] = Read(fact.Name, fact.Value) with { Stated = true };
+        return new HostProfile(name, answers);
     }
 
     public bool TryAnswer(string key, out HostAnswer answer)
     {
         answer = _answers.GetValueOrDefault(key, HostAnswer.Unanswered);
         return answer.IsAnswered;
+    }
+
+    /// <summary>Reads the workstation portrait out of the assembly it ships inside.</summary>
+    private static HostProfile Embedded()
+    {
+        const string resource = "ReactorUnpack.Core.Profiles.Workstation.json";
+        using var stream = typeof(HostProfile).Assembly.GetManifestResourceStream(resource) ??
+            throw new HostProfileException(
+                $"The built-in profile {resource} is missing from this build.");
+        using var reader = new StreamReader(stream);
+        return Parse(reader.ReadToEnd(), "windows-10-workstation", stated: false);
     }
 
     private static string Checked(string key)
@@ -287,7 +352,14 @@ public sealed class HostProfile
         return key;
     }
 
-    private static HostAnswer Read(string key, JsonElement value) => value.ValueKind switch
+    /// <summary>
+    /// Reads one stated value, in any of the shapes a fact may take.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the declarations, so that what a call was declared to return is written the same
+    /// way as what a registry value was declared to hold.
+    /// </remarks>
+    internal static HostAnswer Read(string key, JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => HostAnswer.Of(value.GetString() ?? string.Empty),
         JsonValueKind.True => HostAnswer.Of(true),
@@ -377,6 +449,17 @@ public sealed class HostEnvironment
             entry.Key,
             _answered.GetValueOrDefault(entry.Key, HostAnswer.Unanswered),
             entry.Value))
+        .ToArray();
+
+    /// <summary>
+    /// Whether the answer to this question is the tool's assumption rather than somebody's statement.
+    /// </summary>
+    public bool Assumed(string key) =>
+        !Profile.TryAnswer(key, out var answer) || !answer.Stated;
+
+    /// <summary>Everything the run assumed rather than was told, in key order.</summary>
+    public IReadOnlyList<HostQuestion> Assumptions => Questions
+        .Where(question => question.Answer.IsAnswered && !question.Answer.Stated)
         .ToArray();
 
     /// <summary>

@@ -69,6 +69,23 @@ public sealed class StaticMachine
                 Status = StaticExecutionStatus.Unknown,
                 Diagnostic = "Execution returned an unknown value."
             };
+        // Recorded here rather than where the throw happened, because a throw the program catches is
+        // the program working and only one that reaches the top stopped anything.
+        if (result.Status == StaticExecutionStatus.Threw)
+            State.Blockers.Record(
+                BlockerKind.Threw,
+                State.ThrowSites.Count != 0 ? State.ThrowSites[^1] : method.FullName,
+                result.Diagnostic ?? "The interpreted program threw.",
+                where: method.FullName);
+        // A value that was never determined is only worth recording where nothing else was: the frame
+        // that declined to produce it has already said so, and saying it again from out here would
+        // report one stop as two.
+        else if (result.Status == StaticExecutionStatus.Unknown && State.Blockers.Count == 0)
+            State.Blockers.Record(
+                BlockerKind.UnknownValue,
+                method.FullName,
+                (result.Diagnostic ?? "A value was not determined.") + Earlier,
+                where: method.FullName);
         if (MachineTrace.Enabled && result.Status != StaticExecutionStatus.Completed)
             MachineTrace.DumpRecent($"{method.Name} gave up: {result.Diagnostic}");
         return new StaticExecutionResult(
@@ -155,9 +172,15 @@ public sealed class StaticMachine
         GenericScope? generics)
     {
         if (depth > _limits.MaximumRecursionDepth)
-            return FrameResult.Fail(
-                StaticExecutionStatus.RecursionLimitExceeded,
-                $"Call depth exceeded {_limits.MaximumRecursionDepth}.");
+        {
+            var deep = $"Call depth exceeded {_limits.MaximumRecursionDepth}.";
+            Stopped(
+                BlockerKind.Budget,
+                "depth",
+                deep,
+                Declaring.Budget("depth", _limits.MaximumRecursionDepth));
+            return FrameResult.Fail(StaticExecutionStatus.RecursionLimitExceeded, deep);
+        }
         if (_modelTypeInitialization &&
             method.Name != ".cctor" &&
             (method.IsStatic ||
@@ -172,16 +195,24 @@ public sealed class StaticMachine
             return methodInitializationFailure;
         }
         if (!method.HasBody || method.Body.Instructions.Count == 0)
-            return FrameResult.Fail(
-                StaticExecutionStatus.Unsupported,
-                $"{method.FullName} has no CIL body.");
+        {
+            var bodiless = $"{method.FullName} has no CIL body.";
+            Stopped(BlockerKind.UnsupportedBody, method.FullName, bodiless);
+            return FrameResult.Fail(StaticExecutionStatus.Unsupported, bodiless);
+        }
         if (method.Body.ExceptionHandlers.Any(handler =>
             handler.HandlerType is ExceptionHandlerType.Filter or ExceptionHandlerType.Fault ||
             handler.TryStart is null ||
             handler.HandlerStart is null))
-            return FrameResult.Fail(
-                StaticExecutionStatus.Unsupported,
-                $"{method.FullName} uses non-deterministic or unsupported exception handlers.");
+        {
+            var unsupported =
+                $"{method.FullName} uses non-deterministic or unsupported exception handlers.";
+            Stopped(
+                BlockerKind.UnsupportedBody,
+                $"{method.FullName} exception handlers",
+                unsupported);
+            return FrameResult.Fail(StaticExecutionStatus.Unsupported, unsupported);
+        }
 
         var expectedArguments = (method.MethodSig?.Params.Count ?? 0) +
             (method.MethodSig?.HasThis == true ? 1 : 0);
@@ -223,9 +254,13 @@ public sealed class StaticMachine
                 // A caller deciding whether spending more would help needs to know this happened
                 // even when the code that ran out of budget went on to catch its own failure.
                 State.RanOutOfBudget = true;
-                return FrameResult.Fail(
-                    StaticExecutionStatus.StepLimitExceeded,
-                    $"Execution exhausted its {budget.MaximumSteps}-step budget.");
+                var spent = $"Execution exhausted its {budget.MaximumSteps}-step budget.";
+                Stopped(
+                    BlockerKind.Budget,
+                    "steps",
+                    spent,
+                    Declaring.Budget("steps", budget.MaximumSteps));
+                return FrameResult.Fail(StaticExecutionStatus.StepLimitExceeded, spent);
             }
 
 
@@ -595,14 +630,11 @@ public sealed class StaticMachine
                         {
                             var length = Pop(stack);
                             if (!length.IsKnown)
-                                return FrameResult.Fail(
-                                    StaticExecutionStatus.Unknown,
-                                    $"IL_{instruction.Offset:X4}: array length is unknown.");
+                                return UnknownNumber(instruction, "array length");
+
                             var elementType = (instruction.Operand as ITypeDefOrRef)?.ToTypeSig();
                             if (!State.Heap.TryAllocateArray(elementType, length.AsInt32(), out var array))
-                                return FrameResult.Fail(
-                                    StaticExecutionStatus.AllocationLimitExceeded,
-                                    $"IL_{instruction.Offset:X4}: array exceeded allocation limits.");
+                                return AllocationFailure(instruction, "array");
                             stack.Add(array);
                             break;
                         }
@@ -628,6 +660,8 @@ public sealed class StaticMachine
                     case Code.Ldelem_Ref:
                         {
                             var indexValue = Pop(stack);
+                            if (!indexValue.IsKnown)
+                                return UnknownNumber(instruction, "array index");
                             var index = indexValue.AsInt32();
                             var array = Pop(stack);
                             if (!State.Heap.TryReadArray(array, index, out var value))
@@ -653,7 +687,10 @@ public sealed class StaticMachine
                     case Code.Stelem_Ref:
                         {
                             var value = Pop(stack);
-                            var index = Pop(stack).AsInt32();
+                            var stored = Pop(stack);
+                            if (!stored.IsKnown)
+                                return UnknownNumber(instruction, "array index");
+                            var index = stored.AsInt32();
                             var array = Pop(stack);
                             if (!State.Heap.TryWriteArray(array, index, value, out var inBounds))
                             {
@@ -666,7 +703,10 @@ public sealed class StaticMachine
                         }
                     case Code.Ldelema:
                         {
-                            var index = Pop(stack).AsInt32();
+                            var addressed = Pop(stack);
+                            if (!addressed.IsKnown)
+                                return UnknownNumber(instruction, "array index");
+                            var index = addressed.AsInt32();
                             var array = Pop(stack);
                             if (!State.Heap.TryGetArrayElementReference(array, index, out var reference))
                                 throw new InvalidOperationException("Array address is out of bounds.");
@@ -740,7 +780,10 @@ public sealed class StaticMachine
                         }
                     case Code.Cpblk:
                         {
-                            var count = Pop(stack).AsInt32();
+                            var copied = Pop(stack);
+                            if (!copied.IsKnown)
+                                return UnknownNumber(instruction, "cpblk length");
+                            var count = copied.AsInt32();
                             var source = Pop(stack);
                             var destination = Pop(stack);
                             if (count < 0 || count > _limits.MaximumArrayLength)
@@ -753,7 +796,10 @@ public sealed class StaticMachine
                         }
                     case Code.Initblk:
                         {
-                            var count = Pop(stack).AsInt32();
+                            var filled = Pop(stack);
+                            if (!filled.IsKnown)
+                                return UnknownNumber(instruction, "initblk length");
+                            var count = filled.AsInt32();
                             var fill = unchecked((byte)Pop(stack).AsInt32());
                             var destination = Pop(stack);
                             if (count < 0 || count > _limits.MaximumArrayLength)
@@ -1016,6 +1062,9 @@ public sealed class StaticMachine
                             }
                             else if (_intrinsics.TryResolve(target, out var intrinsic))
                             {
+                                // A model that refuses knows what was asked but not where from, and
+                                // where from is half of what makes the refusal worth reading.
+                                State.Blockers.Site = (method, instruction);
                                 var intrinsicResult = intrinsic.Invoke(
                                     Assisting(budget, depth), target, callArguments);
                                 callResult = new FrameResult(
@@ -1024,6 +1073,12 @@ public sealed class StaticMachine
                                     intrinsicResult.Status == StaticExecutionStatus.Completed
                                         ? intrinsicResult.Diagnostic
                                         : $"{target.FullName}: {intrinsicResult.Diagnostic}");
+                            }
+                            // Last, after every way of actually following the call has been tried, so
+                            // that a declaration can never stand in front of a model or a body.
+                            else if (Declared(target, instruction, out var declaredResult))
+                            {
+                                callResult = declaredResult;
                             }
                             else
                             {
@@ -1037,14 +1092,55 @@ public sealed class StaticMachine
                                 // modeled by adding it: it leaves the runtime entirely, and saying
                                 // so is the difference between a gap and a boundary.
                                 if (definition?.ImplMap is { } native)
-                                    return FrameResult.Fail(
-                                        StaticExecutionStatus.Unsupported,
-                                        $"IL_{instruction.Offset:X4}: {target.FullName} calls " +
-                                        $"{native.Module?.Name}!{native.Name} outside the runtime.");
-                                return FrameResult.Fail(
-                                    StaticExecutionStatus.Unsupported,
-                                    $"IL_{instruction.Offset:X4}: external call {target.FullName} " +
-                                    $"is not allowlisted{receiver}.");
+                                {
+                                    var entry = $"{native.Module?.Name}!{native.Name}";
+                                    var left = $"IL_{instruction.Offset:X4}: {target.FullName} " +
+                                        $"calls {entry} outside the runtime.";
+                                    if (!SteppedOver(
+                                        target,
+                                        instruction,
+                                        BlockerKind.PlatformCall,
+                                        entry,
+                                        left,
+                                        out var steppedNative))
+                                    {
+                                        Stopped(
+                                            BlockerKind.PlatformCall,
+                                            entry,
+                                            left,
+                                            Declaring.Call(target.FullName, Returning(target)),
+                                            instruction);
+                                        return FrameResult.Fail(
+                                            StaticExecutionStatus.Unsupported, left);
+                                    }
+
+                                    callResult = steppedNative;
+                                }
+                                else
+                                {
+                                    var unmodeled =
+                                        $"IL_{instruction.Offset:X4}: external call " +
+                                        $"{target.FullName} is not allowlisted{receiver}.";
+                                    if (!SteppedOver(
+                                        target,
+                                        instruction,
+                                        BlockerKind.UnmodeledCall,
+                                        target.FullName,
+                                        unmodeled,
+                                        out var stepped))
+                                    {
+                                        Stopped(
+                                            BlockerKind.UnmodeledCall,
+                                            target.FullName,
+                                            unmodeled,
+                                            Declaring.Call(target.FullName, Returning(target)),
+                                            instruction);
+                                        return FrameResult.Fail(
+                                            StaticExecutionStatus.Unsupported, unmodeled);
+                                    }
+
+                                    callResult = stepped;
+                                }
                             }
 
                             // A callee that threw is not a callee the machine failed on. If this
@@ -1119,9 +1215,15 @@ public sealed class StaticMachine
                         return FrameResult.Success(Pop(stack));
 
                     default:
-                        return FrameResult.Fail(
-                            StaticExecutionStatus.Unsupported,
-                            $"IL_{instruction.Offset:X4}: opcode {instruction.OpCode.Name} is unsupported.");
+                        var unrun =
+                            $"IL_{instruction.Offset:X4}: opcode {instruction.OpCode.Name} is " +
+                            "unsupported.";
+                        Stopped(
+                            BlockerKind.UnsupportedInstruction,
+                            instruction.OpCode.Name,
+                            unrun,
+                            instruction: instruction);
+                        return FrameResult.Fail(StaticExecutionStatus.Unsupported, unrun);
                 }
             }
             catch (Exception exception) when (
@@ -2385,10 +2487,212 @@ public sealed class StaticMachine
             .FirstOrDefault();
     }
 
-    private static FrameResult AllocationFailure(Instruction instruction, string kind) =>
-        FrameResult.Fail(
-            StaticExecutionStatus.AllocationLimitExceeded,
-            $"IL_{instruction.Offset:X4}: {kind} exceeded allocation limits.");
+    private FrameResult AllocationFailure(Instruction instruction, string kind)
+    {
+        var detail = $"IL_{instruction.Offset:X4}: {kind} exceeded allocation limits.";
+        Stopped(
+            BlockerKind.Budget,
+            "allocatedBytes",
+            detail,
+            Declaring.Budget("allocatedBytes", _limits.MaximumAllocatedBytes),
+            instruction);
+        return FrameResult.Fail(StaticExecutionStatus.AllocationLimitExceeded, detail);
+    }
+
+    /// <summary>
+    /// What a call was declared to do, where the run was allowed to be told and the call is one the
+    /// machine was about to refuse.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Consulted after every way of actually following the call — a body in the module, a trusted
+    /// library, a model, a constructor of a type that is being modeled — so a declaration can only
+    /// ever answer a call that would otherwise have stopped the run. That ordering is the whole of the
+    /// safety here: nothing the tool knows how to do is displaced by somebody's assertion about it.
+    /// </para>
+    /// <para>
+    /// Every use is recorded as an observation, and a call declared to do nothing is also recorded as
+    /// a registration, so that the pass which removes loader frames it can prove do nothing cannot
+    /// reach that conclusion on the strength of a declaration that they do nothing.
+    /// </para>
+    /// </remarks>
+    private bool Declared(IMethod target, Instruction instruction, out FrameResult result)
+    {
+        result = default;
+        if (!State.Declarations.TryAnswerCall(target.FullName, out var declared))
+            return false;
+        var returns = target.MethodSig?.RetType;
+        var nothing = returns is null || returns.ElementType == ElementType.Void;
+        State.Observe(LoaderObservationKind.DeclaredCall, $"{target.FullName} {declared.Describe()}");
+        if (declared.Inert)
+        {
+            State.RecordRegistration($"declared call {target.FullName}");
+            if (!nothing)
+            {
+                var silent = $"IL_{instruction.Offset:X4}: {target.FullName} was declared inert, " +
+                    "but it returns a value and nothing says what the value is.";
+                Stopped(
+                    BlockerKind.UnmodeledCall,
+                    target.FullName,
+                    silent,
+                    Declaring.Call(target.FullName, returnsSomething: true),
+                    instruction);
+                result = FrameResult.Fail(StaticExecutionStatus.Unsupported, silent);
+                return true;
+            }
+
+            result = FrameResult.Success(default);
+            return true;
+        }
+
+        if (nothing)
+        {
+            result = FrameResult.Success(default);
+            return true;
+        }
+
+        if (!TryStated(declared.Returns, returns!, out var value))
+        {
+            var unusable = $"IL_{instruction.Offset:X4}: what {target.FullName} was declared to " +
+                $"return cannot stand in for a {returns!.FullName}.";
+            Stopped(
+                BlockerKind.UnmodeledCall,
+                target.FullName,
+                unusable,
+                Declaring.Call(target.FullName, returnsSomething: true),
+                instruction);
+            result = FrameResult.Fail(StaticExecutionStatus.Unsupported, unusable);
+            return true;
+        }
+
+        result = FrameResult.Success(State.Provenance.Origin(
+            value,
+            ProvenanceKind.Declared,
+            $"{(_frames.Count != 0 ? _frames[^1].MDToken.ToString() : "?")}/" +
+            $"IL_{instruction.Offset:X4}",
+            target.FullName));
+        return true;
+    }
+
+    /// <summary>
+    /// Steps over a call the machine cannot follow, where the run is not being asked to prove itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Consulted after a declaration, so somebody who has said what a call does still gets what they
+    /// said rather than an unknown. What this does instead is the weakest thing that lets the frame
+    /// continue: a call that hands nothing back is stepped over, and one that returns something returns
+    /// a value that is explicitly not known. Nothing is invented — an unknown is carried exactly as an
+    /// unknown from anywhere else is, and it still cannot become a branch, an index or a length.
+    /// </para>
+    /// <para>
+    /// This is what makes an unfamiliar sample yield something. Most of what protected code asks about
+    /// its surroundings never reaches the part worth reading: a thread is constructed, a window handle
+    /// is fetched, a counter is incremented, and the payload comes out of the same method regardless.
+    /// Stopping at the first of those loses everything behind it, which is a high price for a call the
+    /// result of which nothing used.
+    /// </para>
+    /// <para>
+    /// The frame is still recorded as having handed something to the runtime, because a call nobody
+    /// followed might have done anything, and the pass which removes loader frames it can prove do
+    /// nothing must not conclude that from a call the tool declined to read.
+    /// </para>
+    /// </remarks>
+    private bool SteppedOver(
+        IMethod target,
+        Instruction instruction,
+        BlockerKind kind,
+        string key,
+        string detail,
+        out FrameResult result)
+    {
+        result = default;
+        if (State.Strict)
+            return false;
+        var returns = Returning(target);
+        State.Blockers.Site = (_frames.Count != 0 ? _frames[^1] : null, instruction);
+        State.Blockers.Continued(
+            kind,
+            key,
+            detail,
+            Declaring.Call(target.FullName, returns));
+        State.Observe(
+            LoaderObservationKind.SteppedCall,
+            $"{target.FullName} {(returns ? "returned something unknown" : "was not followed")}");
+        State.RecordRegistration($"stepped over {target.FullName}");
+        result = FrameResult.Success(returns
+            ? State.Provenance.Origin(
+                StaticValue.Unknown,
+                ProvenanceKind.Call,
+                $"{(_frames.Count != 0 ? _frames[^1].MDToken.ToString() : "?")}/" +
+                $"IL_{instruction.Offset:X4}",
+                $"{target.FullName} was not followed")
+            : default);
+        return true;
+    }
+
+    /// <summary>Turns what was stated about a call's result into the value it stands for.</summary>
+    private bool TryStated(HostAnswer stated, TypeSig returns, out StaticValue value)
+    {
+        value = StaticValue.Null;
+        switch (stated.Kind)
+        {
+            case HostAnswerKind.Absent:
+                if (returns.IsValueType)
+                    value = Wide(returns) ? StaticValue.FromInt64(0) : StaticValue.FromInt32(0);
+                return true;
+            case HostAnswerKind.Text:
+                return State.Heap.TryAllocateString(stated.Text, out value);
+            case HostAnswerKind.Bytes:
+                return State.Heap.TryAllocateByteArray(stated.Data, out value);
+            case HostAnswerKind.Boolean:
+            case HostAnswerKind.Number:
+                // A declared number can stand for anything an integer stands for, which is every
+                // integral type, a character, a truth value and an enumeration. What it cannot stand
+                // for is a fraction, because nothing here computes in fractions.
+                if (returns.ElementType is ElementType.R4 or ElementType.R8)
+                    return false;
+                value = Wide(returns)
+                    ? StaticValue.FromInt64(stated.Number)
+                    : StaticValue.FromInt32((int)stated.Number);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Whether a call hands anything back, which decides how it can be declared.</summary>
+    private static bool Returning(IMethod target) =>
+        target.MethodSig?.RetType is { } returns && returns.ElementType != ElementType.Void;
+
+    private static bool Wide(TypeSig returns) =>
+        returns.ElementType is ElementType.I8 or ElementType.U8 or ElementType.I or ElementType.U;
+
+    /// <summary>
+    /// Writes down what stopped the interpretation here, alongside the diagnostic it returns.
+    /// </summary>
+    /// <remarks>
+    /// The diagnostic is for reading and this is for acting on, and they are recorded together
+    /// because the only place both the reason and the location are known is the place the refusal is
+    /// raised. Anything reconstructed later from the text would be a guess at what the text meant.
+    /// </remarks>
+    private void Stopped(
+        BlockerKind kind,
+        string key,
+        string detail,
+        string? declare = null,
+        Instruction? instruction = null)
+    {
+        var method = _frames.Count != 0 ? _frames[^1].FullName : null;
+        State.Blockers.Record(
+            kind,
+            key,
+            detail,
+            declare,
+            instruction is null
+                ? method
+                : $"{method} IL_{instruction.Offset:X4}");
+    }
 
     private static int ArgumentIndex(MethodDef method, object operand)
     {
@@ -2439,10 +2743,58 @@ public sealed class StaticMachine
             ? throw new InvalidOperationException("Evaluation stack underflow.")
             : stack[^1];
 
-    private static FrameResult UnknownBranch(Instruction instruction) =>
-        FrameResult.Fail(
-            StaticExecutionStatus.Unknown,
-            $"IL_{instruction.Offset:X4}: branch condition is unknown.");
+    /// <summary>
+    /// A branch the machine cannot take, because what it turns on was never determined.
+    /// </summary>
+    /// <remarks>
+    /// Nothing can be declared to fix this one. A value is unknown because something earlier declined
+    /// to produce it, so the thing to act on is that earlier refusal, and the ledger says so rather
+    /// than offering a remedy that would not work.
+    /// </remarks>
+    private FrameResult UnknownBranch(Instruction instruction)
+    {
+        var detail = $"IL_{instruction.Offset:X4}: branch condition is unknown.";
+        Stopped(
+            BlockerKind.UnknownValue,
+            Unfollowable(instruction),
+            detail + Earlier,
+            instruction: instruction);
+        return FrameResult.Fail(StaticExecutionStatus.Unknown, detail);
+    }
+
+    /// <summary>
+    /// What every unknown value has in common, said once so that every entry of the kind carries it.
+    /// </summary>
+    private const string Earlier =
+        " A value is unknown because something earlier declined to produce one, so the refusal to " +
+        "act on is that one rather than this.";
+
+    /// <summary>
+    /// Refuses where an unknown would have to become a number for the machine to go on.
+    /// </summary>
+    /// <remarks>
+    /// An index, a length or a count is the one place an unknown cannot be carried: every other use
+    /// can hold it and hand it on, but there is no such thing as reading the unknownth element of an
+    /// array. This is deliberately the same stop as a branch on an unknown, for the same reason — the
+    /// value would have to be invented, and inventing it is how a reading of a path the program never
+    /// takes comes out looking like a reading of the program.
+    ///
+    /// Before unfollowable calls were stepped over, these were nearly unreachable and the coercion was
+    /// left to throw, which reported an honest unknown as a fault in the interpreted program.
+    /// </remarks>
+    private FrameResult UnknownNumber(Instruction instruction, string what)
+    {
+        var detail = $"IL_{instruction.Offset:X4}: {what} is unknown.";
+        Stopped(
+            BlockerKind.UnknownValue,
+            Unfollowable(instruction),
+            detail + Earlier,
+            instruction: instruction);
+        return FrameResult.Fail(StaticExecutionStatus.Unknown, detail);
+    }
+
+    private string Unfollowable(Instruction instruction) =>
+        $"{(_frames.Count != 0 ? _frames[^1].FullName : "?")} IL_{instruction.Offset:X4}";
 
     private StaticValue TrackOrigin(
         MethodDef method,

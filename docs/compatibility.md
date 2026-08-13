@@ -55,7 +55,9 @@ zero-fill as file data, and constructs a bounded loader-style image.
 
 The bounded CIL machine models concrete values, objects, arrays, managed and
 synthetic native pointers, static/instance fields, branches, switches, and
-single-level deterministic finally flow. Framework calls are deny-by-default.
+single-level deterministic finally flow. Framework calls are answered from an
+allowlist of models; a call outside it is stepped over by default and stops the
+frame under `--strict`, as set out in [the two modes](#the-two-modes) below.
 Allowlisted models cover resources, streams/readers, encoding, hashing,
 decompression, symmetric crypto, synthetic module/process metadata, Marshal
 operations, and virtual memory writes. They also cover the types a sample passes
@@ -64,8 +66,8 @@ through on the way there: `StringBuilder`, formatted number-to-text conversion,
 `DateTime` arithmetic, named mutexes, certificates held as the bytes they
 were built from, format strings filled in, weak references that hold what they
 were given, and URLs parsed by the framework's own parser. Unknown branches,
-unmodeled calls, symbolic writes, malformed ranges, and exhausted budgets stop
-recovery.
+unknown indexes, lengths and counts, symbolic writes, malformed ranges, and
+exhausted budgets stop recovery in either mode.
 
 An `async` method is run by driving its state machine, which means the builder,
 the task and the awaiter are modeled and `MoveNext` is interpreted like any other
@@ -92,14 +94,68 @@ takes a full X.509 parse of attacker-supplied bytes, which this tool will not ru
 over its own input; the encoded bytes, their hash where they are a bare
 certificate, and equality against another certificate are answered instead.
 
+### The two modes
+
+Two things differ between a default run and a `--strict` one, and nothing else
+does. Declarations, trusted libraries, two-run agreement, verification, round-trip
+and emission gating are identical in both.
+
+| | Default (triage) | `--strict` |
+| --- | --- | --- |
+| Questions about the machine | answered by a built-in Windows 10 workstation profile, every answer marked assumed | answered by the fifteen-fact built-in profile, everything else refused |
+| A call the machine cannot read | stepped over: nothing back if it returns nothing, otherwise a value marked not known | stops the frame, recorded as a blocker |
+
+What holds in both:
+
+- Nothing about the program is invented. No instruction is guessed at, no branch is
+  taken on a value the sample did not produce, no byte is written down that
+  decryption did not produce.
+- An unknown may be carried but may not become a value. A branch condition, an array
+  index, an array length, and a block-copy count each stop the run rather than
+  taking a supposed value, and the stop names the earlier refusal that produced the
+  unknown rather than offering a remedy that would not work.
+- A question the profile does not answer is refused, and the refusal names the key.
+  This is why the shipped portrait states machine-shaped things only — names, paths,
+  identifiers, sizes, screen metrics — and never file contents or a registry value
+  holding bytes. A wrong machine name costs a reader a plausible detail; invented
+  key material would answer the only question they asked, and answer it falsely.
+- A frame that stepped over a call is recorded as having handed something to the
+  runtime, so no pass can prove such a frame does nothing and remove it. Assuming
+  past a call can cost a removal that should have happened; it cannot cause one that
+  should not have.
+- A declaration beats an assumption. Declared call outcomes are consulted before the
+  step-over, so what somebody stated a call does is what the run uses.
+
+Both modes disclose what they leaned on. `HostProfile.Consulted` in the analysis
+report marks each answer stated or assumed, values derived from an assumed answer
+carry `Assumed` provenance rather than `Host`, and every call stepped over is listed
+in `ContinuedPast` in `NAME.blockers.json` and in the summary. `Blockers` keeps its
+meaning: things that stopped the run.
+
+Measured on the eleven-sample corpus, the two modes agree on every expectation —
+detection, capabilities, restored body counts, string-site coverage, remaining stubs,
+mutation counts, oracle parity and preserved names: 2041 of 2057 reported fields are
+identical, and the sixteen that differ are diagnostic text. What changes is where a
+run that does not finish stops. On `qafcakg-payload`, `--strict` stops
+payload-extraction at `native:user32!SetProcessDPIAware`, a call with no bearing on
+the payload; the default steps over that and stops at
+`registry:HKEY_CURRENT_USER\Software\A0A99EB4…`, which is where that sample keeps its
+key material and is a fact an analyst can state. The gain is in what the run is able
+to tell you to do next, rather than in the numbers.
+
 ### Declared host facts
 
 Questions about the machine the sample believes it is running on are answered
-from a host profile, and from nowhere else. The built-in profile states the
-clock, the identifier seed, the debugger verdicts, the process id, the runtime
-module and version, the FIPS policy, and that nothing else on the machine holds a
-named mutex — the last following from the modeled world having one process, which
-is the same process every other probe is answered about. `--host-profile` overlays
+from a host profile, and from nowhere else. Two profiles ship. The sparse one,
+which `--strict` uses, states the clock, the identifier seed, the debugger
+verdicts, the process id, the runtime module and version, the FIPS policy, and
+that nothing else on the machine holds a named mutex — the last following from the
+modeled world having one process, which is the same process every other probe is
+answered about. The default one adds the rest of a plausible Windows 10
+workstation and is the same file as
+[profiles/windows-10-workstation.json](../profiles/windows-10-workstation.json),
+carried inside the assembly so that a first look needs no file on disk; it is named
+and hashed in the report like any other. `--host-profile` overlays
 a JSON file of additional
 facts keyed by family: `env:`, `time:`, `guid:`, `debugger:`, `process:`,
 `runtime:`, `native:`, `wmi:`, `registry:`, `volume:`, `net:`. A key in no family
@@ -111,19 +167,58 @@ next stage in a binary registry value: an analyst who has that value has the
 payload, and stating it is how the interpretation gets to it. The bytes are part
 of what the profile's hash covers.
 
-Support contract for a stated fact:
+Support contract for a fact, whether stated or assumed:
 
-- A stated fact is used like any other known value. It may be folded, may decide
-  a branch, and may reach the emitted assembly. It is not marked in the output.
-- Every value derived from one carries `Host` provenance, so the report can trace
-  a recovered constant back to the fact it rests on.
+- It is used like any other known value. It may be folded, may decide a branch, and
+  may reach the emitted assembly.
+- Which of the two it is is recorded per fact rather than per profile, because a
+  supplied profile inherits everything it did not mention: stating a machine name
+  does not make its author answerable for the clock reading 2020. The summary marks
+  each answer, and values derived from one carry `Host` provenance when a person
+  stated it and `Assumed` when the tool did.
 - Every question asked is recorded with the answer given, and the report carries
   the profile's name and the SHA-256 of its contents alongside the input's hash.
   Recovery that depended on a profile is reproducible only with that profile.
-- A question the profile does not answer is refused with the key that would
-  answer it. Nothing is inferred from the analysis host, which is not Windows.
+- A question no profile answers is refused with the key that would answer it.
+  Nothing is inferred from the analysis host, which is not Windows.
 - `Environment.Default` encoding, unlisted platform invokes, and anything else
   whose answer is a machine's rather than a file's remain refused.
+
+Facts can also be stated in the `facts` section of a declarations file, which is
+the same parser and the same contract. See
+[declarations.md](declarations.md).
+
+### What else can be declared
+
+`--declarations` takes one file covering the facts above, the libraries below,
+the budgets, the passes to leave out, and — only with `--allow-declared-calls` —
+what a call the interpreter cannot read does. Every run writes
+`NAME.blockers.json`, which names each thing that stopped it, where, how often,
+and the exact declaration that would get past it, or says that no declaration
+will.
+
+Support contract for a declared call outcome:
+
+- It is consulted last, after a body in the module, a trusted library, a model
+  and every other way of following the call, so it can never displace one.
+- It states either what the call returns or that the call is inert; a call that
+  returns a value cannot be declared inert.
+- A returned value may be text, a whole number, a truth value, absent, or bytes.
+  A call returning `float` or `double` is refused, since nothing here computes in
+  fractions.
+- Every value derived from one carries `Declared` provenance — deliberately
+  distinct from `Host`, because this is an assertion about somebody else's code
+  rather than about a computer.
+- Every use is recorded as a `DeclaredCall` observation and printed in the
+  summary, and an inert declaration also records a registration, so the pass that
+  removes provably inert loader frames cannot conclude inertness from a
+  declaration of it.
+- The declarations' name and SHA-256 are in both reports. A run that used a
+  declared call is reproducible only with that file.
+
+Budgets are `steps`, `allocatedBytes` and `depth`, and replace the per-pass
+figures wherever they are set. Skipping a pass leaves it recorded as incomplete,
+so the emission gate still withholds the cleaned copy.
 
 ### Trusted third-party assemblies
 
@@ -750,11 +845,12 @@ initializer runs.
 initializers all over the assembly, which are what keep its runtime referenced
 from application code. A call goes when the bounded interpretation gives a
 complete account of what it does and nothing that survives can notice any of it.
-The account is complete because the machine refuses every call it does not
-model, so a frame that interprets to completion twice, in agreement, did nothing
-outside the modeled surface, and that surface is read-only apart from handing the
-runtime an event handler — which the effects record names explicitly, and which
-disqualifies the call. That leaves the static fields it wrote as the only channel
+The account is complete because every call the machine did not read is written into
+the effects record. A frame that interprets to completion twice, in agreement, did
+nothing outside the modeled surface, and that surface is read-only apart from two
+things the record names explicitly, each of which disqualifies the call: handing the
+runtime an event handler, and — outside `--strict` — a call the machine could not
+follow and stepped over. That leaves the static fields it wrote as the only channel
 out.
 
 Whether those writes can be noticed is decided by making the edit, recomputing

@@ -51,12 +51,17 @@ public sealed class HostProfileTests
     /// The refusal has to name the key, because the reader of it is deciding what to write down and
     /// has no other way of learning what the machine would accept.
     /// </summary>
+    /// <remarks>
+    /// Pinned against a profile that is explicitly sparse rather than against whatever the built-in
+    /// default happens to hold, so that the property under test stays this one. A default that grew an
+    /// answer for this question would otherwise turn the test green by making it about something else.
+    /// </remarks>
     [Fact]
     public void AQuestionNoProfileAnswersIsRefusedByNamingWhatWouldAnswerIt()
     {
         using var module = NewModule();
 
-        var result = new StaticMachine().Execute(Calls(
+        var result = Under("""{ "facts": { } }""").Execute(Calls(
             module, "System", "Environment", "get_MachineName", module.CorLibTypes.String));
 
         Assert.Equal(StaticExecutionStatus.Unsupported, result.Status);
@@ -104,6 +109,65 @@ public sealed class HostProfileTests
     }
 
     /// <summary>
+    /// The portrait the tool assumes ships inside it, so the common case needs no file, and everything
+    /// in it reads as assumed rather than as anybody's statement.
+    /// </summary>
+    [Fact]
+    public void TheAssumedWorkstationShipsInsideTheTool()
+    {
+        var workstation = HostProfile.Workstation;
+
+        Assert.Equal("windows-10-workstation", workstation.Name);
+        Assert.True(workstation.TryAnswer("wmi:Win32_DiskDrive.SerialNumber", out var disk));
+        Assert.Equal("S3YJNB0M604271", disk.Text);
+        Assert.All(workstation.Answers.Values, answer => Assert.False(answer.Stated));
+        // Nothing material: a made-up machine name costs a plausible detail, made-up bytes would cost
+        // a wrong answer to the only question the reader asked.
+        Assert.DoesNotContain(
+            workstation.Answers.Values,
+            answer => answer.Kind == HostAnswerKind.Bytes);
+        // It says the same thing twice about the disk, and the two agree.
+        Assert.True(workstation.TryAnswer("volume:C.Serial", out var serial));
+        Assert.True(workstation.TryAnswer("wmi:Win32_LogicalDisk.VolumeSerialNumber", out var text));
+        Assert.Equal(text.Text, serial.Number.ToString("X8", null));
+    }
+
+    /// <summary>
+    /// An answer nobody stated says that too, and says it differently, because the two are worth
+    /// telling apart: one is checkable against the machine somebody described, and the other is the
+    /// tool's own portrait of a plausible computer.
+    /// </summary>
+    [Fact]
+    public void AnAnswerNobodyStatedSaysItWasAssumed()
+    {
+        using var module = NewModule();
+        var machine = new StaticMachine();
+
+        var result = machine.Execute(Calls(
+            module, "System.Diagnostics", "Debugger", "get_IsAttached", module.CorLibTypes.Boolean));
+
+        Assert.Contains(
+            "Assumed host debugger:IsAttached",
+            machine.State.Provenance.Render(result.Value.ProvenanceId),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Stating one fact does not make a person answerable for the fourteen they inherited, so what
+    /// they said and what the default assumed stay apart inside one profile.
+    /// </summary>
+    [Fact]
+    public void StatingOneFactDoesNotClaimTheOthersWereStated()
+    {
+        var profile = HostProfile.Parse("""{ "facts": { "env:MachineName": "DESKTOP-7QK2" } }""", "x");
+
+        Assert.True(profile.TryAnswer("env:MachineName", out var named));
+        Assert.True(named.Stated);
+        Assert.True(profile.TryAnswer("debugger:IsAttached", out var debugger));
+        Assert.False(debugger.Stated);
+    }
+
+    /// <summary>
     /// A platform call is a boundary rather than a gap, except where all it does is report a fact.
     /// Then it is a gap, and the profile is what closes it.
     /// </summary>
@@ -121,12 +185,17 @@ public sealed class HostProfileTests
         Assert.Equal(1, result.Value.AsInt32());
     }
 
+    /// <remarks>
+    /// Explicitly sparse, and explicitly strict: the first so that the profile is known not to answer
+    /// this, and the second because a run that is allowed to assume steps over the call instead, which
+    /// is a different property covered elsewhere.
+    /// </remarks>
     [Fact]
     public void ANativeCallTheProfileSaysNothingAboutStillStops()
     {
         using var module = NewModule();
 
-        var result = new StaticMachine().Execute(
+        var result = Under("""{ "facts": { } }""", strict: true).Execute(
             CallsNative(module, "user32.dll", "SetProcessDPIAware"));
 
         Assert.Equal(StaticExecutionStatus.Unsupported, result.Status);
@@ -326,11 +395,12 @@ public sealed class HostProfileTests
         Assert.False(attached.Flag);
     }
 
-    private static StaticMachine Under(string profile)
+    private static StaticMachine Under(string profile, bool strict = true)
     {
         var machine = new StaticMachine();
-        machine.State.RegisterHostEnvironment(
-            new HostEnvironment(HostProfile.Parse(profile, "test")));
+        machine.State.RegisterRunEnvironment(new RunEnvironment(
+            new HostEnvironment(HostProfile.Parse(profile, "test")),
+            strict: strict));
         return machine;
     }
 

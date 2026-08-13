@@ -115,18 +115,24 @@ debugger is attached. This tool runs on Linux and never runs the sample, so ther
 is no such machine to read the answers off. It answers from a **host profile**
 instead, and says which answers it used.
 
-Out of the box the profile states only the few things the tool has always
-answered. Anything else stops the run, naming the fact that would let it
-continue — `wmi:Win32_BIOS.SerialNumber`, say. Put the facts you know in a file
-and hand it over:
+Out of the box it answers as a plausible Windows 10 workstation — a machine name, a
+user, a disk serial, a screen size — and marks every one of those answers in the
+summary as assumed rather than stated. Nothing you have to write, and nothing
+hidden: the `ASSUMED` block lists exactly what was asked and what it was told, and
+the report carries the profile's hash next to the sample's, because an assumed fact
+is used like any other value and can end up in the cleaned copy.
+
+Where the answer matters and you know it, say so, and the summary then credits you
+with it rather than the tool:
 
 ```
 ReactorUnpack suspicious.exe --host-profile profiles/windows-10-workstation.json
 ```
 
-The summary's `ASSUMED` block lists what was asked and what it was told, and the
-report carries the profile's hash next to the sample's, because a stated fact is
-used like any other value and can end up in the cleaned copy.
+Some questions no profile answers — a registry value holding the key, most often.
+Those still stop the run, naming the fact that would let it continue, because a
+made-up machine name costs you a plausible detail while a made-up blob would answer
+the only question you asked, and answer it wrongly.
 
 A fact can be bytes, written as `{ "base64": "..." }`. That is what to use when
 the sample keeps its next stage in a binary registry value: paste the value in and
@@ -152,6 +158,65 @@ ReactorUnpack suspicious.exe --library ./protobuf-net.dll
 The assembly has to be one the sample actually references, its hash is recorded
 in the report, and nothing in it is executed — its IL is read the same way the
 sample's is. Repeat the option for more than one.
+
+### When the tool cannot read a call
+
+The reader models a large part of the framework but not all of it, and a sample it
+has not met before will call something outside that. By default such a call is
+stepped over: one that hands nothing back cost the run nothing, and one that returns
+something returns a value marked as not known. Most of them are on the way rather
+than in the way — a thread is started, a window title is fetched — and stopping at
+the first would lose everything behind it.
+
+Nothing is guessed at. The tool never invents what a call returned, and an unknown
+value may be carried but may never become a value: the moment it would have to be a
+branch, an index, or a length, the run stops. Every call stepped over is listed in
+the summary and in `blockers.json`.
+
+When the reading is going to be relied on, ask for rigour instead:
+
+```
+ReactorUnpack suspicious.exe --strict
+```
+
+That assumes nothing about the machine beyond the fifteen answers the interpreter
+has always given, and stops at any call it cannot read — which is what this tool did
+everywhere before triage became the default. Less comes out, and everything that
+does rests only on the file and on what you stated.
+
+### When a run stops short
+
+A sample the tool has not met before may still stop it somewhere. Every run
+therefore writes `reactorunpack/suspicious.blockers.json`, which names each thing
+that stopped it, the method and offset it happened at, how often it came up, and
+the exact line to write down to get past it:
+
+```json
+{
+  "Kind": "unstatedFact",
+  "Key": "wmi:Win32_DiskDrive.SerialNumber",
+  "Declare": "\"facts\": { \"wmi:Win32_DiskDrive.SerialNumber\": <value> }",
+  "Where": "System.String W8ysC31VAB3.bHOEmc16::TJ51Wrvldq(...) IL_0030",
+  "Times": 4
+}
+```
+
+Those declarations go in one file, which also carries the host facts, the
+libraries, how much work the run may do, and stages to leave out:
+
+```
+ReactorUnpack suspicious.exe --declarations ptnifif.json
+```
+
+So where a run does stop, the way through is a loop: run it, read what stopped it,
+write down what you know, run it again. You should not need it for a first look —
+that is what the default is for — and it is worth the trouble when a particular
+sample's payload is the thing you actually want. Where no declaration would help,
+the entry says so, and that is a bug report rather than a file to edit. The file can
+also say what a call the tool cannot read does — the one thing that puts a value
+into the reading that no code produced, so it takes `--allow-declared-calls`, is
+never allowed to displace real code, and is printed in the summary wherever it was
+used. [docs/declarations.md](docs/declarations.md) is the contract.
 
 ## What it handles
 
@@ -222,6 +287,8 @@ the original.
   used against each protection, and why it is safe to do statically.
 - **[Reading the output](docs/reading-the-output.md)** — the report format, what
   each number means, and what to do when something does not work.
+- **[Declarations](docs/declarations.md)** — what a run can be told, what it
+  reports back when it stops, and the loop between the two.
 - **[Compatibility and provenance](docs/compatibility.md)** — the precise
   support contract and verification gates.
 - **[Comparison with NETReactorSlayer](docs/parity.md)** — stage-by-stage,

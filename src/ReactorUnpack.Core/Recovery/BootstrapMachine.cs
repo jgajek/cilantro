@@ -23,14 +23,15 @@ namespace ReactorUnpack.Core.Recovery;
 /// </remarks>
 public static class BootstrapMachine
 {
-    public static StaticMachineLimits Limits(int maximumSteps) => new(
-        MaximumSteps: maximumSteps,
-        MaximumRecursionDepth: 64,
-        MaximumAllocatedBytes: 256 * 1024 * 1024,
-        MaximumArrayLength: 256 * 1024 * 1024,
-        MaximumProvenanceNodes: 1_000_000,
-        MaximumProvenanceDepth: 8_192,
-        MaximumRenderedProvenanceNodes: 96);
+    public static StaticMachineLimits Limits(int maximumSteps, DeclaredBudgets? budgets = null) =>
+        (budgets ?? DeclaredBudgets.None).Over(new StaticMachineLimits(
+            MaximumSteps: maximumSteps,
+            MaximumRecursionDepth: 64,
+            MaximumAllocatedBytes: 256 * 1024 * 1024,
+            MaximumArrayLength: 256 * 1024 * 1024,
+            MaximumProvenanceNodes: 1_000_000,
+            MaximumProvenanceDepth: 8_192,
+            MaximumRenderedProvenanceNodes: 96));
 
     /// <summary>
     /// The key under which the choice between the two environments below is remembered, so every
@@ -39,13 +40,34 @@ public static class BootstrapMachine
     private const string FileRefusedFact = "bootstrap.moduleFileRefused";
 
     /// <summary>
-    /// The key under which the run's host profile and the record of what it was asked are kept.
+    /// The key under which what the run was told, and what it could not get past, are kept.
     /// </summary>
     /// <remarks>
-    /// One environment for the whole run, shared by every machine seeded here, so that the report
-    /// can say what the run consulted rather than what one pass out of twenty happened to ask.
+    /// One environment for the whole run, shared by every machine any pass builds, so that a stated
+    /// fact is answered wherever it is asked and the report can say what the run consulted and what
+    /// stopped it, rather than what one pass out of twenty happened to see.
     /// </remarks>
-    public const string HostEnvironmentFact = "host.environment";
+    public const string RunEnvironmentFact = "run.environment";
+
+    /// <summary>
+    /// The run's environment, made on first use so that a pass run on its own still has one.
+    /// </summary>
+    /// <remarks>
+    /// Passes are run directly as well as through the pipeline, and one that built its own
+    /// environment would quietly stop answering the facts the run was given. Making it here, once,
+    /// means every machine in the run shares the profile it was handed and writes into the same
+    /// ledger.
+    /// </remarks>
+    public static RunEnvironment Environment(ArtifactContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (context.TryGetFact<RunEnvironment>(RunEnvironmentFact, out var existing) &&
+            existing is not null)
+            return existing;
+        var made = new RunEnvironment();
+        context.SetFact(RunEnvironmentFact, made);
+        return made;
+    }
 
     /// <summary>
     /// Creates a seeded machine and runs the loader initializers, or explains why it could not.
@@ -142,9 +164,11 @@ public static class BootstrapMachine
         ArgumentNullException.ThrowIfNull(context);
         machine = null;
         diagnostic = string.Empty;
-        var candidate = new StaticMachine(Limits(maximumSteps), modelTypeInitialization: true);
-        if (context.TryGetFact<HostEnvironment>(HostEnvironmentFact, out var host) && host is not null)
-            candidate.State.RegisterHostEnvironment(host);
+        var environment = Environment(context);
+        var candidate = new StaticMachine(
+            Limits(maximumSteps, environment.Declarations.Budgets),
+            modelTypeInitialization: true);
+        candidate.State.RegisterRunEnvironment(environment);
         foreach (var library in context.TrustedModules)
             candidate.State.RegisterTrustedModule(library);
         foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>())

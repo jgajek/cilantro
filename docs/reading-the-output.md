@@ -16,6 +16,7 @@ dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 | --- | --- |
 | `suspicious.analysis.json` | Everything the tool observed and did |
 | `suspicious.changes.json` | Every individual edit, one entry per change |
+| `suspicious.blockers.json` | Everything that stopped the run short, and what to declare to get past it |
 | `suspicious.payloads/` | Files that were hidden inside the sample |
 | `suspicious.virtualized/` | Per method turned into interpreter bytecode: the program read as IL, and the listing it was read from |
 | `suspicious.renames.json` | Old-to-new name map, only with `--rename` |
@@ -75,16 +76,23 @@ they had nothing left to do. See "Why is Reactor's code still there?" below.
 ```
   ASSUMED   about the machine, from the "windows-10-workstation" profile
 
-    env:UserName                            "mhoffman"
-    native:user32!SetProcessDPIAware        1
-    wmi:Win32_PhysicalMemory.SerialNumber   not stated, so the code that asked was not read
+    env:UserName                            "mhoffman"  (assumed)
+    native:user32!SetProcessDPIAware        1  (assumed)
+    wmi:Win32_DiskDrive.SerialNumber        "WD-WCC4E5PJ0KZT"  (you stated this)
+    registry:HKEY_CURRENT_USER\Software\X   not stated, so the code that asked was not read
 ```
 
 Protected code asks questions about the computer it is running on — the time, the
 machine name, a disk serial number — and the tool cannot read the answers off the
-machine it is running on, which is not the one the sample expects. So the answers
-are declared, and this is what was declared and consulted. Facts nobody asked
-about are not listed.
+machine it is running on, which is not the one the sample expects. So this is where
+the answers came from. Facts nobody asked about are not listed.
+
+Each answer says whether **you stated** it or the tool **assumed** it. An assumed
+answer is the tool's portrait of a plausible workstation, is nobody's assertion, and
+would change the reading if the real machine differed — so a recovered value that
+depends on one is worth checking. Under `--strict` there are no assumed answers:
+anything nobody stated appears as **not stated** instead, and the code that asked was
+not read.
 
 A value shown here was used like any other: it can decide a branch and it can end
 up in the cleaned copy. If that matters for what you are doing, the full report
@@ -114,6 +122,51 @@ holding a blob. A stager that stores its next stage there is unpacked from the
 bytes you paste in, so the payload comes out of the run rather than out of a
 manual decode.
 
+A further ASSUMED section lists calls the tool could not read and stepped over:
+
+```
+  ASSUMED   not to matter: calls the tool cannot read, stepped over
+
+    System.Void System.Threading.Thread::Start(System.Object)  (x6)
+    user32.dll!GetWindowText  (x2)
+```
+
+Each of those returned nothing the run could know, and the frame carried on without
+it. Most are on the way to the part worth reading rather than in it, which is why the
+default steps over them; the risk is the other case, where the call did something the
+reading needed. If a result looks wrong, this is the list to read first, and
+`--strict` stops at these instead.
+
+One more ASSUMED section appears when a run was allowed to be told what a call the
+tool cannot read does. Those are assertions rather than readings, so they are listed
+whether or not anything else went wrong. An **UNUSED** section lists declarations
+nothing asked about, which is what a mistyped key looks like.
+
+## The BLOCKED section
+
+```
+  BLOCKED   what stopped the run, and what would get past it
+
+    UnstatedFact  wmi:Win32_DiskDrive.SerialNumber  (x4)
+      in System.String W8ysC31VAB3Rg7yojQi.bHOEmc16m1KHmOsR4gd::TJ51Wrvldq(...) IL_0030
+      declare: "facts": { "wmi:Win32_DiskDrive.SerialNumber": <value> }
+
+    All of them, in full: reactorunpack/sample.blockers.json
+```
+
+Each entry is one thing that stopped the interpretation, what it is about, where
+it happened, how often it came up, and the exact line to write down to get past
+it. An entry reading **no declaration fixes this** is one that needs a change to
+the tool rather than a line in a file, and saying so is the point: it tells you
+to stop looking for something to declare.
+
+`reactorunpack/NAME.blockers.json` carries all of them, with the tool version and
+the hashes of the input and the declarations, and is the file to read when a
+program rather than a person is deciding whether to try again. `Blockers` there
+means what stopped the run; `ContinuedPast` is the calls that were stepped over, and
+`Strict` says which mode produced the file. The kinds and the file's shape are in
+[declarations.md](declarations.md).
+
 ## The NOTES section
 
 Notes appear when a stage did not fully succeed. A line beginning `-` is a stage
@@ -140,7 +193,11 @@ hand over a result it cannot stand behind.
 | `Passes` | Each stage with status, change count, and diagnostics |
 | `Recovery` | The counters shown in the summary |
 | `VerificationPassed`, `VerificationDiagnostics` | Whether the output was accepted, and why not |
-| `HostProfile` | Which profile answered questions about the machine, its hash, and every fact consulted |
+| `HostProfile` | Which profile answered questions about the machine, its hash, and every fact consulted, each marked stated or assumed |
+| `Blockers` | Everything that stopped the interpretation, with the declaration that would get past each |
+| `ContinuedPast` | Calls the tool could not read and stepped over, with how often each came up |
+| `Strict` | Whether the run refused rather than assuming; everything else here is conditional on it |
+| `Declarations` | What the run was told, its hash, and which declared calls were used and which were not |
 
 Three categories in `Evidence` are worth knowing. `capability` entries are the
 protections that were detected, and they are what the summary turns into English.

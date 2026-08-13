@@ -21,9 +21,34 @@ public enum ProvenanceKind
     Intrinsic,
 
     /// <summary>
-    /// The value was stated by the host profile rather than derived from the sample's own bytes.
+    /// The value was stated by somebody about the machine, rather than derived from the sample's own
+    /// bytes.
     /// </summary>
-    Host
+    Host,
+
+    /// <summary>
+    /// The value is what the tool assumes about the machine, nobody having said otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from <see cref="Host"/> because the two are answerable in different ways. A stated
+    /// fact can be checked against the machine somebody described; an assumed one is the tool's own
+    /// portrait of a plausible Windows computer, and a reader tracing a recovered value back to one
+    /// has found a place where the reading would change if the real machine differed. Both are
+    /// disclosed; only this one is nobody's assertion but the tool's.
+    /// </remarks>
+    Assumed,
+
+    /// <summary>
+    /// The value was declared to be what a call the machine does not model returns.
+    /// </summary>
+    /// <remarks>
+    /// The weakest provenance there is, and kept distinct from <see cref="Host"/> for that reason. A
+    /// host fact is a statement about a computer, checkable against one; this is a statement about
+    /// what somebody else's code does, made by whoever passed the file in. Anything downstream of it
+    /// is only as good as that statement, and a reader following a recovered value back should be
+    /// able to see that it rests on one.
+    /// </remarks>
+    Declared
 }
 
 public readonly record struct ProvenanceNode(

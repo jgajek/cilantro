@@ -85,10 +85,83 @@ public sealed record ArtifactReport(
     RecoveryReportMetrics Recovery,
     bool VerificationPassed,
     IReadOnlyList<string> VerificationDiagnostics,
-    HostProfileReport? HostProfile = null);
+    HostProfileReport? HostProfile = null,
+    IReadOnlyList<Blocker>? Blockers = null,
+    DeclarationReport? Declarations = null,
+
+    /// <summary>What the run carried on past that a strict run would have stopped at.</summary>
+    IReadOnlyList<Blocker>? ContinuedPast = null,
+
+    /// <summary>
+    /// Whether the run refused wherever it would otherwise have assumed its way past something.
+    /// </summary>
+    /// <remarks>
+    /// Part of the report because everything else in it is conditional on the answer. Two reports of
+    /// the same assembly that disagree are not a contradiction if one of them was assuming.
+    /// </remarks>
+    bool Strict = true);
+
+/// <summary>
+/// What the run was told, and what came of it.
+/// </summary>
+/// <remarks>
+/// The hash is here so that a report and the file that produced it can be matched up later, and the
+/// unconsulted list is here because a declaration nobody asked about is the commonest way for a run to
+/// look like it ignored what it was given.
+/// </remarks>
+public sealed record DeclarationReport(
+    string Name,
+    string Sha256,
+    bool CallsAllowed,
+    IReadOnlyList<string> Libraries,
+    IReadOnlyList<string> SkippedPasses,
+    IReadOnlyList<string> DeclaredCallsUsed,
+    IReadOnlyList<string> DeclaredCallsUnused);
+
+/// <summary>
+/// The file an agent reads to find out what to do next: what stopped the run, and what to declare.
+/// </summary>
+/// <remarks>
+/// Small and separate from the analysis report on purpose. Deciding whether to try again is a
+/// question about the run rather than about the assembly, and it should not require parsing a report
+/// that is mostly about the assembly. The hashes are carried so that a decision can be shown to have
+/// been made about this input and these declarations rather than a previous pair.
+/// </remarks>
+public sealed record BlockerReport(
+    string ToolVersion,
+    string InputPath,
+    string InputSha256,
+    string DeclarationsName,
+    string DeclarationsSha256,
+    bool CallsAllowed,
+    IReadOnlyList<Blocker> Blockers,
+    IReadOnlyList<string> UnconsultedDeclarations,
+
+    /// <summary>Whether the run refused where it could have assumed its way past something.</summary>
+    bool Strict = true,
+
+    /// <summary>
+    /// What the run met and carried on past, which would have stopped it had it been strict.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Blockers"/> because an agent deciding what to do next needs the two
+    /// apart: a stop is why there is less output than there should be and is worth a declaration, while
+    /// one of these is a place the reading rests on a call the tool declined to follow. Reading it is
+    /// worth doing when the output looks wrong, and not otherwise.
+    /// </remarks>
+    IReadOnlyList<Blocker>? ContinuedPast = null);
 
 /// <summary>One thing the run was told about the host, and whether it was told it.</summary>
-public sealed record HostFactReport(string Key, string Answer, bool Answered, int Times);
+/// <param name="Stated">
+/// Whether a person said this, as against the tool having assumed it. A reader who wants to know how
+/// much of a recovery rests on invention reads this column.
+/// </param>
+public sealed record HostFactReport(
+    string Key,
+    string Answer,
+    bool Answered,
+    int Times,
+    bool Stated = false);
 
 /// <summary>
 /// Which host profile a run used and which of its facts the run actually consulted.
@@ -367,7 +440,20 @@ public sealed record PipelineOptions(
     string? OutputPath = null,
     string? ReportDirectory = null,
     string? HostProfilePath = null,
-    IReadOnlyList<string>? LibraryPaths = null);
+    IReadOnlyList<string>? LibraryPaths = null,
+    string? DeclarationsPath = null,
+    bool AllowDeclaredCalls = false,
+
+    /// <summary>
+    /// Whether to refuse wherever the run would otherwise assume its way past something.
+    /// </summary>
+    /// <remarks>
+    /// Off by default, because the commonest reason a run of an unfamiliar sample produced nothing was
+    /// a call on the way to the payload whose result nothing used. What the default costs is that some
+    /// of what the report says rests on a machine nobody described and on calls nobody read, and the
+    /// report says which. What it buys is measured in <c>docs/compatibility.md</c>.
+    /// </remarks>
+    bool Strict = false);
 
 public sealed record PipelineResult(
     bool Success,
@@ -379,6 +465,9 @@ public sealed record PipelineResult(
 {
     /// <summary>Listings of the programs behind virtualized methods, one file per method.</summary>
     public IReadOnlyList<string> VirtualProgramPaths { get; init; } = [];
+
+    /// <summary>Where the account of what stopped the run was written.</summary>
+    public string? BlockerReportPath { get; init; }
 }
 
 public sealed class ReactorPipeline
@@ -453,19 +542,58 @@ public sealed class ReactorPipeline
     public PipelineResult Run(string inputPath, PipelineOptions? options = null)
     {
         options ??= new PipelineOptions();
-        using var context = ArtifactContext.Load(inputPath, options.LibraryPaths);
+        // What the run was told is read before the module is, because a declarations file that
+        // cannot be read is the caller's mistake and there is no point loading a sample to find out.
+        var declarations = (options.DeclarationsPath is { } stated
+            ? RunDeclarations.Load(stated)
+            : RunDeclarations.None).Allowing(options.AllowDeclaredCalls);
+        // A profile passed on its own is the facts section written in its own file. Passing both a
+        // profile and a set of declarations that state facts is refused rather than resolved by a
+        // precedence rule, because a caller who has written the same fact in two files and seen one
+        // of them silently lose has learned nothing about which.
+        if (options.HostProfilePath is not null && declarations.Stated)
+        {
+            throw new DeclarationException(
+                "The facts are stated twice: once in the declarations and once in the profile " +
+                $"{options.HostProfilePath}. Keep them in one file.");
+        }
+
+        // Told nothing about the machine, a triage run assumes a plausible one and a strict run assumes
+        // as little as the tool can while still interpreting anything. Either way the report says which
+        // and marks every answer as stated or assumed.
+        var host = new HostEnvironment(options.HostProfilePath is { } profile
+            ? HostProfile.Load(profile)
+            : declarations.Stated
+                ? declarations.Facts
+                : options.Strict
+                    ? HostProfile.Default
+                    : HostProfile.Workstation);
+        using var context = ArtifactContext.Load(
+            inputPath,
+            [.. options.LibraryPaths ?? [], .. declarations.Libraries]);
         context.SetFact("options.removeRuntime", options.RemoveRuntime);
         context.SetFact("options.renameSymbols", options.RenameSymbols);
-        context.SetFact(
-            BootstrapMachine.HostEnvironmentFact,
-            new HostEnvironment(options.HostProfilePath is { } profile
-                ? HostProfile.Load(profile)
-                : HostProfile.Default));
+        var environment = new RunEnvironment(host, declarations, strict: options.Strict);
+        context.SetFact(BootstrapMachine.RunEnvironmentFact, environment);
         RecordLibraries(context);
+        RecordDeclarations(context, declarations, options);
 
         foreach (var planned in PipelinePlanner.Plan(_passes))
         {
             var pass = planned.Pass;
+            if (declarations.Skips(pass.Name))
+            {
+                // A pass left out is not a pass that succeeded, so this still withholds the clean
+                // copy where the pass was one the emission depends on.
+                context.AddPassResult(new PassResult(
+                    pass.Name,
+                    PassStatus.Unsupported,
+                    0,
+                    [$"The run's declarations left {pass.Name} out."],
+                    TimeSpan.Zero));
+                continue;
+            }
+
             var dependencyFailed = pass.Dependencies.Any(dependency =>
                 context.PassResults.Any(result =>
                     result.Pass == dependency && result.Status == PassStatus.Failed));
@@ -492,7 +620,9 @@ public sealed class ReactorPipeline
                 continue;
             }
 
+            environment.Pass = pass.Name;
             context.AddPassResult(pass.Run(context));
+            environment.Pass = null;
         }
 
         var allowance = BuildRewriteAllowance(context);
@@ -579,6 +709,18 @@ public sealed class ReactorPipeline
         var report = BuildReport(context, resourceInfos, verification);
         WriteJson(analysisPath, report);
         WriteJson(changesPath, context.Changes);
+        var blockersPath = Path.Combine(reportDirectory, $"{stem}.blockers.json");
+        WriteJson(blockersPath, new BlockerReport(
+            Version,
+            context.InputPath,
+            context.OriginalSha256,
+            declarations.Name,
+            declarations.Sha256,
+            declarations.CallsAllowed,
+            environment.Blockers.Blockers,
+            [.. declarations.Unconsulted.Select(call => $"{call.Method} {call.Describe()}")],
+            options.Strict,
+            environment.Blockers.Continuations));
 
         return new PipelineResult(
             canEmit || options.AnalyzeOnly && !fatalFailure,
@@ -588,7 +730,8 @@ public sealed class ReactorPipeline
             payloadPaths,
             report)
         {
-            VirtualProgramPaths = virtualProgramPaths
+            VirtualProgramPaths = virtualProgramPaths,
+            BlockerReportPath = blockersPath
         };
     }
 
@@ -617,8 +760,8 @@ public sealed class ReactorPipeline
         context.TryGetFact<int>("virtualization.operationsWalked", out var virtualWalked);
         context.TryGetFact<int>("virtualization.depthDisagreements", out var virtualDisagreements);
         context.TryGetFact<int>("strings.constantSites", out var constantStringSites);
-        context.TryGetFact<HostEnvironment>(
-            BootstrapMachine.HostEnvironmentFact, out var host);
+        context.TryGetFact<RunEnvironment>(
+            BootstrapMachine.RunEnvironmentFact, out var environment);
         return new ArtifactReport(
             Version,
             context.InputPath,
@@ -656,8 +799,24 @@ public sealed class ReactorPipeline
                 constantStringSites),
             verification.Passed,
             verification.Diagnostics,
-            Consulted(host));
+            Consulted(environment?.Host),
+            environment?.Blockers.Blockers,
+            Told(environment?.Declarations),
+            environment?.Blockers.Continuations,
+            environment?.Strict ?? true);
     }
+
+    /// <summary>What the run was told, as the report says it.</summary>
+    private static DeclarationReport? Told(RunDeclarations? declarations) => declarations is null
+        ? null
+        : new DeclarationReport(
+            declarations.Name,
+            declarations.Sha256,
+            declarations.CallsAllowed,
+            declarations.Libraries,
+            declarations.SkippedPasses,
+            [.. declarations.Consulted.Select(call => $"{call.Method} {call.Describe()}")],
+            [.. declarations.Unconsulted.Select(call => $"{call.Method} {call.Describe()}")]);
 
     /// <summary>
     /// Says in the report which libraries the interpreter was allowed to run, and which build.
@@ -685,6 +844,46 @@ public sealed class ReactorPipeline
         }
     }
 
+    /// <summary>
+    /// Says in the report what the run was told, so that a result which rests on a declaration says
+    /// so on its own.
+    /// </summary>
+    /// <remarks>
+    /// Declared call outcomes get their own line, and a louder one, because they are the only section
+    /// that puts words in somebody else's code's mouth. A run that used none of them is a run whose
+    /// result stands on the sample and the facts alone, and the difference should be visible without
+    /// reading the file that was passed in.
+    /// </remarks>
+    private static void RecordDeclarations(
+        ArtifactContext context,
+        RunDeclarations declarations,
+        PipelineOptions options)
+    {
+        if (options.DeclarationsPath is null)
+            return;
+        context.AddEvidence(new Evidence(
+            "declarations",
+            $"The run was given the declarations \"{declarations.Name}\" (SHA-256 " +
+            $"{declarations.Sha256}), stating {declarations.Facts.Answers.Count} host fact(s), " +
+            $"{declarations.Libraries.Count} library path(s), {declarations.Budgets.Describe()}, " +
+            $"{declarations.SkippedPasses.Count} pass(es) to leave out and " +
+            $"{declarations.Calls.Count} call outcome(s).",
+            Path.GetFullPath(options.DeclarationsPath)));
+        if (declarations.Calls.Count == 0)
+            return;
+        context.AddEvidence(new Evidence(
+            "declarations",
+            declarations.CallsAllowed
+                ? "Declared call outcomes were allowed, so a call the interpreter does not model " +
+                  "may have been answered from the declarations rather than from code. Every one " +
+                  "that was is listed under the host and declaration report."
+                : "The declarations state call outcomes, but they were not allowed for this run, " +
+                  "so every unmodelled call was refused as usual. Pass --allow-declared-calls to " +
+                  "use them.",
+            Path.GetFullPath(options.DeclarationsPath),
+            declarations.CallsAllowed ? 0.5 : 1.0));
+    }
+
     private static HostProfileReport? Consulted(HostEnvironment? host) => host is null
         ? null
         : new HostProfileReport(
@@ -695,7 +894,8 @@ public sealed class ReactorPipeline
                     question.Key,
                     question.Answer.Describe(),
                     question.Answer.IsAnswered,
-                    question.Times))
+                    question.Times,
+                    question.Answer.Stated))
                 .ToArray());
 
     /// <summary>

@@ -51,14 +51,15 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 [$"Protected-stub prefix catalog rejected the input: {catalogDiagnostic}"]);
         }
 
-        var limits = new StaticMachineLimits(
-            MaximumSteps: 2_000_000,
-            MaximumRecursionDepth: 64,
-            MaximumAllocatedBytes: 256 * 1024 * 1024,
-            MaximumArrayLength: 256 * 1024 * 1024,
-            MaximumProvenanceNodes: 1_000_000,
-            MaximumProvenanceDepth: 8_192,
-            MaximumRenderedProvenanceNodes: 96);
+        var limits = BootstrapMachine.Environment(context).Declarations.Budgets.Over(
+            new StaticMachineLimits(
+                MaximumSteps: 2_000_000,
+                MaximumRecursionDepth: 64,
+                MaximumAllocatedBytes: 256 * 1024 * 1024,
+                MaximumArrayLength: 256 * 1024 * 1024,
+                MaximumProvenanceNodes: 1_000_000,
+                MaximumProvenanceDepth: 8_192,
+                MaximumRenderedProvenanceNodes: 96));
         var executionRoot = context.Module.GlobalType.FindStaticConstructor() ?? bootstrap;
         if (!TryExecuteBootstrap(
                 context,
@@ -297,6 +298,9 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
         integerFields = [];
         evidence = LoaderInterpretationEvidence.Empty;
         var machine = new StaticMachine(limits, modelTypeInitialization: true);
+        // The same environment the rest of the run uses, so that a fact stated for the run is
+        // answered here too and a refusal here lands in the run's ledger.
+        machine.State.RegisterRunEnvironment(BootstrapMachine.Environment(context));
         foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>())
             machine.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
         machine.State.RegisterAssemblyIdentity(

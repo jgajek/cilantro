@@ -19,13 +19,37 @@ internal static class HostFacts
         context.State.TryAskHost(key, out answer);
 
     /// <summary>The refusal for a question the profile has no answer for.</summary>
-    public static IntrinsicResult Refuse(IntrinsicContext context, string key) => new(
-        StaticExecutionStatus.Unsupported,
-        StaticValue.Unknown,
-        context.State.Host.Unanswered(key));
+    /// <remarks>
+    /// Written into the run's ledger as well as into the diagnostic, because this is the refusal with
+    /// the plainest remedy of all of them: the run asked something, nobody had said what the answer
+    /// is, and saying it is a line in a file.
+    /// </remarks>
+    public static IntrinsicResult Refuse(IntrinsicContext context, string key)
+    {
+        context.State.Blockers.Record(
+            BlockerKind.UnstatedFact,
+            key,
+            context.State.Host.Unanswered(key),
+            Declaring.Fact(key));
+        return new IntrinsicResult(
+            StaticExecutionStatus.Unsupported,
+            StaticValue.Unknown,
+            context.State.Host.Unanswered(key));
+    }
 
+    /// <summary>
+    /// Tags an answer with where it came from: somebody's statement, or the tool's assumption.
+    /// </summary>
+    /// <remarks>
+    /// Which of the two it is is a property of the answer rather than of the question, so it is read
+    /// back off the profile here instead of being passed in by each caller.
+    /// </remarks>
     public static StaticValue Stated(IntrinsicContext context, string key, StaticValue value) =>
-        context.State.Provenance.Origin(value, ProvenanceKind.Host, "host", key);
+        context.State.Provenance.Origin(
+            value,
+            context.State.Host.Assumed(key) ? ProvenanceKind.Assumed : ProvenanceKind.Host,
+            "host",
+            key);
 
     public static IntrinsicResult Number(IntrinsicContext context, string key, long number) =>
         IntrinsicResult.Completed(Stated(context, key, StaticValue.FromInt32(

@@ -34,7 +34,7 @@ for it.
 ## The bounded machine
 
 At the centre of the tool is an interpreter for IL. It models what it needs to
-model and refuses everything else.
+model, and says so wherever it is reading something it does not.
 
 It handles integers, objects, arrays, fields, branches, switches, and enough
 exception-handling flow to follow real loader code. Pointers are modelled
@@ -42,11 +42,24 @@ symbolically, so when Reactor's loader writes decrypted bytes into what it think
 is executable memory, the write lands in a simulated buffer that the tool can
 read afterwards.
 
-Calls out to the .NET framework are **deny-by-default**. There is an allowlist of
-modelled operations — reading embedded resources, streams, text encoding, hashing,
+Calls out to the .NET framework are answered from an allowlist of modelled
+operations — reading embedded resources, streams, text encoding, hashing,
 decompression, symmetric ciphers, a few `Marshal` operations, and synthetic stand-ins
-for things like "which module am I in". Anything not on that list stops
-interpretation rather than being guessed at or skipped.
+for things like "which module am I in". A call that is not on that list cannot be
+read, and what happens then is the one decision the two modes differ over. By
+default the call is stepped over: one that hands nothing back costs the run
+nothing, and one that returns something returns a value marked as not known, which
+the frame carries on with. Under `--strict` such a call stops interpretation, as
+this tool did everywhere until recently.
+
+Neither mode guesses what the call returned. The difference is between stopping at
+a call and continuing without its result, and it matters because most unreadable
+calls are on the way to the part worth reading rather than in it: a thread is
+constructed, a window title is fetched, a counter is bumped, and the payload comes
+out of the same method either way. What an unknown may never do is become a value.
+The moment one would have to be a branch condition, an array index, or a length,
+the run stops in both modes — inventing it there would mean reading a path the
+program does not take and presenting it as the program.
 
 Much of that list is unglamorous by necessity. A sample rarely goes straight from
 its entry point to the thing worth recovering: it builds a string a character at a
@@ -59,16 +72,18 @@ the call is refused instead, because a plausible string that then gets hashed or
 compared is worse than stopping.
 
 A few of the modelled answers are about the world rather than about the file, and
-those come from a **host profile**: a list of things somebody has stated about the
-Windows machine the sample believes it is running on. The built-in profile states
-only what the tool has always answered — the clock reads a fixed instant, no
+those come from a **host profile**: a list of things stated about the Windows
+machine the sample believes it is running on. By default that list is the tool's
+own portrait of a plausible workstation — a machine name, a user, a disk serial, a
+screen size, a processor id — and every answer taken from it is marked in the
+report as assumed rather than stated. Under `--strict` the profile shrinks to the
+fifteen answers the tool has always given: the clock reads a fixed instant, no
 debugger is attached, the process is number 1 and the only one, the runtime is
-4.8 — and answers
-nothing else. Protected code asks the debugger question inside the type
-initializer that builds its virtual machine, so refusing to answer it does not
-leave the tool neutral; it loses the program, the string table, and whatever is
-behind them. Every question is recorded when it is asked, so a report says both
-what the sample wanted to know and what it was told.
+4.8, and nothing else is answered at all. Protected code asks the debugger
+question inside the type initializer that builds its virtual machine, so refusing
+to answer it does not leave the tool neutral; it loses the program, the string
+table, and whatever is behind them. Every question is recorded when it is asked,
+so a report says both what the sample wanted to know and what it was told.
 
 Questions the profile does not answer are refused exactly as any unmodelled call
 is, and the refusal names the fact that would answer it: `env:MachineName`,
@@ -78,11 +93,20 @@ fact can be bytes, written as `{ "base64": "..." }`, because some of what a
 machine holds is not text — a stager that keeps its next stage in a binary
 registry value is recovered by stating that value, and then the payload comes out
 of the profile the same way it would have come out of the registry.
-Nothing about that is a guess by the tool: a stated fact is used freely, and can
-end up folded into the emitted assembly, which is why the report carries the
-profile's name and hash next to the input's. What the tool will not do is invent
-one. A machine name nobody has stated stops the interpretation rather than
-becoming `WORKSTATION-1`.
+A stated fact is used freely, and can end up folded into the emitted assembly,
+which is why the report carries the profile's name and hash next to the input's.
+
+What the tool will not invent is anything about the program. No instruction is
+guessed at, no branch is taken on a value the sample did not produce, no key is
+supposed and no decrypted byte is written down that decryption did not produce.
+What it does assume, by default, is the machine: a name nobody stated reads as
+`DESKTOP-N7QK2LP` rather than stopping the interpretation. Every such answer is
+listed as assumed in the report, so a reading that depends on one can be seen to
+depend on it, and `--strict` removes them all. The shipped portrait deliberately
+describes only machine-shaped things — names, paths, identifiers, sizes — and
+never file contents or a registry value holding bytes, because a wrong machine
+name costs a reader a plausible detail while a wrong blob would answer the only
+question they asked, and answer it falsely.
 
 The same reasoning covers somebody else's library. A sample that unpacks itself
 through a third-party assembly cannot be followed past the call unless that
@@ -105,10 +129,14 @@ actually is. That is the other half of the protector's own check rather than a w
 around it, and both attempts are recorded, so the report says the module looked
 and says what it concluded.
 
-A call that leaves the runtime altogether is a different matter. A platform
+A call that leaves the runtime altogether is reported differently. A platform
 invoke has no body to interpret and no model that could stand in for what the
-operating system would do, so it stops the interpretation and is reported as what
-it is — the boundary of the runtime rather than a gap in the allowlist.
+operating system would do, so it is named as what it is — the boundary of the
+runtime rather than a gap in the allowlist — and what would get past it is a
+statement about the machine rather than a model somebody has yet to write. Like
+any unreadable call it is stepped over by default and stops the frame under
+`--strict`. Where the platform call only reports a fact about the machine, the
+profile answers it outright and the interpretation continues with a real value.
 
 The network is that same boundary, and it is worth reaching. A stager keeps its
 next stage on a server, and everything it does before the connection —
@@ -128,12 +156,16 @@ finished — which is true here, because nothing runs on another thread, so what
 a task stands for either already happened or already refused. `MoveNext` is then
 interpreted like any other body and the method runs to its result.
 
-That refusal is the safety property, and it is also load-bearing for correctness.
-Because the machine refuses every call it does not model, a routine that
-interprets all the way to completion cannot have done anything outside the
-modelled surface. There is no hidden side effect it could have had, because there
-was no unmodelled call through which to have one. Several later stages depend on
-that guarantee.
+Knowing what a frame did is load-bearing for correctness, because several later
+stages remove code on the strength of having proved it does nothing. Under
+`--strict` that proof comes for free: a routine that interprets to completion made
+no unmodelled call, so it had no channel for a hidden effect. Stepping over a call
+would break the proof, since the call might have done anything, so a frame that
+stepped over one is recorded as having handed something to the runtime — the same
+note that a modelled `AppDomain` handler registration leaves. Every stage that
+asks "does this frame do anything" reads that note, and so declines to remove a
+frame whose calls nobody read. Assuming past a call therefore costs the run a
+removal it might have made, and cannot cost it a removal it should not have made.
 
 There are budgets on instructions, allocations, and memory. Running out is
 treated as failure, not as a partial answer.

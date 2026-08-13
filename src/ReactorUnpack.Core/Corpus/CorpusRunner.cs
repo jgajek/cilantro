@@ -42,7 +42,9 @@ public sealed record CorpusSample(
     bool RequireOracleResourceParity = false,
     int? MinimumConstantStringSites = null,
     string? HostProfile = null,
-    IReadOnlyList<string>? Libraries = null);
+    IReadOnlyList<string>? Libraries = null,
+    string? Declarations = null,
+    bool AllowDeclaredCalls = false);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -162,7 +164,8 @@ public static class CorpusRunner
     public static CorpusRunReport Run(
         string manifestPath,
         string sampleDirectory,
-        string outputDirectory)
+        string outputDirectory,
+        bool strict = false)
     {
         var manifest = LoadManifest(manifestPath);
         // A profile or a library named by an entry is named relative to the manifest that names it,
@@ -186,7 +189,13 @@ public static class CorpusRunner
                 var sample = scheduled[index];
                 var path = Path.Combine(sampleDirectory, sample.LocalName);
                 outcomes[index] = RunSample(
-                    sample, path, sampleDirectory, outputDirectory, manifestDirectory, samplesByHash);
+                    sample,
+                    path,
+                    sampleDirectory,
+                    outputDirectory,
+                    manifestDirectory,
+                    samplesByHash,
+                    strict);
             });
 
         var report = new CorpusRunReport(
@@ -207,7 +216,8 @@ public static class CorpusRunner
         string sampleDirectory,
         string outputDirectory,
         string manifestDirectory,
-        Dictionary<string, CorpusSample> samplesByHash)
+        Dictionary<string, CorpusSample> samplesByHash,
+        bool strict)
     {
         if (!File.Exists(path))
             return Missing(sample);
@@ -221,7 +231,9 @@ public static class CorpusRunner
         var outputPath = Path.Combine(sampleOutputDirectory, "cleaned.bin");
         // The corpus exercises the default emission policy rather than the strict one, so an
         // outcome reflects what a caller actually gets. Rigor comes from the manifest's explicit
-        // per-sample expectations and from every pass status being recorded in the outcome.
+        // per-sample expectations and from every pass status being recorded in the outcome. The
+        // interpretation mode is asked for by whoever runs the corpus rather than written into the
+        // manifest, because the point of running it both ways is to compare the same expectations.
         var result = new ReactorPipeline().Run(path, new PipelineOptions(
             AnalyzeOnly: analysisOnly,
             PreserveTokens: true,
@@ -230,7 +242,10 @@ public static class CorpusRunner
             HostProfilePath: Beside(manifestDirectory, sample.HostProfile),
             LibraryPaths: sample.Libraries
                 ?.Select(library => Beside(manifestDirectory, library)!)
-                .ToArray()));
+                .ToArray(),
+            DeclarationsPath: Beside(manifestDirectory, sample.Declarations),
+            AllowDeclaredCalls: sample.AllowDeclaredCalls,
+            Strict: strict));
         var capabilities = result.Report.Evidence
             .Where(evidence => evidence.Category == "capability")
             .Select(evidence => evidence.Message)

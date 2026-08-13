@@ -10,4 +10,14 @@
     <PackageReference Include="dnlib" Version="4.5.0" />
   </ItemGroup>
 
+  <!--
+    The portrait of a machine the tool assumes when nobody has described one. Carried inside the
+    assembly so that the common case needs no file on disk, and kept as the same JSON a caller may
+    pass on the command line, so there is one format and one parser rather than two.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../profiles/windows-10-workstation.json"
+                      LogicalName="ReactorUnpack.Core.Profiles.Workstation.json" />
+  </ItemGroup>
+
 </Project>

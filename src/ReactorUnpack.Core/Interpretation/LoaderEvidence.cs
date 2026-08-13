@@ -15,7 +15,27 @@ public enum LoaderObservationKind
     /// <summary>The loader requested process termination.</summary>
     Termination,
     /// <summary>The loader asked something about the computer it believes it is running on.</summary>
-    HostQuestion
+    HostQuestion,
+
+    /// <summary>
+    /// A call the machine does not model was answered from what the run was told it does.
+    /// </summary>
+    /// <remarks>
+    /// Recorded for every use, because this is the one input that can put a value into the
+    /// interpretation which no code produced. A reader who sees one of these knows to check the
+    /// declaration before believing anything downstream of it.
+    /// </remarks>
+    DeclaredCall,
+
+    /// <summary>
+    /// A call the machine cannot follow that the run stepped over rather than stopping at.
+    /// </summary>
+    /// <remarks>
+    /// The frame carried on with the call's result unknown, so anything the call would have done did
+    /// not happen and anything it would have returned is not known. Recorded for every use, because a
+    /// reading that quietly walked past a call is worth less than one that says where it did.
+    /// </remarks>
+    SteppedCall
 }
 
 /// <summary>
@@ -49,11 +69,12 @@ public sealed record LoaderObservation(
 /// only writes fields nothing else ever reads is still removable, and Reactor's integrity check
 /// does exactly that.
 ///
-/// Registrations exist because the machine refuses any call it does not model, which makes the
-/// account complete for everything except the calls it does model and treats as succeeding
-/// silently. Handing the runtime an event handler is the one such call: it changes what the program
-/// does later while touching no field and no memory the interpretation can see. Recording it keeps
-/// the account honest, so a caller may treat an empty account as proof that a frame does nothing
+/// Registrations exist because a call the interpretation does not read could have done anything, and
+/// the account has to say so. There are two such calls. One is modelled and treated as succeeding
+/// silently — handing the runtime an event handler changes what the program does later while touching
+/// no field and no memory the interpretation can see. The other is a call the machine cannot follow
+/// at all, which outside strict mode is stepped over rather than stopped at. Recording both keeps the
+/// account honest, so a caller may treat an empty account as proof that a frame does nothing
 /// rather than as proof that nothing was noticed.
 /// </remarks>
 public sealed record LoaderMethodEffects(

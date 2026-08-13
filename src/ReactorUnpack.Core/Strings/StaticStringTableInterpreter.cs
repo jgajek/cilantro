@@ -30,7 +30,8 @@ public static class StaticStringTableInterpreter
         PeImageView image,
         MethodDef resolver,
         out StaticStringTableCapture? capture,
-        out string diagnostic)
+        out string diagnostic,
+        RunEnvironment? environment = null)
     {
         capture = null;
         var resourceName = FindResourceName(resolver);
@@ -53,7 +54,8 @@ public static class StaticStringTableInterpreter
         foreach (var offset in new[] { 0, 1 })
         {
             if (!TryRun(module, image, initializer, resourceName,
-                    resource.CreateReader().ToArray(), offset, out var run, out diagnostic))
+                    resource.CreateReader().ToArray(), offset, environment, out var run,
+                    out diagnostic))
                 return false;
             runs.Add(run);
         }
@@ -93,12 +95,17 @@ public static class StaticStringTableInterpreter
         string resourceName,
         byte[] resourceBytes,
         int offset,
+        RunEnvironment? environment,
         out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
             IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
         out string diagnostic)
     {
         run = default;
-        var machine = new StaticMachine(Limits, ProxyIntrinsicRegistry.Create(module));
+        environment ??= new RunEnvironment();
+        var machine = new StaticMachine(
+            environment.Declarations.Budgets.Over(Limits),
+            ProxyIntrinsicRegistry.Create(module));
+        machine.State.RegisterRunEnvironment(environment);
         foreach (var resource in module.Resources.OfType<EmbeddedResource>())
             machine.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
         machine.State.RegisterAssemblyIdentity(

@@ -77,7 +77,9 @@
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
             "uniqueItems": true
-          }
+          },
+          "declarations": { "type": ["string", "null"], "minLength": 1 },
+          "allowDeclaredCalls": { "type": "boolean" }
         },
         "additionalProperties": false
       }
