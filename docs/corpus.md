@@ -92,6 +92,27 @@ A checkout that has samples but not the one a test names fails rather than skips
 That is a corpus that has drifted from the suite, which is worth hearing about,
 where a wholly absent corpus is a choice the repository made.
 
+## What the suite costs
+
+Where the samples are present the suite takes about fourteen minutes, and six
+tests account for all but fifteen seconds of it:
+
+| Test | Time |
+| --- | --- |
+| `PipelineTests.EmissionIsDeterministic` (two samples) | 11.1 min |
+| `CorpusTests.CorpusOutcomesAreDeterministic` | 8.0 min |
+| `VmStringRecoveryTests.Qbjuef...` | 2.9 min |
+| `PipelineTests.PipelineRecoversProfiledSamples` (two samples) | 2.8 min |
+| `AntiTamperNeutralizationTests.RemovesProvenIntegrityCheck...` | 0.9 min |
+| `CorpusTests.MethodProtectedGenerationIsDetectedAndFullyRecovered` | 0.2 min |
+
+The times overlap because the suite runs classes in parallel, and they are longer
+than the same work done alone: a dozen interpretations at once contend for memory
+bandwidth. Each of the six is marked `Cost=High` and can be left out with
+`--filter "Cost!=High"`, which is the loop to work in. None of them can run in
+continuous integration, since the samples are not in the repository, so a person
+running the full suite is the only thing that closes those gates.
+
 `detected` ReasonLabs entries are release candidates rather than
 analysis-only fixtures. They pass only when all protected application bodies
 are restored and verified. Qbjuef remains exploratory until its complete

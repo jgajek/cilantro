@@ -308,6 +308,18 @@ dotnet test ReactorUnpack.slnx -c Release
 Use `-c Release` for the tests. Most of the suite is the analysis engine working
 through real samples, which an unoptimised build runs about five times slower.
 
+While you work, run the suite without the six tests that put whole samples
+through the machine:
+
+```bash
+dotnet test ReactorUnpack.slnx -c Release --filter "Cost!=High"
+```
+
+That is 317 of the 325 tests in about five seconds, against the fourteen minutes
+the six cost between them. They still run on a plain `dotnet test`, which is what
+to do before pushing, because they are the ones that prove the tool recovers real
+malware.
+
 The samples themselves are malware and are not in the repository, so a fresh
 checkout has none. The tests that read one are skipped there rather than failed,
 and say so with a reason, which is how CI runs: green means everything checkable

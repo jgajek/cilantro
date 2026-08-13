@@ -27,6 +27,7 @@ public sealed class PipelineTests
     };
 
     [SampleTheory]
+    [Trait(Cost.Key, Cost.High)]
     [MemberData(nameof(Samples))]
     public void PipelineRecoversProfiledSamples(
         string filename,
@@ -105,6 +106,7 @@ public sealed class PipelineTests
     }
 
     [SampleTheory]
+    [Trait(Cost.Key, Cost.High)]
     [MemberData(nameof(Samples))]
     public void EmissionIsDeterministic(
         string filename,

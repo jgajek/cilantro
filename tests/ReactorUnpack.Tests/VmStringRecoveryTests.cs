@@ -101,6 +101,7 @@ public sealed class VmStringRecoveryTests
     }
 
     [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
     public void QbjuefSerializedVmCapturesUniqueTableAndRewritesEverySiteAtomically()
     {
         var reportDirectory = Path.Combine(

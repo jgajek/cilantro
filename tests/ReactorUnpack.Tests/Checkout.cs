@@ -60,6 +60,27 @@ internal static class Checkout
     }
 }
 
+/// <summary>
+/// What the expensive tests are marked with, so a working session need not run them.
+/// </summary>
+/// <remarks>
+/// Six tests interpret whole samples and account for essentially all of the suite's running time; the
+/// other three hundred finish in about fifteen seconds together. Anyone changing a message, a name or
+/// a report field wants those three hundred and wants them now, so the costly ones carry a trait and
+/// can be left out by name:
+/// <code>dotnet test ReactorUnpack.slnx -c Release --filter "Cost!=High"</code>
+/// The plain <c>dotnet test</c> still runs everything, because these are the tests that prove the tool
+/// recovers real malware and no continuous integration can run them: the samples are not in the
+/// repository. A gate nothing but a person can close should not also be one they have to remember.
+/// </remarks>
+internal static class Cost
+{
+    public const string Key = "Cost";
+
+    /// <summary>Minutes rather than milliseconds: a whole sample goes through the machine.</summary>
+    public const string High = "High";
+}
+
 /// <summary>A test that reads a real sample, and is skipped in a checkout that has none.</summary>
 public sealed class SampleFactAttribute : FactAttribute
 {

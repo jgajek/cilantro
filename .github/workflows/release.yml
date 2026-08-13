@@ -65,7 +65,10 @@ jobs:
             tar czf ../../${{ matrix.artifact }} .
           fi
 
-      - uses: actions/upload-artifact@v4
+      # Left archiving on, which is the default: the artifact is zipped for the hop between jobs and
+      # arrives back as the file that went in. Uploading the archive unzipped instead would hand the
+      # release job a Windows zip that the download step could reasonably decide to unpack.
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.runtime }}
           path: ${{ matrix.artifact }}
@@ -74,17 +77,20 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
       - name: Checksums
         run: sha256sum ReactorUnpack-* > SHA256SUMS.txt
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
             ReactorUnpack-*
             SHA256SUMS.txt
+          # A release missing the thing people came to download is worse than no release, and by
+          # default an asset pattern that matches nothing is passed over in silence.
+          fail_on_unmatched_files: true
           generate_release_notes: true

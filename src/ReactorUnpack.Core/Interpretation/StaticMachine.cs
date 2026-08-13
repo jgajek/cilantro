@@ -2459,6 +2459,10 @@ public sealed class StaticMachine
     /// An instruction's recorded offset goes stale as soon as a pass rewrites the body around it,
     /// so quoting one sends a reader to the wrong place in the file they are looking at. The
     /// instructions themselves do not drift.
+    ///
+    /// The operands are abbreviated for the same reason the traced steps are: a dispatcher switch
+    /// carries a couple of hundred targets, and printing them spells out in thousands of characters
+    /// what the number of them says. Anyone who needs the targets is reading the body, not this.
     /// </remarks>
     private static string Preceding(IList<Instruction> instructions, int ip)
     {
@@ -2466,7 +2470,9 @@ public sealed class StaticMachine
         var from = Math.Max(0, ip - worthShowing);
         return string.Join("; ", Enumerable.Range(from, ip - from)
             .Select(index => instructions[index].OpCode.Name +
-                (instructions[index].Operand is { } operand ? $" {operand}" : string.Empty)));
+                (instructions[index].Operand is { } operand
+                    ? $" {Abbreviate(operand)}"
+                    : string.Empty)));
     }
 
     private static ExceptionHandler? FindFinally(

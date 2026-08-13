@@ -45,6 +45,7 @@ public sealed class CorpusTests
     }
 
     [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
     public void MethodProtectedGenerationIsDetectedAndFullyRecovered()
     {
         var sample = Checkout.Sample("Reason.PAC.dll");
@@ -79,6 +80,7 @@ public sealed class CorpusTests
     }
 
     [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
     public void CorpusOutcomesAreDeterministic()
     {
         var first = Path.Combine(Path.GetTempPath(), $"reactor-corpus-{Guid.NewGuid():N}");

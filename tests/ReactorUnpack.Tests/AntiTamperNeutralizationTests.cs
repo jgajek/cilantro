@@ -8,6 +8,7 @@ namespace ReactorUnpack.Tests;
 public sealed class AntiTamperNeutralizationTests
 {
     [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
     public void RemovesProvenIntegrityCheckOnJitHookSample()
     {
         var result = RunAnalyze("Reason.PAC.dll");
