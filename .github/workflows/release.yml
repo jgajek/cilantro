@@ -23,9 +23,9 @@ jobs:
             artifact: ReactorUnpack-linux-x64.tar.gz
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -39,6 +39,20 @@ jobs:
           -r ${{ matrix.runtime }}
           -p:PublishSingleFile=true
           -o publish/${{ matrix.runtime }}
+
+      # The archive is named for the tag, and the tool reports its own version. If those disagree the
+      # download is mislabelled, and nobody reading a bug report against it can tell which build they
+      # have. Only the Linux job can ask the binary; both jobs build the same source.
+      - name: Check the tag against the tool
+        if: matrix.runtime == 'linux-x64'
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          reported="$(publish/linux-x64/ReactorUnpack --version)"
+          if [ "${TAG#v}" != "$reported" ]; then
+            echo "Tag $TAG does not match the version the tool reports, $reported." >&2
+            exit 1
+          fi
 
       - name: Package
         run: |

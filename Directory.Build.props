@@ -1,5 +1,12 @@
 <Project>
   <PropertyGroup>
+    <!--
+      What the published file says about itself in its own properties. It has to agree with
+      ReactorPipeline.Version, which is what the tool prints and what it stamps on every report;
+      ReleaseMetadataTests holds the two together so a download cannot be labelled one version while
+      claiming another.
+    -->
+    <Version>0.1.0</Version>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
