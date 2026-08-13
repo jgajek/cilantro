@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using ReactorUnpack.Core.Payload;
 
 namespace ReactorUnpack.Core.Interpretation;
 
@@ -84,6 +85,8 @@ public sealed class StaticIntrinsicRegistry : IStaticIntrinsicRegistry
         new ConversionIntrinsic(),
         new ReflectionEmitIntrinsic(),
         new StackFrameIntrinsic(),
+        new DebuggerIntrinsic(),
+        new ThreadIntrinsic(),
         new NativeDelegateIntrinsic(),
         new LoaderFrameworkIntrinsic(),
         new VirtualRegionIntrinsic()
@@ -869,6 +872,74 @@ public sealed class MonitorIntrinsic : IStaticIntrinsic
 /// thunk is valid IL, and so would anything else the program chose to emit instead.
 /// </remarks>
 /// <summary>
+/// Answers code that asks whether it is being watched.
+/// </summary>
+/// <remarks>
+/// A protected assembly asks this the way it asks the time: as a fact about the world it is running
+/// in. The interpretation is not that world — nothing here is running, and no debugger is attached
+/// to the process that is not running — so the answer is no, for the same reason the clock always
+/// reads the same instant. Refusing the question instead is not neutrality: it stops the frame that
+/// asked, and Reactor asks inside the type initializer that builds the virtual engine, so declining
+/// to answer costs the program, its string table, and the payload behind them.
+///
+/// The question is recorded even so, because a loader that asks is doing something a report should
+/// say out loud, and because what may be removed later depends on knowing where it was asked.
+/// </remarks>
+public sealed class DebuggerIntrinsic : IStaticIntrinsic
+{
+    public bool Matches(IMethod method) =>
+        method.DeclaringType?.FullName == "System.Diagnostics.Debugger";
+
+    public IntrinsicResult Invoke(
+        IntrinsicContext context,
+        IMethod method,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        var name = method.Name.String;
+        context.State.Observe(
+            LoaderObservationKind.DebuggerProbe,
+            $"System.Diagnostics.Debugger::{name}",
+            verdict: false);
+        return name switch
+        {
+            // Nothing is attached, nothing is listening, and launching one does not succeed.
+            "get_IsAttached" or "get_IsLogging" or "Launch" =>
+                IntrinsicResult.Completed(StaticValue.FromInt32(0)),
+            // Breaking into a debugger that is not there, and telling one that is not listening,
+            // both leave the program exactly as they found it.
+            "Break" or "Log" or "NotifyOfCrossThreadDependency" =>
+                IntrinsicResult.Completed(),
+            _ => IntrinsicResult.Invalid($"Unsupported debugger operation {name}.")
+        };
+    }
+}
+
+/// <summary>
+/// Lets code wait, which in an interpretation takes no time and changes nothing.
+/// </summary>
+/// <remarks>
+/// Loaders sleep to space out what they do, and a crypter stage often sleeps before unpacking. The
+/// interpretation has no clock to advance and no other thread to yield to, so a sleep is the one
+/// call that can be modeled by doing nothing without that being an approximation: waiting alters
+/// no value the machine can see. Only the waiting is modeled. Anything that starts or touches
+/// another thread is still refused, because the machine has nowhere to run it.
+/// </remarks>
+public sealed class ThreadIntrinsic : IStaticIntrinsic
+{
+    public bool Matches(IMethod method) =>
+        method.DeclaringType?.FullName == "System.Threading.Thread" &&
+        method.Name.String is "Sleep" or "SpinWait" or "Yield";
+
+    public IntrinsicResult Invoke(
+        IntrinsicContext context,
+        IMethod method,
+        IReadOnlyList<StaticValue> arguments) =>
+        method.Name.String == "Yield"
+            ? IntrinsicResult.Completed(StaticValue.FromInt32(0))
+            : IntrinsicResult.Completed();
+}
+
+/// <summary>
 /// Answers code that looks back up the call stack at whoever called it.
 /// </summary>
 /// <remarks>
@@ -1613,7 +1684,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         var name = method.Name.String;
         if (type == "System.Object" && name == ".ctor")
             return IntrinsicResult.Completed();
-        if (type == "System.Object" && name == "GetType" && arguments.Count == 1 &&
+        // Every object answers this the same way whatever type the call site spells it through,
+        // because GetType cannot be overridden. A program catching by type asks it of an exception
+        // rather than of an object, and that is the same question. The static Type.GetType(name) is
+        // a different one, and takes no receiver to tell it apart by.
+        if (name == "GetType" && method.MethodSig?.HasThis == true && arguments.Count == 1 &&
             context.State.Heap.TryGetRuntimeTypeName(arguments[0], out var runtimeTypeName))
         {
             if (!context.State.Heap.TryAllocateType(runtimeTypeName, out var runtimeType))
@@ -2128,6 +2203,21 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                     ? answered
                     : DescribeByName(heap, name, spelled, context.State.ModuleMetadata);
         }
+        // A handle is the type itself in the form the runtime hands around, and the machine already
+        // turns one back into a type. Giving one out asserts nothing new, and a program that makes
+        // an instance from a handle rather than from a name cannot be followed without it.
+        if (name == "get_TypeHandle" && arguments.Count == 1)
+        {
+            var behind = heap.TryGetModelValue<object>(arguments[0], "Metadata", out var recorded) &&
+                recorded is not null
+                    ? recorded
+                    : heap.TryGetModelValue(arguments[0], "TypeName", out string? handleName) &&
+                        handleName is not null
+                        ? handleName
+                        : null;
+            if (behind is not null && heap.TryAllocateMetadataHandle(behind, out var handle))
+                return IntrinsicResult.Completed(handle);
+        }
         if (arguments.Count == 1 && type == "System.Type" &&
             heap.TryGetModelValue(arguments[0], "TypeName", out string? shaped) && shaped is not null)
             return DescribeByName(heap, name, shaped, context.State.ModuleMetadata);
@@ -2151,6 +2241,14 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 return AllocationFailure("runtime type");
             heap.TrySetModelValue(known, "Metadata", metadata);
             return IntrinsicResult.Completed(known);
+        }
+
+        // A handle the machine gave out for a type it only knows by name comes back the same way.
+        if (type == "System.Type" && metadata is string spelledOut)
+        {
+            return heap.TryAllocateType(spelledOut, out var named)
+                ? IntrinsicResult.Completed(named)
+                : AllocationFailure("runtime type");
         }
 
         if (!heap.TryAllocateObject(type, out var result))
@@ -2357,6 +2455,48 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         return Recognized[typeName] = known;
     }
 
+    /// <summary>
+    /// The member this reference names, as the framework in hand declares it.
+    /// </summary>
+    /// <remarks>
+    /// A reference into the framework resolves to no definition here, and its signature does not
+    /// say whether the method is virtual or static — but the framework does, and it is the same
+    /// framework the protected program was built against. A runtime that rebuilds calls from
+    /// tokens asks exactly this before deciding how to make the call, so leaving it unanswered
+    /// stops the interpretation at the point where the program starts doing its work.
+    ///
+    /// An overload that cannot be told from its fellows by name and count is not answered, because
+    /// the ones that differ could differ in the answer.
+    /// </remarks>
+    private static System.Reflection.MethodBase? Framework(MemberRef reference)
+    {
+        if (reference.DeclaringType?.FullName is not { } owner ||
+            WellKnown(owner, reference.Module) is not { } present)
+        {
+            return null;
+        }
+        const System.Reflection.BindingFlags everything =
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance;
+        var taken = reference.MethodSig?.Params ?? (IList<TypeSig>)[];
+        var named = (reference.Name == ".ctor"
+                ? present.GetConstructors(everything).Cast<System.Reflection.MethodBase>()
+                : present.GetMethods(everything))
+            .Where(candidate => candidate.Name == reference.Name &&
+                candidate.GetParameters().Length == taken.Count)
+            .ToArray();
+        if (named.Length <= 1)
+            return named.FirstOrDefault();
+
+        // Overloads are told apart by what they take, which both sides spell the same way.
+        var alike = named
+            .Where(candidate => candidate.GetParameters()
+                .Select(parameter => parameter.ParameterType.FullName)
+                .SequenceEqual(taken.Select(held => held.FullName), StringComparer.Ordinal))
+            .ToArray();
+        return alike.Length == 1 ? alike[0] : null;
+    }
+
     private static IntrinsicResult DescribeMember(StaticHeap heap, string name, object described)
     {
         // A reference and the definition it names describe the same member, so questions are asked
@@ -2445,6 +2585,16 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 return Describing(heap, "System.Type", element.Next);
             case "get_FieldType" when described is FieldDef typedField:
                 return Describing(heap, "System.Type", typedField.FieldType);
+            case "get_IsVirtual" or "get_IsStatic" or "get_IsAbstract" or "get_IsPublic"
+                when described is MemberRef { IsMethodRef: true } outside &&
+                    Framework(outside) is { } present:
+                return Truth(name switch
+                {
+                    "get_IsVirtual" => present.IsVirtual,
+                    "get_IsStatic" => present.IsStatic,
+                    "get_IsAbstract" => present.IsAbstract,
+                    _ => present.IsPublic
+                });
             case "get_MetadataToken" when described is IMDTokenProvider tokenHolder:
                 return IntrinsicResult.Completed(
                     StaticValue.FromInt32((int)tokenHolder.MDToken.Raw));
@@ -2475,7 +2625,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
                 return IntrinsicResult.Completed(array);
             default:
-                return IntrinsicResult.Invalid($"Metadata question {name} is unmodeled here.");
+                // What was asked about matters as much as what was asked: the same question is
+                // answerable of a definition and unanswerable of a reference that resolves nowhere.
+                return IntrinsicResult.Invalid(
+                    $"Metadata question {name} is unmodeled for a {described.GetType().Name}" +
+                    $" ({described}).");
         }
     }
 
@@ -2625,7 +2779,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             using var module = ModuleDefMD.Load(image);
             return [.. module.Resources.Select(resource => resource.Name.String)];
         }
-        catch (Exception failure) when (failure is BadImageFormatException or IOException)
+        catch (Exception failure) when (ManagedImage.Rejects(failure))
         {
             return [];
         }
@@ -2641,7 +2795,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? found.CreateReader().ToArray()
                 : null;
         }
-        catch (Exception failure) when (failure is BadImageFormatException or IOException)
+        catch (Exception failure) when (ManagedImage.Rejects(failure))
         {
             return null;
         }
@@ -2741,6 +2895,59 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         return IntrinsicResult.Completed(model);
     }
 
+    /// <summary>Builds a string the way <c>new string(...)</c> does, from characters.</summary>
+    /// <remarks>
+    /// Reactor's decoders end in this constructor: they take a literal apart into characters,
+    /// undo whatever was done to each one, and put the characters back together. Without it the
+    /// work of the whole routine is done and then dropped on its last instruction.
+    /// </remarks>
+    private static IntrinsicResult MakeString(
+        StaticHeap heap,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        // Repeating one character is the only form that does not begin from an array.
+        if (arguments.Count == 3 &&
+            arguments[1].Kind == StaticValueKind.Int32 &&
+            arguments[2].Kind == StaticValueKind.Int32)
+        {
+            var count = arguments[2].AsInt32();
+            if (count < 0)
+                return IntrinsicResult.Invalid("String repeat count is negative.");
+            return heap.TryAllocateString(
+                new string((char)(ushort)arguments[1].AsInt32(), count), out var repeated)
+                ? IntrinsicResult.Completed(repeated)
+                : AllocationFailure("String..ctor");
+        }
+
+        // An array allocated where no metadata was available to name its element type still holds
+        // the characters that were put in it, so what it says it holds is not the test.
+        if (arguments.Count is not (2 or 4) ||
+            !heap.TryGetArrayElementType(arguments[1], out var elementType) ||
+            elementType is not ("System.Char" or "?") ||
+            !heap.TryGetLength(arguments[1], out var length))
+        {
+            return IntrinsicResult.Invalid("Unsupported String operation .ctor.");
+        }
+
+        var start = arguments.Count == 4 ? arguments[2].AsInt32() : 0;
+        var taken = arguments.Count == 4 ? arguments[3].AsInt32() : length;
+        if (start < 0 || taken < 0 || start > length - taken)
+            return IntrinsicResult.Invalid("String segment is outside the character array.");
+
+        var built = new char[taken];
+        for (var index = 0; index < taken; index++)
+        {
+            if (!heap.TryReadArray(arguments[1], start + index, out var character) ||
+                !character.IsKnown)
+                return IntrinsicResult.Invalid("A character of the string is not known.");
+            built[index] = (char)(ushort)character.AsInt32();
+        }
+
+        return heap.TryAllocateString(new string(built), out var made)
+            ? IntrinsicResult.Completed(made)
+            : AllocationFailure("String..ctor");
+    }
+
     private static IntrinsicResult InvokeString(
         IntrinsicContext context,
         string name,
@@ -2778,10 +2985,20 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (name == "ToCharArray" && arguments.Count == 1 &&
             context.State.Heap.TryGetString(arguments[0], out text))
         {
-            if (!context.State.Heap.TryAllocateArray(null, text.Length, out var array))
+            // The element type is what makes the array able to hold characters at all: an array
+            // allocated without one takes no primitive, so the characters would be dropped here
+            // and every later write to the array refused.
+            if (!context.State.Heap.TryAllocateArray(
+                    context.State.ModuleMetadata?.CorLibTypes.Char,
+                    text.Length,
+                    out var array))
                 return AllocationFailure("String.ToCharArray");
             for (var i = 0; i < text.Length; i++)
-                context.State.Heap.TryWriteArray(array, i, StaticValue.FromInt32(text[i]));
+            {
+                if (!context.State.Heap.TryWriteArray(array, i, StaticValue.FromInt32(text[i])))
+                    return AllocationFailure("String.ToCharArray");
+            }
+
             return IntrinsicResult.Completed(array);
         }
         if (name is "ToLower" or "ToLowerInvariant" or "ToUpper" or "ToUpperInvariant" &&
@@ -2822,6 +3039,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             };
             return IntrinsicResult.Completed(StaticValue.FromInt32(matched ? 1 : 0));
         }
+        if (name == ".ctor")
+            return MakeString(context.State.Heap, arguments);
         return IntrinsicResult.Invalid($"Unsupported String operation {name}.");
     }
 
@@ -3245,8 +3464,64 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             !heap.TryGetModelValue(stream, "Open", out bool open) ||
             !open)
             return IntrinsicResult.Invalid("BinaryReader is not initialized.");
+        // Read into a caller's array is the bulk form: it fills what it can and says how much
+        // that was, where ReadBytes hands back a fresh array. Loader code uses both.
+        if (name == "Read" && arguments.Count == 4)
+        {
+            var start = arguments[2].AsInt32();
+            var wanted = arguments[3].AsInt32();
+            if (start < 0 || wanted < 0 ||
+                !heap.TryGetLength(arguments[1], out var destination) ||
+                start > destination - wanted)
+                return IntrinsicResult.Invalid("BinaryReader destination range is invalid.");
+            var available = position >= length ? 0 : checked(length - (int)position);
+            var read = Math.Min(wanted, available);
+            var taken = new byte[read];
+            if (!heap.TryReadBytes(buffer, checked(bufferOrigin + (int)position), taken) ||
+                !heap.TryWriteBytes(arguments[1], start, taken))
+                return IntrinsicResult.Invalid("BinaryReader backing range is invalid.");
+            heap.TrySetModelValue(stream, "Position", position + read);
+            return IntrinsicResult.Completed(StaticValue.FromInt32(read));
+        }
+
+        // A string on the wire is a length written seven bits at a time, then that many bytes of
+        // UTF-8. The length has no fixed width, so it cannot be expressed as one of the sizes
+        // below and is read out here.
+        if (name == "ReadString" && arguments.Count == 1)
+        {
+            var at = (int)position;
+            var count = 0;
+            var shift = 0;
+            while (true)
+            {
+                if (shift == 35 || at >= length)
+                    return IntrinsicResult.Invalid("BinaryReader string length is malformed.");
+                var one = new byte[1];
+                if (!heap.TryReadBytes(buffer, checked(bufferOrigin + at), one))
+                    return IntrinsicResult.Invalid("BinaryReader backing range is invalid.");
+                at++;
+                count |= (one[0] & 0x7F) << shift;
+                shift += 7;
+                if ((one[0] & 0x80) == 0)
+                    break;
+            }
+
+            if (count < 0 || count > length - at)
+                return IntrinsicResult.Invalid("BinaryReader string runs past the end.");
+            var encoded = new byte[count];
+            if (!heap.TryReadBytes(buffer, checked(bufferOrigin + at), encoded))
+                return IntrinsicResult.Invalid("BinaryReader backing range is invalid.");
+            heap.TrySetModelValue(stream, "Position", (long)at + count);
+            return heap.TryAllocateString(
+                System.Text.Encoding.UTF8.GetString(encoded), out var spelled)
+                ? IntrinsicResult.Completed(spelled)
+                : AllocationFailure("BinaryReader.ReadString");
+        }
+
         var width = name switch
         {
+            "Read" when arguments.Count == 1 => 1,
+            "ReadBoolean" => 1,
             "ReadByte" or "ReadSByte" => 1,
             "ReadInt16" or "ReadUInt16" => 2,
             "ReadInt32" or "ReadUInt32" or "ReadSingle" => 4,
@@ -3287,7 +3562,9 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         }
         var scalar = name switch
         {
-            "ReadByte" => IntrinsicResult.Completed(StaticValue.FromInt32(bytes[0])),
+            "Read" or "ReadByte" => IntrinsicResult.Completed(StaticValue.FromInt32(bytes[0])),
+            "ReadBoolean" => IntrinsicResult.Completed(
+                StaticValue.FromInt32(bytes[0] != 0 ? 1 : 0)),
             "ReadSByte" => IntrinsicResult.Completed(StaticValue.FromInt32(unchecked((sbyte)bytes[0]))),
             "ReadInt16" => IntrinsicResult.Completed(StaticValue.FromInt32(
                 BinaryPrimitives.ReadInt16LittleEndian(bytes))),
@@ -3883,21 +4160,27 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             heap.TrySetModelValue(arguments[0], "Transform", arguments[2]);
             heap.TrySetModelValue(arguments[0], "Pending", new List<byte>());
             heap.TrySetModelValue(arguments[0], "Flushed", false);
+            heap.TrySetModelValue(arguments[0], "Reading", arguments[3].AsInt32() == 0);
             return IntrinsicResult.Completed();
         }
         if (arguments.Count == 0 ||
             !heap.TryGetModelValue(arguments[0], "Pending", out List<byte>? pending) ||
             pending is null)
             return IntrinsicResult.Invalid("CryptoStream is not initialized.");
+        heap.TryGetModelValue(arguments[0], "Reading", out bool reading);
         switch (name)
         {
             case "get_CanWrite":
-                return IntrinsicResult.Completed(StaticValue.FromInt32(1));
+                return IntrinsicResult.Completed(StaticValue.FromInt32(reading ? 0 : 1));
             case "get_CanRead":
+                return IntrinsicResult.Completed(StaticValue.FromInt32(reading ? 1 : 0));
             case "get_CanSeek":
                 return IntrinsicResult.Completed(StaticValue.FromInt32(0));
             case "Flush":
                 return IntrinsicResult.Completed();
+            case "Read" when reading && arguments.Count == 4:
+            case "ReadByte" when reading && arguments.Count == 1:
+                return ReadCryptoStream(context, name, arguments);
             case "WriteByte" when arguments.Count == 2:
                 pending.Add(unchecked((byte)arguments[1].AsInt32()));
                 return IntrinsicResult.Completed();
@@ -3924,6 +4207,73 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             default:
                 return IntrinsicResult.Invalid($"Unsupported CryptoStream operation {name}.");
         }
+    }
+
+    /// <summary>
+    /// Serves a read-mode <c>CryptoStream</c> out of the plaintext of everything behind it.
+    /// </summary>
+    /// <remarks>
+    /// A read-mode stream is the mirror of the write-mode one above: the program pulls plaintext
+    /// through it instead of pushing it. The whole of what remains in the stream underneath is
+    /// transformed at the first read rather than block by block, which for a block cipher over a
+    /// buffer already in memory produces the same bytes and avoids modeling the padding rules of a
+    /// partially consumed final block.
+    /// </remarks>
+    private static IntrinsicResult ReadCryptoStream(
+        IntrinsicContext context,
+        string name,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        var heap = context.State.Heap;
+        var stream = arguments[0];
+        if (!heap.TryGetModelValue(stream, "Plain", out byte[]? plain) || plain is null)
+        {
+            if (!heap.TryGetModelValue(stream, "Target", out StaticValue target) ||
+                !heap.TryGetModelValue(stream, "Transform", out StaticValue transform) ||
+                !heap.TryGetModelValue(target, "Buffer", out StaticValue buffer) ||
+                !heap.TryGetModelValue(target, "Position", out long at) ||
+                !heap.TryGetModelValue(target, "Origin", out int origin) ||
+                !heap.TryGetModelValue(target, "Length", out int length))
+            {
+                return IntrinsicResult.Invalid("CryptoStream has no modeled stream behind it.");
+            }
+
+            var remaining = at >= length ? 0 : checked(length - (int)at);
+            var cipher = new byte[remaining];
+            if (!heap.TryReadBytes(buffer, checked(origin + (int)at), cipher))
+                return IntrinsicResult.Invalid("CryptoStream source range is invalid.");
+            if (!TryTransformBytes(heap, transform, cipher, out plain, out var error))
+                return IntrinsicResult.Invalid(error);
+            heap.TrySetModelValue(target, "Position", (long)length);
+            heap.TrySetModelValue(stream, "Plain", plain);
+            heap.TrySetModelValue(stream, "PlainPosition", 0);
+        }
+
+        heap.TryGetModelValue(stream, "PlainPosition", out int position);
+        if (name == "ReadByte")
+        {
+            if (position >= plain.Length)
+                return IntrinsicResult.Completed(StaticValue.FromInt32(-1));
+            heap.TrySetModelValue(stream, "PlainPosition", position + 1);
+            return IntrinsicResult.Completed(StaticValue.FromInt32(plain[position]));
+        }
+
+        var offset = arguments[2].AsInt32();
+        var wanted = arguments[3].AsInt32();
+        if (offset < 0 || wanted < 0 ||
+            !heap.TryGetLength(arguments[1], out var destination) ||
+            offset > destination - wanted)
+        {
+            return IntrinsicResult.Invalid("CryptoStream read range is invalid.");
+        }
+
+        var served = Math.Min(wanted, plain.Length - position);
+        if (served <= 0)
+            return IntrinsicResult.Completed(StaticValue.FromInt32(0));
+        if (!heap.TryWriteBytes(arguments[1], offset, plain.AsSpan(position, served)))
+            return IntrinsicResult.Invalid("CryptoStream destination is unavailable.");
+        heap.TrySetModelValue(stream, "PlainPosition", position + served);
+        return IntrinsicResult.Completed(StaticValue.FromInt32(served));
     }
 
     private static IntrinsicResult FlushCryptoStream(
@@ -4076,6 +4426,34 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
+        var heap = context.State.Heap;
+
+        // A name built from a string is a name of some other assembly, most often one the loader
+        // has just read out of its own table of what it carries. It is a parsed string and nothing
+        // more, so it is modeled as the string it was given.
+        if (name == ".ctor" && arguments.Count == 2 &&
+            heap.TryGetString(arguments[1], out var spelled))
+        {
+            heap.TrySetModelValue(arguments[0], "FullName", spelled);
+            var comma = spelled.IndexOf(',', StringComparison.Ordinal);
+            heap.TrySetModelValue(
+                arguments[0],
+                "Name",
+                comma < 0 ? spelled : spelled[..comma].Trim());
+            return IntrinsicResult.Completed();
+        }
+        if (arguments.Count == 1 &&
+            name is "get_Name" or "get_FullName" or "ToString" &&
+            heap.TryGetModelValue(
+                arguments[0],
+                name == "get_Name" ? "Name" : "FullName",
+                out string? carried) &&
+            carried is not null)
+        {
+            return heap.TryAllocateString(carried, out var value)
+                ? IntrinsicResult.Completed(value)
+                : AllocationFailure("assembly name");
+        }
         if (arguments.Count != 1)
             return IntrinsicResult.Invalid($"AssemblyName operation {name} is denied.");
         if (name == "GetPublicKeyToken")
@@ -4151,6 +4529,31 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             if (member is TypeDef or FieldDef or MethodDef)
                 context.State.Heap.TrySetModelValue(resolved, HomeModuleMark, true);
             return IntrinsicResult.Completed(resolved);
+        }
+        // A literal reached by token is the same literal the file spells out in its user-string
+        // heap, and reading it there is the same kind of lookup as resolving a member. A runtime
+        // that loads its strings this way — which a virtual machine does, because its program is
+        // data rather than IL — cannot be followed at all otherwise.
+        if (name == "ResolveString" &&
+            arguments.Count >= 2 &&
+            context.State.ModuleMetadata is ModuleDefMD spelling &&
+            arguments[1].Kind == StaticValueKind.Int32)
+        {
+            var token = (uint)arguments[1].AsInt32();
+            if ((token & 0xFF000000) != 0x70000000)
+                return IntrinsicResult.Invalid($"Token 0x{token:X8} does not name a string.");
+            string literal;
+            try
+            {
+                literal = spelling.ReadUserString(token);
+            }
+            catch (Exception failure) when (ManagedImage.Rejects(failure))
+            {
+                return IntrinsicResult.Invalid($"Token 0x{token:X8} is not in the string heap.");
+            }
+            return context.State.Heap.TryAllocateString(literal, out var read)
+                ? IntrinsicResult.Completed(read)
+                : AllocationFailure("resolved string");
         }
         if (arguments.Count == 1 && name == "get_ModuleHandle")
             return IntrinsicResult.Completed(arguments[0]);

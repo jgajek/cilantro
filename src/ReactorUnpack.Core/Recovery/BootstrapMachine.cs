@@ -40,6 +40,40 @@ public static class BootstrapMachine
         out StaticMachine? machine,
         out string diagnostic)
     {
+        if (!TrySeed(context, maximumSteps, out machine, out diagnostic) || machine is null)
+            return false;
+
+        var candidate = machine;
+        if (context.Module.GlobalType.FindStaticConstructor() is { HasBody: true } moduleInitializer)
+            candidate.Execute(moduleInitializer);
+        foreach (var holder in context.Module.GetTypes()
+                     .Where(type => type != context.Module.GlobalType &&
+                         ReactorStructureDetector.IsResolverKeyHolder(type)))
+        {
+            if (holder.FindStaticConstructor() is { HasBody: true } holderInitializer)
+                candidate.Execute(holderInitializer);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Creates a machine holding the module's environment, with nothing run in it yet.
+    /// </summary>
+    /// <remarks>
+    /// Reactor's own resolvers need the loader initialization above, but code that only takes a
+    /// literal apart needs none of it, and paying for the initialization once per method examined
+    /// costs more than the examination. Type initializers still run when something reads what they
+    /// set, so a method that turns out to need the loader is not misread — it simply pulls in what
+    /// it depends on.
+    /// </remarks>
+    public static bool TrySeed(
+        ArtifactContext context,
+        int maximumSteps,
+        out StaticMachine? machine,
+        out string diagnostic)
+    {
+        ArgumentNullException.ThrowIfNull(context);
         machine = null;
         diagnostic = string.Empty;
         var candidate = new StaticMachine(Limits(maximumSteps), modelTypeInitialization: true);
@@ -57,16 +91,6 @@ public static class BootstrapMachine
         {
             diagnostic = "the mapped image exceeded the interpreter allocation budget";
             return false;
-        }
-
-        if (context.Module.GlobalType.FindStaticConstructor() is { HasBody: true } moduleInitializer)
-            candidate.Execute(moduleInitializer);
-        foreach (var holder in context.Module.GetTypes()
-                     .Where(type => type != context.Module.GlobalType &&
-                         ReactorStructureDetector.IsResolverKeyHolder(type)))
-        {
-            if (holder.FindStaticConstructor() is { HasBody: true } holderInitializer)
-                candidate.Execute(holderInitializer);
         }
 
         machine = candidate;

@@ -652,8 +652,13 @@ public sealed class StaticMachine
                             var value = Pop(stack);
                             var index = Pop(stack).AsInt32();
                             var array = Pop(stack);
-                            if (!State.Heap.TryWriteArray(array, index, value))
-                                throw new InvalidOperationException("Array write is out of bounds.");
+                            if (!State.Heap.TryWriteArray(array, index, value, out var inBounds))
+                            {
+                                State.Heap.TryGetArrayElementType(array, out var elementType);
+                                throw new InvalidOperationException(inBounds
+                                    ? $"Array of {elementType} cannot hold what was stored in it."
+                                    : "Array write is out of bounds.");
+                            }
                             break;
                         }
                     case Code.Ldelema:
@@ -1008,6 +1013,15 @@ public sealed class StaticMachine
                                         callArguments[0], out var receiverType)
                                         ? $", receiver={receiverType}"
                                         : string.Empty;
+
+                                // A platform call is not an unlisted managed method that could be
+                                // modeled by adding it: it leaves the runtime entirely, and saying
+                                // so is the difference between a gap and a boundary.
+                                if (definition?.ImplMap is { } native)
+                                    return FrameResult.Fail(
+                                        StaticExecutionStatus.Unsupported,
+                                        $"IL_{instruction.Offset:X4}: {target.FullName} calls " +
+                                        $"{native.Module?.Name}!{native.Name} outside the runtime.");
                                 return FrameResult.Fail(
                                     StaticExecutionStatus.Unsupported,
                                     $"IL_{instruction.Offset:X4}: external call {target.FullName} " +
@@ -1098,9 +1112,11 @@ public sealed class StaticMachine
                 OverflowException or
                 DivideByZeroException)
             {
+                // Named, because an offset alone belongs to whichever method the reader guesses,
+                // and the guess is wrong whenever a fault happened one call below the one in hand.
                 return FrameResult.Fail(
                     StaticExecutionStatus.InvalidProgram,
-                    $"IL_{instruction.Offset:X4} {instruction.OpCode.Name} " +
+                    $"{method.FullName} IL_{instruction.Offset:X4} {instruction.OpCode.Name} " +
                     $"{instruction.Operand}: {exception.Message}");
             }
             ip = next;
@@ -1468,6 +1484,13 @@ public sealed class StaticMachine
     {
         if (!left.IsKnown || !right.IsKnown)
             return StaticValue.Unknown;
+
+        // Comparing a reference as though it were an unsigned number is how every C# compiler
+        // writes "is not null", and the only ordering it can mean is "the same or not". Reading it
+        // as an inequality is what the runtime does with it, and the alternative is to stop on an
+        // idiom that appears in ordinary code everywhere.
+        if (code is Code.Cgt_Un or Code.Clt_Un && (Referential(left) || Referential(right)))
+            return StaticValue.FromInt32(Equal(left, right) ? 0 : 1);
         var result = code switch
         {
             Code.Ceq => Equal(left, right),
@@ -1501,6 +1524,11 @@ public sealed class StaticMachine
             _ => false
         };
     }
+
+    /// <summary>Whether a value is a reference rather than a number.</summary>
+    private static bool Referential(StaticValue value) =>
+        value.Kind is StaticValueKind.Null or StaticValueKind.HeapReference or
+            StaticValueKind.ManagedReference;
 
     private static bool Equal(StaticValue left, StaticValue right)
     {

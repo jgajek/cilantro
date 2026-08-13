@@ -18,6 +18,28 @@ Protected and exploratory samples:
   (`detected`, `rsServiceController.dll`)
 - `be4044e81a4db3af715af05a0c34ebcc7ca909b42469e6b79ea15bbbf68f0c0b`
   (`detected`, `rsDatabase.protected.dll`)
+- `e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2`
+  (`profiled`, `Qafcakg.payload.Ptnifif.dll`)
+- `81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a`
+  (`exploratory`, `Mlfhntkcvb.payload.Lqcuzgc.dll`)
+
+The last two are the assemblies the first two carry. Both are protected by
+Reactor in turn, so recovering the outer sample only reaches the next wrapper,
+and they are in the corpus in their own right for that reason.
+
+They are protected in two different ways, and each is held to what it reaches.
+`Ptnifif` is a JIT-hook build: all 313 of its protected bodies come back, no
+stub is left, and its own payload does not, because the paths that would produce
+it call into `user32` and then build an assembly with `Reflection.Emit` — one is
+outside the runtime the machine models and the other is code that does not exist
+until it runs. `Lqcuzgc` is a virtualizing build whose string decryption and
+payload unpacking are both inside the virtual machine, so what is locked for it
+is the reading of that machine: every operation but a handful written as IL, the
+walk reaching all but the dead blocks, and the depths agreeing everywhere. Its
+strings and its payload are not recovered, and both are declined in the report
+rather than guessed at. Nothing in the virtual machine runs far enough to
+produce them: the program checks its own file against a signature it carries,
+and under interpretation that check throws before the decryption it guards.
 
 Validation-only deobfuscated counterparts:
 

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using dnlib.DotNet;
 using ReactorUnpack.Core.Passes;
+using ReactorUnpack.Core.Payload;
 
 namespace ReactorUnpack.Core.Recovery;
 
@@ -74,8 +75,7 @@ public sealed class CosturaExtractionPass : DeobfuscationPass
                     payloadModule.EntryPoint?.MDToken.Raw ?? 0,
                     payloadModule.Resources.Select(item => item.Name.String).ToArray());
             }
-            catch (Exception exception) when (
-                exception is BadImageFormatException or IOException or ArgumentException)
+            catch (Exception exception) when (ManagedImage.Rejects(exception))
             {
                 return (PassStatus.Partial, 0,
                 [

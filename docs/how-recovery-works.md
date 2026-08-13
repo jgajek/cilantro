@@ -48,6 +48,19 @@ decompression, symmetric ciphers, a few `Marshal` operations, and synthetic stan
 for things like "which module am I in". Anything not on that list stops
 interpretation rather than being guessed at or skipped.
 
+A few of the modelled answers are about the world rather than about the file, and
+those are answered the same way every time: the clock reads a fixed instant, no
+debugger is attached, and a sleep takes no time. Protected code asks the second
+question inside the type initializer that builds its virtual machine, so refusing
+to answer it does not leave the tool neutral — it loses the program, the string
+table, and whatever is behind them. The question is recorded when it is asked, so
+a report still says the loader looked.
+
+A call that leaves the runtime altogether is a different matter. A platform
+invoke has no body to interpret and no model that could stand in for what the
+operating system would do, so it stops the interpretation and is reported as what
+it is — the boundary of the runtime rather than a gap in the allowlist.
+
 That refusal is the safety property, and it is also load-bearing for correctness.
 Because the machine refuses every call it does not model, a routine that
 interprets all the way to completion cannot have done anything outside the
@@ -129,6 +142,20 @@ loader, then every call site is rewritten with its literal. This is
 all-or-nothing across the whole assembly: if one site's offset cannot be proven,
 no string is replaced at all. A half-decrypted assembly would leave you unsure
 which strings you can trust.
+
+Not every hidden string is in the table. The samples also carry a decoder per
+string: a method that takes a scrambled literal apart, alters each character, and
+puts it back together. No table indexes those, so the step above never sees them,
+and what is left in the listing is a call to a randomly named method where a
+string should be. Each such method is interpreted twice and its calls replaced by
+the string only where both runs complete, agree, and leave nothing behind — no
+field written, no handler registered — since a call that also does something
+cannot be replaced by what it returns. Where the protector calls the decoder
+through a delegate field, and that field is written once with a delegate over a
+null target, calling through it is calling that method, and the pair is folded
+the same way. It matters beyond readability: a resource is attributed to a role
+by finding its name in the code that reads it, and a module that spells its
+resource names this way has no such literal anywhere until this step runs.
 
 **8. Restore the resources and extract the payloads.** The module's own bundle
 reader is interpreted, the decrypted satellite assembly is taken out of machine
@@ -274,6 +301,67 @@ has to answer for itself: if carrying it through contradicts a depth arrived at
 another way, it is withdrawn and the program solved again without it. This says
 an operation takes one more than it leaves; it does not say what it did with it,
 and nothing is named on the strength of it.
+
+A fourth sample, the assembly one of the others carries, has an engine put
+together differently, and three of its differences were worth answering.
+
+Its handlers do not read the operation they are performing. The loop around them
+unpacks it first — reads the operand out of the operation and writes it to a
+field of the engine — so a handler performed on its own reads a field nothing
+filled in, and two dozen of them refused for the same reason. The unpacking is a
+pair of instructions in the engine's own code, read a field of the operation and
+write a field of the engine, and nothing else in the engine has that shape; read
+back and repeated before each trial, it took the operations performed in
+isolation from 19 to 38 of 43.
+
+Its program mostly calls the framework rather than itself. An operation whose
+arity is decided by its operand is calling the method the operand names, and the
+name was being looked for as a definition in this assembly — which a call to
+`SHA1.Create` does not have and never will. A reference is as much a name of a
+method as a definition is, and it carries the signature, which is the whole of
+what decides how many values the call takes. Reading the reference took the
+listing from 4586 of 4854 operations written as IL to 4826.
+
+Its operand also bounds what an operation can be. An operation whose operand
+names a field is one of the six that name a field, and which six depends on
+whether the field is static: a static one can be read, written or have its
+address taken, leaving one more, one fewer or one more on the stack, while an
+instance one takes the object as well. So a solver that concluded from the
+depths around it that a write to a static field consumes two values had followed
+a wrong depth in from somewhere, and saying so is better than letting the
+conclusion spread. Where the bound leaves two possibilities and the depths
+cannot choose, each is put to the program in turn and the one that contradicts
+nothing is adopted — the same standard as the rest of the solving, and where
+both survive, nothing is claimed.
+
+Two readings of a jump had to be made harder to come by. An operation is watched
+jumping when the operation performed after it is not the one after it in the
+program, and that is also what a program entered twice looks like at the seam
+between the two entries. One crossing is therefore not enough to overturn a
+reading arrived at by performing the operation and watching what it did — a
+store into the table its operand indexes, in the sample where this bit — though
+it is still enough where nothing else was established. The other reading is of
+an operation whose operand turns up in one of the engine's own fields, which is
+how a jump nothing was watched taking is recognised; a value written at the
+place its operand indexes is not that, and slots of a table are now told apart
+from fields of the engine so that a store is not read as a branch.
+
+Where a program's blocks are entered from a table, an operation nothing reaches
+is either dead or reached a way the reading has not followed, and a handler is
+the second sort: it is entered by a throw, with the exception on the stack, and
+no ordinary path models that. The engine parses its guarded regions into objects
+of its own, which are read back, but the numbers in them are not labelled and
+which one is the handler is not stated. So each is tried: a place the walk
+already arrives at is left alone, and one it does not is walked from with a
+value on the stack and kept only where the depths still agree everywhere. In the
+sample that carries four of them, the four handlers are found and twelve
+operations join the walk; the eight that remain are blocks the dispatch table
+never selects, which is a fact about the program.
+
+What remains in that sample is three operations of the forty-three that nothing
+asked and nothing watched. Each of them takes one more value than it leaves,
+because the program around it leaves it no other choice, so the walk carries on
+through them and the listing says of each that its effect was never established.
 
 The result is a listing rather than a method body. Nothing is rewritten on the
 strength of it, and nothing is emitted: a body that is nearly right is worse

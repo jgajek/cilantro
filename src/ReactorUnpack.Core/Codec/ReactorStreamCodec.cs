@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using dnlib.DotNet;
 using ReactorUnpack.Core.Analysis;
+using ReactorUnpack.Core.Payload;
 
 namespace ReactorUnpack.Core.Codec;
 
@@ -201,24 +202,23 @@ public static class StructuralStreamDiscovery
                     continue;
                 }
 
-                try
+                // A valid DEFLATE stream is not sufficient; require managed metadata. Nearly every
+                // key produces neither, and the reader has as many ways of saying so as there are
+                // ways for bytes to be wrong.
+                if (!PayloadStageValidator.TryValidateManaged(inflated, out var validated) ||
+                    validated is null)
                 {
-                    using var candidate = ModuleDefMD.Load(inflated);
-                    var assemblyName = candidate.Assembly?.Name.String ?? candidate.Name.String;
-                    payload = new DiscoveredPayloadStage(
-                        resource,
-                        decoded,
-                        inflated,
-                        proxyProfile.A,
-                        proxyProfile.D,
-                        key,
-                        assemblyName);
-                    return true;
+                    continue;
                 }
-                catch (BadImageFormatException)
-                {
-                    // A valid DEFLATE stream is not sufficient; require managed metadata.
-                }
+                payload = new DiscoveredPayloadStage(
+                    resource,
+                    decoded,
+                    inflated,
+                    proxyProfile.A,
+                    proxyProfile.D,
+                    key,
+                    validated.AssemblyName);
+                return true;
             }
         }
 

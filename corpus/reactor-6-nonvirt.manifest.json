@@ -10,7 +10,10 @@
       "localName": "embedded_dotnet_Mlfhntkcvb.exe",
       "expectedDetection": "reactor6",
       "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings"],
-      "oracleSha256": null
+      "oracleSha256": null,
+      "minimumVirtualOperationsRead": 1.0,
+      "minimumVirtualOperationsWalked": 0.99,
+      "requireConsistentVirtualStack": true
     },
     {
       "id": "qafcakg",
@@ -19,7 +22,10 @@
       "localName": "embedded_dotnet_Qafcakg.exe",
       "expectedDetection": "reactor6",
       "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings"],
-      "oracleSha256": null
+      "oracleSha256": null,
+      "minimumVirtualOperationsRead": 1.0,
+      "minimumVirtualOperationsWalked": 0.994,
+      "requireConsistentVirtualStack": true
     },
     {
       "id": "qbjuef",
@@ -28,7 +34,10 @@
       "localName": "Qbjuef.exe",
       "expectedDetection": "reactor6",
       "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings", "dispatcher-control-flow"],
-      "oracleSha256": null
+      "oracleSha256": null,
+      "minimumVirtualOperationsRead": 1.0,
+      "minimumVirtualOperationsWalked": 0.99,
+      "requireConsistentVirtualStack": true
     },
     {
       "id": "reason-pac",
@@ -83,6 +92,36 @@
       "maximumProgramMethodSurplus": 8,
       "maximumSurplusResources": 3,
       "requireOracleResourceParity": true
+    },
+    {
+      "id": "qafcakg-payload",
+      "tier": "profiled",
+      "sha256": "e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2",
+      "localName": "Qafcakg.payload.Ptnifif.dll",
+      "expectedDetection": "reactor6",
+      "expectedCapabilities": ["method-stubs", "jit-hook", "dispatcher-control-flow", "anti-tamper", "resource-container"],
+      "oracleSha256": null,
+      "expectedRestoredBodyCount": 313,
+      "maximumRemainingStubs": 0,
+      "maximumMutationCount": 20000,
+      "maximumUnreachableInstructions": 0,
+      "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
+    },
+    {
+      "id": "mlfhntkcvb-payload",
+      "tier": "exploratory",
+      "sha256": "81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a",
+      "localName": "Mlfhntkcvb.payload.Lqcuzgc.dll",
+      "expectedDetection": "reactor6",
+      "expectedCapabilities": ["delegate-proxy", "protected-strings", "resource-container", "dispatcher-control-flow", "virtualization"],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumTokensRestored": 13,
+      "maximumMutationCount": 20000,
+      "minimumVirtualOperationsRead": 0.995,
+      "minimumVirtualOperationsWalked": 0.997,
+      "requireConsistentVirtualStack": true,
+      "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
     },
     {
       "id": "reason-pac-oracle",

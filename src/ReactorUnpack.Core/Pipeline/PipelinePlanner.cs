@@ -26,6 +26,7 @@ public static class PipelinePlanner
         "antitamper-neutralization",
         "loader-call-elision",
         "constant-predicates",
+        "constant-strings",
         "global-predicate-folding",
         "dispatcher-deobfuscation",
         "cfg-dead-code",
@@ -79,6 +80,7 @@ public static class PipelinePlanner
         "boolean-recovery" => PipelinePhase.OriginalByteRecovery,
         "antitamper-neutralization" or
         "constant-predicates" or
+        "constant-strings" or
         "global-predicate-folding" or
         "dispatcher-deobfuscation" or
         "cfg-dead-code" or

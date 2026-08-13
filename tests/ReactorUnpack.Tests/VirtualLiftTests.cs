@@ -219,6 +219,62 @@ public sealed class VirtualLiftTests
         Assert.Contains("no path arrives at", lifted, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A handler is entered by a throw with the exception on the stack, which no ordinary path
+    /// models, so the operations it covers are reached no other way. The region says which places
+    /// it covers without saying what each of them is, and the walk decides that for itself: the
+    /// place nothing else arrives at is walked as a handler, and kept because the depths agree.
+    /// </summary>
+    [Fact]
+    public void WhatOnlyAThrowArrivesAtIsWalkedAsAHandler()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Store, new VirtualOperand.Number(0)),
+            (Jump, new VirtualOperand.Number(5)),
+            (Store, new VirtualOperand.Number(1)),
+            (Jump, new VirtualOperand.Number(5)),
+            (Push, new VirtualOperand.Number(9))
+        ]) with
+        {
+            Regions = [new VirtualRegion([3, 4], 0, null)]
+        };
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.Contains("reaches 6 of 6", lifted, StringComparison.Ordinal);
+        Assert.Contains(
+            "1 place(s) a guarded region covers are walked as handlers as well, entered with the " +
+                "exception on the stack: 3",
+            lifted,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A region's places are not labelled, so one of them is where the try begins rather than the
+    /// handler, and entering that with an exception on the stack would put a value in the listing
+    /// that is not there. The walk only keeps an entry the rest of the program agrees with.
+    /// </summary>
+    [Fact]
+    public void APlaceTheWalkAlreadyArrivesAtIsNotEnteredAsAHandler()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Store, new VirtualOperand.Number(0)),
+            (Push, new VirtualOperand.Number(7))
+        ]) with
+        {
+            Regions = [new VirtualRegion([1, 2], 0, null)]
+        };
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.Contains("reaches 3 of 3", lifted, StringComparison.Ordinal);
+        Assert.DoesNotContain("walked as handlers", lifted, StringComparison.Ordinal);
+    }
+
     private static VirtualProgram Program(
         ArtifactContext context,
         IReadOnlyList<(int Opcode, VirtualOperand Operand)> operations)

@@ -263,8 +263,10 @@ public static class StaticStringTableInterpreter
             module.Resources.OfType<EmbeddedResource>()
                 .SingleOrDefault(resource => resource.Name == resourceNames[0]) is not { } resource)
         {
-            diagnostic =
-                $"VM loader framing was ambiguous ({resourceNames.Length} resources, {parsers.Length} parsers).";
+            diagnostic = resourceNames.Length != 1
+                ? $"Its loader names {resourceNames.Length} embedded resource(s), not one."
+                : $"Its loader calls {parsers.Length} method(s) shaped like the one that parses " +
+                    "the table, not one.";
             return false;
         }
 

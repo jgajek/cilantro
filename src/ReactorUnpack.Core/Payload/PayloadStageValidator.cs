@@ -49,8 +49,9 @@ public static class PayloadStageValidator
                 module.Resources.Select(resource => resource.Name.String).ToArray());
             return true;
         }
-        catch (BadImageFormatException)
+        catch (Exception failure) when (ManagedImage.Rejects(failure))
         {
+            payload = null;
             return false;
         }
     }

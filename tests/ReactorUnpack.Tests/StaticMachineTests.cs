@@ -1412,6 +1412,131 @@ public sealed class StaticMachineTests
         Assert.Equal(2, result.Value.AsInt32());
     }
 
+    [Fact]
+    public void AReferenceComparedAsAnUnsignedNumberIsReadAsATestForNull()
+    {
+        using var module = NewModule();
+        var absent = NewMethod(
+            module,
+            "NothingIsNotSomething",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            OpCodes.Ldnull,
+            OpCodes.Ldnull,
+            OpCodes.Cgt_Un,
+            OpCodes.Ret);
+        var present = new MethodDefUser(
+            "SomethingIsNotNothing",
+            MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.Int32))
+        {
+            Attributes = MethodAttributes.Public | MethodAttributes.Static,
+            Body = new CilBody()
+        };
+        module.Types.First(type => type.Name == "Program").Methods.Add(present);
+        present.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        present.Body.Instructions.Add(Instruction.Create(
+            OpCodes.Newarr, module.CorLibTypes.Int32.ToTypeDefOrRef()));
+        present.Body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+        present.Body.Instructions.Add(Instruction.Create(OpCodes.Cgt_Un));
+        present.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+
+        var nothing = new StaticMachine().Execute(absent);
+        var something = new StaticMachine().Execute(
+            present, [StaticValue.FromInt32(1)]);
+
+        Assert.Equal(StaticExecutionStatus.Completed, nothing.Status);
+        Assert.Equal(0, nothing.Value.AsInt32());
+        Assert.True(something.Status == StaticExecutionStatus.Completed, something.Diagnostic);
+        Assert.Equal(1, something.Value.AsInt32());
+    }
+
+    [Fact]
+    public void AskingWhetherADebuggerIsAttachedIsAnsweredNoAndSaidOutLoud()
+    {
+        using var module = NewModule();
+        var state = new StaticMachineState(new StaticMachineLimits());
+        var debugger = new TypeRefUser(
+            module, "System.Diagnostics", "Debugger", module.CorLibTypes.AssemblyRef);
+        var asked = new MemberRefUser(
+            module,
+            "get_IsAttached",
+            MethodSig.CreateStatic(module.CorLibTypes.Boolean),
+            debugger);
+        var intrinsic = new DebuggerIntrinsic();
+
+        var answered = intrinsic.Invoke(new IntrinsicContext(state), asked, []);
+
+        Assert.True(intrinsic.Matches(asked));
+        Assert.Equal(StaticExecutionStatus.Completed, answered.Status);
+        Assert.Equal(0, answered.Value.AsInt32());
+        Assert.Contains(
+            state.LoaderEvidence.Observations,
+            observation => observation.Kind == LoaderObservationKind.DebuggerProbe);
+    }
+
+    /// <summary>
+    /// The shape of Reactor's per-string decoders: a literal taken apart, altered in place, and put
+    /// back together. Every step of it has to work for the string to come out.
+    /// </summary>
+    [Fact]
+    public void AStringTakenApartIntoCharactersAndPutBackTogetherSurvivesTheTrip()
+    {
+        using var module = NewModule();
+        var text = new TypeRefUser(module, "System", "String", module.CorLibTypes.AssemblyRef);
+        var characters = new SZArraySig(module.CorLibTypes.Char);
+        var apart = new MemberRefUser(
+            module, "ToCharArray", MethodSig.CreateInstance(characters), text);
+        var together = new MemberRefUser(
+            module,
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, characters),
+            text);
+        var method = NewMethod(
+            module, "Decode", MethodSig.CreateStatic(module.CorLibTypes.String));
+        var body = method.Body.Instructions;
+        method.Body.Variables.Add(new Local(characters));
+        body.Add(Instruction.Create(OpCodes.Ldstr, "ZA^"));
+        body.Add(Instruction.Create(OpCodes.Call, apart));
+        body.Add(Instruction.Create(OpCodes.Stloc_0));
+        for (var index = 0; index < 3; index++)
+        {
+            body.Add(Instruction.Create(OpCodes.Ldloc_0));
+            body.Add(Instruction.Create(OpCodes.Ldc_I4, index));
+            body.Add(Instruction.Create(OpCodes.Ldloc_0));
+            body.Add(Instruction.Create(OpCodes.Ldc_I4, index));
+            body.Add(Instruction.Create(OpCodes.Ldelem_U2));
+            body.Add(Instruction.Create(OpCodes.Ldc_I4, 0x2E));
+            body.Add(Instruction.Create(OpCodes.Xor));
+            body.Add(Instruction.Create(OpCodes.Conv_U2));
+            body.Add(Instruction.Create(OpCodes.Stelem_I2));
+        }
+        body.Add(Instruction.Create(OpCodes.Ldloc_0));
+        body.Add(Instruction.Create(OpCodes.Newobj, together));
+        body.Add(Instruction.Create(OpCodes.Ret));
+
+        var machine = new StaticMachine();
+        var answered = machine.Execute(method);
+
+        Assert.True(answered.Status == StaticExecutionStatus.Completed, answered.Diagnostic);
+        Assert.True(machine.State.Heap.TryGetString(answered.Value, out var read));
+        Assert.Equal("top", read);
+    }
+
+    [Fact]
+    public void AnArrayThatCannotHoldWhatIsStoredInItSaysSoRatherThanBlamingTheIndex()
+    {
+        var heap = new StaticHeap(new StaticMachineLimits());
+        Assert.True(heap.TryAllocateArray(null, 4, out var untyped));
+
+        var stored = heap.TryWriteArray(untyped, 1, StaticValue.FromInt32(7), out var inBounds);
+        var past = heap.TryWriteArray(untyped, 9, StaticValue.FromInt32(7), out var beyond);
+
+        // An array with no element type coerces to nothing, so it keeps what it is handed.
+        Assert.True(stored);
+        Assert.True(inBounds);
+        Assert.False(past);
+        Assert.False(beyond);
+    }
+
     private static ModuleDefUser NewModule()
     {
         var module = new ModuleDefUser("static-machine.dll") { Kind = ModuleKind.Dll };

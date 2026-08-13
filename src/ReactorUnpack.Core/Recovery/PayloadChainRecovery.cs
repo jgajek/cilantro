@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using dnlib.DotNet;
 using ReactorUnpack.Core.Analysis;
 using ReactorUnpack.Core.Interpretation;
+using ReactorUnpack.Core.Payload;
 
 namespace ReactorUnpack.Core.Recovery;
 
@@ -337,8 +338,7 @@ public static class PayloadChainRecovery
             using var module = ModuleDefMD.Load(image);
             return module.Types.Count != 0;
         }
-        catch (Exception exception) when (exception is BadImageFormatException or IOException or
-            NotSupportedException or ArgumentException or InvalidOperationException)
+        catch (Exception exception) when (ManagedImage.Rejects(exception))
         {
             return false;
         }
@@ -351,8 +351,7 @@ public static class PayloadChainRecovery
             using var module = ModuleDefMD.Load(image);
             return module.Assembly?.Name ?? module.Name ?? "payload";
         }
-        catch (Exception exception) when (exception is BadImageFormatException or IOException or
-            NotSupportedException or ArgumentException or InvalidOperationException)
+        catch (Exception exception) when (ManagedImage.Rejects(exception))
         {
             return "payload";
         }

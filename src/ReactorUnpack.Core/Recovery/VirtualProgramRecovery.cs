@@ -1,3 +1,4 @@
+using System.Globalization;
 using dnlib.DotNet;
 using ReactorUnpack.Core.Analysis;
 using ReactorUnpack.Core.Interpretation;
@@ -336,7 +337,7 @@ public static class VirtualProgramRecovery
         // How far the engine got before the run stopped is worth saying: the state left behind is
         // what the operations are asked their meaning in, and an engine that stopped at its first
         // operation leaves a poorer one than one that ran most of the program.
-        var operations = Merge(probed.Operations, flow);
+        var operations = Merge(probed.Operations, flow, attempt.Decoded);
         var byOperand = Rules(attempt.Decoded, flow);
         var refused = probed.Refused
             .Where(entry => !operations.TryGetValue(entry.Key, out var known) || !known.Measured)
@@ -497,6 +498,21 @@ public static class VirtualProgramRecovery
     {
         var forced = VirtualLift.Solve(program, module);
         var operations = program.Operations.ToDictionary(entry => entry.Key, entry => entry.Value);
+
+        // Every operation the program uses gets a line, even where that line says nothing. An
+        // operation the trials refused and the watching never reached had been appearing in the
+        // body of the listing while the table above it made no mention of it, which reads as though
+        // the table were complete and the operation ordinary.
+        foreach (var instruction in program.Instructions)
+        {
+            operations.TryAdd(
+                instruction.Opcode,
+                new VirtualOperation(instruction.Opcode, 0, 0, null)
+                {
+                    Measured = false,
+                    Unmeasured = "nothing asked it and nothing watched it"
+                });
+        }
         foreach (var (opcode, net) in forced)
         {
             if (!operations.TryGetValue(opcode, out var operation))
@@ -707,7 +723,8 @@ public static class VirtualProgramRecovery
     /// </remarks>
     private static Dictionary<int, VirtualOperation> Merge(
         IReadOnlyDictionary<int, VirtualOperation> probed,
-        VirtualRun flow)
+        VirtualRun flow,
+        List<VirtualInstruction> decoded)
     {
         var merged = probed.ToDictionary(entry => entry.Key, entry => entry.Value);
 
@@ -744,12 +761,25 @@ public static class VirtualProgramRecovery
             }
             if (name is null)
                 continue;
-            merged[opcode] = merged.TryGetValue(opcode, out var known)
+            merged.TryGetValue(opcode, out var known);
+
+            // A single sighting overturns nothing that was measured. A program entered twice puts
+            // its last operation next to its first, and an engine that leaves and comes back does
+            // the same, so one operation not followed by the next is as likely a seam in the
+            // watching as a jump. Where the operation was read some other way — a store into the
+            // table its operand indexes, say, established by performing it and watching it — that
+            // reading was arrived at from what it did, and one crossing is no answer to it.
+            if (known?.Name is not null && counted.Taken < 2)
+                continue;
+            merged[opcode] = known is not null
                 ? known with { Name = name, TouchesState = true }
                 : new VirtualOperation(opcode, 0, 0, name) { TouchesState = true };
         }
 
+        Reaching(merged);
         Stopping(merged);
+        Switching(merged, decoded);
+        Deciding(merged, decoded);
         Discarding(merged, flow);
 
         // The last resort, taken only where the run and the trials both had nothing better: an
@@ -760,6 +790,42 @@ public static class VirtualProgramRecovery
                 merged[opcode] = operation with { Name = kind };
         }
         return merged;
+    }
+
+    /// <summary>
+    /// Names the operation that goes where its own operand says, where nothing watched it go.
+    /// </summary>
+    /// <remarks>
+    /// The trials record which of the engine's places were handed the number an operation carries.
+    /// One of those places is where the engine keeps its position, which the operations already
+    /// named as jumps give away, and an operation that puts its operand there has gone there. Every
+    /// other place that took the same number took it by coincidence — an index that happened to
+    /// match, a value that happened to be one less — which is why the number alone will not do and
+    /// the place has to be named.
+    ///
+    /// A jump that takes nothing off the stack has nothing to decide with, so it always goes. One
+    /// that takes something decides with it, and is called conditional even where every trial saw
+    /// it go, since the values the trials use stand in the same order every time.
+    /// </remarks>
+    private static void Reaching(Dictionary<int, VirtualOperation> merged)
+    {
+        var position = Position(merged);
+        if (position.Count == 0)
+            return;
+
+        foreach (var (opcode, operation) in merged)
+        {
+            if (operation.Name is not null ||
+                operation.Reached?.Any(position.Contains) != true)
+            {
+                continue;
+            }
+            merged[opcode] = operation with
+            {
+                Name = operation.Pops > 0 ? "branch if" : "branch",
+                TouchesState = true
+            };
+        }
     }
 
     /// <summary>
@@ -774,11 +840,7 @@ public static class VirtualProgramRecovery
     /// </remarks>
     private static void Stopping(Dictionary<int, VirtualOperation> merged)
     {
-        var position = merged.Values
-            .Where(operation => operation.Name is "branch" or "branch if")
-            .SelectMany(operation => operation.Changes ?? [])
-            .Select(written => written.Split('=')[0])
-            .ToHashSet(StringComparer.Ordinal);
+        var position = Position(merged);
         if (position.Count == 0)
             return;
 
@@ -802,8 +864,111 @@ public static class VirtualProgramRecovery
         }
     }
 
+    /// <summary>Where the engine keeps its position, as given away by the jumps that write it.</summary>
+    private static HashSet<string> Position(Dictionary<int, VirtualOperation> merged) =>
+        merged.Values
+            .Where(operation => operation.Name is "branch" or "branch if")
+            .SelectMany(operation => operation.Changes ?? [])
+            .Select(written => written.Split('=')[0])
+            .ToHashSet(StringComparer.Ordinal);
+
     /// <summary>
-    /// Names the operation that throws a value away, which is what is left when nothing kept it.
+    /// Names the operation that jumps to whichever of its many places a value chooses.
+    /// </summary>
+    /// <remarks>
+    /// This is the one operation a flattened program cannot be read without. Its blocks are laid out
+    /// in no order and each ends by handing a number back to a single dispatching operation, so a
+    /// reading that does not know where that operation goes reaches the first block and no further
+    /// — which in the sample here was two operations in five, the rest sitting there looking dead.
+    ///
+    /// It is not named a branch by the trials, and rightly: it takes a value, and every jump they
+    /// could name goes to the one place its operand gives. What identifies it is that it writes the
+    /// place the jumps write, that it consumes something to decide what to write there, and that
+    /// everywhere it appears it carries a whole table of positions rather than one. Nothing else in
+    /// a program has all three.
+    /// </remarks>
+    private static void Switching(
+        Dictionary<int, VirtualOperation> merged,
+        IReadOnlyList<VirtualInstruction> decoded)
+    {
+        var position = Position(merged);
+        if (position.Count == 0)
+            return;
+        var tabled = decoded
+            .GroupBy(instruction => instruction.Opcode)
+            .Where(group => group.All(one => one.Operand is VirtualOperand.Table))
+            .Select(group => group.Key)
+            .ToHashSet();
+
+        foreach (var (opcode, operation) in merged)
+        {
+            if (operation.Name is not null || operation.Pops < 1 || !tabled.Contains(opcode))
+                continue;
+            var moved = operation.Changes?.Any(written =>
+                position.Contains(written.Split('=')[0])) ?? false;
+            if (moved)
+                merged[opcode] = operation with { Name = "branch by table", TouchesState = true };
+        }
+    }
+
+    /// <summary>
+    /// Names the operation that takes a value to decide whether to go somewhere, where the times it
+    /// was watched it decided not to.
+    /// </summary>
+    /// <remarks>
+    /// A conditional branch not taken is indistinguishable, from the outside, from a value thrown
+    /// away: the value goes, the position does not move, and nothing else happens. So the reading
+    /// that a value was discarded is arrived at honestly and is still wrong, and it is wrong in the
+    /// way that costs most, since it severs every block the branch reaches.
+    ///
+    /// Three things together tell them apart, and no two of them would. The operation carries an
+    /// operand, and a value thrown away needs none. Everywhere it appears that operand is a
+    /// position in this program rather than an index into anything, which is what a jump's operand
+    /// is and what nothing else's is. And the engine was watched comparing something while
+    /// performing it, which is what a jump is conditional on and what discarding a value has no use
+    /// for. Whether the reading is right is then put to the walk: a jump invented where there is
+    /// none lands the stack at a depth the other ways in contradict.
+    /// </remarks>
+    private static void Deciding(
+        Dictionary<int, VirtualOperation> merged,
+        List<VirtualInstruction> decoded)
+    {
+        var placed = decoded
+            .GroupBy(instruction => instruction.Opcode)
+            .Where(group => group.All(one =>
+                one.Operand is VirtualOperand.Number number &&
+                number.Value >= 0 &&
+                number.Value < decoded.Count))
+            .Select(group => group.Key)
+            .ToHashSet();
+
+        foreach (var (opcode, operation) in merged)
+        {
+            if (operation is not { Name: null, Measured: true, Pushes: 0 } ||
+                operation.Pops < 1 ||
+                !placed.Contains(opcode) ||
+                operation.Computes?.Any(Compares) != true)
+            {
+                continue;
+            }
+            merged[opcode] = operation with { Name = "branch if", TouchesState = true };
+        }
+    }
+
+    /// <summary>Whether a piece of the engine's working is it comparing two things.</summary>
+    private static bool Compares(string working)
+    {
+        var did = working.Split(' ')[0];
+        if (did.EndsWith(".s", StringComparison.Ordinal))
+            did = did[..^2];
+        if (did.EndsWith(".un", StringComparison.Ordinal))
+            did = did[..^3];
+        return did is "ceq" or "cgt" or "clt" or "beq" or "bne" or "bgt" or "blt" or "bge" or "ble"
+            or "brtrue" or "brfalse";
+    }
+
+    /// <summary>
+    /// Names the operations that leave nothing behind, which is what is left when nothing kept it.
     /// </summary>
     /// <remarks>
     /// The trials decline this reading on their own, and rightly: an operation that consumed a
@@ -812,7 +977,8 @@ public static class VirtualProgramRecovery
     /// engine can reach and saw nothing change; the run watches the handler execute and never saw
     /// it write a static field, which is the one place outside the engine it could have put
     /// anything. An operation that takes a value, leaves nothing, and touches neither has discarded
-    /// it.
+    /// it — and one that takes nothing either has done nothing at all, which a program full of
+    /// jumps to fixed places has every reason to contain.
     /// </remarks>
     private static void Discarding(Dictionary<int, VirtualOperation> merged, VirtualRun flow)
     {
@@ -820,9 +986,12 @@ public static class VirtualProgramRecovery
         {
             var watched = flow.Effects.ContainsKey(opcode) || flow.Computed.ContainsKey(opcode);
             if (operation is { Name: null, Measured: true, Pushes: 0, TouchesState: false } &&
-                operation.Pops > 0 && watched && !flow.Stores.Contains(opcode))
+                watched && !flow.Stores.Contains(opcode))
             {
-                merged[opcode] = operation with { Name = "discards what it takes" };
+                merged[opcode] = operation with
+                {
+                    Name = operation.Pops > 0 ? "discards what it takes" : "does nothing at all"
+                };
             }
         }
     }
@@ -930,19 +1099,42 @@ public static class VirtualProgramRecovery
             diagnostic = "The arguments could not be built, so the engine was not entered.";
             return null;
         }
-        machine.Execute(root, arguments);
+        var ran = machine.Execute(root, arguments);
         machine.FrameEntered = null;
 
         var heap = machine.State.Heap;
+
+        // Why each frame was set aside is worth keeping. Every one of them is a guess and nearly
+        // all are wrong, but on a build where none is right the reasons are the whole of what is
+        // known about the engine, and "the container was not found" is not a place to start from.
+        var aside = new List<string>();
         foreach (var candidate in candidates.OrderByDescending(entry => entry.Value.Count))
         {
             var entered = candidate.Value.First;
-            if (!heap.TryGetRuntimeTypeName(Safely(entered[^1]), out var instructionType) ||
-                context.Module.Find(instructionType, isReflectionName: false) is null ||
-                FindProgram(heap, context.Module, entered[0], instructionType) is not { } items ||
-                OpcodeField(context.Module, instructionType) is not { } opcodeField ||
-                Decode(heap, context.Module, opcodeField, instructionType, items) is not { } decoded)
+            var frame = candidate.Key.Name.String;
+            if (!heap.TryGetRuntimeTypeName(Safely(entered[^1]), out var instructionType))
             {
+                aside.Add($"{frame} was passed nothing whose type could be read");
+                continue;
+            }
+            if (context.Module.Find(instructionType, isReflectionName: false) is null)
+            {
+                aside.Add($"{frame} was passed a {instructionType}, which this module declares no type of");
+                continue;
+            }
+            if (FindProgram(heap, context.Module, entered[0], instructionType) is not { } items)
+            {
+                aside.Add($"nothing {frame} was passed holds a list of {instructionType}");
+                continue;
+            }
+            if (OpcodeField(context.Module, instructionType) is not { } opcodeField)
+            {
+                aside.Add($"{instructionType} has no field a number could be an opcode in");
+                continue;
+            }
+            if (Decode(heap, context.Module, opcodeField, instructionType, items) is not { } decoded)
+            {
+                aside.Add($"the {items.Count} {instructionType} {frame} was passed would not read as operations");
                 continue;
             }
 
@@ -952,9 +1144,16 @@ public static class VirtualProgramRecovery
                 decoded, candidate.Value.Count);
         }
 
-        diagnostic = candidates.Count == 0
+        // Where the run itself stopped short, that is the reason the frames say nothing, and it is
+        // a reason about this build rather than about the search.
+        var stopped = ran.Succeeded
+            ? string.Empty
+            : $" The run stopped before it finished: {ran.Diagnostic}";
+        diagnostic = (candidates.Count == 0
             ? "Entering the stub reached no interpreter frame, so there was no program to read."
-            : "No frame the engine entered held a decoded program, so its container was not found.";
+            : $"None of the {candidates.Count} frame(s) the engine entered held a decoded program: " +
+                string.Join("; ", aside.Take(4)) + (aside.Count > 4 ? "; ..." : string.Empty) + ".") +
+            stopped;
         return null;
     }
 

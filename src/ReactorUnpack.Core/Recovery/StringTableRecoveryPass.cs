@@ -36,10 +36,6 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
             .ToArray();
         if (resolvers.Length == 0)
             return (PassStatus.Success, 0, ["No protected string resolver was detected."]);
-        if (resolvers.Length != 1)
-            return (PassStatus.Partial, 0,
-                [$"Detected {resolvers.Length} ambiguous protected string resolvers.",
-                 "No string call site was modified."]);
 
         if (!context.TryGetFact<bool>("method-protection.complete", out var methodsComplete) ||
             !methodsComplete)
@@ -52,8 +48,107 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
             ]);
         }
 
-        var resolver = resolvers[0];
-        var aliases = ResolverAliasAnalysis.Resolve(context.Module, resolver);
+        // Taking a string for a number is a shape a resolver has, not a shape only a resolver has:
+        // a cache that hands back what it was told earlier reads the same way. So each candidate is
+        // asked to produce its table, and the one that does is the resolver. That is the difference
+        // between recognizing a method and reading it, and only the second is proof.
+        var stubs = Analysis.VirtualizedMethodDetector.Detect(context.Module)
+            .Select(method => method.Stub.MDToken.Raw)
+            .ToHashSet();
+        var readings = new List<Reading>();
+        var declined = new List<string>();
+        foreach (var candidate in resolvers)
+        {
+            if (Read(context, candidate, out var reading, out var why) && reading is not null)
+                readings.Add(reading);
+            else
+            {
+                declined.Add(
+                    $"{candidate.DeclaringType.Name}::{candidate.Name}: {why}{Behind(candidate, stubs)}");
+            }
+        }
+
+        if (readings.Count != 1)
+        {
+            if (LegacyStringStrategySamples.Includes(context.OriginalSha256))
+            {
+                return (PassStatus.Success, 0,
+                    ["Recognized sample falls back to its older, regression-locked string strategy."]);
+            }
+            return (PassStatus.Partial, 0,
+            [
+                readings.Count == 0
+                    ? $"None of the {resolvers.Length} candidate resolver(s) yielded a string table."
+                    : $"{readings.Count} of the {resolvers.Length} candidate resolver(s) yielded a " +
+                        "string table, so which one the program reads is not settled.",
+                .. declined,
+                "No string call site was modified."
+            ]);
+        }
+
+        var (resolver, aliases, directCalls, captured) = readings[0];
+        var table = MergeLoaderKeys(context, captured);
+        context.SetFact("strings.table", table);
+        context.SetFact("strings.tableRecords", table.Records.Count);
+        context.SetFact("strings.resolverToken", resolver.MDToken.Raw);
+        context.SetFact("strings.expectedUses", directCalls.Count);
+        context.SetFact<IReadOnlyList<uint>>(
+            "strings.resolverAliases",
+            aliases.Where(alias => alias != resolver).Select(alias => alias.MDToken.Raw).ToArray());
+        context.AddEvidence(new Evidence(
+            "string-table",
+            $"Captured {table.Records.Count} strictly framed UTF-16 strings with " +
+            $"{directCalls.Count} completely accounted resolver use(s).",
+            table.Source,
+            0.95));
+        return (PassStatus.Success, 0,
+            [$"Captured {table.Records.Count} strings from {table.Source}.",
+             $"Accounted for all {directCalls.Count} direct resolver use(s).",
+             $"Captured {table.IntegerFields.Count} unique VM-initialized integer field(s)."]);
+    }
+
+    /// <summary>
+    /// Says so where the table a candidate would produce is built by a virtualized method.
+    /// </summary>
+    /// <remarks>
+    /// A resolver that fills its table by calling a method whose body was replaced by bytecode has
+    /// put the table behind the virtual machine, and no amount of looking at the shape of the
+    /// method that calls it will find one. Which is worth saying plainly rather than reporting the
+    /// framing as unrecognized: the framing was recognized, and what it frames is somewhere this
+    /// pass does not go.
+    /// </remarks>
+    private static string Behind(MethodDef candidate, HashSet<uint> stubs)
+    {
+        if (stubs.Count == 0 || !candidate.HasBody)
+            return string.Empty;
+        var called = candidate.Body.Instructions.Any(instruction =>
+            instruction.Operand is IMethod method &&
+            method.ResolveMethodDef() is { } resolved &&
+            stubs.Contains(resolved.MDToken.Raw));
+        return called
+            ? "; it builds its table by calling a virtualized method, so the table is behind the " +
+                "virtual machine"
+            : string.Empty;
+    }
+
+    /// <summary>One candidate resolver, its uses, and the table it was watched producing.</summary>
+    private sealed record Reading(
+        MethodDef Resolver,
+        IReadOnlyCollection<MethodDef> Aliases,
+        IReadOnlyList<(MethodDef Method, Instruction Instruction)> DirectCalls,
+        CapturedStringTable Table);
+
+    /// <summary>
+    /// Whether a candidate is the resolver, which is settled by reading its table.
+    /// </summary>
+    private static bool Read(
+        ArtifactContext context,
+        MethodDef candidate,
+        out Reading? reading,
+        out string why)
+    {
+        reading = null;
+        var aliases = ResolverAliasAnalysis.Resolve(context.Module, candidate);
         var references = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
             .Where(method => method.HasBody)
@@ -71,65 +166,34 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
             .ToArray();
         if (directCalls.Length != references.Length)
         {
-            return (PassStatus.Partial, 0,
-            [
-                $"Resolver accounting found {references.Length - directCalls.Length} non-call reference(s).",
-                "Delegate or indirect resolver uses cannot be proven complete.",
-                "No string call site was modified."
-            ]);
+            why = $"{references.Length - directCalls.Length} of its {references.Length} use(s) are " +
+                "not calls, so delegate or indirect uses cannot be proven complete";
+            return false;
         }
 
-        var candidates = new List<CapturedStringTable>();
-        var interpreterDiagnostic = string.Empty;
-        if (StaticStringTableInterpreter.TryCapture(
+        if (!StaticStringTableInterpreter.TryCapture(
                 context.Module,
                 context.OriginalImage,
-                resolver,
+                candidate,
                 out var interpreted,
-                out interpreterDiagnostic) &&
-            interpreted is not null)
+                out var interpreterDiagnostic) ||
+            interpreted is null)
         {
-            candidates.Add(new CapturedStringTable(
+            why = interpreterDiagnostic;
+            return false;
+        }
+
+        why = string.Empty;
+        reading = new Reading(
+            candidate,
+            aliases,
+            directCalls,
+            new CapturedStringTable(
                 interpreted.Source,
                 interpreted.Bytes,
                 interpreted.Records,
                 interpreted.IntegerFields));
-        }
-
-        if (candidates.Count != 1)
-        {
-            if (LegacyStringStrategySamples.Includes(context.OriginalSha256))
-            {
-                return (PassStatus.Success, 0,
-                    ["Recognized sample falls back to its older, regression-locked string strategy."]);
-            }
-            return (PassStatus.Partial, 0,
-            [
-                candidates.Count == 0
-                    ? $"No unique pristine UTF-16 string table was statically captured: {interpreterDiagnostic}"
-                    : $"Preserved {candidates.Count} ambiguous framed string-table candidates.",
-                "No string call site was modified."
-            ]);
-        }
-
-        var table = MergeLoaderKeys(context, candidates[0]);
-        context.SetFact("strings.table", table);
-        context.SetFact("strings.tableRecords", table.Records.Count);
-        context.SetFact("strings.resolverToken", resolver.MDToken.Raw);
-        context.SetFact("strings.expectedUses", directCalls.Length);
-        context.SetFact<IReadOnlyList<uint>>(
-            "strings.resolverAliases",
-            aliases.Where(alias => alias != resolver).Select(alias => alias.MDToken.Raw).ToArray());
-        context.AddEvidence(new Evidence(
-            "string-table",
-            $"Captured {table.Records.Count} strictly framed UTF-16 strings with " +
-            $"{directCalls.Length} completely accounted resolver use(s).",
-            table.Source,
-            0.95));
-        return (PassStatus.Success, 0,
-            [$"Captured {table.Records.Count} strings from {table.Source}.",
-             $"Accounted for all {directCalls.Length} direct resolver use(s).",
-             $"Captured {table.IntegerFields.Count} unique VM-initialized integer field(s)."]);
+        return true;
     }
 
     /// <summary>

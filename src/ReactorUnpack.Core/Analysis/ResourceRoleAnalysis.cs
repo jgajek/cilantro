@@ -154,7 +154,7 @@ public sealed class ResourceRolePass : DeobfuscationPass
 public sealed class ResourceRoleRefinementPass : DeobfuscationPass
 {
     public override string Name => "resource-role-refinement";
-    public override IReadOnlyCollection<string> Dependencies => ["string-recovery"];
+    public override IReadOnlyCollection<string> Dependencies => ["constant-strings"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {

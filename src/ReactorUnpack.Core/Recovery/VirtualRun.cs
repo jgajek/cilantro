@@ -118,7 +118,7 @@ internal sealed class VirtualRunWatcher
     private readonly Dictionary<int, string> _unmeasured = [];
     private readonly HashSet<int> _stores = [];
     private readonly Dictionary<int, (int Methods, int Constructors, int Seen)> _naming = [];
-    private readonly Dictionary<long, MethodDef?> _calls = [];
+    private readonly Dictionary<long, IMethod?> _calls = [];
     private Dictionary<string, int>? _working;
     private List<StaticValue>? _stack;
     private List<Table> _tables = [];
@@ -557,20 +557,32 @@ internal sealed class VirtualRunWatcher
         var method = operand is { } token ? Calling(token) : null;
         _naming[opcode] = (
             counted.Methods + (method is not null ? 1 : 0),
-            counted.Constructors + (method is { IsConstructor: true } ? 1 : 0),
+            counted.Constructors + (method is { } made && made.Name == ".ctor" ? 1 : 0),
             counted.Seen + 1);
     }
 
-    private MethodDef? Calling(long token)
+    /// <remarks>
+    /// A reference is as much a name of a method as a definition is. Insisting on the definition
+    /// counted only the calls a program made to its own assembly, so a program that mostly calls
+    /// the framework — which is most of them — looked like it was calling nothing at all.
+    /// </remarks>
+    private IMethod? Calling(long token)
     {
         if (_calls.TryGetValue(token, out var known))
             return known;
-        MethodDef? method = null;
+        IMethod? method = null;
         if (token is >= int.MinValue and <= int.MaxValue)
         {
             try
             {
-                method = (_module.ResolveToken((int)token) as IMethod)?.ResolveMethodDef();
+                // A reference to a field and a reference to a method are the same row read two
+                // ways, so the one that says which it is has to be asked.
+                method = _module.ResolveToken((int)token) switch
+                {
+                    MemberRef reference => reference.IsMethodRef ? reference : null,
+                    IMethod called => called,
+                    _ => null
+                };
             }
             catch (Exception exception) when (
                 exception is ArgumentException or InvalidOperationException)

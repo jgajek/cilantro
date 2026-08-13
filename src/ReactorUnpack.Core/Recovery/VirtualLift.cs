@@ -39,10 +39,12 @@ public static class VirtualLift
         ["makes a new object with the constructor it names"] = "newobj",
         ["branch"] = "br",
         ["branch if"] = "br.cond",
+        ["branch by table"] = "switch",
         ["dup"] = "dup",
         ["convert"] = "conv.?",
         ["pushes nothing at all"] = "ldnull",
         ["discards what it takes"] = "pop",
+        ["does nothing at all"] = "nop",
         ["returns the value it takes"] = "ret",
         ["stops the program"] = "ret",
         ["add"] = "add",
@@ -56,7 +58,10 @@ public static class VirtualLift
         ["shl"] = "shl",
         ["shr"] = "shr",
         ["neg"] = "neg",
-        ["not"] = "not"
+        ["not"] = "not",
+        ["ceq"] = "ceq",
+        ["cgt"] = "cgt",
+        ["clt"] = "clt"
     };
 
     /// <summary>
@@ -121,6 +126,45 @@ public static class VirtualLift
     private static readonly HashSet<string> Jumps =
         new(StringComparer.Ordinal) { "br", "br.cond", "switch" };
 
+    /// <summary>Whether an operation hands the path on to somewhere other than the next operation.</summary>
+    private static bool Leaps(string? name) =>
+        name is "branch" or "branch if" or "branch by table";
+
+    /// <summary>Whether the operation after it is one of the places it can hand the path to.</summary>
+    /// <remarks>
+    /// Every jump but the unconditional one falls through as well, the table jump included: a value
+    /// its table has no place for leaves the position where it was, which is the next operation.
+    /// </remarks>
+    private static bool Falls(string? name) => name is not "branch";
+
+    /// <summary>What a reading of a program came to, in the numbers a gate can be set on.</summary>
+    /// <param name="Operations">How many operations the program has.</param>
+    /// <param name="Read">How many of them were read as IL.</param>
+    /// <param name="Walked">How many the stack walk arrives at.</param>
+    /// <param name="Disagreed">
+    /// How many it arrives at twice at two different depths, which is how a reading says one of its
+    /// parts is wrong. Anything above zero means the listing contradicts itself.
+    /// </param>
+    public sealed record Reading(int Operations, int Read, int Walked, int Disagreed);
+
+    /// <summary>Reads a program and reports what the reading came to rather than how it looks.</summary>
+    public static Reading Measure(VirtualProgram program, ModuleDef module)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        ArgumentNullException.ThrowIfNull(module);
+        var going = Destinations(program, []);
+        var arity = Arities(program, module);
+        var depths = Depths(
+            program, going, arity, Forced(program, going, arity, Bounds(program, module)),
+            new Dictionary<string, List<int>>(StringComparer.Ordinal), []);
+        return new Reading(
+            program.Instructions.Count,
+            program.Instructions.Count(
+                instruction => Mnemonic(program, instruction, module) is not null),
+            depths.Count,
+            depths.Values.Count(depth => depth == Disagreed));
+    }
+
     public static IEnumerable<string> Render(VirtualProgram program, ModuleDef module)
     {
         ArgumentNullException.ThrowIfNull(program);
@@ -130,9 +174,11 @@ public static class VirtualLift
         var going = Destinations(program, conjectured);
         var arity = Arities(program, module);
         var stopped = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-        var forced = Forced(program, going, arity);
-        var depths = Depths(program, going, arity, forced, stopped);
-        var lifted = program.Instructions.Count(instruction => Mnemonic(program, instruction) is not null);
+        var forced = Forced(program, going, arity, Bounds(program, module));
+        var handlers = new HashSet<int>();
+        var depths = Depths(program, going, arity, forced, stopped, handlers);
+        var lifted = program.Instructions.Count(
+            instruction => Mnemonic(program, instruction, module) is not null);
 
         yield return $"; {program.Method.Stub.FullName}";
         yield return $"; program {program.Method.ProgramId}, read as IL";
@@ -157,15 +203,14 @@ public static class VirtualLift
                 "one should show up";
             yield return "; there as a disagreement about the depth of the stack.";
         }
-        foreach (var line in Reached(program, depths, forced, stopped))
+        foreach (var line in Reached(program, depths, forced, stopped, handlers))
             yield return $"; {line}";
         yield return string.Empty;
 
         foreach (var instruction in program.Instructions)
         {
-            var mnemonic = Mnemonic(program, instruction);
+            var mnemonic = Widened(program, instruction, Mnemonic(program, instruction, module));
             var operand = Operand(program, instruction, mnemonic, module, going, conjectured);
-            mnemonic = Widened(program, instruction, mnemonic);
             var said = mnemonic is null
                 ? $"??         op {instruction.Opcode} {operand}".TrimEnd() +
                     (forced.TryGetValue(instruction.Opcode, out var net)
@@ -182,16 +227,75 @@ public static class VirtualLift
     /// about it, and saying so is worth more than the reading it replaces: it is the only operation
     /// that turns a flattened program back into a set of blocks.
     /// </remarks>
-    private static string? Mnemonic(VirtualProgram program, VirtualInstruction instruction)
+    private static string? Mnemonic(
+        VirtualProgram program,
+        VirtualInstruction instruction,
+        ModuleDef module)
     {
         if (!program.Operations.TryGetValue(instruction.Opcode, out var known) ||
             known.Name is not { } name)
         {
             return null;
         }
-        return name is "branch" or "branch if" && instruction.Operand is VirtualOperand.Table
-            ? "switch"
-            : Mnemonics.GetValueOrDefault(name);
+        if (name is "branch" or "branch if" && instruction.Operand is VirtualOperand.Table)
+            return "switch";
+        return Mnemonics.GetValueOrDefault(name) ?? Fetches(known, instruction, module);
+    }
+
+    /// <summary>
+    /// What an operation nothing named can still be read as, from the kind of thing it leaves and
+    /// what its operand turns out to name.
+    /// </summary>
+    /// <remarks>
+    /// An operation that takes nothing, leaves one value, and carries a number is loading a
+    /// constant of some sort, and which sort the number itself answers. A number that is an offset
+    /// into the assembly's string heap, in an operation that leaves a string, is that string; a
+    /// number that is a metadata token, in an operation that leaves something the reflection
+    /// classes describe, is the member the token names. Neither reading is available to the trials,
+    /// which see a value appear and cannot say where it came from, and both are exact: the string
+    /// is printed as the assembly holds it, and the member as the assembly names it.
+    /// </remarks>
+    private static string? Fetches(
+        VirtualOperation known,
+        VirtualInstruction instruction,
+        ModuleDef module)
+    {
+        if (known.Name != known.Leaving || instruction.Operand is not VirtualOperand.Number number)
+            return null;
+        if (known.Left == "System.String")
+            return Says(number.Value, module) is null ? null : "ldstr";
+        return Reflected.Contains(known.Left ?? string.Empty) && Token(number.Value, module) is not null
+            ? "ldtoken"
+            : null;
+    }
+
+    /// <summary>The classes an assembly's own metadata arrives in when a program reaches for it.</summary>
+    private static readonly HashSet<string> Reflected = new(StringComparer.Ordinal)
+    {
+        "System.Type",
+        "System.RuntimeType",
+        "System.RuntimeTypeHandle",
+        "System.Reflection.MethodBase",
+        "System.Reflection.MethodInfo",
+        "System.Reflection.ConstructorInfo",
+        "System.RuntimeMethodHandle",
+        "System.Reflection.FieldInfo",
+        "System.RuntimeFieldHandle"
+    };
+
+    /// <summary>What the assembly's string heap holds at an offset, where it holds anything.</summary>
+    private static string? Says(long value, ModuleDef module)
+    {
+        if (value is < 0 or > uint.MaxValue || module is not ModuleDefMD image)
+            return null;
+        try
+        {
+            return image.ReadUserString((uint)value);
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException)
+        {
+            return null;
+        }
     }
 
     /// <summary>What was counted about an operation that could not be read, if anything was.</summary>
@@ -222,10 +326,27 @@ public static class VirtualLift
         }
         if (instruction.Operand is not VirtualOperand.Number number)
             return string.Empty;
+        if (mnemonic == "ldstr" && Says(number.Value, module) is { } text)
+            return Quoted(text);
         return Token(number.Value, module) is { } named
             ? named
             : number.Value.ToString(CultureInfo.InvariantCulture);
     }
+
+    /// <summary>A string as a listing can carry it: on one line, and plainly a string.</summary>
+    private static string Quoted(string text)
+    {
+        var shown = text.Length > Quotable ? text[..Quotable] + "..." : text;
+        return "\"" + shown
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal) + "\"";
+    }
+
+    /// <summary>How much of a string to print before the line stops being readable.</summary>
+    private const int Quotable = 120;
 
     /// <summary>What a metadata token names, said as briefly as it can be and still be found.</summary>
     private static string? Token(long value, ModuleDef module)
@@ -268,7 +389,7 @@ public static class VirtualLift
             var name = program.Operations.TryGetValue(instruction.Opcode, out var known)
                 ? known.Name
                 : null;
-            if (name is not ("branch" or "branch if"))
+            if (!Leaps(name))
                 continue;
 
             if (instruction.Operand is VirtualOperand.Table table)
@@ -319,6 +440,11 @@ public static class VirtualLift
     /// place in the program it has a perfectly definite one: the method its operand names says how
     /// many arguments it wants and whether it answers with anything. So the operations that could
     /// not be measured in general are still known here in particular.
+    ///
+    /// The signature is taken over a measurement rather than after it. A trial performs one call
+    /// site and measures the arity of that site, which is a true measurement of a thing that
+    /// differs everywhere else; used as the arity of the operation it makes every other call in the
+    /// program wrong, and the stack depths downstream of them with it.
     /// </remarks>
     private static Dictionary<int, (int Pops, int Pushes)> Arities(
         VirtualProgram program,
@@ -329,14 +455,11 @@ public static class VirtualLift
         {
             if (!program.Operations.TryGetValue(instruction.Opcode, out var known))
                 continue;
-            if (known.Measured)
-            {
-                found[instruction.Index] = (known.Pops, known.Pushes);
-                continue;
-            }
             if (known.Name is not ("calls the method it names" or
                 "makes a new object with the constructor it names"))
             {
+                if (known.Measured)
+                    found[instruction.Index] = (known.Pops, known.Pushes);
                 continue;
             }
             if (instruction.Operand is not VirtualOperand.Number number ||
@@ -344,22 +467,34 @@ public static class VirtualLift
             {
                 continue;
             }
-            var arguments = called.MethodSig?.Params.Count ?? 0;
-            found[instruction.Index] = called.IsConstructor
+            if (called.MethodSig is not { } signature)
+                continue;
+            var arguments = signature.Params.Count;
+            found[instruction.Index] = called.Name == ".ctor"
                 ? (arguments, 1)
-                : (arguments + (called.MethodSig?.HasThis == true ? 1 : 0),
-                    called.MethodSig?.RetType.ElementType == ElementType.Void ? 0 : 1);
+                : (arguments + (signature.HasThis ? 1 : 0),
+                    signature.RetType.ElementType == ElementType.Void ? 0 : 1);
         }
         return found;
     }
 
-    private static MethodDef? Called(long value, ModuleDef module)
+    /// <remarks>
+    /// A method the program calls in another assembly has no definition here to resolve to, only a
+    /// reference, and the reference carries the signature — which is all that is wanted, since what
+    /// a call takes off the stack is decided by how it was written down, not by where it lives.
+    /// </remarks>
+    private static IMethod? Called(long value, ModuleDef module)
     {
         if (value is < int.MinValue or > int.MaxValue)
             return null;
         try
         {
-            return (module.ResolveToken((int)value) as IMethod)?.ResolveMethodDef();
+            return module.ResolveToken((int)value) switch
+            {
+                MemberRef reference => reference.IsMethodRef ? reference : null,
+                IMethod method => method,
+                _ => null
+            };
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
         {
@@ -379,7 +514,7 @@ public static class VirtualLift
     {
         ArgumentNullException.ThrowIfNull(program);
         var going = Destinations(program, []);
-        return Forced(program, going, Arities(program, module));
+        return Forced(program, going, Arities(program, module), Bounds(program, module));
     }
 
     /// <summary>
@@ -398,10 +533,70 @@ public static class VirtualLift
     /// let the walk carry on through, which is what turns a check of most of the program into a
     /// check of all of it.
     /// </remarks>
+    /// <summary>
+    /// The net effects an operation could possibly have, where its operand rules the rest out.
+    /// </summary>
+    /// <remarks>
+    /// An operation whose operand names a field is one of the six that name a field, and which six
+    /// depends on whether the field is static. A static one can be read, written, or have its
+    /// address taken, leaving one more, one fewer, or one more on the stack; an instance one takes
+    /// the object as well, leaving the same, two fewer, or the same. So -2 is impossible for a
+    /// static field however the depths around it are read, and +1 impossible for an instance one.
+    ///
+    /// This is worth stating because the solver otherwise believes whatever the depths tell it, and
+    /// a single depth arrived at wrongly earlier in the program will have it conclude that a write
+    /// to a static field consumes two values. That conclusion then spreads, and the walk that was
+    /// meant to check the reading fails somewhere else entirely, blaming an operation that was
+    /// right all along.
+    /// </remarks>
+    private static Dictionary<int, HashSet<int>> Bounds(VirtualProgram program, ModuleDef module)
+    {
+        var possible = new Dictionary<int, HashSet<int>?>();
+        foreach (var instruction in program.Instructions)
+        {
+            if (possible.TryGetValue(instruction.Opcode, out var narrowed) && narrowed is null)
+                continue;
+            var allowed = instruction.Operand is VirtualOperand.Number number
+                ? Held(number.Value, module) switch
+                {
+                    { } field when field.IsStatic => new HashSet<int> { 1, -1 },
+                    { } => new HashSet<int> { 0, -2 },
+                    _ => null
+                }
+                : null;
+            if (allowed is null)
+            {
+                possible[instruction.Opcode] = null;
+                continue;
+            }
+            if (narrowed is not null)
+                allowed.IntersectWith(narrowed);
+            possible[instruction.Opcode] = allowed.Count > 0 ? allowed : null;
+        }
+        return possible
+            .Where(pair => pair.Value is not null)
+            .ToDictionary(pair => pair.Key, pair => pair.Value!);
+    }
+
+    private static FieldDef? Held(long value, ModuleDef module)
+    {
+        if (value is < int.MinValue or > int.MaxValue)
+            return null;
+        try
+        {
+            return (module.ResolveToken((int)value) as IField)?.ResolveFieldDef();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     private static Dictionary<int, int> Forced(
         VirtualProgram program,
         Dictionary<int, List<int>> going,
-        Dictionary<int, (int Pops, int Pushes)> arity)
+        Dictionary<int, (int Pops, int Pushes)> arity,
+        Dictionary<int, HashSet<int>> bounds)
     {
         var edges = new List<(int From, int To, int? Net)>();
         foreach (var instruction in program.Instructions)
@@ -415,9 +610,9 @@ public static class VirtualLift
             var name = program.Operations.TryGetValue(instruction.Opcode, out var known)
                 ? known.Name
                 : null;
-            if (name is not "branch" && index + 1 < program.Instructions.Count)
+            if (Falls(name) && index + 1 < program.Instructions.Count)
                 edges.Add((index, index + 1, net));
-            if (name is "branch" or "branch if" && going.TryGetValue(index, out var targets))
+            if (Leaps(name) && going.TryGetValue(index, out var targets))
             {
                 foreach (var target in targets)
                     edges.Add((index, target, net));
@@ -433,10 +628,50 @@ public static class VirtualLift
         var banned = new HashSet<int>();
         for (var attempt = 0; attempt <= Withdrawals; attempt++)
         {
-            if (Solve(program, edges, banned) is { } solved)
-                return solved;
+            if (Solve(program, edges, banned, bounds, []) is { } solved)
+                return Narrowed(program, edges, banned, bounds, solved);
         }
         return [];
+    }
+
+    /// <summary>
+    /// Settles an operation the depths could not reach by trying what its operand allows it to be.
+    /// </summary>
+    /// <remarks>
+    /// The solver works forwards: it only learns an effect where the depths on both sides of the
+    /// operation are already known, so an operation early in the program, with nothing solved before
+    /// it, is never reached however plain it is. Where the operand narrows the possibilities to a
+    /// handful, each can be put to the program instead, and a possibility that contradicts a depth
+    /// arrived at some other way is not the one. Adopting the survivor when there is exactly one is
+    /// the same standard the rest of the solving is held to — the program left it no choice — and
+    /// where two survive, nothing is claimed.
+    /// </remarks>
+    private static Dictionary<int, int> Narrowed(
+        VirtualProgram program,
+        List<(int From, int To, int? Net)> edges,
+        HashSet<int> banned,
+        Dictionary<int, HashSet<int>> bounds,
+        Dictionary<int, int> solved)
+    {
+        foreach (var (opcode, allowed) in bounds)
+        {
+            if (solved.ContainsKey(opcode) ||
+                program.Operations.TryGetValue(opcode, out var known) && known.Measured)
+            {
+                continue;
+            }
+            var survivors = allowed
+                .Where(net => Solve(
+                    program, edges, banned, bounds, new Dictionary<int, int> { [opcode] = net })
+                    is not null)
+                .Take(2)
+                .ToArray();
+            if (survivors.Length == 1)
+                solved[opcode] = survivors[0];
+        }
+        return solved.Count == 0
+            ? solved
+            : Solve(program, edges, banned, bounds, solved) ?? solved;
     }
 
     /// <summary>How many wrong answers to withdraw before giving up on solving at all.</summary>
@@ -449,10 +684,12 @@ public static class VirtualLift
     private static Dictionary<int, int>? Solve(
         VirtualProgram program,
         List<(int From, int To, int? Net)> edges,
-        HashSet<int> banned)
+        HashSet<int> banned,
+        Dictionary<int, HashSet<int>> bounds,
+        Dictionary<int, int> assumed)
     {
         var depths = new Dictionary<int, int> { [0] = 0 };
-        var forced = new Dictionary<int, int>();
+        var forced = new Dictionary<int, int>(assumed);
         bool moved;
         do
         {
@@ -470,7 +707,11 @@ public static class VirtualLift
                         {
                             if (already != before + step && guessed)
                             {
-                                banned.Add(opcode);
+                                // What was put to the program rather than derived from it is
+                                // withdrawn for this attempt only, since the next attempt is the
+                                // one asking whether it holds.
+                                if (!assumed.ContainsKey(opcode))
+                                    banned.Add(opcode);
                                 return null;
                             }
                         }
@@ -490,7 +731,14 @@ public static class VirtualLift
                 {
                     continue;
                 }
-                forced[opcode] = leaving - entering;
+                // An answer its operand rules out is not adopted, and that is all. Nothing has been
+                // carried anywhere on the strength of it, so there is nothing to withdraw; and the
+                // operation is not struck off either, since the pair of depths that produced the
+                // impossible answer may itself be what a later attempt withdraws.
+                var answer = leaving - entering;
+                if (bounds.TryGetValue(opcode, out var allowed) && !allowed.Contains(answer))
+                    continue;
+                forced[opcode] = answer;
                 moved = true;
             }
         }
@@ -513,11 +761,85 @@ public static class VirtualLift
         Dictionary<int, List<int>> going,
         Dictionary<int, (int Pops, int Pushes)> arity,
         Dictionary<int, int> forced,
-        Dictionary<string, List<int>> stopped)
+        Dictionary<string, List<int>> stopped,
+        HashSet<int> handlers)
     {
         var depths = new Dictionary<int, int>();
+        Spread(program, going, arity, forced, stopped, depths, (0, 0));
+
+        // Then the handlers. A guarded region says which operations it covers but not what each of
+        // its numbers means, and nothing has to be assumed about that: a number the ordinary walk
+        // never arrives at is tried as a place a throw arrives at instead, with the exception on
+        // the stack, and kept only if the program agrees with it. A number that is where the try
+        // begins, or an end rather than a beginning, is already walked to and is not tried; one
+        // that is neither leaves the walk contradicting itself and is put back.
+        bool spread;
+        do
+        {
+            spread = false;
+            foreach (var place in program.Regions
+                .SelectMany(region => region.Numbers)
+                .Distinct()
+                .Where(place => place > 0 && place < program.Instructions.Count &&
+                    !depths.ContainsKey(place))
+                .ToList())
+            {
+                var kept = new Dictionary<int, int>(depths);
+                var keptStops = stopped.ToDictionary(
+                    entry => entry.Key, entry => new List<int>(entry.Value), StringComparer.Ordinal);
+                Spread(program, going, arity, forced, stopped, depths, (place, 1));
+                if (Contradicted(depths, kept, stopped, keptStops))
+                {
+                    depths.Clear();
+                    foreach (var (index, depth) in kept)
+                        depths[index] = depth;
+                    stopped.Clear();
+                    foreach (var (why, where) in keptStops)
+                        stopped[why] = where;
+                    continue;
+                }
+                handlers.Add(place);
+                spread = true;
+            }
+        }
+        while (spread);
+        return depths;
+    }
+
+    /// <summary>
+    /// Whether walking from somewhere new made the reading disagree with itself where it had not.
+    /// </summary>
+    /// <remarks>
+    /// Only the two answers that mean a mistake count. Running out of stack and reaching the same
+    /// operation at two depths are the program saying the place walked from is not a place the
+    /// stack arrives at that way. Stopping at an operation nothing established is the reading
+    /// admitting a gap, which is as true of the handler as of everywhere else and is no reason to
+    /// throw away what was walked before it.
+    /// </remarks>
+    private static bool Contradicted(
+        Dictionary<int, int> depths,
+        Dictionary<int, int> before,
+        Dictionary<string, List<int>> stopped,
+        Dictionary<string, List<int>> stoppedBefore) =>
+        depths.Values.Count(depth => depth == Disagreed) >
+            before.Values.Count(depth => depth == Disagreed) ||
+        stopped.GetValueOrDefault(Shallow)?.Count >
+            (stoppedBefore.GetValueOrDefault(Shallow)?.Count ?? 0);
+
+    /// <summary>What the walk says where an operation takes more than the stack is holding.</summary>
+    private const string Shallow = "a stack too shallow for what the operation takes";
+
+    private static void Spread(
+        VirtualProgram program,
+        Dictionary<int, List<int>> going,
+        Dictionary<int, (int Pops, int Pushes)> arity,
+        Dictionary<int, int> forced,
+        Dictionary<string, List<int>> stopped,
+        Dictionary<int, int> depths,
+        (int Index, int Depth) from)
+    {
         var pending = new Queue<(int Index, int Depth)>();
-        pending.Enqueue((0, 0));
+        pending.Enqueue(from);
         while (pending.Count > 0)
         {
             var (index, depth) = pending.Dequeue();
@@ -539,7 +861,7 @@ public static class VirtualLift
             {
                 if (depth - counted.Pops < 0)
                 {
-                    Stop(stopped, "a stack too shallow for what the operation takes", index);
+                    Stop(stopped, Shallow, index);
                     continue;
                 }
                 after = depth - counted.Pops + counted.Pushes;
@@ -557,9 +879,9 @@ public static class VirtualLift
             var name = program.Operations.TryGetValue(instruction.Opcode, out var known)
                 ? known.Name
                 : null;
-            if (name is not "branch")
+            if (Falls(name))
                 pending.Enqueue((index + 1, after));
-            if (name is not ("branch" or "branch if"))
+            if (!Leaps(name))
                 continue;
             if (!going.TryGetValue(index, out var targets))
             {
@@ -569,7 +891,21 @@ public static class VirtualLift
             foreach (var target in targets)
                 pending.Enqueue((target, after));
         }
-        return depths;
+    }
+
+    /// <summary>Consecutive numbers said as the stretches they are.</summary>
+    private static IEnumerable<string> Runs(List<int> numbers)
+    {
+        for (var start = 0; start < numbers.Count;)
+        {
+            var end = start;
+            while (end + 1 < numbers.Count && numbers[end + 1] == numbers[end] + 1)
+                end++;
+            yield return start == end
+                ? numbers[start].ToString(CultureInfo.InvariantCulture)
+                : $"{numbers[start]}-{numbers[end]}";
+            start = end + 1;
+        }
     }
 
     private static void Stop(Dictionary<string, List<int>> stopped, string why, int index)
@@ -591,7 +927,8 @@ public static class VirtualLift
         VirtualProgram program,
         Dictionary<int, int> depths,
         Dictionary<int, int> forced,
-        Dictionary<string, List<int>> stopped)
+        Dictionary<string, List<int>> stopped,
+        HashSet<int> handlers)
     {
         var walked = depths.Count;
         var disagreed = depths.Values.Count(depth => depth == Disagreed);
@@ -600,6 +937,12 @@ public static class VirtualLift
                 ? "every one it reaches twice it reaches at the same depth."
                 : $"{disagreed} of them at two different depths, which means one of the readings " +
                     "is wrong.");
+        if (handlers.Count > 0)
+        {
+            yield return $"  {handlers.Count} place(s) a guarded region covers are walked as " +
+                "handlers as well, entered with the exception on the stack: " +
+                string.Join(", ", handlers.Order());
+        }
         if (forced.Count > 0)
         {
             var said = forced
@@ -628,12 +971,17 @@ public static class VirtualLift
             // what it did not arrive at cannot be arrived at: the operations are dead, which is
             // a fact about the program rather than a limit of the reading.
             var dead = stopped.Count == 0 && disagreed == 0;
+
+            // As runs rather than as numbers, because operations nothing reaches come in stretches
+            // — a whole handler, a whole block — and the stretch is the thing to go and look at.
+            var runs = Runs(missed).ToList();
             yield return $"  {missed.Count} operation(s) " +
                 (dead
                     ? "nothing in the program reaches, the walk having been at no point unable to " +
                         "follow it: "
                     : "no path arrives at: ") +
-                string.Join(", ", missed.Take(10)) + (missed.Count > 10 ? ", ..." : string.Empty);
+                string.Join(", ", runs.Take(Listed)) +
+                (runs.Count > Listed ? ", ..." : string.Empty);
         }
     }
 }

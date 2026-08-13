@@ -13,6 +13,7 @@ using ReactorUnpack.Core.Pipeline;
 using ReactorUnpack.Core.Recovery;
 using ReactorUnpack.Core.Strings;
 using ReactorUnpack.Core.Verification;
+using ReactorUnpack.Core.Payload;
 
 namespace ReactorUnpack.Core;
 
@@ -97,7 +98,11 @@ public sealed record RecoveryReportMetrics(
     int RemainingSwitchDispatchers = 0,
     int RuntimeTypesRemoved = 0,
     int SymbolsRenamed = 0,
-    int RemainingUnreachableInstructions = 0);
+    int RemainingUnreachableInstructions = 0,
+    int VirtualOperations = 0,
+    int VirtualOperationsRead = 0,
+    int VirtualOperationsWalked = 0,
+    int VirtualDepthDisagreements = 0);
 
 public sealed class ArtifactContext : IDisposable
 {
@@ -273,6 +278,9 @@ public sealed class ReactorPipeline
         new TypeRestorationPass(),
         new DelegateProxyPass(),
         new StringRecoveryPass(),
+        // Strings the protector left to per-string decoders rather than to its table are folded
+        // after the table, because a decoder can read a table entry but never the other way round.
+        new ConstantStringPass(),
         // Forwarder redirection runs after the rewrites, not before: replacing a resolver call with
         // its string or a proxy dispatch with a direct call is what leaves many of Reactor's
         // wrappers as the bare pass-throughs this pass can prove and skip.
@@ -452,6 +460,10 @@ public sealed class ReactorPipeline
         context.TryGetFact<int>("cfg.unreachableInstructionsRemoved", out var unreachableRemoved);
         context.TryGetFact<int>("cleanup.removedTypeCount", out var runtimeTypesRemoved);
         context.TryGetFact<IReadOnlyDictionary<string, string>>("rename.map", out var renameMap);
+        context.TryGetFact<int>("virtualization.operations", out var virtualOperations);
+        context.TryGetFact<int>("virtualization.operationsRead", out var virtualRead);
+        context.TryGetFact<int>("virtualization.operationsWalked", out var virtualWalked);
+        context.TryGetFact<int>("virtualization.depthDisagreements", out var virtualDisagreements);
         return new ArtifactReport(
             Version,
             context.InputPath,
@@ -481,7 +493,11 @@ public sealed class ReactorPipeline
                 CountRemainingSwitchDispatchers(context.Module),
                 runtimeTypesRemoved,
                 renameMap?.Count ?? 0,
-                CountRemainingUnreachableInstructions(context.Module)),
+                CountRemainingUnreachableInstructions(context.Module),
+                virtualOperations,
+                virtualRead,
+                virtualWalked,
+                virtualDisagreements),
             verification.Passed,
             verification.Diagnostics);
     }
@@ -983,7 +999,9 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
                 out var discovered) &&
             discovered is not null)
         {
-            using var payloadModule = ModuleDefMD.Load(discovered.ManagedAssembly);
+            // The discovery already read the image to accept it, so this reads it again only for
+            // what it says about itself, and cannot be the first to find it unreadable.
+            PayloadStageValidator.TryValidateManaged(discovered.ManagedAssembly, out var read);
             var sourceBytes = discovered.Resource.CreateReader().ToArray();
             var structuralInfo = new PayloadInfo(
                 discovered.Resource.Name,
@@ -993,9 +1011,9 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
                 discovered.ManagedAssembly.Length,
                 Convert.ToHexStringLower(SHA256.HashData(discovered.ManagedAssembly)),
                 discovered.AssemblyName,
-                payloadModule.Name,
-                payloadModule.EntryPoint?.MDToken.Raw ?? 0,
-                payloadModule.Resources.Select(item => item.Name.String).ToArray());
+                read?.ModuleName ?? discovered.AssemblyName,
+                read?.EntryPointToken ?? 0,
+                read?.Resources ?? []);
             IReadOnlyList<ExtractedPayload> structuralPayloads =
                 [new(structuralInfo, discovered.ManagedAssembly)];
             context.SetFact("payload.artifacts", structuralPayloads);
@@ -1055,8 +1073,18 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
         };
         foreach (var item in recovered)
         {
-            using var payloadModule = ModuleDefMD.Load(item.Image);
             var origin = $"{item.Root.DeclaringType?.Name}::{item.Root.Name}";
+
+            // What the loader was watched handing to the runtime is only a payload if it is one.
+            // A capture that will not read is reported as what it is rather than written out as an
+            // assembly, and the others are extracted regardless of it.
+            if (!PayloadStageValidator.TryValidateManaged(item.Image, out var read) || read is null)
+            {
+                diagnostics.Add(
+                    $"{origin}: the {item.Image.Length} byte(s) handed to the runtime are not a " +
+                    "managed image, so nothing was extracted from that load.");
+                continue;
+            }
             var info = new PayloadInfo(
                 origin,
                 context.OriginalSha256,
@@ -1065,9 +1093,9 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
                 item.Image.Length,
                 item.Sha256,
                 item.AssemblyName,
-                payloadModule.Name,
-                payloadModule.EntryPoint?.MDToken.Raw ?? 0,
-                payloadModule.Resources.Select(resource => resource.Name.String).ToArray());
+                read.ModuleName,
+                read.EntryPointToken,
+                read.Resources);
             payloads.Add(new ExtractedPayload(info, item.Image));
             context.AddEvidence(new Evidence(
                 "extracted-payload",

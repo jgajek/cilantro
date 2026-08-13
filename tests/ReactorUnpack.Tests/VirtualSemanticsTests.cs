@@ -165,9 +165,30 @@ public sealed class VirtualSemanticsTests
         var recovered = VirtualProgramRecovery.Recover(context, method, out _);
 
         Assert.NotNull(recovered);
-        var seen = Assert.Single(recovered.Operations);
-        Assert.Equal(Jump, seen.Key);
-        Assert.Equal("branch", seen.Value.Name);
+        var seen = Assert.Single(recovered.Operations.Values, one => one.Identified);
+        Assert.Equal(Jump, seen.Opcode);
+        Assert.Equal("branch", seen.Name);
+    }
+
+    /// <summary>
+    /// The rest of the program's operations are still listed, saying nothing. A table that omits
+    /// what it could not establish reads as though it were complete, and the operations missing
+    /// from it read as ordinary ones in the body below.
+    /// </summary>
+    [Fact]
+    public void AnOperationNothingCouldEstablishIsStillGivenALineSayingSo()
+    {
+        using var context = SyntheticContext.Build(module => Engine(module, withValues: false));
+        var method = Assert.Single(VirtualizedMethodDetector.Detect(context.Module));
+
+        var recovered = VirtualProgramRecovery.Recover(context, method, out _);
+
+        Assert.NotNull(recovered);
+        foreach (var opcode in recovered.Instructions.Select(one => one.Opcode).Distinct())
+            Assert.Contains(opcode, recovered.Operations);
+        Assert.Contains(
+            recovered.Operations.Values,
+            one => one.Unmeasured == "nothing asked it and nothing watched it");
     }
 
     /// <summary>

@@ -489,12 +489,27 @@ public sealed class StaticHeap
         return true;
     }
 
-    public bool TryWriteArray(StaticValue reference, int index, StaticValue value)
+    public bool TryWriteArray(StaticValue reference, int index, StaticValue value) =>
+        TryWriteArray(reference, index, value, out _);
+
+    /// <summary>Stores an element, saying which of the two ways it can fail was the one.</summary>
+    /// <remarks>
+    /// A write refused for being past the end and a write refused for holding the wrong sort of
+    /// thing are different faults with different causes, and reporting both as the first sent an
+    /// afternoon looking for an index error in a loop that never had one.
+    /// </remarks>
+    public bool TryWriteArray(
+        StaticValue reference,
+        int index,
+        StaticValue value,
+        out bool inBounds)
     {
-        if (!TryObject(reference, out var item) ||
-            item is not HeapArray array ||
-            (uint)index >= (uint)array.Values.Length)
+        inBounds = false;
+        if (!TryObject(reference, out var item) || item is not HeapArray array)
             return false;
+        if ((uint)index >= (uint)array.Values.Length)
+            return false;
+        inBounds = true;
         if (!TryNormalizeArrayElement(array.ElementType, value, out var normalized))
             return false;
         array.Values[index] = normalized;
@@ -900,6 +915,11 @@ public sealed class StaticHeap
             "System.Double" => StaticValue.FromFloat64(value.AsFloat64()),
             _ when value.Kind is StaticValueKind.HeapReference or
                 StaticValueKind.Null => value,
+            // An array whose element type was never stated coerces to nothing, so it keeps what it
+            // is given as it was given. Refusing instead loses the write silently at every caller
+            // that does not check, which is how a string's characters came to vanish on the way
+            // into a character array.
+            "?" => value,
             _ => StaticValue.Unknown
         };
         if (normalized.Kind == StaticValueKind.Unknown)

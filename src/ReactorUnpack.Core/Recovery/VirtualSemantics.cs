@@ -1,18 +1,18 @@
 using System.Buffers;
 using System.Globalization;
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using ReactorUnpack.Core.Interpretation;
 
 namespace ReactorUnpack.Core.Recovery;
 
 /// <summary>What was learned about a virtualizer's operations, and what was not.</summary>
 /// <param name="Operations">The ones the engine would perform on their own, by opcode.</param>
-/// <param name="Declined">Why the others were left alone, in the listing's voice.</param>
-/// <param name="Summary">The same in one sentence, for the log.</param>
 /// <param name="Refused">
 /// Why each operation the trials could not perform was left alone, by opcode rather than in total,
 /// because watching the engine run may yet account for some of them.
 /// </param>
+/// <param name="Summary">The same in one sentence, for the log.</param>
 public sealed record VirtualSemanticsReport(
     IReadOnlyDictionary<int, VirtualOperation> Operations,
     IReadOnlyDictionary<int, string> Refused,
@@ -52,6 +52,17 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     public IReadOnlyList<string>? Changes { get; init; }
 
     /// <summary>
+    /// Which of the engine's places were given the number the operation carries, or the one before
+    /// it, in any trial.
+    /// </summary>
+    /// <remarks>
+    /// An operation that puts its own operand into the place the engine keeps its position has
+    /// gone there, which is the whole of what a jump is. The place is reported rather than judged
+    /// because which place is the position is not known until the operations are read together.
+    /// </remarks>
+    public IReadOnlyList<string>? Reached { get; init; }
+
+    /// <summary>
     /// What the rest of the program leaves it no choice but to do to the stack, where nothing
     /// measured it: the number of values it adds, which is negative for one that takes more than
     /// it leaves.
@@ -71,12 +82,33 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     /// </remarks>
     public int? Holding { get; init; }
 
-    /// <summary>What kind of thing it leaves, for a push whose value could not be read.</summary>
+    /// <summary>
+    /// The type of thing it leaves, named as the assembly names it, for a push whose value could
+    /// not be read; or <c>nothing at all</c> for a push that left no value.
+    /// </summary>
     /// <remarks>
     /// This is the poorest of the readings and is only reached when every better one has failed,
-    /// so it is kept apart from the name until then rather than standing in for one.
+    /// so it is kept apart from the name until then rather than standing in for one. It is kept as
+    /// the bare type rather than as the sentence it becomes, because what it is a reading of
+    /// depends on the type: an operation that leaves a string and carries a number is loading a
+    /// string, and no sentence can be asked that.
     /// </remarks>
-    public string? Leaving { get; init; }
+    public string? Left { get; init; }
+
+    /// <summary>What kind of thing it leaves, as it is said in the listing.</summary>
+    public string? Leaving => Left switch
+    {
+        null => null,
+        "nothing at all" => "pushes nothing at all",
+        var kind => $"pushes a{("AEIOU".Contains(Short(kind)[0], StringComparison.Ordinal)
+            ? "n"
+            : string.Empty)} {Short(kind)}"
+    };
+
+    /// <summary>A type's name without the part of it every reader can supply.</summary>
+    private static string Short(string kind) => kind.StartsWith("System.", StringComparison.Ordinal)
+        ? kind["System.".Length..]
+        : kind[(kind.LastIndexOfAny(['/', '.', '+']) + 1)..];
 
     /// <summary>
     /// Whether its effect on the stack was established at all, as against its working being read
@@ -227,8 +259,14 @@ public static class VirtualSemantics
     /// <param name="Arrays">Bottom of the stack first, so the last entry is the top.</param>
     private sealed record Shape(string Needs, bool[] Arrays)
     {
+        /// <summary>
+        /// Whether the stack should hold values of the type the operation's operand names, rather
+        /// than numbers.
+        /// </summary>
+        public bool Named { get; init; }
+
         /// <summary>Whether the values are plain numbers, which is when an effect can be named.</summary>
-        public bool Plain => !Arrays.Any(item => item);
+        public bool Plain => !Named && !Arrays.Any(item => item);
     }
 
     /// <remarks>
@@ -242,7 +280,14 @@ public static class VirtualSemantics
         new("values", [false, false, false, false]),
         new("an array beneath an index", [false, false, true, false]),
         new("an array on top", [false, false, false, true]),
-        new("an array beneath an index and a value", [false, true, false, false])
+        new("an array beneath an index and a value", [false, true, false, false]),
+
+        // A field's type is stated by the field, so an operation that stores into one can be given
+        // what it will accept rather than refused four times over. This matters more than it
+        // sounds: the protector declares every field as object and the type is put back by an
+        // earlier stage, so the operation is being offered a number where the assembly now says a
+        // cipher belongs, and it says no.
+        new("a value of the kind its operand names", [false, false, false, false]) { Named = true }
     ];
 
     public static VirtualSemanticsReport Probe(
@@ -284,29 +329,36 @@ public static class VirtualSemantics
             }
         }
 
+        var staging = Staging(dispatcher);
         var derived = new Dictionary<int, VirtualOperation>();
         var declined = new Dictionary<int, string>();
         foreach (var (opcode, example) in examples.OrderBy(entry => entry.Key))
         {
             var operand = Operand(heap, example, operandField);
-            var reason = string.Empty;
+            var wanted = Names(module, operand);
+            // Every distinct complaint is kept, not just the first. An operation refused four ways
+            // has been refused four ways, and reporting only the first hid the arrangement that
+            // came closest behind the one that never had a chance.
+            var reasons = new List<string>();
             VirtualOperation? found = null;
             foreach (var shape in Shapes)
             {
+                if (shape.Named && wanted is null)
+                    continue;
                 var trials = Trials(
                     machine, module, heap, dispatcher, engine, factory, slotType, stack, example,
-                    operand, shape, out var refused);
+                    operand, staging, shape.Named ? wanted : null, shape, out var refused);
                 if (trials.Count == 0)
                 {
-                    if (reason.Length == 0)
-                        reason = refused;
+                    if (!reasons.Contains(refused, StringComparer.Ordinal))
+                        reasons.Add(refused);
 
                     // Rearranging the stack only answers a complaint about what is on it. An
                     // operation that reached past the end of a table, or threw, will do the same
                     // again however the values are arranged, and trying costs a run each time.
                     // Only the first refusal decides that: once an arrangement is being looked for,
                     // the wrong one failing some other way says nothing about the rest.
-                    if (shape.Plain && refused != WrongKind)
+                    if (shape.Plain && !refused.StartsWith(WrongKind, StringComparison.Ordinal))
                         break;
                     continue;
                 }
@@ -320,9 +372,9 @@ public static class VirtualSemantics
                 derived[opcode] = found;
                 continue;
             }
-            declined[opcode] = reason.Length == 0
+            declined[opcode] = reasons.Count == 0
                 ? "its trials did not agree with each other"
-                : reason;
+                : string.Join(", and ", reasons);
         }
 
         var named = derived.Values.Count(operation => operation.Name is not null);
@@ -506,6 +558,99 @@ public static class VirtualSemantics
                 : null;
     }
 
+    /// <summary>
+    /// Where the engine copies parts of an operation before performing it, taken from its own code.
+    /// </summary>
+    /// <remarks>
+    /// Some engines hand the whole operation to the handler and let it read what it needs. Others
+    /// unpack it first, so that by the time the handler runs the operand is a field of the engine
+    /// and the operation itself is never read again. A handler of the second kind, performed on its
+    /// own, reads a field nothing filled in, and every one of them refuses the same way: the operand
+    /// it wanted was not a boxed anything, because it was not there at all.
+    ///
+    /// The unpacking is a pair of instructions in the loop around the handler — read a field of the
+    /// operation, write a field of the engine — and nothing else in the engine has that shape, since
+    /// the operation type exists only to be unpacked. Reading the pair back out is what lets the
+    /// trials put the engine in the state the handler was written to find.
+    /// </remarks>
+    private static List<(FieldDef From, FieldDef To)> Staging(MethodDef dispatcher)
+    {
+        var engineType = dispatcher.DeclaringType;
+        var operationType = dispatcher.Parameters
+            .Where(parameter => !parameter.IsHiddenThisParameter)
+            .Select(parameter => parameter.Type.ToTypeDefOrRef().ResolveTypeDef())
+            .FirstOrDefault(type => type is not null && type != engineType);
+        if (engineType is null || operationType is null)
+            return [];
+
+        var found = new Dictionary<FieldDef, FieldDef?>();
+        foreach (var method in engineType.Methods.Where(method => method.HasBody))
+        {
+            var instructions = method.Body.Instructions;
+            for (var index = 0; index + 1 < instructions.Count; index++)
+            {
+                if (instructions[index].OpCode.Code != Code.Ldfld ||
+                    instructions[index + 1].OpCode.Code != Code.Stfld ||
+                    (instructions[index].Operand as IField)?.ResolveFieldDef() is not { } read ||
+                    (instructions[index + 1].Operand as IField)?.ResolveFieldDef() is not { } written ||
+                    read.DeclaringType != operationType ||
+                    written.DeclaringType != engineType)
+                {
+                    continue;
+                }
+
+                // A field written from two different parts of an operation is not an unpacking of
+                // either, so it is struck out rather than guessed at.
+                found[written] = found.TryGetValue(written, out var earlier) && earlier != read
+                    ? null
+                    : read;
+            }
+        }
+        return [.. found
+            .Where(pair => pair.Value is not null)
+            .Select(pair => (From: pair.Value!, To: pair.Key))];
+    }
+
+    /// <summary>The type of the field an operand names, where it names one of reference kind.</summary>
+    /// <remarks>
+    /// Value types are left out. One is stored by having its number put on the stack, which the
+    /// numbered seeding already does, so making an instance to hold it would only be a worse way of
+    /// asking the same question.
+    /// </remarks>
+    private static string? Names(ModuleDef module, long? operand)
+    {
+        if (operand is not { } token || token is < int.MinValue or > int.MaxValue)
+            return null;
+        try
+        {
+            var field = (module.ResolveToken((int)token) as IField)?.ResolveFieldDef();
+            return field?.FieldType is { IsValueType: false } type ? type.FullName : null;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Unpacks an operation into the engine the way the engine's own loop would.</summary>
+    private static bool Stage(
+        StaticHeap heap,
+        List<(FieldDef From, FieldDef To)> staging,
+        StaticValue engine,
+        StaticValue operation)
+    {
+        var staged = false;
+        foreach (var (from, to) in staging)
+        {
+            if (heap.TryReadField(operation, from, out var value) &&
+                heap.TryWriteField(engine, to, value))
+            {
+                staged = true;
+            }
+        }
+        return staged;
+    }
+
     private static List<Trial> Trials(
         StaticMachine machine,
         ModuleDef module,
@@ -517,6 +662,8 @@ public static class VirtualSemantics
         List<StaticValue> stack,
         StaticValue operation,
         long? operand,
+        List<(FieldDef From, FieldDef To)> staging,
+        string? named,
         Shape shape,
         out string refused)
     {
@@ -533,8 +680,8 @@ public static class VirtualSemantics
             {
                 var wantsArray = position < shape.Arrays.Length && shape.Arrays[position];
                 if (!TryMakeSlot(
-                        machine, module, heap, factory, seeds[position], wantsArray, out var slot,
-                        out var held))
+                        machine, module, heap, factory, seeds[position], wantsArray, named,
+                        out var slot, out var held))
                 {
                     refused = "the engine would not build a value to put on its stack";
                     return [];
@@ -550,9 +697,12 @@ public static class VirtualSemantics
             }
 
             var footprint = Footprint(heap, module, engine, stack);
+            var staged = Stage(heap, staging, engine, operation);
             var seeded = Sown(
                 machine, module, heap, factory, slotType, footprint, operand, trials.Count);
-            var was = (seeded.Count == 0 ? footprint : Footprint(heap, module, engine, stack))
+            var was = (seeded.Count == 0 && !staged
+                    ? footprint
+                    : Footprint(heap, module, engine, stack))
                 .ToDictionary(place => place.Path, place => place.Value.Bits);
             var outcome = machine.Execute(
                 dispatcher, [engine, operation], new StaticWorkBudget(TrialSteps));
@@ -652,7 +802,8 @@ public static class VirtualSemantics
             if (place.Field is not null ||
                 !place.Path.EndsWith(ending, StringComparison.Ordinal) ||
                 !Tabled(heap, place.Owner, slotType) ||
-                !TryMakeSlot(machine, module, heap, factory, ++number, false, out var slot, out _))
+                !TryMakeSlot(
+                    machine, module, heap, factory, ++number, false, null, out var slot, out _))
             {
                 continue;
             }
@@ -721,7 +872,12 @@ public static class VirtualSemantics
             return "it indexes something the surrounding program would have filled in";
         }
         if (text.Contains("cast", StringComparison.OrdinalIgnoreCase))
-            return WrongKind;
+        {
+            // Which kind it wanted is the whole of what makes this reportable: without it the note
+            // says only that the seeding was wrong, and gives the reader no way to make it right.
+            var refused = text.Split('\n')[0].Trim();
+            return $"{WrongKind} ({refused[..Math.Min(refused.Length, 200)]})";
+        }
 
         // Where nothing above recognizes the failure, the machine's own words are the only thing
         // that says where the gap is, and a gap in the tool is worth reporting as precisely as one
@@ -743,17 +899,26 @@ public static class VirtualSemantics
         if (trials.Any(trial => trial.Before.Count - trial.Kept != pops || trial.After.Count != pushes))
             return null;
 
-        // An operation whose operand turns up in the engine's state afterwards has jumped to it.
-        // That reading comes first, because every other reading of such an operation is wrong.
+        // An operation whose operand turns up in one of the engine's own fields afterwards has
+        // jumped to it. That reading comes first, because every other reading of such an operation
+        // is wrong. A field of the engine and not a slot of one of its tables: an operation that
+        // stores a value at the place its operand names writes the operand's own number into the
+        // table whenever the value it was handed happens to be that number, and reading that as a
+        // jump takes a store for a branch and severs the program at it.
         var settled = trials.All(trial => trial.Moved.Count == 0);
-        if (operand is { } target && trials.Any(trial => trial.Moved.Contains(target)))
+        if (operand is { } target && trials.Any(trial => Put(trial, target)))
         {
-            // Always taking the operand means the jump is unconditional; taking it only when the
-            // values happen to satisfy something means the jump is the point of the comparison.
-            var always = trials.All(trial => trial.Moved.Contains(target));
-            return new VirtualOperation(opcode, pops, pushes, always ? "branch" : "branch if")
+            // A jump that takes nothing has nothing to decide with and goes wherever it points. One
+            // that takes values decides with them, and having jumped in every trial does not say
+            // otherwise: the values it is tried with are ordered the same way every time, so a jump
+            // taken when one exceeds another is taken in all of them.
+            var always = trials.All(trial => Put(trial, target));
+            return new VirtualOperation(
+                opcode, pops, pushes, always && pops == 0 ? "branch" : "branch if")
             {
                 TouchesState = true,
+                Changes = Changed(trials),
+                Reached = Arriving(trials, operand),
                 Needs = shape.Plain ? null : shape.Needs
             };
         }
@@ -778,9 +943,10 @@ public static class VirtualSemantics
         return new VirtualOperation(opcode, pops, pushes, name)
         {
             Holding = pushes == 1 && pops == 0 ? Fetching(trials)?.Length : null,
-            Leaving = pushes == 1 && pops == 0 ? Leaves(trials) : null,
+            Left = pushes == 1 && pops == 0 ? Leaves(trials) : null,
             TouchesState = !settled,
             Changes = settled ? null : Changed(trials),
+            Reached = settled ? null : Arriving(trials, operand),
             Needs = shape.Plain ? null : shape.Needs
         };
     }
@@ -818,14 +984,39 @@ public static class VirtualSemantics
             .Select(trial => trial.Kinds.Count == 1 ? trial.Kinds[0] : null)
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        if (kinds.Count != 1 || kinds[0] is not { } kind)
+        return kinds.Count == 1 ? kinds[0] : null;
+    }
+
+    /// <summary>
+    /// The engine's own places some trial gave the very number the operation carries.
+    /// </summary>
+    /// <remarks>
+    /// Where a place was given the operand, the operation put its operand there; and where it was
+    /// given one less, it put its operand there too, an engine that steps its position after
+    /// performing an operation having to write the place before the one it means to reach. Which of
+    /// those places is the position is not known here and is known later, so the places are
+    /// reported rather than read: a number that is a jump's destination in one field is an
+    /// accident of the values we chose in any other, and only the field tells them apart.
+    ///
+    /// Some trial rather than every one, because a conditional jump not taken writes nothing, and
+    /// an operation only taken once is the interesting half of the reading.
+    /// </remarks>
+    private static List<string>? Arriving(List<Trial> trials, long? operand)
+    {
+        if (operand is not { } place)
             return null;
-        if (kind == "nothing at all")
-            return "pushes nothing at all";
-        var named = kind.StartsWith("System.", StringComparison.Ordinal)
-            ? kind["System.".Length..]
-            : kind[(kind.LastIndexOfAny(['/', '.', '+']) + 1)..];
-        return $"pushes a{("AEIOU".Contains(named[0], StringComparison.Ordinal) ? "n" : string.Empty)} {named}";
+        var found = trials
+            .SelectMany(trial => trial.Where)
+            .Where(one =>
+                !Site(one).Contains('[', StringComparison.Ordinal) &&
+                long.TryParse(
+                    one.Split('=')[^1], NumberStyles.Integer, CultureInfo.InvariantCulture,
+                    out var value) &&
+                (value == place || value == place - 1))
+            .Select(Site)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return found.Count > 0 ? found : null;
     }
 
     /// <summary>Where an operation was seen writing, where it wrote the same place every time.</summary>
@@ -884,6 +1075,19 @@ public static class VirtualSemantics
     }
 
     private static string Site(string written) => written.Split('=')[0];
+
+    /// <summary>Whether a trial put a number into one of the engine's own fields.</summary>
+    /// <remarks>
+    /// A field rather than anywhere: the engine's tables hold the program's values, and a value
+    /// that happens to equal the operation's operand says nothing about the operation.
+    /// </remarks>
+    private static bool Put(Trial trial, long number) =>
+        trial.Where.Any(one =>
+            !Site(one).Contains('[', StringComparison.Ordinal) &&
+            long.TryParse(
+                one.Split('=')[^1], NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out var value) &&
+            value == number);
 
     /// <summary>
     /// The tables of the engine that hold, where the operand says, what the operation left.
@@ -1165,13 +1369,22 @@ public static class VirtualSemantics
         MethodDef factory,
         int value,
         bool asArray,
+        string? named,
         out StaticValue slot,
         out StaticValue held)
     {
         slot = StaticValue.Null;
         held = StaticValue.Null;
         StaticValue type;
-        if (asArray)
+        if (named is not null)
+        {
+            if (!heap.TryAllocateType(named, out type) ||
+                !heap.TryAllocateObject(named, out held))
+            {
+                return false;
+            }
+        }
+        else if (asArray)
         {
             // Long enough that an index from an adjacent seed falls inside it, and a different
             // length in every trial, so that an operation reporting a length can be told from one

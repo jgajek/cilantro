@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using ReactorUnpack.Core.Payload;
 
 namespace ReactorUnpack.Core.Recovery;
 
@@ -47,7 +48,7 @@ public static class ResourceContainer
             entries = parsed;
             return true;
         }
-        catch (Exception exception) when (exception is BadImageFormatException or IOException)
+        catch (Exception exception) when (ManagedImage.Rejects(exception))
         {
             return false;
         }

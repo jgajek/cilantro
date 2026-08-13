@@ -42,6 +42,10 @@ public sealed class VirtualizationDisassemblyPass : DeobfuscationPass
 
         var programs = new List<VirtualProgram>();
         var diagnostics = new List<string>();
+        var operations = 0;
+        var read = 0;
+        var walked = 0;
+        var disagreed = 0;
         foreach (var method in virtualized)
         {
             var program = VirtualProgramRecovery.Recover(context, method, out var diagnostic);
@@ -50,12 +54,27 @@ public sealed class VirtualizationDisassemblyPass : DeobfuscationPass
                 continue;
             programs.Add(program);
             var opcodes = program.Instructions.Select(item => item.Opcode).Distinct().Count();
+            var reading = VirtualLift.Measure(program, context.Module);
+            read += reading.Read;
+            operations += reading.Operations;
+            walked += reading.Walked;
+            disagreed += reading.Disagreed;
             diagnostics.Add(
                 $"{method.Stub.Name}: {opcodes} distinct operation(s), " +
                 $"{Named(program, context).Count} named reference(s) to this module.");
+            diagnostics.Add(
+                $"{method.Stub.Name}: {reading.Read} of {reading.Operations} operation(s) read as " +
+                $"IL, and the stack walk reaches {reading.Walked} of them" +
+                (reading.Disagreed == 0
+                    ? ", agreeing with itself everywhere."
+                    : $", {reading.Disagreed} of them at two depths, which means a reading is wrong."));
         }
 
         context.SetFact<IReadOnlyList<VirtualProgram>>("virtualization.programs", programs);
+        context.SetFact("virtualization.operations", operations);
+        context.SetFact("virtualization.operationsRead", read);
+        context.SetFact("virtualization.operationsWalked", walked);
+        context.SetFact("virtualization.depthDisagreements", disagreed);
         if (programs.Count == 0)
             return (PassStatus.Partial, 0, diagnostics);
 

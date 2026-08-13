@@ -33,6 +33,9 @@ public sealed record CorpusSample(
     int? MaximumRemainingSwitchDispatchers = null,
     int? MaximumUnreachableInstructions = null,
     string? ExpectUnsupportedReason = null,
+    double? MinimumVirtualOperationsRead = null,
+    double? MinimumVirtualOperationsWalked = null,
+    bool RequireConsistentVirtualStack = false,
     int? MaximumSurplusMethods = null,
     int? MaximumProgramMethodSurplus = null,
     int? MaximumSurplusResources = null,
@@ -544,6 +547,53 @@ public static class CorpusRunner
             recovery.RemainingUnreachableInstructions > maxUnreachable)
             diagnostics.Add(
                 $"Remaining unreachable instructions {recovery.RemainingUnreachableInstructions} exceed {maxUnreachable}.");
+        CheckVirtualization(sample, recovery, diagnostics);
+    }
+
+    /// <summary>
+    /// Holds a virtualized sample to the reading already reached for it, share by share.
+    /// </summary>
+    /// <remarks>
+    /// Shares rather than counts, because the number of operations is a fact about the sample and
+    /// the fraction read is a fact about the tool. The walk agreeing with itself is held separately
+    /// and absolutely: a listing that reaches an operation at two depths has a mistake in it
+    /// somewhere, and no amount of coverage makes up for that.
+    /// </remarks>
+    private static void CheckVirtualization(
+        CorpusSample sample,
+        RecoveryReportMetrics recovery,
+        List<string> diagnostics)
+    {
+        if (recovery.VirtualOperations == 0)
+        {
+            if (sample.MinimumVirtualOperationsRead is not null ||
+                sample.MinimumVirtualOperationsWalked is not null)
+            {
+                diagnostics.Add("No virtualized program was read back, so its gates cannot be met.");
+            }
+            return;
+        }
+        var read = (double)recovery.VirtualOperationsRead / recovery.VirtualOperations;
+        var walked = (double)recovery.VirtualOperationsWalked / recovery.VirtualOperations;
+        if (sample.MinimumVirtualOperationsRead is double leastRead && read < leastRead)
+        {
+            diagnostics.Add(
+                $"Read {recovery.VirtualOperationsRead} of {recovery.VirtualOperations} virtual " +
+                $"operation(s) as IL, below the required {leastRead:P0}.");
+        }
+        if (sample.MinimumVirtualOperationsWalked is double leastWalked && walked < leastWalked)
+        {
+            diagnostics.Add(
+                $"The stack walk reaches {recovery.VirtualOperationsWalked} of " +
+                $"{recovery.VirtualOperations} virtual operation(s), below the required " +
+                $"{leastWalked:P0}.");
+        }
+        if (sample.RequireConsistentVirtualStack && recovery.VirtualDepthDisagreements > 0)
+        {
+            diagnostics.Add(
+                $"{recovery.VirtualDepthDisagreements} virtual operation(s) are reached at two " +
+                "different stack depths, so one of the readings is wrong.");
+        }
     }
 
     private static CorpusSampleOutcome Missing(CorpusSample sample) =>
