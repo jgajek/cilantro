@@ -263,7 +263,12 @@ assemblies are pulled out and written to disk. The `Assembly.Load` call that the
 sample would have made is a capture point — the bytes are taken and the load
 never happens.
 
-**9. Read back what was virtualized.** A method a virtualizer emptied is found
+**9. Read back what was virtualized.** What follows is the design of this step;
+[devirtualization.md](devirtualization.md) is the same ground covered for someone
+meeting it for the first time, with worked examples and a discussion of what
+transfers to other protectors.
+
+A method a virtualizer emptied is found
 by the shape of the seam it had to leave: pack every argument into an array,
 pass a number saying which program to run, call once, return. Rather than
 parsing the engine's bytecode — which would mean a parser per engine — its own
@@ -545,6 +550,9 @@ to be very sure about when it produces nothing.
 
 ## Further reading
 
+- [devirtualization.md](devirtualization.md) — step 9 above at length: what code
+  virtualization does, how the hidden program is recovered and read, and what of
+  the approach transfers to other protectors.
 - [compatibility.md](compatibility.md) — the exact support contract, the
   structural detection signals, the verification gates, and the fail-closed
   boundaries, in reference form.

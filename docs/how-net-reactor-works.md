@@ -210,59 +210,26 @@ and it really is per sample: across the samples examined here, the same engine
 numbers the same operations differently in every build, so a table of opcode
 meanings learned from one is worthless on the next.
 
-ReactorUnpack does not lift it, and neither does any other public tool. It does
-name the affected methods, and it writes out the program behind each one by
-running the engine's own decoder rather than parsing its bytecode. That gives
-you the size and shape of the hidden code and, wherever an operand is a
-reference into the assembly, the name of what it points at.
+ReactorUnpack does not lift it, and neither does any other public tool. What it
+does instead is recover the hidden program and read it: the affected methods are
+named, the program behind each one is taken by running the engine's own decoder
+rather than by parsing its bytecode, and what each operation means is established
+by making the engine perform it on chosen values, by watching what it fetches,
+stores and jumps to while the program really runs, and by recording what the
+engine works out on its behalf. The result is written out as an annotated listing
+and as the assembly operations it stands for, with every reference into the
+assembly named, and a walk of the stack's depth over the whole program is used to
+check the readings against each other. You cannot read the method, but you can
+usually tell what it is for and how it is shaped.
 
-It also works out what some of the operations do, by having the engine perform
-them one at a time on values chosen for the purpose and watching what comes
-back. In the samples here that identifies arithmetic, stack manipulation,
-conversions, and reading and writing array elements; the rest are reported as
-how many values they consumed and produced and whether they moved the engine.
+That is a large subject and it has its own document:
+[devirtualization.md](devirtualization.md) covers what the protection does, how
+the program is recovered and read, what the output files mean, and how much of
+the approach would survive a protector other than Reactor.
 
-Jumps are found another way, because an operation performed on its own has
-nowhere to go. The engine is watched running the program instead, and where the
-operation it performed next was not the next one along, the one before it
-jumped. That names the branches and gives their targets, most of them from a
-rule the engine was seen to follow rather than from the run itself, since one
-run only takes one path.
-
-The same run also measures the operations that refuse to be performed out of
-context — the ones that reach for something the program had set up — by reading
-the engine's stack either side of each one, and matching what came and went
-against what the engine was holding elsewhere: its own tables at the place the
-operand names, the field the operand names, the array underneath an index. That
-is what identifies the loads and stores, which no amount of isolated trials
-would.
-
-Reading the engine's handlers instead is not an option in the file — they are
-one flattened method of several thousand instructions, and most of what they
-call goes through a proxy that picks its target at run time — but it is an
-option while it runs, because the interpreter has already resolved all of that.
-What it computes on an operation's behalf is recorded, and what every operation
-does is subtracted as housekeeping. That corroborates the names arrived at from
-the outside, gives conditional branches the comparison they are made on, and
-occasionally names an operation nothing else could. Two operations per sample
-have no fixed arity at all, which is how the call and the object construction
-give themselves away, those being told how many values to take by the method
-their operand names. Between all of it, all 29 operations in each sample are
-reported on and named, and every operation in a program can be written out as
-the IL it stands for.
-
-Whether that reading holds together can then be checked without knowing anything
-further. The dispatcher's jump turns out to carry a table of places rather than
-one, so the flattened program comes apart into blocks, and the depth of the
-stack can be walked through all of them: every place two paths meet has to agree
-about it. In these samples none disagrees, and the walk reaches everything any
-path arrives at. That completeness pays for itself, because a program whose
-every other operation is known leaves an unmeasured one only one possible effect:
-the depths on either side of it fix the difference. You cannot read the method,
-but you can usually tell what it is for and how it is shaped.
-
-The same trick is what lets payload extraction work on a sample whose unpacker
-is virtualized: the interpreter is ordinary IL, so it can simply be run.
+One consequence is worth knowing here, because it affects samples whose methods
+you never look at: payload extraction still works when the unpacker itself is
+virtualized, since the interpreter is ordinary IL and can simply be run.
 
 ## Generations
 

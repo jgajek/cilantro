@@ -282,8 +282,12 @@ use `--keep-runtime`.
 ### The methods are decrypted but still unreadable
 
 Check whether the summary reported code virtualization. If it did, those methods
-are bytecode for a custom interpreter and no tool will decompile them. Look in
-`suspicious.virtualized/` — there is a listing per affected method. The
+are bytecode for a custom interpreter and no tool will decompile them. What
+follows is the field guide to the files that get written;
+[devirtualization.md](devirtualization.md) is the longer explanation of what the
+protection is and how the files are arrived at.
+
+Look in `suspicious.virtualized/` — there is a listing per affected method. The
 operation numbers are that build's own and mean nothing anywhere else, but the
 listing tells you two useful things about them. Every operand that is a
 reference into the assembly is named, so a listing mentioning `CryptoStream` and

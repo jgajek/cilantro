@@ -58,6 +58,12 @@ did is listed in the report.
 ReactorUnpack decrypts and extracts those, so the thing you actually care about
 is sitting on disk instead of buried in an encrypted blob.
 
+**It reads the methods that no decompiler can show you.** Reactor's strongest
+option replaces a method with bytecode for an interpreter it generates per
+sample. ReactorUnpack works out what that bytecode means and writes it out as
+readable operations, which is usually enough to say what a method you cannot
+read is for.
+
 **It leaves your file alone.** The input is never modified. Output goes to new
 files beside it.
 
@@ -138,14 +144,6 @@ A fact can be bytes, written as `{ "base64": "..." }`. That is what to use when
 the sample keeps its next stage in a binary registry value: paste the value in and
 the run unpacks the stage out of it.
 
-### When the payload is not in the file
-
-Some samples download the next stage instead of carrying it. The reader follows
-them as far as the connection — including through `async` methods, which it drives
-to completion — and then stops and says where the connection was going, host and
-port. There is nothing to unpack in such a file, and the address is the thing
-worth having.
-
 ### When the sample unpacks itself through a library
 
 Some samples decrypt themselves using a third-party assembly they reference but
@@ -218,6 +216,73 @@ into the reading that no code produced, so it takes `--allow-declared-calls`, is
 never allowed to displace real code, and is printed in the summary wherever it was
 used. [docs/declarations.md](docs/declarations.md) is the contract.
 
+## The two hard parts
+
+Most of what Reactor does has a standard answer, and the section after this one
+lists all of it. Two things are harder than the rest, and they are usually the
+reason to reach for this tool rather than another.
+
+### Getting the hidden file out
+
+Reactor is very often used as a wrapper. The sample you have is a shell whose
+real job is to decrypt something else and run it, and that something else is what
+you actually want. ReactorUnpack works out what the unpacker would have produced
+and writes it to `reactorunpack/suspicious.payloads/`, ready to be analysed on its
+own — and if it turns out to be Reactor-protected in its turn, to be put through
+the tool again.
+
+Three cases come up, and all three end with you knowing something:
+
+- **The payload is carried in the file**, as an encrypted resource or a blob of
+  bytes. This is the common one, and the file comes out.
+- **The payload is downloaded.** There is nothing to unpack, so the reader
+  follows the sample as far as the connection — including through `async`
+  methods, which it drives to completion — and stops and tells you where the
+  connection was going, host and port. That address is the thing worth having.
+- **The unpacker is itself virtualized**, so there is no unpacker code to follow.
+  ReactorUnpack runs the interpreter instead and lets it do the unpacking. It
+  costs about a minute rather than a few seconds, and the file still comes out.
+
+### Reading methods that were turned into bytecode
+
+Reactor's strongest option replaces a method's code with a numbered list of
+operations for an interpreter it generates and embeds. The original code does not
+exist anywhere in the file, so there is nothing to decrypt, and no public tool —
+this one included — turns those methods back into real code.
+
+What ReactorUnpack does instead is read the hidden program and tell you what it
+says. It names the affected methods, recovers the program behind each one by
+running the protector's own decoder, works out what the operations mean by
+experiment and by watching the interpreter run, and writes the result out twice:
+as an annotated listing showing how each reading was arrived at, and as ordinary
+assembly operations with every method, field and type the hidden code touches
+named. A stack-depth walk over the whole program then checks the readings against
+each other, and reports where it could not.
+
+You do not get C#. You get enough to say what a method you cannot read is for —
+often, as in this fragment from a method with no body at all, quite a lot more
+than that:
+
+```
+   2627:  newobj     System.Security.Cryptography.CryptoStream::.ctor(...)
+   2632:  ldlen
+   2634:  call       ...::h5bTpuvG9giGM6rEuXl(...)
+   2636:  call       ...::AkiDCJvwSWy6yH7wA8K(...)
+   2638:  call       ...::px4E1VvpQREo8oO95Pa(...)
+   2639:  stsfld     System.Object ...::wBHpICowg0
+```
+
+Those three unreadable names are ordinary methods elsewhere in the sample, and
+looking them up takes a minute: they are one-line wrappers around
+`Stream.Write`, `CryptoStream.FlushFinalBlock` and `MemoryStream.ToArray`. So the
+fragment is a decryptor, writing a byte array through a cipher and keeping the
+result — read out of a method whose code does not exist in the file.
+
+Nothing from the reading is put back into the assembly, because a reading is not
+the same kind of proof as a decrypted method body and the two are not going to be
+mixed. [docs/devirtualization.md](docs/devirtualization.md) is the whole story,
+written for someone who does not work in .NET.
+
 ## What it handles
 
 .NET Reactor 6, which covers the large majority of Reactor-protected samples in
@@ -230,35 +295,8 @@ embedded payload assemblies.
 
 Being straight about this matters more than the feature list.
 
-- **Code virtualization.** When a method has been turned into bytecode for a
-  custom interpreter, ReactorUnpack does not turn it back into a readable
-  method. No public tool does. What it does instead is name the affected methods
-  and write out the program behind each one: how many operations it has, and —
-  because operands that are metadata tokens are resolved — which methods,
-  fields, and types the hidden code reaches for. It also works out what most of
-  the operations do — all 29 in the samples here, every one of them named,
-  calls, object constructions, returns, discards and static field writes among
-  them — by
-  having the interpreter carry them out one at a time on values chosen for the
-  purpose, by watching what they fetch, store and jump to while the program
-  really runs, and by noting what the interpreter itself computed on their
-  behalf, which is the closest thing to reading the hidden method's own source.
-  All of that is then written out a second time as the IL it stands for —
-  every operation in each of the three samples, none of them left unknown.
-  That listing checks itself: the dispatcher's jump
-  table turns the program back into blocks, and walking the depth of the stack
-  through all of them reaches every operation any path arrives at, in all three
-  samples, without ever reaching a place two ways and disagreeing; what it does
-  not arrive at is code nothing in the program reaches. The walk is
-  also what settles the last operations nothing could measure: with everything
-  around them known, the depths leave them one possible effect and no other. It
-  is a reading, not a decompilation, and
-  nothing is put back into the assembly on the strength of it — but it is
-  usually more than enough to say what a method you cannot read is *for*. It can
-  also still pull hidden files
-  out of a sample whose unpacker is virtualized, because it runs the interpreter
-  rather than trying to undo it; that just takes a minute or so instead of
-  seconds.
+- **Turning virtualized methods back into code.** As above: they are read and
+  reported, not restored, and the stubs are left as they are in the cleaned copy.
 - **Native-packed files.** If the sample is wrapped in a native stub rather than
   being a pure .NET file, it is detected and reported as unsupported rather than
   being mangled. See [docs/how-net-reactor-works.md](docs/how-net-reactor-works.md).
@@ -285,6 +323,9 @@ the original.
   recognise.
 - **[How ReactorUnpack undoes it](docs/how-recovery-works.md)** — the technique
   used against each protection, and why it is safe to do statically.
+- **[Virtualized methods](docs/devirtualization.md)** — what code virtualization
+  does to a method, how the hidden program is recovered and read, and how much of
+  that would work against a protector other than Reactor.
 - **[Reading the output](docs/reading-the-output.md)** — the report format, what
   each number means, and what to do when something does not work.
 - **[Declarations](docs/declarations.md)** — what a run can be told, what it
