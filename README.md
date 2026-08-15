@@ -315,10 +315,29 @@ through the machine:
 dotnet test ReactorUnpack.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 317 of the 323 tests in about five seconds, against the nine minutes those
-five cost between them. They still run on a plain `dotnet test`, which is what to
-do before pushing, because they are the ones that prove the tool recovers real
+That is 321 of the 327 tests in about three seconds, against the fourteen minutes
+those six cost between them. They still run on a plain `dotnet test`, which is what
+to do before pushing, because they are the ones that prove the tool recovers real
 malware.
+
+When the change is to one pass and you need a real sample to see it, skip the passes
+that come after the one you are working on rather than waiting for the whole
+pipeline. Payload extraction and virtualization disassembly account for two minutes
+of a run on their own, and nothing before them depends on either:
+
+```bash
+cat > /tmp/fast.json <<'JSON'
+{ "passes": { "skip": ["payload-extraction", "virtualization-disassembly"] } }
+JSON
+dotnet run --project src/ReactorUnpack.Cli -c Release --no-build -- \
+    samples/NAME.exe --analyze-only --declarations /tmp/fast.json --report-dir /tmp/loop
+```
+
+Eleven seconds instead of two and a half minutes, and the report still carries the
+passes you kept, with their diagnostics and blockers. The output is not a recovery —
+skipping a pass that gates emission means no cleaned copy is written, which is the
+point: this is for reading a report, and the full run is what says whether the change
+was right.
 
 The samples themselves are malware and are not in the repository, so a fresh
 checkout has none. The tests that read one are skipped there rather than failed,

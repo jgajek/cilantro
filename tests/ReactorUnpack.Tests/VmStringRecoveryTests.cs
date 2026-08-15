@@ -32,40 +32,40 @@ public sealed class VmStringRecoveryTests
     }
 
     [Theory]
-    [InlineData(24, -128, 2, -32)]
-    [InlineData(54, 3, 4, 48)]
-    [InlineData(58, 0x55, 0x0F, 0x5A)]
-    [InlineData(60, 191, 63, 128)]
-    [InlineData(68, 53, 28, 81)]
-    public void SerializedVmIntegerOpcodesUseProvenBinarySemantics(
-        byte opcode,
+    [InlineData(StaticStringTableInterpreter.VmMeaning.ShiftRight, -128, 2, -32)]
+    [InlineData(StaticStringTableInterpreter.VmMeaning.ShiftLeft, 3, 4, 48)]
+    [InlineData(StaticStringTableInterpreter.VmMeaning.ExclusiveOr, 0x55, 0x0F, 0x5A)]
+    [InlineData(StaticStringTableInterpreter.VmMeaning.Subtract, 191, 63, 128)]
+    [InlineData(StaticStringTableInterpreter.VmMeaning.Add, 53, 28, 81)]
+    internal void EachArithmeticMeaningComputesTheArithmeticItNames(
+        StaticStringTableInterpreter.VmMeaning meaning,
         long left,
         long right,
         long expected)
     {
         Assert.True(StaticStringTableInterpreter.TryEvaluateVmIntegerBinary(
-            opcode, left, right, out var result));
+            meaning, left, right, out var result));
         Assert.Equal(expected, result);
     }
 
     [Fact]
-    public void SerializedVmIntegerOpcodesRejectUnknownSemantics()
+    public void MeaningsThatAreNotArithmeticAreNotGivenArithmetic()
     {
         Assert.False(StaticStringTableInterpreter.TryEvaluateVmIntegerBinary(
-            91, 1, 2, out _));
+            StaticStringTableInterpreter.VmMeaning.Return, 1, 2, out _));
     }
 
     [Fact]
     public void SerializedVmReturnSentinelTerminatesAfterDispatcherIncrement()
     {
         Assert.True(StaticStringTableInterpreter.TryEvaluateVmControlFlow(
-            91, out var handlerPointer, out var returns));
+            StaticStringTableInterpreter.VmMeaning.Return, out var handlerPointer, out var returns));
         Assert.Equal(-3, handlerPointer);
         Assert.Equal(-2, handlerPointer + 1);
         Assert.True(returns);
 
         Assert.False(StaticStringTableInterpreter.TryEvaluateVmControlFlow(
-            90, out _, out _));
+            StaticStringTableInterpreter.VmMeaning.Branch, out _, out _));
     }
 
     [Fact]

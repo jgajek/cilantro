@@ -358,6 +358,12 @@ public static class VirtualProgramRecovery
         // what the operations are asked their meaning in, and an engine that stopped at its first
         // operation leaves a poorer one than one that ran most of the program.
         var operations = Merge(probed.Operations, flow, attempt.Decoded);
+
+        // The operations another program of this engine uses are asked about last, once everything
+        // this one uses has been read: most of the numbering comes from the program itself, and only
+        // what is left over has to be performed on an operation made for the purpose.
+        probed = Made(context, attempt, watched, operandField, probed with { Operations = operations });
+        operations = new Dictionary<int, VirtualOperation>(probed.Operations);
         var byOperand = Rules(attempt.Decoded, flow);
         var refused = probed.Refused
             .Where(entry => !operations.TryGetValue(entry.Key, out var known) || !known.Measured)
@@ -554,6 +560,17 @@ public static class VirtualProgramRecovery
             operations[opcode] = operation with { Name = "writes the static field it names" };
         }
 
+        // A jump whose operand is a table of places in this program chooses among them by the value
+        // it takes, which is a switch rather than a two-way condition. This overrides the reading
+        // that saw its operand reach the engine's position: both come from the same sighting, and a
+        // table of places is the more particular of the two — a condition would have one place to go.
+        foreach (var (opcode, operation) in operations)
+        {
+            if (!Chooses(program, operation, opcode))
+                continue;
+            operations[opcode] = operation with { Name = "branch by table", TouchesState = true };
+        }
+
         foreach (var (opcode, operation) in operations)
         {
             if (Arguments(program, operation) is { } named)
@@ -609,6 +626,25 @@ public static class VirtualProgramRecovery
             Field(module, (int)number.Value) is { IsStatic: true });
     }
 
+    /// <summary>
+    /// Whether every operand it carries is a table of places in this program, which it goes to one of.
+    /// </summary>
+    /// <remarks>
+    /// Every site has to carry one. An operation carrying a table at one site and a number at another
+    /// is two things at once, which means the sites are not all the same operation and nothing can be
+    /// said about it from them. The places are checked against the program for the same reason a
+    /// clause's are: a table of numbers that are not places in this program is not a table of targets.
+    /// </remarks>
+    private static bool Chooses(VirtualProgram program, VirtualOperation operation, int opcode)
+    {
+        if (operation.Measured && (operation.Pops, operation.Pushes) is not (1, 0))
+            return false;
+        var carried = program.Instructions.Where(one => one.Opcode == opcode).ToList();
+        return carried.Count > 0 && carried.TrueForAll(one =>
+            one.Operand is VirtualOperand.Table { Values.Count: > 1 } table &&
+            table.Values.All(place => place >= 0 && place < program.Instructions.Count));
+    }
+
     private static FieldDef? Field(ModuleDef module, int token)
     {
         try
@@ -620,6 +656,179 @@ public static class VirtualProgramRecovery
             return null;
         }
     }
+
+    /// <summary>
+    /// Asks about operations no program the engine decoded performs, by making one to order.
+    /// </summary>
+    /// <remarks>
+    /// Every reading so far has taken its operations from a program the engine decoded, which means
+    /// the numbering only ever covers what that program uses. Another program of the same engine —
+    /// the one that builds the string table, say — uses operations the first does not, and those stay
+    /// unnamed however many times the engine is asked, because there is nothing to point at.
+    ///
+    /// So one is made: an operation object of the engine's own instruction type, carrying the number
+    /// and the operand the other program really pairs them with. Nothing about it is invented except
+    /// its existence. If the engine refuses to perform it, that is reported like any other refusal;
+    /// the alternative is a numbering with holes in it and a reading that stops at the first one.
+    /// </remarks>
+    private static VirtualSemanticsReport Made(
+        ArtifactContext context,
+        Attempt attempt,
+        Watched? watched,
+        FieldDef? operandField,
+        VirtualSemanticsReport first)
+    {
+        if (!context.TryGetFact<IReadOnlyDictionary<int, long?>>(
+                "strings.vmOperations", out var elsewhere) ||
+            elsewhere is null ||
+            elsewhere.Count == 0)
+        {
+            return first;
+        }
+
+        var operations = first.Operations.ToDictionary(entry => entry.Key, entry => entry.Value);
+        var refused = first.Refused.ToDictionary(entry => entry.Key, entry => entry.Value);
+        var asked = 0;
+        var gained = 0;
+        var reasons = new Dictionary<int, string>();
+
+        // Both engines are asked, because which of them can perform anything at all varies by build:
+        // a cold one has nothing prepared, and a warm one is somewhere the questioning did not put
+        // it and may refuse from there. Whichever answers, answers.
+        List<(StaticMachine Machine, StaticValue Engine)> views = watched is null
+            ? [(attempt.Machine, attempt.Engine)]
+            : [(attempt.Machine, attempt.Engine), (watched.Machine, watched.Engine)];
+        foreach (var (machine, engine) in views)
+        {
+            var wanted = elsewhere
+                .Where(entry => !operations.TryGetValue(entry.Key, out var known) ||
+                    !known.Identified)
+                .OrderBy(entry => entry.Key)
+                .ToList();
+            if (wanted.Count == 0)
+                break;
+
+            var made = new List<StaticValue>();
+            foreach (var (opcode, operand) in wanted)
+            {
+                if (!machine.State.Heap.TryAllocateObject(attempt.InstructionType, out var operation) ||
+                    !machine.State.Heap.TryWriteField(
+                        operation, attempt.OpcodeField, StaticValue.FromInt32(opcode)))
+                {
+                    break;
+                }
+                // The operand goes in boxed, because the field is declared as object and the engine
+                // unboxes what it finds there. A number written into it plainly is not a box, and the
+                // operation faults on its own operand before it does anything worth reading. An
+                // operation that carries nothing is left carrying nothing, which is what the engine's
+                // own decoder leaves there for one.
+                if (operandField is not null && operand is { } carried &&
+                    (!Boxed(machine.State.Heap, carried, out var boxed) ||
+                        !machine.State.Heap.TryWriteField(operation, operandField, boxed)))
+                {
+                    break;
+                }
+                made.Add(operation);
+            }
+            if (made.Count == 0)
+                continue;
+
+            asked = Math.Max(asked, made.Count);
+            var answer = VirtualSemantics.Probe(
+                machine, context.Module, attempt.Dispatcher, engine, attempt.OpcodeField,
+                operandField, made);
+            foreach (var (opcode, read) in answer.Operations)
+            {
+                if (operations.TryGetValue(opcode, out var known) && known.Identified)
+                    continue;
+                var named = read.Identified ||
+                    !elsewhere.TryGetValue(opcode, out var operand) ||
+                    operand is not { } names
+                        ? read
+                        : read with { Name = Holds(context.Module, names, read) ?? read.Name };
+                if (operations.TryGetValue(opcode, out known) &&
+                    known.Measured && !named.Identified)
+                {
+                    continue;
+                }
+                operations[opcode] = named;
+                refused.Remove(opcode);
+                reasons.Remove(opcode);
+                gained++;
+            }
+            foreach (var (opcode, why) in answer.Refused)
+            {
+                if (operations.TryGetValue(opcode, out var known) && known.Identified)
+                    continue;
+                refused[opcode] = why;
+                reasons[opcode] = why;
+            }
+        }
+        if (asked == 0)
+            return first;
+
+        // Why a made operation was refused is the whole of what stands between a numbering with a
+        // hole in it and one without, so it is said rather than counted.
+        var refusals = reasons.Count == 0
+            ? string.Empty
+            : " " + string.Join("; ", reasons
+                .OrderBy(entry => entry.Key)
+                .Take(3)
+                .Select(entry => $"op {entry.Key}, {entry.Value}"));
+        return new VirtualSemanticsReport(
+            operations,
+            refused,
+            first.Summary +
+            $" {asked} operation(s) this program does not contain were asked about with an " +
+            $"operation made to carry them, which answered {gained}.{refusals}");
+    }
+
+    /// <summary>
+    /// What an operation whose operand names a field does, read from the field and what it took.
+    /// </summary>
+    /// <remarks>
+    /// This is the same reading the program-shaped rules make of the operations a program contains:
+    /// an operand that resolves to a field, and a stack effect that fits reaching that field, names
+    /// the operation. It is made separately here because those rules work from an operation's sites
+    /// in the program, and an operation this program does not contain has none.
+    ///
+    /// Which field it is settles instance from static, and the count settles read from write: a write
+    /// to a static field takes the value alone, and a write to an instance field takes the object it
+    /// belongs to underneath. Nothing is named where the two do not agree, because a field reached
+    /// with the wrong number of values is not a field access that was understood.
+    /// </remarks>
+    private static string? Holds(ModuleDef module, long operand, VirtualOperation operation)
+    {
+        if (!operation.Measured || operand is < int.MinValue or > int.MaxValue)
+            return null;
+        FieldDef? field;
+        try
+        {
+            field = (module.ResolveToken((int)operand) as IField)?.ResolveFieldDef();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+        if (field is null)
+            return null;
+        return (field.IsStatic, operation.Pops, operation.Pushes) switch
+        {
+            (true, 1, 0) => "writes the static field it names",
+            (false, 2, 0) => "writes the field it names",
+            (true, 0, 1) => "reads the static field it names",
+            (false, 1, 1) => "reads the field it names",
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// An operand as the engine keeps it: boxed, at the width the number itself asks for.
+    /// </summary>
+    private static bool Boxed(StaticHeap heap, long operand, out StaticValue reference) =>
+        operand is >= int.MinValue and <= int.MaxValue
+            ? heap.TryAllocateBox("System.Int32", StaticValue.FromInt32((int)operand), out reference)
+            : heap.TryAllocateBox("System.Int64", StaticValue.FromInt64(operand), out reference);
 
     /// <summary>
     /// Asks the operations nothing settled a second time, in the engine a real run left behind.

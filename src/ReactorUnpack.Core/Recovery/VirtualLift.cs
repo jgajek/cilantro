@@ -31,6 +31,8 @@ public static class VirtualLift
         ["stores into the argument it indexes"] = "starg",
         ["reads the static field it names"] = "ldsfld",
         ["writes the static field it names"] = "stsfld",
+        ["reads the field it names"] = "ldfld",
+        ["writes the field it names"] = "stfld",
         ["reads an array element"] = "ldelem",
         ["writes an array element"] = "stelem",
         ["array length"] = "ldlen",

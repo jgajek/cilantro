@@ -19,21 +19,7 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
         ArtifactContext context)
     {
-        var resolvers = context.Module.GetTypes()
-            .SelectMany(type => type.Methods)
-            .Where(method => method.HasBody &&
-                method.IsStatic &&
-                method.ReturnType.ElementType == ElementType.String &&
-                method.MethodSig?.Params.Count == 1 &&
-                method.MethodSig.Params[0].ElementType == ElementType.I4 &&
-                (method.Body.Instructions.Any(instruction =>
-                    instruction.Operand is IMethod called &&
-                    called.Name == "GetManifestResourceStream") ||
-                 method.Body.Instructions.Any(instruction =>
-                    instruction.OpCode.Code == dnlib.DotNet.Emit.Code.Ldsfld &&
-                    instruction.Operand is IField field &&
-                    field.FieldSig?.Type.ElementType is ElementType.SZArray or ElementType.Object)))
-            .ToArray();
+        var resolvers = StringResolverCandidates.In(context.Module);
         if (resolvers.Length == 0)
             return (PassStatus.Success, 0, ["No protected string resolver was detected."]);
 
@@ -70,11 +56,27 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
 
         if (readings.Count != 1)
         {
-            if (LegacyStringStrategySamples.Includes(context.OriginalSha256))
+            // A reading that stopped is worth leaving a note for the later one, which will have this
+            // build's own numbering: these are the operations it will have to name, and the operand
+            // each is given has to be one the program really carries.
+            var carried = Needed(context, resolvers, declined);
+            // Where the table is built by a program of the module's own virtual machine, this
+            // reading is not the one that can read it: it has to assume a numbering for the
+            // engine's operations, and only the reading that comes after the engine has been
+            // studied knows this build's. The work is handed on rather than given up, so the gap
+            // is recorded once, by the reading that was handed it, instead of once here and again
+            // there.
+            if (carried)
             {
+                context.SetFact("strings.deferred", true);
                 return (PassStatus.Success, 0,
-                    ["Recognized sample falls back to its older, regression-locked string strategy."]);
+                [
+                    "The table is built by a program of the module's own virtual machine, so " +
+                        "reading it was left to after the engine's own numbering has been learned.",
+                    .. declined
+                ]);
             }
+
             return (PassStatus.Partial, 0,
             [
                 readings.Count == 0
@@ -105,6 +107,38 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
             [$"Captured {table.Records.Count} strings from {table.Source}.",
              $"Accounted for all {directCalls.Count} direct resolver use(s).",
              $"Captured {table.IntegerFields.Count} unique VM-initialized integer field(s)."]);
+    }
+
+    /// <summary>
+    /// Records which operations the program behind the table performs, for the later reading.
+    /// </summary>
+    /// <remarks>
+    /// Only reached where this reading produced nothing, because it costs another interpretation of
+    /// the loader and there is nothing to carry when the table is already in hand. What is recorded
+    /// is the program's own operands, not made-up ones: the reading of the engine asks it to perform
+    /// each operation, and an operation that names a field or a type has to be given one that exists
+    /// or the engine is within its rights to refuse.
+    /// </remarks>
+    /// <returns>
+    /// Whether a serialized program was found behind the table, which is what says there is a later
+    /// reading to hand the table to at all.
+    /// </returns>
+    private static bool Needed(ArtifactContext context, MethodDef[] resolvers, List<string> said)
+    {
+        foreach (var candidate in resolvers)
+        {
+            if (!StaticStringTableInterpreter.TryReadOperations(
+                    context.Module, context.OriginalImage, candidate,
+                    BootstrapMachine.Environment(context), out var operations, out var why) ||
+                operations.Count == 0)
+            {
+                continue;
+            }
+            context.SetFact("strings.vmOperations", operations);
+            said.Add($"{candidate.DeclaringType.Name}::{candidate.Name}: {why}");
+            return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -207,10 +241,22 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
     /// of the proof are produced by two different interpretations. A key captured by both must
     /// agree, otherwise it is dropped and its call sites stay unproven.
     /// </remarks>
-    private static CapturedStringTable MergeLoaderKeys(
+    /// <summary>
+    /// Adds the loader's own proven integers to the table's, so a call site's offset can be worked out.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the later reading, which needs it for the same reason: an offset is not always a
+    /// constant at the call site. Where it is computed from a field the loader set, a table without
+    /// that field cannot say which record the site asks for, and the rewrite stops with the offset
+    /// looking like nonsense. A field the two readings disagree about is dropped rather than
+    /// preferred, because there is nothing to choose between them.
+    /// </remarks>
+    internal static CapturedStringTable MergeLoaderKeys(
         ArtifactContext context,
         CapturedStringTable table)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(table);
         if (!context.TryGetFact<IReadOnlyDictionary<uint, int>>(
                 "bootstrap.integerFields", out var bootstrapKeys) ||
             bootstrapKeys is null ||

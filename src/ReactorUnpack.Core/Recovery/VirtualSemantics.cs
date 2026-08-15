@@ -52,6 +52,21 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
     public IReadOnlyList<string>? Changes { get; init; }
 
     /// <summary>
+    /// The condition a jump was seen to go on, named as the IL branch that goes on the same one.
+    /// </summary>
+    /// <remarks>
+    /// A jump's condition is not in what it consumes, which is two numbers either way, nor in the
+    /// comparison the engine was watched computing, which is the same <c>clt</c> for a jump taken
+    /// when the one is below the other and for a jump taken when it is not. It is in when the jump
+    /// goes, so it is settled by making it decide over values arranged to tell every reading of it
+    /// from every other, and reading off which times it went.
+    ///
+    /// Getting it wrong is not a missing detail. A loop's exit test read as its entry test runs the
+    /// body no times instead of every time, and a reading that says so is not partly right.
+    /// </remarks>
+    public string? Decides { get; init; }
+
+    /// <summary>
     /// Which of the engine's places were given the number the operation carries, or the one before
     /// it, in any trial.
     /// </summary>
@@ -151,6 +166,8 @@ public sealed record VirtualOperation(int Opcode, int Pops, int Pushes, string? 
                     ? $"effect not established, {net:+0;-0;0} on the stack by what surrounds it"
                     : "effect not established");
             }
+            if (Name == "branch if" && Decides is { } condition)
+                return $"branch if {condition}";
             var stack = Name ?? (Pops, Pushes) switch
             {
                 (0, 0) => TouchesState ? "changes engine state" : "no effect seen",
@@ -255,6 +272,53 @@ public static class VirtualSemantics
         [37, 23, 8, 8]
     ];
 
+    /// <summary>
+    /// What to put on the stack of a jump, chosen so that no two readings of its condition agree.
+    /// </summary>
+    /// <remarks>
+    /// The top pair runs through above, equal to, and below, which separates the six orderings from
+    /// each other; a zero on top, which is the only thing that separates a jump on a value being
+    /// zero from one on it being anything else; and a negative, which is the only thing that
+    /// separates an ordering read as signed from the same ordering read as unsigned. Each is here
+    /// because leaving it out leaves two readings indistinguishable, and a jump whose condition is
+    /// half known is not worth naming.
+    ///
+    /// The zero is why these are kept apart from the seeds every other operation is tried with,
+    /// where a zero would have division fault instead of answering.
+    /// </remarks>
+    private static readonly int[][] Deciders =
+    [
+        [13, 11, 7, 3],
+        [13, 11, 8, 8],
+        [13, 11, 5, 9],
+        [13, 11, 7, 0],
+        [13, 11, -1, 3]
+    ];
+
+    /// <summary>
+    /// Which times a jump goes, for each condition it might be going on, over the values above.
+    /// </summary>
+    /// <remarks>
+    /// Named as the IL branch that decides the same way, because that is a name with one meaning
+    /// rather than a sentence a reader has to interpret, and because what reads these next has to
+    /// turn them back into behaviour.
+    /// </remarks>
+    private static readonly (string Name, int Pops, Func<long, long, bool> Holds)[] Conditions =
+    [
+        ("brtrue", 1, (_, top) => top != 0),
+        ("brfalse", 1, (_, top) => top == 0),
+        ("beq", 2, (left, right) => left == right),
+        ("bne.un", 2, (left, right) => left != right),
+        ("blt", 2, (left, right) => left < right),
+        ("blt.un", 2, (left, right) => (ulong)left < (ulong)right),
+        ("ble", 2, (left, right) => left <= right),
+        ("ble.un", 2, (left, right) => (ulong)left <= (ulong)right),
+        ("bgt", 2, (left, right) => left > right),
+        ("bgt.un", 2, (left, right) => (ulong)left > (ulong)right),
+        ("bge", 2, (left, right) => left >= right),
+        ("bge.un", 2, (left, right) => (ulong)left >= (ulong)right)
+    ];
+
     /// <summary>How a stack is laid out for a trial: which positions hold an array, not a number.</summary>
     /// <param name="Arrays">Bottom of the stack first, so the last entry is the top.</param>
     private sealed record Shape(string Needs, bool[] Arrays)
@@ -332,6 +396,7 @@ public static class VirtualSemantics
         var staging = Staging(dispatcher);
         var derived = new Dictionary<int, VirtualOperation>();
         var declined = new Dictionary<int, string>();
+        var undecided = new Dictionary<int, string>();
         foreach (var (opcode, example) in examples.OrderBy(entry => entry.Key))
         {
             var operand = Operand(heap, example, operandField);
@@ -369,6 +434,30 @@ public static class VirtualSemantics
 
             if (found is not null)
             {
+                // A jump is asked once more, over values that make its condition answerable. This
+                // is asked of anything shaped like one and not only of what was already read as a
+                // jump: a jump that none of the trials above happened to make fire is written down
+                // as an operation that consumes a value and does nothing, which is the reading that
+                // severs every block it reaches.
+                if (found is { Pushes: 0, Pops: 1 or 2 } && operand is not null)
+                {
+                    var condition = Decides(
+                        machine, module, heap, dispatcher, engine, factory, slotType, stack, example,
+                        operand, staging, found.Pops, out var why);
+                    if (condition is not null)
+                    {
+                        found = found with
+                        {
+                            Decides = condition,
+                            Name = found.Name ?? "branch if",
+                            TouchesState = true
+                        };
+                    }
+                    else if (why.Length > 0 && !why.StartsWith("it went nowhere", StringComparison.Ordinal))
+                    {
+                        undecided[opcode] = why;
+                    }
+                }
                 derived[opcode] = found;
                 continue;
             }
@@ -378,13 +467,99 @@ public static class VirtualSemantics
         }
 
         var named = derived.Values.Count(operation => operation.Name is not null);
+        var decided = derived.Values.Count(operation => operation.Decides is not null);
         var summary = derived.Count == 0
             ? "The engine performed none of its operations in isolation, so none were given meaning."
             : $"{derived.Count} of {examples.Count} operation(s) were performed in isolation, " +
                 $"{named} of them identified by name.";
+        if (decided > 0)
+        {
+            summary += $" {decided} jump(s) were made to decide over values that separate the " +
+                "conditions, which named what each goes on.";
+        }
+        if (undecided.Count > 0)
+        {
+            summary += " What the rest of the jumps decide on went unread: " +
+                string.Join("; ", undecided
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => $"op {entry.Key}, {entry.Value}")) + ".";
+        }
         if (declined.Count > 0)
             summary += " The rest were left alone: " + string.Join("; ", Counted(declined)) + ".";
         return new VirtualSemanticsReport(derived, declined, summary);
+    }
+
+    /// <summary>
+    /// Which condition a jump goes on, by making it decide over values that tell the readings apart.
+    /// </summary>
+    /// <remarks>
+    /// One reading or none. Where two conditions would both account for the times it went, the
+    /// values did not separate them and nothing here knows which it is; saying either would be a
+    /// coin toss recorded as a measurement. A jump that went every time and one that never went are
+    /// both refused for the same reason: neither is a condition, and an operation that always goes
+    /// is read as the plain jump it is elsewhere.
+    /// </remarks>
+    private static string? Decides(
+        StaticMachine machine,
+        ModuleDef module,
+        StaticHeap heap,
+        MethodDef dispatcher,
+        StaticValue engine,
+        MethodDef factory,
+        string slotType,
+        List<StaticValue> stack,
+        StaticValue operation,
+        long? operand,
+        List<(FieldDef From, FieldDef To)> staging,
+        int pops,
+        out string why)
+    {
+        why = string.Empty;
+        if (operand is not { } target)
+            return null;
+        var trials = Trials(
+            machine, module, heap, dispatcher, engine, factory, slotType, stack, operation, operand,
+            staging, null, Shapes[0], out var refused, Deciders);
+        if (trials.Count != Deciders.Length)
+        {
+            why = refused.Length > 0
+                ? refused
+                : "it would not decide over the values that separate the conditions";
+            return null;
+        }
+
+        // Where it went is read the same way it is read elsewhere: an engine that steps its position
+        // after performing an operation writes the place before the one it means to reach, so both
+        // numbers count as having gone. Reading only the exact one takes every jump of such an
+        // engine for an operation that consumes two values and does nothing.
+        var went = trials
+            .Select(trial => Put(trial, target) || Put(trial, target - 1))
+            .ToList();
+        if (!went.Any(gone => gone))
+        {
+            why = "it went nowhere over any of them, so there is no condition to read";
+            return null;
+        }
+        if (went.All(gone => gone))
+        {
+            why = "it went over all of them, which is a jump rather than a condition";
+            return null;
+        }
+
+        var fits = Conditions
+            .Where(condition => condition.Pops == pops)
+            .Where(condition => !Deciders
+                .Select((seeds, at) =>
+                    condition.Holds(seeds[^2], seeds[^1]) == went[at])
+                .Contains(false))
+            .Select(condition => condition.Name)
+            .ToList();
+        if (fits.Count == 1)
+            return fits[0];
+        why = fits.Count == 0
+            ? "when it went matches no condition, so what it decides on is not among them"
+            : $"when it went matches {string.Join(" and ", fits)} alike";
+        return null;
     }
 
     /// <summary>One performance of an operation: what was on the stack, and what was left.</summary>
@@ -665,11 +840,12 @@ public static class VirtualSemantics
         List<(FieldDef From, FieldDef To)> staging,
         string? named,
         Shape shape,
-        out string refused)
+        out string refused,
+        int[][]? sets = null)
     {
         refused = string.Empty;
         var trials = new List<Trial>();
-        foreach (var seeds in Seeds)
+        foreach (var seeds in sets ?? Seeds)
         {
             stack.Clear();
             var identities = new List<long>(seeds.Length);
@@ -944,6 +1120,16 @@ public static class VirtualSemantics
         {
             Holding = pushes == 1 && pops == 0 ? Fetching(trials)?.Length : null,
             Left = pushes == 1 && pops == 0 ? Leaves(trials) : null,
+
+            // What kind of value was left is worth keeping even where the value itself was read,
+            // because for one operation it is the whole of the reading: a conversion alters how a
+            // value is held and not what it is, so which conversion it is can only be told by the
+            // type it left the value as. Only a named type is taken; the trials also have words for
+            // a value they could not place, and those name no width.
+            Pushed = pushes == 1 && Leaves(trials) is { } produced &&
+                produced.Contains('.', StringComparison.Ordinal)
+                    ? produced
+                    : null,
             TouchesState = !settled,
             Changes = settled ? null : Changed(trials),
             Reached = settled ? null : Arriving(trials, operand),

@@ -735,21 +735,24 @@ strength of it.
 ### Protected strings
 
 The fixtures use a virtualized initializer for a UTF-16LE record table. The
-resolver consumes an absolute byte offset and performs a caller check. The two
-proven direct uses are restored statically with a stack-neutral
-`pop; ldstr value` substitution:
+resolver consumes an absolute byte offset and performs a caller check, and it is
+never invoked: the table is built by running the protector's own virtual machine
+under the numbering the semantics probe read off that build's engine, and each
+use is restored with a stack-neutral `pop; ldstr value` substitution. Both
+fixtures yield a 22-record table and all 23 uses.
 
-- encrypted payload resource name; and
-- `"Load "`, subsequently trimmed by the original code.
+The tool no longer recognizes any sample by its input hash. The last two entries
+were removed once the machine could run the program that builds the table, and
+with them went the older strategy they gated, which inferred a handful of values
+from the shape of the method that asked for them rather than reading any.
 
-The resolver is never invoked.
-
-This is the one place left where the tool recognizes a sample by its input hash.
-Table capture reports ambiguous framing on these two, and the older strategy is
-what keeps them producing output at all, so it is held behind a set of two
-hashes in `LegacyStringStrategySamples` rather than deleted. The set exists to
-be removed: the framing it works around is a virtual machine building the table,
-and the machine can now run one.
+Reading that program correctly turns on width. The engine's slots hold 32-bit
+values, so a shift left that carries a bit past the top loses it, and evaluating
+the same program in 64-bit arithmetic keeps it — a later shift right then brings
+back a bit that never existed and the offset lands in the middle of no record.
+The width is not assumed: it is what the probe measured each operation to leave,
+and a result is cut to it exactly where the engine cuts it. An operation whose
+width nothing measured keeps the wider arithmetic.
 
 For generic inputs, table capture and call-site rewriting are separate passes.
 A table must be unique and strictly length-framed UTF-16, and every reachable

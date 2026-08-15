@@ -265,6 +265,133 @@ public sealed class TriageModeTests
         Assert.Equal(2, continued.Times);
     }
 
+    /// <summary>
+    /// A cast the hierarchy in hand cannot settle answers no, and says that it did.
+    /// </summary>
+    /// <remarks>
+    /// The reason this is worth a test of its own is that the wrong answer here is invisible where it
+    /// happens. The program asked whether one of its own objects is a given type, took the no as a fact
+    /// and carried on, so the run continues down a path the program never takes and fails somewhere
+    /// with no visible connection to the test — a field read on the null, hundreds of thousands of
+    /// steps later, reading exactly like the program rejecting its own state. This is how the string
+    /// table on two of the profiled samples came to look unreadable.
+    /// </remarks>
+    [Fact]
+    public void ACastTheHierarchyCannotSettleSaysSo()
+    {
+        using var module = BlockerTests.NewModule();
+        var (kind, of) = Hierarchy(module);
+        var machine = Triage();
+
+        var result = machine.Execute(Asks(module, of, kind));
+
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(StaticValueKind.Null, result.Value.Kind);
+        var continued = Assert.Single(machine.State.Blockers.Continuations);
+        Assert.Equal(BlockerKind.UnknownValue, continued.Kind);
+        Assert.Equal("isinst:Tests.Derived->Tests.Base", continued.Key);
+    }
+
+    /// <summary>
+    /// Told which module it is reading, the machine settles the same cast and hands the object back.
+    /// </summary>
+    [Fact]
+    public void ToldTheModuleTheSameCastSucceedsAndIsNotReported()
+    {
+        using var module = BlockerTests.NewModule();
+        var (kind, of) = Hierarchy(module);
+        var machine = Triage();
+        machine.State.RegisterModuleMetadata(module);
+
+        var result = machine.Execute(Asks(module, of, kind));
+
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(StaticValueKind.HeapReference, result.Value.Kind);
+        Assert.Empty(machine.State.Blockers.Continuations);
+    }
+
+    /// <summary>
+    /// A cast the hierarchy does answer no to is the program's own logic and is not reported.
+    /// </summary>
+    /// <remarks>
+    /// Which is what keeps the disclosure worth reading. An interpreter engine asks an object which of
+    /// its dozen instruction kinds it is and is told no eleven times on the way to the twelfth; listing
+    /// those would bury the one case that means the tool is at its limit under the eleven that mean
+    /// nothing at all.
+    /// </remarks>
+    [Fact]
+    public void ACastTheHierarchyAnswersNoToIsNotReported()
+    {
+        using var module = BlockerTests.NewModule();
+        var (_, of) = Hierarchy(module);
+        var unrelated = Declare(module, "Stranger", module.CorLibTypes.Object.TypeDefOrRef);
+        var machine = Triage();
+        machine.State.RegisterModuleMetadata(module);
+
+        var result = machine.Execute(Asks(module, of, unrelated));
+
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(StaticValueKind.Null, result.Value.Kind);
+        Assert.Empty(machine.State.Blockers.Continuations);
+    }
+
+    /// <summary>
+    /// Asked for rigour, a cast it cannot settle stops the run rather than answering it.
+    /// </summary>
+    [Fact]
+    public void AskedForRigourACastItCannotSettleStopsTheFrame()
+    {
+        using var module = BlockerTests.NewModule();
+        var (kind, of) = Hierarchy(module);
+        var machine = Strict();
+
+        var result = machine.Execute(Asks(module, of, kind));
+
+        Assert.NotEqual(StaticExecutionStatus.Completed, result.Status);
+        Assert.Empty(machine.State.Blockers.Continuations);
+        var blocker = Assert.Single(machine.State.Blockers.Blockers);
+        Assert.Equal(BlockerKind.UnknownValue, blocker.Kind);
+        Assert.Equal("isinst:Tests.Derived->Tests.Base", blocker.Key);
+    }
+
+    /// <summary>A base class and a constructor for something derived from it.</summary>
+    private static (TypeDefUser Kind, MethodDef Of) Hierarchy(ModuleDefUser module)
+    {
+        var kind = Declare(module, "Base", module.CorLibTypes.Object.TypeDefOrRef);
+        var derived = Declare(module, "Derived", kind);
+        return (kind, derived.FindInstanceConstructors().First());
+    }
+
+    /// <summary>A type with a constructor that does nothing, so an instance of it can be made.</summary>
+    private static TypeDefUser Declare(ModuleDefUser module, string name, ITypeDefOrRef under)
+    {
+        var declared = new TypeDefUser("Tests", name, under);
+        module.Types.Add(declared);
+        var constructor = new MethodDefUser(
+            ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
+        {
+            Body = new CilBody()
+        };
+        constructor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        declared.Methods.Add(constructor);
+        return declared;
+    }
+
+    /// <summary>A frame that makes one object and asks whether it is a given kind of thing.</summary>
+    private static MethodDefUser Asks(ModuleDefUser module, MethodDef of, TypeDef kind)
+    {
+        var method = BlockerTests.NewMethod(
+            module, $"Is{kind.Name}", MethodSig.CreateStatic(module.CorLibTypes.Object));
+        var body = method.Body.Instructions;
+        body.Add(Instruction.Create(OpCodes.Newobj, of));
+        body.Add(Instruction.Create(OpCodes.Isinst, kind));
+        body.Add(Instruction.Create(OpCodes.Ret));
+        return method;
+    }
+
     /// <summary>A frame that calls something and then returns a constant of its own.</summary>
     private static MethodDefUser Runs(ModuleDefUser module, IMethod call, TypeSig returns)
     {

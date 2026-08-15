@@ -532,6 +532,9 @@ public sealed class ReactorPipeline
         // observable depends on every recovery before it having replaced the code that read it.
         new LoaderCallElisionPass(),
         new VirtualizationDisassemblyPass(),
+        // Reading the engine is what learns this build's numbering, so the one reading of the string
+        // table that could not assume a numbering is only possible from here on.
+        new StringTableRelearningPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
         new RuntimeCleanupPass(),
@@ -1590,30 +1593,6 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
     }
 }
 
-/// <summary>
-/// The samples whose string table the interpreter cannot yet frame on its own.
-/// </summary>
-/// <remarks>
-/// Recognizing a sample by its hash is the opposite of what this tool is for, and everything these
-/// entries once carried — the payload cipher, its keys, the expected outputs — is gone, because
-/// interpreting the module's own unpacker now recovers those payloads without being told anything.
-/// What remains is an admission: for these two the string-table capture reports ambiguous framing,
-/// and without the older strategy they would produce no output at all. The entries should go when
-/// the capture can frame a table the protector's virtual machine builds; until then, removing them
-/// would trade a narrow piece of cheating for a wide loss.
-/// </remarks>
-public static class LegacyStringStrategySamples
-{
-    private static readonly HashSet<string> Recognized =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "ad0c3182b18b5d7ba8771d830f4d51b4ada7e26f8d05223f4379e6312aba65fa",
-            "c405398fc582e33bbbd37222b7360a6cfdc526146622141503de1ccf9de6174a"
-        };
-
-    public static bool Includes(string inputSha256) => Recognized.Contains(inputSha256);
-}
-
 public sealed record ProxyDescriptor(
     uint TypeToken,
     string Type,
@@ -1875,13 +1854,36 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         if (!context.TryGetFact<CapturedStringTable>("strings.table", out var table) ||
             table is null)
         {
-            if (LegacyStringStrategySamples.Includes(context.OriginalSha256))
-                return RecoverLegacyStrings(context, candidates[0]);
+            if (context.TryGetFact<bool>("strings.deferred", out var deferred) && deferred)
+            {
+                return (PassStatus.Success, 0,
+                [
+                    "Reading the table was deferred to after the engine's numbering is learned, so " +
+                        "the sites it accounts for are restored there and none are restored here."
+                ]);
+            }
             return (PassStatus.Partial, 0,
                 ["No unique captured string table is available; no call site was modified."]);
         }
 
-        var resolver = candidates[0];
+        return Restore(context, Name, candidates[0], table);
+    }
+
+    /// <summary>
+    /// Puts the strings back at every call site the table accounts for, all of them or none.
+    /// </summary>
+    /// <remarks>
+    /// This is shared with the later reading rather than repeated by it. A table read once the
+    /// engine's own numbering is known arrives after this pass has already run and found nothing to
+    /// do, and the restoration it then needs is this one exactly: the same proof of each offset, the
+    /// same all-or-nothing rewrite, and the same refusal to leave a resolver reference behind.
+    /// </remarks>
+    internal static (PassStatus, int, IReadOnlyList<string>) Restore(
+        ArtifactContext context,
+        string pass,
+        MethodDef resolver,
+        CapturedStringTable table)
+    {
         var aliases = ResolverAliasAnalysis.Resolve(context.Module, resolver);
         var callSites = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
@@ -1979,7 +1981,7 @@ public sealed class StringRecoveryPass : DeobfuscationPass
 
         foreach (var replacement in replacements)
             context.AddChange(new ChangeRecord(
-                Name,
+                pass,
                 "restore-string",
                 $"{replacement.Method.MDToken} IL_{replacement.Call.Offset:X4}",
                 JsonSerializer.Serialize(replacement.Value)));
@@ -1991,163 +1993,6 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         return (PassStatus.Success, replacements.Count,
             [$"Atomically restored all {replacements.Count} proven string sites."]);
     }
-
-    /// <summary>
-    /// Names the resource the protected code asks for by name, so the older string strategy can put
-    /// that name back at the call site that would have decrypted it.
-    /// </summary>
-    /// <remarks>
-    /// Extraction runs after string recovery, so its record of which resource a payload came from is
-    /// usually not there yet, and when it is it names the method the chain was entered through
-    /// rather than a resource. The fallback is the module's own catalog: one embedded resource is
-    /// both the largest and indistinguishable from random, and that is the encrypted stage. Requiring
-    /// it to be strictly the largest keeps the answer from being a guess between two candidates.
-    /// </remarks>
-    private static string? ResolvePayloadResourceName(ArtifactContext context)
-    {
-        var names = context.Module.Resources.Select(resource => resource.Name.String).ToHashSet(StringComparer.Ordinal);
-        if (context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var payloads) &&
-            payloads is { Count: > 0 } &&
-            names.Contains(payloads[0].Info.SourceResource))
-        {
-            return payloads[0].Info.SourceResource;
-        }
-
-        if (!context.TryGetFact<IReadOnlyList<ResourceInfo>>("resources.catalog", out var catalog) ||
-            catalog is null)
-        {
-            return null;
-        }
-
-        var opaque = catalog
-            .Where(resource => resource.Classification == "encrypted-or-compressed")
-            .OrderByDescending(resource => resource.Length)
-            .ToArray();
-        return opaque.Length >= 2 && opaque[0].Length > opaque[1].Length ? opaque[0].Name : null;
-    }
-
-    private static (PassStatus, int, IReadOnlyList<string>) RecoverLegacyStrings(
-        ArtifactContext context,
-        MethodDef resolver)
-    {
-        var payloadResourceName = ResolvePayloadResourceName(context);
-        var replacements = context.Module.GetTypes()
-            .SelectMany(type => type.Methods)
-            .Where(method => method.HasBody && method.Body.Instructions.Any(instruction =>
-                instruction.Operand is IMethod called && IsSameMethod(called, resolver)))
-            .Select(method => (
-                Method: method,
-                Value: InferString(context.Module, method, payloadResourceName)))
-            .Where(item => item.Value is not null)
-            .ToDictionary(item => item.Method.MDToken.Raw, item => item.Value!);
-        var changed = 0;
-        foreach (var method in context.Module.GetTypes()
-                     .SelectMany(type => type.Methods)
-                     .Where(method => method.HasBody))
-        {
-            if (!replacements.TryGetValue(method.MDToken.Raw, out var value))
-                continue;
-            var instructions = method.Body.Instructions;
-            for (var index = 0; index < instructions.Count; index++)
-            {
-                var instruction = instructions[index];
-                if (instruction.Operand is not IMethod called || !IsSameMethod(called, resolver))
-                    continue;
-                instruction.OpCode = OpCodes.Pop;
-                instruction.Operand = null;
-                instructions.Insert(index + 1, Instruction.Create(OpCodes.Ldstr, value));
-                context.AddChange(new ChangeRecord(
-                    "string-recovery",
-                    "restore-string",
-                    $"{method.MDToken} IL_{instruction.Offset:X4}",
-                    JsonSerializer.Serialize(value)));
-                changed++;
-                index++;
-            }
-        }
-        return changed == replacements.Count
-            ? (PassStatus.Success, changed,
-                [$"Regression-locked restoration recovered {changed} strings."])
-            : (PassStatus.Partial, changed,
-                [$"Recovered {changed} of {replacements.Count} profiled string sites."]);
-    }
-
-    private static string? InferString(
-        ModuleDef module,
-        MethodDef method,
-        string? payloadResourceName)
-    {
-        var directCalls = method.Body.Instructions
-            .Select(instruction => instruction.Operand as IMethod)
-            .Where(called => called is not null)
-            .Cast<IMethod>()
-            .ToArray();
-        if (payloadResourceName is not null &&
-            method.IsStatic &&
-            method.MethodSig?.Params.Count == 0 &&
-            method.Body.Instructions.Count >= 100)
-        {
-            return payloadResourceName;
-        }
-
-        if (method.IsStatic &&
-            method.MethodSig?.Params.Count == 1 &&
-            method.ReturnType.ElementType == ElementType.Object &&
-            directCalls.Any(called =>
-                called.DeclaringType?.FullName == "System.String" &&
-                called.Name == "Trim") &&
-            directCalls.Any(called =>
-                called.DeclaringType?.FullName == "System.Type" &&
-                called.Name == "GetMethod"))
-        {
-            return "Load";
-        }
-
-        var relevantMethods = new HashSet<MethodDef> { method };
-        for (var depth = 0; depth < 2; depth++)
-        {
-            var tokens = relevantMethods.Select(item => item.MDToken.Raw).ToHashSet();
-            foreach (var caller in module.GetTypes().SelectMany(type => type.Methods)
-                         .Where(candidate => candidate.HasBody))
-            {
-                if (caller.Body.Instructions.Any(instruction =>
-                        instruction.Operand is IMethod called &&
-                        tokens.Contains(called.MDToken.Raw)))
-                {
-                    relevantMethods.Add(caller);
-                }
-            }
-        }
-
-        var calls = relevantMethods
-            .SelectMany(item => item.Body.Instructions)
-            .Select(instruction => instruction.Operand as IMethod)
-            .Where(called => called is not null)
-            .Cast<IMethod>()
-            .ToArray();
-        if (payloadResourceName is not null &&
-            calls.Any(called => called.Name == "GetManifestResourceStream"))
-        {
-            return payloadResourceName;
-        }
-
-        if (calls.Any(called =>
-                called.DeclaringType?.FullName == "System.Reflection.Assembly" &&
-                called.Name == "Load") &&
-            calls.Any(called =>
-                called.DeclaringType?.FullName == "System.String" &&
-                called.Name == "Concat"))
-        {
-            return "Load";
-        }
-
-        return null;
-    }
-
-    private static bool IsSameMethod(IMethod candidate, MethodDef expected) =>
-        ReferenceEquals(candidate, expected) ||
-        ReferenceEquals(candidate.ResolveMethodDef(), expected) ||
-        candidate.FullName == expected.FullName;
 }
 
 public sealed class MetadataSanitizationPass : DeobfuscationPass

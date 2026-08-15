@@ -122,14 +122,22 @@ holding a blob. A stager that stores its next stage there is unpacked from the
 bytes you paste in, so the payload comes out of the run rather than out of a
 manual decode.
 
-A further ASSUMED section lists calls the tool could not read and stepped over:
+A further ASSUMED section lists what the tool could not read and carried on past:
 
 ```
-  ASSUMED   not to matter: calls the tool cannot read, stepped over
+  ASSUMED   not to matter: what the tool could not read, carried on past
 
     System.Void System.Threading.Thread::Start(System.Object)  (x6)
     user32.dll!GetWindowText  (x2)
+    isinst:unrecorded->System.Reflection.ConstructorInfo
 ```
+
+Most are calls. An `isinst:` entry is a type test — the program asked whether one of
+its objects is a given type, and the metadata in hand could not settle it, so the
+answer given was no. That matters more than it looks: the program takes the no as a
+fact about its own object, so a wrong one sends the run down a path the program never
+took, and it fails somewhere with no visible connection to the test. Tests the
+hierarchy does answer are the program's own logic and are not listed.
 
 Each of those returned nothing the run could know, and the frame carried on without
 it. Most are on the way to the part worth reading rather than in it, which is why the
@@ -163,7 +171,7 @@ to stop looking for something to declare.
 `reactorunpack/NAME.blockers.json` carries all of them, with the tool version and
 the hashes of the input and the declarations, and is the file to read when a
 program rather than a person is deciding whether to try again. `Blockers` there
-means what stopped the run; `ContinuedPast` is the calls that were stepped over, and
+means what stopped the run; `ContinuedPast` is what it carried on past, and
 `Strict` says which mode produced the file. The kinds and the file's shape are in
 [declarations.md](declarations.md).
 
@@ -195,7 +203,7 @@ hand over a result it cannot stand behind.
 | `VerificationPassed`, `VerificationDiagnostics` | Whether the output was accepted, and why not |
 | `HostProfile` | Which profile answered questions about the machine, its hash, and every fact consulted, each marked stated or assumed |
 | `Blockers` | Everything that stopped the interpretation, with the declaration that would get past each |
-| `ContinuedPast` | Calls the tool could not read and stepped over, with how often each came up |
+| `ContinuedPast` | What the tool could not read and carried on past — calls it stepped over, and type tests it could not settle — with how often each came up |
 | `Strict` | Whether the run refused rather than assuming; everything else here is conditional on it |
 | `Declarations` | What the run was told, its hash, and which declared calls were used and which were not |
 

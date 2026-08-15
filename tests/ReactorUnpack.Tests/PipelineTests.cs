@@ -67,7 +67,7 @@ public sealed class PipelineTests
             // Down from the 374 types and 2126 methods the input carries: what remains is the
             // program plus whatever recovery could not attribute to the protector.
             Assert.Equal(115, result.Report.TypeCount);
-            Assert.Equal(1057, result.Report.MethodCount);
+            Assert.Equal(1055, result.Report.MethodCount);
             Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
             Assert.Equal(1341, Pass(result, "cfg-dead-code").Changes);
             // Proxy restoration reaches every validated site because it runs before forwarder
@@ -75,7 +75,15 @@ public sealed class PipelineTests
             // framework call behind an object-typed signature.
             Assert.Equal(2643, Pass(result, "delegate-proxy-analysis").Changes);
             Assert.Equal(16, Pass(result, "method-inlining").Changes);
-            Assert.Equal(2, Pass(result, "string-recovery").Changes);
+            // Which pass restores them depends on whether this build renumbered its engine's
+            // operations. One the early reading can read has its strings restored there; one it
+            // cannot has them restored by the later reading, under the numbering the engine gave up.
+            // Both fixtures renumbered, so both are restored late, and neither is recognized by its
+            // hash any more: the count is what running the build's own program proved.
+            Assert.Equal(
+                23,
+                Pass(result, "string-recovery").Changes +
+                    Pass(result, "string-table-relearning").Changes);
             Assert.Equal(2, result.Report.Payloads.Count);
             var payload = Assert.Single(result.Report.Payloads,
                 item => item.PayloadSha256 == expectedPayloadHash);

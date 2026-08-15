@@ -170,10 +170,12 @@ internal static class Explain
         }
 
         // A call nobody followed is the other half of what the reading rests on, and unlike a fact
-        // there is nothing to print in place of it — only the name of what went unread.
+        // there is nothing to print in place of it — only the name of what went unread. A type test
+        // the hierarchy in hand could not settle belongs here for the same reason: the run answered
+        // it with a no it could not justify, and carried on as though the program had asked for one.
         if (report.ContinuedPast is { Count: > 0 } continued)
         {
-            Console.WriteLine("  ASSUMED   not to matter: calls the tool cannot read, stepped over");
+            Console.WriteLine("  ASSUMED   not to matter: what the tool could not read, carried on past");
             Console.WriteLine();
             const int shown = 6;
             foreach (var call in continued.Take(shown))
@@ -186,7 +188,7 @@ internal static class Explain
             if (continued.Count > shown)
                 Console.WriteLine($"    ... and {continued.Count - shown} more");
             Console.WriteLine();
-            Console.WriteLine("    Each returned nothing the run could know. Run again with --strict");
+            Console.WriteLine("    Each was answered with nothing the run could know. Run again with --strict");
             Console.WriteLine("    to stop at these instead of assuming past them.");
             Console.WriteLine();
         }

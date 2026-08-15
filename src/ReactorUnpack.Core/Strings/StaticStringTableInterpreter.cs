@@ -1,8 +1,10 @@
+using System.Globalization;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using ReactorUnpack.Core.Analysis;
 using ReactorUnpack.Core.Codec;
 using ReactorUnpack.Core.Interpretation;
+using ReactorUnpack.Core.Recovery;
 
 namespace ReactorUnpack.Core.Strings;
 
@@ -19,11 +21,375 @@ public static class StaticStringTableInterpreter
     private sealed record VmInstruction(byte OpCode, object? Operand);
     private sealed record VmMethod(IReadOnlyList<VmInstruction> Instructions, int LocalCount);
 
+    /// <summary>
+    /// What one of the protector's operations does, as distinct from the number it is written with.
+    /// </summary>
+    /// <remarks>
+    /// The numbers belong to the build. Reactor renumbers the operations from one protected file to
+    /// the next, so the same list of numbers is a different program in each, and a reading that
+    /// takes them as fixed reads one build correctly and misreads the rest — silently, because a
+    /// number that means add in one build means exclusive-or in another and both leave a plausible
+    /// value behind. Meanings do not move, so everything below is written in terms of these, and
+    /// which number carries which meaning is something the run is told rather than something it
+    /// assumes.
+    /// </remarks>
+    internal enum VmMeaning
+    {
+        PushOperand,
+        PushNull,
+        LoadLocal,
+        StoreLocal,
+        LoadArgument,
+        LoadStaticField,
+        StoreStaticField,
+        StoreField,
+        LoadElement,
+        StoreElement,
+        ArrayLength,
+        NewArray,
+        NewObject,
+        Call,
+        Branch,
+        BranchIfTrue,
+        BranchIfFalse,
+        BranchIfEqual,
+        BranchIfNotEqual,
+        BranchIfLessThan,
+        BranchIfGreaterOrEqual,
+        BranchIfGreaterThan,
+        BranchIfLessOrEqual,
+        BranchByTable,
+        Return,
+        Add,
+        Subtract,
+        ExclusiveOr,
+        ShiftLeft,
+        ShiftRight,
+        Negate,
+        Complement,
+        Duplicate,
+        Discard,
+        ConvertToByte,
+        ConvertToInt32,
+        ConvertToUInt32,
+        ConvertToInt64,
+        Nothing
+    }
+
+    /// <summary>
+    /// What each reading the semantics probe arrives at means to the evaluator below.
+    /// </summary>
+    /// <remarks>
+    /// The probe's readings are sentences because they are written for a reader; this is the same
+    /// readings as behaviour. Only what appears here can be evaluated, and a build using an
+    /// operation absent from it is refused rather than guessed at, which is the whole reason the
+    /// numbering is learned instead of assumed.
+    /// </remarks>
+    private static readonly Dictionary<string, VmMeaning> Learned = new(StringComparer.Ordinal)
+    {
+        ["pushes its operand"] = VmMeaning.PushOperand,
+        ["pushes nothing at all"] = VmMeaning.PushNull,
+        ["loads what its operand indexes"] = VmMeaning.LoadLocal,
+        ["stores where its operand indexes"] = VmMeaning.StoreLocal,
+        ["loads the argument it indexes"] = VmMeaning.LoadArgument,
+        ["reads the static field it names"] = VmMeaning.LoadStaticField,
+        ["writes the static field it names"] = VmMeaning.StoreStaticField,
+        ["writes the field it names"] = VmMeaning.StoreField,
+        ["reads an array element"] = VmMeaning.LoadElement,
+        ["writes an array element"] = VmMeaning.StoreElement,
+        ["array length"] = VmMeaning.ArrayLength,
+        ["makes an array of the type it names"] = VmMeaning.NewArray,
+        ["makes a new object with the constructor it names"] = VmMeaning.NewObject,
+        ["calls the method it names"] = VmMeaning.Call,
+        ["branch"] = VmMeaning.Branch,
+        ["branch by table"] = VmMeaning.BranchByTable,
+        ["returns the value it takes"] = VmMeaning.Return,
+        ["stops the program"] = VmMeaning.Return,
+        ["dup"] = VmMeaning.Duplicate,
+        ["discards what it takes"] = VmMeaning.Discard,
+        ["does nothing at all"] = VmMeaning.Nothing,
+        ["add"] = VmMeaning.Add,
+        ["sub"] = VmMeaning.Subtract,
+        ["xor"] = VmMeaning.ExclusiveOr,
+        ["shl"] = VmMeaning.ShiftLeft,
+        ["shr"] = VmMeaning.ShiftRight,
+        ["neg"] = VmMeaning.Negate,
+        ["not"] = VmMeaning.Complement
+    };
+
+    /// <summary>What an operation does, together with how wide the value it leaves is.</summary>
+    /// <param name="Meaning">What it does.</param>
+    /// <param name="Bits">
+    /// The width of the value it leaves, where the reading measured one, and 64 where it did not.
+    /// </param>
+    /// <remarks>
+    /// The width belongs with the meaning because the arithmetic is not the same arithmetic without
+    /// it. The engine's slots hold a 32-bit value where the program is 32-bit, and a shift left that
+    /// carries a bit past the top loses it there and keeps it here; a shift right afterwards then
+    /// brings back a bit that never existed, and the result is a number that is wrong in its middle
+    /// while looking entirely ordinary. Nothing downstream can catch that: it is only wrong by the
+    /// standard of a machine we would not have modelled.
+    ///
+    /// Sixty-four is the width assumed where none was measured, because that is what this reading
+    /// did before it could measure one, and the builds it was written against are read correctly
+    /// that way.
+    /// </remarks>
+    internal readonly record struct VmReading(VmMeaning Meaning, int Bits = 64);
+
+    /// <summary>Which meaning each condition the probe named decides the same way as.</summary>
+    private static readonly Dictionary<string, VmMeaning> Conditions = new(StringComparer.Ordinal)
+    {
+        ["brtrue"] = VmMeaning.BranchIfTrue,
+        ["brfalse"] = VmMeaning.BranchIfFalse,
+        ["beq"] = VmMeaning.BranchIfEqual,
+        ["bne.un"] = VmMeaning.BranchIfNotEqual,
+        ["blt"] = VmMeaning.BranchIfLessThan,
+        ["blt.un"] = VmMeaning.BranchIfLessThan,
+        ["ble"] = VmMeaning.BranchIfLessOrEqual,
+        ["ble.un"] = VmMeaning.BranchIfLessOrEqual,
+        ["bgt"] = VmMeaning.BranchIfGreaterThan,
+        ["bgt.un"] = VmMeaning.BranchIfGreaterThan,
+        ["bge"] = VmMeaning.BranchIfGreaterOrEqual,
+        ["bge.un"] = VmMeaning.BranchIfGreaterOrEqual
+    };
+
+    /// <summary>What a conversion converts to, where the reading says what it leaves.</summary>
+    private static readonly Dictionary<string, VmMeaning> Widths = new(StringComparer.Ordinal)
+    {
+        ["System.Byte"] = VmMeaning.ConvertToByte,
+        ["System.Int32"] = VmMeaning.ConvertToInt32,
+        ["System.UInt32"] = VmMeaning.ConvertToUInt32,
+        ["System.Int64"] = VmMeaning.ConvertToInt64,
+        ["System.UInt64"] = VmMeaning.ConvertToInt64
+    };
+
+    /// <summary>
+    /// This build's numbering, as the semantics probe read it off the engine itself.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is carried over from the numbering the reading was written against. Mixing the two
+    /// would put one build's meaning on another build's number, which is the failure this is here
+    /// to prevent, so an operation the probe did not name is left out and the evaluation stops at
+    /// it if the program uses it.
+    /// </remarks>
+    internal static Dictionary<int, VmReading> Numbering(
+        IReadOnlyDictionary<int, VirtualOperation> operations,
+        out IReadOnlyList<string> unnamed)
+    {
+        ArgumentNullException.ThrowIfNull(operations);
+        var numbering = new Dictionary<int, VmReading>();
+        var left = new List<string>();
+        foreach (var (opcode, operation) in operations.OrderBy(entry => entry.Key))
+        {
+            var meaning = Meaning(operation);
+            if (meaning is { } established)
+                numbering[opcode] = new VmReading(established, Bits(operation));
+            else
+                left.Add($"op {opcode}, read as {operation.Brief}");
+        }
+        unnamed = left;
+        return numbering;
+    }
+
+    /// <summary>How wide the value an operation leaves is, as the trials found it held.</summary>
+    /// <remarks>
+    /// Only a width that was measured is used. An operation whose result nothing could type is
+    /// given the wider one, which is what every operation was given before any of them were
+    /// measured: too wide a result is only wrong where the program relies on losing the top of it,
+    /// and too narrow a one is wrong wherever the program keeps a number that does not fit.
+    /// </remarks>
+    private static int Bits(VirtualOperation operation) => operation.Pushed switch
+    {
+        "System.Byte" or "System.SByte" or "System.Int16" or "System.UInt16" or
+            "System.Int32" or "System.UInt32" or "System.Boolean" or "System.Char" => 32,
+        _ => 64
+    };
+
+    /// <summary>What one learned reading means, where it means anything the evaluator can perform.</summary>
+    private static VmMeaning? Meaning(VirtualOperation operation)
+    {
+        if (operation.Name is not { } name)
+            return null;
+        if (name == "branch if")
+        {
+            return operation.Decides is { } condition &&
+                Conditions.TryGetValue(condition, out var branch)
+                    ? branch
+                    : null;
+        }
+        if (name == "convert")
+        {
+            return operation.Pushed is { } left && Widths.TryGetValue(left, out var width)
+                ? width
+                : null;
+        }
+        return Learned.TryGetValue(name, out var meaning) ? meaning : null;
+    }
+
+    /// <summary>
+    /// The numbering of the build this reading was written against, used when no other is known.
+    /// </summary>
+    /// <remarks>
+    /// It is worth keeping even though it is only ever right by luck on a build that renumbers,
+    /// because a great many builds do not renumber — the numbering is fixed per protector version
+    /// rather than per file — and reading a table from the serialized program costs a few thousand
+    /// steps where having the module's own interpreter build it costs tens of millions.
+    /// </remarks>
+    private static readonly Dictionary<int, VmMeaning> WrittenAgainst = new()
+    {
+        [1] = VmMeaning.StoreElement,
+        [6] = VmMeaning.Discard,
+        [14] = VmMeaning.Branch,
+        [18] = VmMeaning.LoadStaticField,
+        [22] = VmMeaning.Call,
+        [24] = VmMeaning.ShiftRight,
+        [30] = VmMeaning.LoadElement,
+        [53] = VmMeaning.PushNull,
+        [54] = VmMeaning.ShiftLeft,
+        [58] = VmMeaning.ExclusiveOr,
+        [60] = VmMeaning.Subtract,
+        [66] = VmMeaning.NewArray,
+        [67] = VmMeaning.Negate,
+        [68] = VmMeaning.Add,
+        [75] = VmMeaning.Complement,
+        [77] = VmMeaning.BranchByTable,
+        [78] = VmMeaning.LoadLocal,
+        [79] = VmMeaning.PushOperand,
+        [91] = VmMeaning.Return,
+        [97] = VmMeaning.BranchIfLessThan,
+        [110] = VmMeaning.Branch,
+        [116] = VmMeaning.StoreStaticField,
+        [127] = VmMeaning.ConvertToInt64,
+        [139] = VmMeaning.StoreLocal,
+        [143] = VmMeaning.BranchIfTrue,
+        [154] = VmMeaning.ConvertToInt32,
+        [156] = VmMeaning.BranchIfFalse,
+        [157] = VmMeaning.Duplicate,
+        [158] = VmMeaning.StoreField,
+        [165] = VmMeaning.BranchIfEqual,
+        [166] = VmMeaning.NewObject,
+        [172] = VmMeaning.ConvertToByte,
+        [173] = VmMeaning.ArrayLength,
+        [174] = VmMeaning.LoadArgument
+    };
+
     private static readonly StaticMachineLimits Limits = new(
         MaximumSteps: 4_000_000,
         MaximumRecursionDepth: 96,
         MaximumAllocatedBytes: 64 * 1024 * 1024,
         MaximumArrayLength: 16 * 1024 * 1024);
+
+    /// <summary>
+    /// What the reading of last resort is given, which is less than the reading it stands behind.
+    /// </summary>
+    /// <remarks>
+    /// Having the protector's own interpreter build the table is the most faithful reading there is —
+    /// it knows the numbering of its own operations by construction — and by a wide margin the most
+    /// expensive: a table of a few hundred strings is a few thousand virtual operations, each one a
+    /// pass through a dispatcher of several thousand instructions. On the builds where this is the only
+    /// reading left it currently stops short of finishing anyway, so granting it the full budget buys
+    /// nothing on those and costs it on every other sample that reaches here. The figure is what it
+    /// takes to reach a stop worth reading, and anyone who wants to spend more can say so:
+    /// <c>"budgets": { "steps": 40000000 }</c>.
+    /// </remarks>
+    private static readonly StaticMachineLimits LastResort = Limits with { MaximumSteps = 750_000 };
+
+    /// <summary>
+    /// The numbering to read a program with when nobody has read the engine, which is a guess.
+    /// </summary>
+    /// <remarks>
+    /// This is what the early reading has to work with: the numbering of the build the reading was
+    /// written against, which is right on every build that does not renumber and wrong on the rest.
+    /// The reading that has the engine's own numbering does not come through here. One can be stated
+    /// instead — <c>REACTORUNPACK_VM_NUMBERING="57=PushOperand,74=LoadLocal,..."</c> — which is how a
+    /// numbering is tried out before anything can learn it.
+    /// </remarks>
+    private static Dictionary<int, VmReading> Numbering()
+    {
+        var stated = Environment.GetEnvironmentVariable("REACTORUNPACK_VM_NUMBERING");
+        if (string.IsNullOrWhiteSpace(stated))
+            return WrittenAgainst.ToDictionary(entry => entry.Key, entry => new VmReading(entry.Value));
+        var numbering = new Dictionary<int, VmReading>();
+        foreach (var entry in stated.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = entry.Split('=');
+            numbering[int.Parse(parts[0].Trim(), CultureInfo.InvariantCulture)] =
+                new VmReading(Enum.Parse<VmMeaning>(parts[1].Trim()));
+        }
+        return numbering;
+    }
+
+    /// <summary>
+    /// Which operations the serialized program performs, and an operand each really carries.
+    /// </summary>
+    /// <remarks>
+    /// The engine's own numbering is learned by making it perform an operation and watching what
+    /// happens, and that needs an operation to perform. A program the engine decoded supplies its
+    /// own, but this table is built by a different program of the same engine, so it uses operations
+    /// no decoded program contains and nothing would name them. This is the list of what it uses,
+    /// carried to the reading of the engine so that those can be asked about too, with the operand
+    /// taken from the program rather than invented — an operation that names a field only means
+    /// anything if it is given a field that exists.
+    /// </remarks>
+    public static bool TryReadOperations(
+        ModuleDefMD module,
+        PeImageView image,
+        MethodDef resolver,
+        RunEnvironment? environment,
+        out IReadOnlyDictionary<int, long?> operations,
+        out string diagnostic)
+    {
+        operations = new Dictionary<int, long?>();
+        var resourceName = FindResourceName(resolver);
+        var initializer = FindInitializer(resolver);
+        if (resourceName is null || initializer is null || !IsVmBridge(initializer))
+        {
+            diagnostic = "The resolver has no virtualized initializer, so it runs no program.";
+            return false;
+        }
+
+        if (!TryPrepare(module, image, initializer, resourceName, environment ?? new RunEnvironment(),
+                0, Limits, out var machine, out _, out diagnostic))
+        {
+            return false;
+        }
+
+        var census = new Dictionary<int, long?>();
+        var read = 0;
+        foreach (var methodId in new[] { 0, 1 })
+        {
+            if (!TryParseVmMethod(module, machine, initializer, methodId, out var method, out var why))
+            {
+                diagnostic = why;
+                continue;
+            }
+            read++;
+            foreach (var instruction in method.Instructions)
+            {
+                // Every operation the program performs is recorded, with or without an operand,
+                // because an operation carrying nothing is still one that has to be named. One
+                // operand of a kind is enough and the first is as good as any other — what an
+                // operation does is not a property of the operand it does it to — but a number is
+                // preferred over nothing, so a later sighting fills in an earlier blank.
+                var operand = instruction.Operand switch
+                {
+                    int number => number,
+                    long wide => wide,
+                    _ => (long?)null
+                };
+                if (census.TryGetValue(instruction.OpCode, out var recorded) && recorded is not null)
+                    continue;
+                census[instruction.OpCode] = operand;
+            }
+        }
+        if (read == 0)
+            return false;
+
+        operations = census;
+        diagnostic = $"The serialized program uses {census.Count} distinct operation(s), " +
+            $"{census.Count(entry => entry.Value is not null)} of them carrying a number.";
+        return true;
+    }
 
     public static bool TryCapture(
         ModuleDefMD module,
@@ -31,9 +397,15 @@ public static class StaticStringTableInterpreter
         MethodDef resolver,
         out StaticStringTableCapture? capture,
         out string diagnostic,
-        RunEnvironment? environment = null)
+        RunEnvironment? environment = null,
+        IReadOnlyDictionary<int, VirtualOperation>? learned = null)
     {
         capture = null;
+
+        // Where the caller has had the engine read, this build's own numbering is used and nothing
+        // is carried over from the numbering this reading was written against.
+        IReadOnlyList<string> unnamed = [];
+        var numbering = learned is null ? null : Numbering(learned, out unnamed);
         var resourceName = FindResourceName(resolver);
         var initializer = FindInitializer(resolver);
         if (resourceName is null || initializer is null)
@@ -54,9 +426,20 @@ public static class StaticStringTableInterpreter
         foreach (var offset in new[] { 0, 1 })
         {
             if (!TryRun(module, image, initializer, resourceName,
-                    resource.CreateReader().ToArray(), offset, environment, out var run,
+                    resource.CreateReader().ToArray(), offset, environment, numbering, out var run,
                     out diagnostic))
+            {
+                // What the engine did not say is the first thing to look at when a reading that had
+                // the engine's own numbering still stopped, so it is said here rather than left to
+                // be worked out from the listing.
+                if (unnamed.Count > 0)
+                {
+                    diagnostic += " The engine left these operations unnamed, so nothing would " +
+                        $"perform them: {string.Join("; ", unnamed.Take(8))}" +
+                        (unnamed.Count > 8 ? ", ..." : string.Empty) + ".";
+                }
                 return false;
+            }
             runs.Add(run);
         }
         if (!runs[0].Bytes.AsSpan().SequenceEqual(runs[1].Bytes))
@@ -75,7 +458,17 @@ public static class StaticStringTableInterpreter
             return false;
         }
 
-        var frontEnd = IsVmBridge(initializer) ? "reactor-vm-method-0/1" : "managed-cil";
+        // Which reading produced the table is reported rather than inferred from the initializer's
+        // shape, because a virtualized one can be read two ways and the answer to "how do you know"
+        // differs between them.
+        var frontEnd = runs[0].FrontEnd;
+        if (!string.Equals(frontEnd, runs[1].FrontEnd, StringComparison.Ordinal))
+        {
+            diagnostic =
+                $"Two bounded interpretations agreed on the table but were read differently " +
+                $"({runs[0].FrontEnd} and {runs[1].FrontEnd}).";
+            return false;
+        }
         capture = new StaticStringTableCapture(
             $"{initializer.MDToken} {initializer.FullName}",
             runs[0].Bytes,
@@ -96,15 +489,81 @@ public static class StaticStringTableInterpreter
         byte[] resourceBytes,
         int offset,
         RunEnvironment? environment,
+        IReadOnlyDictionary<int, VmReading>? numbering,
         out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
             IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
         out string diagnostic)
     {
         run = default;
         environment ??= new RunEnvironment();
-        var machine = new StaticMachine(
-            environment.Declarations.Budgets.Over(Limits),
-            ProxyIntrinsicRegistry.Create(module));
+
+        if (!TryPrepare(module, image, initializer, resourceName, environment, offset, Limits,
+                out var machine, out var arguments, out diagnostic))
+        {
+            return false;
+        }
+
+        if (IsVmBridge(initializer))
+        {
+            if (TryReadSerialized(
+                    module, machine, initializer, arguments, numbering ?? Numbering(), out run,
+                    out diagnostic))
+                return true;
+
+            // The serialized reading knows the framing of a program and the numbering of its
+            // operations, and a build that numbers them differently defeats it. The module's own
+            // interpreter knows both by construction, so where the first reading cannot be had the
+            // machine runs the bridge and lets the protector's own code do the reading. Neither is
+            // preferred on principle: the first is tried first because it is the one the corpus is
+            // pinned to, and this one answers where it stops rather than replacing it.
+            var serialized = diagnostic;
+            if (!TryPrepare(module, image, initializer, resourceName, environment, offset, LastResort,
+                    out var interpreting, out var again, out diagnostic))
+            {
+                return false;
+            }
+            if (TryReadDirectly(interpreting, initializer, again, module,
+                    "reactor-vm-run-by-its-own-interpreter", out run, out diagnostic))
+            {
+                return true;
+            }
+            diagnostic =
+                $"Reading the serialized program: {serialized} Running the module's own " +
+                $"interpreter instead, within the {LastResort.MaximumSteps} steps that reading is " +
+                $"given: {diagnostic}";
+            return false;
+        }
+
+        return TryReadDirectly(machine, initializer, arguments, module, "managed-cil",
+            out run, out diagnostic);
+    }
+
+    /// <summary>
+    /// A machine with the module's resources and identity in place, and the initializer's arguments.
+    /// </summary>
+    /// <remarks>
+    /// Each reading gets its own, because one that stopped part way has already written whatever it
+    /// wrote, and a table captured from a machine another attempt has been over would be evidence
+    /// about the attempts rather than about the module.
+    /// </remarks>
+    private static bool TryPrepare(
+        ModuleDefMD module,
+        PeImageView image,
+        MethodDef initializer,
+        string resourceName,
+        RunEnvironment environment,
+        int offset,
+        StaticMachineLimits limits,
+        out StaticMachine machine,
+        out IReadOnlyList<StaticValue> arguments,
+        out string diagnostic)
+    {
+        var proxies = ProxyIntrinsicRegistry.Create(module);
+        machine = new StaticMachine(
+            environment.Declarations.Budgets.Over(limits),
+            proxies);
+        arguments = [];
+        proxies.Bind(machine);
         machine.State.RegisterRunEnvironment(environment);
         foreach (var resource in module.Resources.OfType<EmbeddedResource>())
             machine.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
@@ -112,62 +571,46 @@ public static class StaticStringTableInterpreter
             module.Assembly?.Name ?? module.Name,
             module.Assembly?.PublicKeyToken?.Data ?? []);
         machine.State.RegisterPointerSize(image.IsPe32Plus ? 8 : 4);
+        // Without this the machine is running the module's code while unable to look anything up in
+        // it, and the first thing that costs is the type hierarchy: every cast to one of the module's
+        // own types answers null, because the walk has no metadata to walk. A protector's engine
+        // casts constantly — each instruction is handed about as its abstract kind and taken back
+        // out again — so the nulls accumulate silently and the run dies at some later field read,
+        // looking for all the world like the engine rejecting its own state.
+        machine.State.RegisterModuleMetadata(module);
 
         if (!machine.State.TryOpenResource(resourceName, out var stream))
         {
             diagnostic = $"Could not model resource stream '{resourceName}'.";
             return false;
         }
-        var arguments = BuildArguments(machine, initializer, stream, offset);
-        if (arguments is null)
+        var built = BuildArguments(machine, initializer, stream, offset);
+        if (built is null)
         {
             diagnostic =
                 $"Initializer {initializer.MDToken} does not have the supported (stream, int32) contract.";
             return false;
         }
 
-        if (IsVmBridge(initializer))
-        {
-            if (!TryParseVmMethod(module, machine, initializer, 0, out var vmMethod,
-                    out var vmDiagnostic))
-            {
-                diagnostic = vmDiagnostic;
-                return false;
-            }
-            var evaluation = EvaluateVmMethodZero(module, machine, vmMethod, arguments);
-            if (!evaluation.Success)
-            {
-                diagnostic = evaluation.Diagnostic;
-                return false;
-            }
-            if (!TryParseVmMethod(module, machine, initializer, 1, out var vmMethodOne,
-                    out var vmMethodOneDiagnostic))
-            {
-                diagnostic = vmMethodOneDiagnostic;
-                return false;
-            }
-            var methodOneEvaluation = EvaluateVmMethodZero(
-                module, machine, vmMethodOne, []);
-            if (!methodOneEvaluation.Success)
-            {
-                diagnostic = $"Serialized VM ID 1: {methodOneEvaluation.Diagnostic}";
-                return false;
-            }
-            var vmCandidates = CaptureFramedTables(machine);
-            if (vmCandidates.Length != 1)
-            {
-                diagnostic = vmCandidates.Length == 0
-                    ? $"VM ID 0 completed after {evaluation.Steps} steps but exposed no strictly framed UTF-16 table."
-                    : $"VM ID 0 exposed {vmCandidates.Length} distinct strictly framed tables.";
-                return false;
-            }
-            run = (vmCandidates[0].Bytes, vmCandidates[0].Records,
-                CaptureIntegerFields(module, machine), evaluation.Steps,
-                "reactor-vm-method-0-serialized");
-            diagnostic = string.Empty;
-            return true;
-        }
+        arguments = built;
+        diagnostic = string.Empty;
+        return true;
+    }
 
+    /// <summary>
+    /// Runs the initializer and takes the one strictly framed table it leaves behind, if it leaves one.
+    /// </summary>
+    private static bool TryReadDirectly(
+        StaticMachine machine,
+        MethodDef initializer,
+        IReadOnlyList<StaticValue> arguments,
+        ModuleDefMD module,
+        string frontEnd,
+        out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
+            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
+        out string diagnostic)
+    {
+        run = default;
         var result = machine.Execute(initializer, arguments);
         if (!result.Succeeded)
         {
@@ -187,12 +630,99 @@ public static class StaticStringTableInterpreter
         }
 
         run = (candidates[0].Bytes, candidates[0].Records,
-            CaptureIntegerFields(module, machine), result.Steps, "managed-cil");
+            CaptureIntegerFields(module, machine), result.Steps, frontEnd);
+        diagnostic = string.Empty;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads the table by framing the serialized program itself and evaluating operations 0 and 1.
+    /// </summary>
+    private static bool TryReadSerialized(
+        ModuleDefMD module,
+        StaticMachine machine,
+        MethodDef initializer,
+        IReadOnlyList<StaticValue> arguments,
+        IReadOnlyDictionary<int, VmReading> numbering,
+        out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
+            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
+        out string diagnostic)
+    {
+        run = default;
+        if (!TryParseVmMethod(module, machine, initializer, 0, out var vmMethod,
+                out var vmDiagnostic))
+        {
+            diagnostic = vmDiagnostic;
+            return false;
+        }
+        if (!TryParseVmMethod(module, machine, initializer, 1, out var vmMethodOne,
+                out var vmMethodOneDiagnostic))
+        {
+            diagnostic = vmMethodOneDiagnostic;
+            return false;
+        }
+        var reversed = Environment.GetEnvironmentVariable("REACTORUNPACK_VM_ORDER") == "10";
+        if (reversed)
+        {
+            var first = EvaluateVmMethodZero(module, machine, vmMethodOne, [], numbering);
+            if (!first.Success)
+            {
+                diagnostic = $"Serialized VM ID 1: {first.Diagnostic}";
+                return false;
+            }
+        }
+        var evaluation = EvaluateVmMethodZero(module, machine, vmMethod, arguments, numbering);
+        if (!evaluation.Success)
+        {
+            diagnostic = evaluation.Diagnostic;
+            return false;
+        }
+        var methodOneEvaluation = reversed
+            ? (Success: true, Steps: 0, Diagnostic: string.Empty)
+            : EvaluateVmMethodZero(module, machine, vmMethodOne, [], numbering);
+        if (!methodOneEvaluation.Success)
+        {
+            diagnostic = $"Serialized VM ID 1: {methodOneEvaluation.Diagnostic}";
+            return false;
+        }
+        var vmCandidates = CaptureFramedTables(machine);
+        if (vmCandidates.Length != 1)
+        {
+            diagnostic = vmCandidates.Length == 0
+                ? $"VM ID 0 completed after {evaluation.Steps} steps but exposed no strictly framed UTF-16 table."
+                : $"VM ID 0 exposed {vmCandidates.Length} distinct strictly framed tables.";
+            return false;
+        }
+
+        run = (vmCandidates[0].Bytes, vmCandidates[0].Records,
+            CaptureIntegerFields(module, machine), evaluation.Steps,
+            "reactor-vm-method-0-serialized");
         diagnostic = string.Empty;
         return true;
     }
 
     private static (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records)[] CaptureFramedTables(
+        StaticMachine machine)
+    {
+        if (Environment.GetEnvironmentVariable("REACTORUNPACK_VM_DUMP") is { Length: > 0 } where)
+        {
+            File.AppendAllLines(Path.Combine(where, "statics.txt"),
+                machine.State.StaticFields
+                    .Where(field => field.Value.Kind == StaticValueKind.HeapReference)
+                    .Select(field =>
+                    {
+                        var bytes = machine.State.Heap.GetBytesSnapshot(field.Value);
+                        machine.State.Heap.TryGetRuntimeTypeName(field.Value, out var typeName);
+                        var text = bytes is null
+                            ? "not bytes"
+                            : $"{bytes.Length} bytes {Convert.ToHexString(bytes)}";
+                        return $"{field.Key:X8} {typeName} {text}";
+                    }));
+        }
+        return Framed(machine);
+    }
+
+    private static (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records)[] Framed(
         StaticMachine machine) =>
         machine.State.StaticFields
             .Where(field => field.Value.Kind == StaticValueKind.HeapReference)
@@ -259,6 +789,7 @@ public static class StaticStringTableInterpreter
             .ToArray();
         var parsers = loader.Body.Instructions
             .Select(instruction => (instruction.Operand as IMethod)?.ResolveMethodDef())
+            .Select(method => method is null ? null : StandsFor(module, method))
             .Where(method => method?.DeclaringType == bridge.DeclaringType &&
                 method.IsStatic &&
                 method.ReturnType.ElementType == ElementType.Void &&
@@ -270,10 +801,20 @@ public static class StaticStringTableInterpreter
             module.Resources.OfType<EmbeddedResource>()
                 .SingleOrDefault(resource => resource.Name == resourceNames[0]) is not { } resource)
         {
+            var called = string.Join(" | ", loader.Body.Instructions
+                .Select(instruction => (instruction.Operand as IMethod)?.ResolveMethodDef())
+                .Where(method => method is not null)
+                .Distinct()
+                .Select(method =>
+                    $"{method!.DeclaringType.Name}::{method.Name}" +
+                    $"({string.Join(",", method.MethodSig?.Params.Select(p => p.TypeName) ?? [])})" +
+                    $"->{method.ReturnType.TypeName} static={method.IsStatic} " +
+                    $"sameType={method.DeclaringType == bridge.DeclaringType}"));
             diagnostic = resourceNames.Length != 1
                 ? $"Its loader names {resourceNames.Length} embedded resource(s), not one."
                 : $"Its loader calls {parsers.Length} method(s) shaped like the one that parses " +
-                    "the table, not one.";
+                    $"the table, not one. DIAGNOSTIC loader={loader.MDToken} {loader.FullName} " +
+                    $"calls: {called}";
             return false;
         }
 
@@ -385,6 +926,14 @@ public static class StaticStringTableInterpreter
                 decoded.Add(new VmInstruction(opcode, operand));
             }
             method = new VmMethod(decoded, localCount);
+            if (Environment.GetEnvironmentVariable("REACTORUNPACK_VM_DUMP") is { Length: > 0 } dump)
+            {
+                File.WriteAllLines(
+                    Path.Combine(dump, $"program{methodId}.txt"),
+                    decoded.Select((item, index) =>
+                        $"{index}: op {item.OpCode} {FormatVmOperand(item.Operand)} " +
+                        $"{DescribeVmOperand(module, item.Operand)}"));
+            }
             diagnostic =
                 $"Loader={loader.MDToken}; parser={parsers[0].MDToken}; " +
                 $"buffer={bufferBytes.Length}; methodId={methodId}; " +
@@ -400,16 +949,93 @@ public static class StaticStringTableInterpreter
         }
     }
 
+    /// <summary>
+    /// The method a call names, after any of Reactor's proxy thunks standing in front of it.
+    /// </summary>
+    /// <remarks>
+    /// Reactor can route a call through a static method it adds to a delegate type, taking the real
+    /// arguments plus the delegate itself, so a call that reads as
+    /// <c>SomeProxy::Thunk(byte[], SomeProxy)</c> in the metadata is a call to whatever that
+    /// delegate was bound to. Builds differ in how much they route this way, and one that routes the
+    /// string table's parser leaves nothing on the caller's side with the parser's shape. Looking
+    /// only at what a call literally names would therefore make the table unreadable on those
+    /// builds, which is not a fact about the protection but about where we chose to look.
+    ///
+    /// Where a thunk cannot be tied to exactly one target the method is returned unchanged, so a
+    /// caller applying a shape test still decides for itself and an ambiguous proxy layer cannot
+    /// silently redirect one.
+    /// </remarks>
+    private static MethodDef StandsFor(ModuleDefMD module, MethodDef method) =>
+        Thunks(module).TryGetValue(method.MDToken.Raw, out var target) ? target : method;
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        ModuleDefMD, Dictionary<uint, MethodDef>> ThunkCache = new();
+
+    /// <summary>
+    /// Each proxy thunk in the module against the single method it was bound to.
+    /// </summary>
+    /// <remarks>
+    /// The bindings come from the same structural discovery the interpreter's proxy intrinsics use,
+    /// so a thunk resolved here and a proxy call followed there cannot disagree about what a
+    /// delegate stands for. Discovery reads a resource and decodes it, which is worth doing once per
+    /// module rather than once per capture attempt.
+    /// </remarks>
+    private static Dictionary<uint, MethodDef> Thunks(ModuleDefMD module)
+    {
+        if (ThunkCache.TryGetValue(module, out var cached))
+            return cached;
+
+        var thunks = new Dictionary<uint, MethodDef>();
+        var facts = ReactorStructureDetector.Analyze(module);
+        if (StructuralStreamDiscovery.TryDiscoverProxyProfile(module, facts, out var profile) &&
+            profile is not null)
+        {
+            foreach (var binding in profile.Bindings)
+            {
+                if (module.ResolveToken(binding.FieldToken) is not FieldDef field ||
+                    module.ResolveToken(binding.TargetToken) is not IMethod target ||
+                    target.ResolveMethodDef() is not { } definition)
+                {
+                    continue;
+                }
+
+                var proxy = field.DeclaringType;
+                foreach (var thunk in proxy.Methods.Where(method =>
+                    method.IsStatic &&
+                    method.HasBody &&
+                    method.MethodSig?.Params.Count > 0 &&
+                    method.MethodSig.Params[^1].FullName == proxy.FullName))
+                {
+                    // A proxy type carries one binding, so two thunks on it standing for different
+                    // methods would mean the discovery disagreed with itself. Dropping the entry
+                    // leaves the caller reading the metadata as written.
+                    if (thunks.TryGetValue(thunk.MDToken.Raw, out var existing) &&
+                        existing != definition)
+                    {
+                        thunks.Remove(thunk.MDToken.Raw);
+                        continue;
+                    }
+                    thunks[thunk.MDToken.Raw] = definition;
+                }
+            }
+        }
+
+        ThunkCache.Add(module, thunks);
+        return thunks;
+    }
+
     private static (bool Success, int Steps, string Diagnostic) EvaluateVmMethodZero(
         ModuleDefMD module,
         StaticMachine machine,
         VmMethod method,
-        IReadOnlyList<StaticValue> arguments)
+        IReadOnlyList<StaticValue> arguments,
+        IReadOnlyDictionary<int, VmReading> numbering)
     {
         var steps = 0;
         var locals = Enumerable.Repeat(StaticValue.Unknown, method.LocalCount).ToArray();
         var stack = new List<StaticValue>();
         var trail = new Queue<int>();
+        var walked = new List<string>();
         var pc = 0;
         const int maximumSteps = 1_000_000;
         while ((uint)pc < (uint)method.Instructions.Count && steps++ < maximumSteps)
@@ -419,6 +1045,10 @@ public static class StaticStringTableInterpreter
             if (trail.Count > 24)
                 trail.Dequeue();
             var next = pc + 1;
+            walked.Add(
+                $"{pc}:{instruction.OpCode}:" +
+                $"{(instruction.Operand is int[] table ? $"[{table.Length} targets]" : FormatVmOperand(instruction.Operand))}" +
+                $" depth={stack.Count}");
             bool Pop(out StaticValue value)
             {
                 value = StaticValue.Unknown;
@@ -434,72 +1064,95 @@ public static class StaticStringTableInterpreter
                 return (uint)target < (uint)method.Instructions.Count;
             }
 
-            switch (instruction.OpCode)
+            if (!numbering.TryGetValue(instruction.OpCode, out var reading))
+                return VmFailure("nothing established what this operation means.");
+            var meaning = reading.Meaning;
+
+            // A result is kept as wide as the operation that produced it keeps it. The engine's own
+            // slot is what decides that, and where the reading measured a thirty-two bit one, a
+            // result that does not fit is cut down here exactly as the engine cuts it down there.
+            StaticValue Held(long value) => reading.Bits == 32
+                ? StaticValue.FromInt32(unchecked((int)value))
+                : StaticValue.FromInt64(value);
+
+            switch (meaning)
             {
-                case 79:
+                case VmMeaning.PushOperand:
                     if (instruction.Operand is not int constant)
                         return VmFailure("ldc.i4 operand is not an integer.");
                     stack.Add(StaticValue.FromInt32(constant));
                     break;
-                case 53:
+                case VmMeaning.PushNull:
                     stack.Add(StaticValue.Null);
                     break;
-                case 24:
+                case VmMeaning.ShiftRight:
                     if (!Pop(out var shiftSignedRight) || !Pop(out var shiftSignedLeft) ||
                         !shiftSignedLeft.IsInteger || !shiftSignedRight.IsInteger ||
                         !TryEvaluateVmIntegerBinary(
-                            instruction.OpCode, shiftSignedLeft.AsInt64(),
+                            meaning, shiftSignedLeft.AsInt64(),
                             shiftSignedRight.AsInt64(), out var shiftSignedResult))
                         return VmFailure("shr requires two known integers.");
-                    stack.Add(StaticValue.FromInt64(shiftSignedResult));
+                    stack.Add(Held(shiftSignedResult));
                     break;
-                case 54:
+                case VmMeaning.ShiftLeft:
                     if (!Pop(out var shiftRight) || !Pop(out var shiftLeft) ||
                         !shiftLeft.IsInteger || !shiftRight.IsInteger ||
                         !TryEvaluateVmIntegerBinary(
-                            instruction.OpCode, shiftLeft.AsInt64(), shiftRight.AsInt64(),
+                            meaning, shiftLeft.AsInt64(), shiftRight.AsInt64(),
                             out var shiftResult))
                         return VmFailure("shl requires two known integers.");
-                    stack.Add(StaticValue.FromInt64(shiftResult));
+                    stack.Add(Held(shiftResult));
                     break;
-                case 91:
+                case VmMeaning.Return:
                     if (!TryEvaluateVmControlFlow(
-                            instruction.OpCode, out var handlerPointer, out var returns) ||
+                            meaning, out var handlerPointer, out var returns) ||
                         !returns || handlerPointer + 1 > -2)
                         return VmFailure("ret sentinel did not terminate the current VM frame.");
                     stack.Clear();
+                    DumpWalk(walked);
+                    DumpLocals(machine, locals);
                     return (true, steps, string.Empty);
-                case 78:
+                case VmMeaning.LoadLocal:
                     if (instruction.Operand is not int loadLocal ||
                         (uint)loadLocal >= (uint)locals.Length)
                         return VmFailure("ldloc index is outside the local array.");
                     stack.Add(locals[loadLocal]);
                     break;
-                case 139:
+                case VmMeaning.StoreLocal:
                     if (instruction.Operand is not int storeLocal ||
                         (uint)storeLocal >= (uint)locals.Length || !Pop(out locals[storeLocal]))
                         return VmFailure("stloc has an invalid index or empty stack.");
                     break;
-                case 174:
+                case VmMeaning.LoadArgument:
                     if (instruction.Operand is not int argument ||
                         (uint)argument >= (uint)arguments.Count)
                         return VmFailure("ldarg index is outside the argument array.");
                     stack.Add(arguments[argument]);
                     break;
-                case 110:
-                case 14:
+                case VmMeaning.Branch:
                     if (!Target(instruction.Operand, out next))
                         return VmFailure("unconditional branch target is outside the method.");
                     break;
-                case 97:
-                    if (!Target(instruction.Operand, out var lessThanTarget) ||
-                        !Pop(out var lessThanRight) || !Pop(out var lessThanLeft) ||
-                        !lessThanLeft.IsInteger || !lessThanRight.IsInteger)
-                        return VmFailure("blt requires two known integers and a valid target.");
-                    if (lessThanLeft.AsInt64() < lessThanRight.AsInt64())
-                        next = lessThanTarget;
+                case VmMeaning.BranchIfLessThan:
+                case VmMeaning.BranchIfGreaterOrEqual:
+                case VmMeaning.BranchIfGreaterThan:
+                case VmMeaning.BranchIfLessOrEqual:
+                    if (!Target(instruction.Operand, out var orderedTarget) ||
+                        !Pop(out var orderedRight) || !Pop(out var orderedLeft) ||
+                        !orderedLeft.IsInteger || !orderedRight.IsInteger)
+                        return VmFailure("an ordering branch requires two known integers and a valid target.");
+                    if (meaning switch
+                        {
+                            VmMeaning.BranchIfLessThan => orderedLeft.AsInt64() < orderedRight.AsInt64(),
+                            VmMeaning.BranchIfGreaterOrEqual => orderedLeft.AsInt64() >= orderedRight.AsInt64(),
+                            VmMeaning.BranchIfGreaterThan => orderedLeft.AsInt64() > orderedRight.AsInt64(),
+                            _ => orderedLeft.AsInt64() <= orderedRight.AsInt64()
+                        })
+                    {
+                        next = orderedTarget;
+                    }
                     break;
-                case 77:
+                case VmMeaning.BranchByTable:
                     if (instruction.Operand is not int[] targets || !Pop(out var selector) ||
                         !selector.IsInteger)
                         return VmFailure("switch requires an integer selector.");
@@ -511,29 +1164,33 @@ public static class StaticStringTableInterpreter
                             return VmFailure("switch target is outside the method.");
                     }
                     break;
-                case 143:
-                case 156:
+                case VmMeaning.BranchIfTrue:
+                case VmMeaning.BranchIfFalse:
                     if (!Target(instruction.Operand, out var conditionalTarget) ||
                         !Pop(out var condition) || !TryVmTruth(condition, out var truth))
                         return VmFailure("conditional branch requires a known truth value.");
-                    if (instruction.OpCode == 156)
+                    if (meaning == VmMeaning.BranchIfFalse)
                         truth = !truth;
                     if (truth)
                         next = conditionalTarget;
                     break;
-                case 6:
+                case VmMeaning.Discard:
                     if (!Pop(out _))
                         return VmFailure("pop requires a stack value.");
                     break;
-                case 165:
+                case VmMeaning.Nothing:
+                    break;
+                case VmMeaning.BranchIfEqual:
+                case VmMeaning.BranchIfNotEqual:
                     if (!Target(instruction.Operand, out var equalTarget) ||
                         !Pop(out var right) || !Pop(out var left) ||
                         !left.IsInteger || !right.IsInteger)
-                        return VmFailure("beq requires two known integers.");
-                    if (left.AsInt64() == right.AsInt64())
+                        return VmFailure("a comparing branch requires two known integers.");
+                    if (left.AsInt64() == right.AsInt64() ==
+                        (meaning == VmMeaning.BranchIfEqual))
                         next = equalTarget;
                     break;
-                case 66:
+                case VmMeaning.NewArray:
                     if (instruction.Operand is not int typeToken ||
                         module.ResolveToken(unchecked((uint)typeToken)) is not ITypeDefOrRef arrayType ||
                         !Pop(out var arrayLength) || !arrayLength.IsInteger ||
@@ -543,30 +1200,30 @@ public static class StaticStringTableInterpreter
                         return VmFailure("newarr requires a type token and known bounded length.");
                     stack.Add(allocatedArray);
                     break;
-                case 67:
+                case VmMeaning.Negate:
                     if (!Pop(out var negate) || !negate.IsInteger)
                         return VmFailure("neg requires one known integer.");
-                    stack.Add(StaticValue.FromInt64(unchecked(-negate.AsInt64())));
+                    stack.Add(Held(unchecked(-negate.AsInt64())));
                     break;
-                case 18:
+                case VmMeaning.LoadStaticField:
                     if (instruction.Operand is not int fieldToken ||
                         module.ResolveToken(unchecked((uint)fieldToken)) is not IField loadedField)
                         return VmFailure("ldsfld token did not resolve to a field.");
                     stack.Add(machine.State.ReadStaticField(loadedField));
                     break;
-                case 116:
+                case VmMeaning.StoreStaticField:
                     if (instruction.Operand is not int storedFieldToken ||
                         module.ResolveToken(unchecked((uint)storedFieldToken)) is not IField storedField ||
                         !Pop(out var storedValue))
                         return VmFailure("stsfld token or stack value is invalid.");
                     machine.State.WriteStaticField(storedField, storedValue);
                     break;
-                case 157:
+                case VmMeaning.Duplicate:
                     if (stack.Count == 0)
                         return VmFailure("dup requires a stack value.");
                     stack.Add(stack[^1]);
                     break;
-                case 158:
+                case VmMeaning.StoreField:
                     if (instruction.Operand is not int instanceFieldToken ||
                         module.ResolveToken(unchecked((uint)instanceFieldToken)) is not IField instanceField ||
                         !Pop(out var instanceFieldValue) || !Pop(out var instanceValue) ||
@@ -574,36 +1231,44 @@ public static class StaticStringTableInterpreter
                             instanceValue, instanceField, instanceFieldValue))
                         return VmFailure("stfld requires a modeled instance, field, and value.");
                     break;
-                case 127:
+                case VmMeaning.ConvertToInt64:
                     if (!Pop(out var converted) || !converted.IsInteger)
                         return VmFailure("conv.i8 requires a known integer.");
                     stack.Add(StaticValue.FromInt64(converted.AsInt64()));
                     break;
-                case 60:
+                case VmMeaning.Subtract:
                     if (!Pop(out var subtractRight) || !Pop(out var subtractLeft) ||
                         !subtractLeft.IsInteger || !subtractRight.IsInteger ||
                         !TryEvaluateVmIntegerBinary(
-                            instruction.OpCode, subtractLeft.AsInt64(),
+                            meaning, subtractLeft.AsInt64(),
                             subtractRight.AsInt64(), out var subtractResult))
                         return VmFailure("sub requires two known integers.");
-                    stack.Add(StaticValue.FromInt64(subtractResult));
+                    stack.Add(Held(subtractResult));
                     break;
-                case 154:
+                case VmMeaning.ConvertToInt32:
                     if (!Pop(out var converted32) || !converted32.IsInteger)
                         return VmFailure("conv.i4 requires a known integer.");
                     stack.Add(StaticValue.FromInt32(unchecked((int)converted32.AsInt64())));
                     break;
-                case 173:
+                case VmMeaning.ConvertToUInt32:
+                    if (!Pop(out var convertedUnsigned) || !convertedUnsigned.IsInteger)
+                        return VmFailure("conv.u4 requires a known integer.");
+                    stack.Add(StaticValue.FromInt64(
+                        unchecked((uint)convertedUnsigned.AsInt64())));
+                    break;
+                case VmMeaning.ArrayLength:
                     if (!Pop(out var sizedValue) ||
                         !machine.State.Heap.TryGetLength(sizedValue, out var length))
                         return VmFailure("ldlen requires a modeled array.");
                     stack.Add(StaticValue.FromInt32(length));
                     break;
-                case 1:
+                case VmMeaning.StoreElement:
                     if (!Pop(out var element) || !Pop(out var storeIndex) ||
                         !Pop(out var storeArray))
                         return VmFailure(
                             "stelem.i1 requires a modeled array, integer index, and value.");
+                    walked[^1] +=
+                        $" array={Brief(storeArray)} index={Brief(storeIndex)} value={Brief(element)}";
                     if (!storeIndex.IsInteger ||
                         !machine.State.Heap.TryGetArrayElementReference(
                             storeArray, unchecked((int)storeIndex.AsInt64()), out var storeCell) ||
@@ -617,7 +1282,7 @@ public static class StaticStringTableInterpreter
                             $"value={element.Kind}.");
                     }
                     break;
-                case 30:
+                case VmMeaning.LoadElement:
                     if (!Pop(out var loadIndex) || !Pop(out var loadArray))
                         return VmFailure(
                             "ldelem.u1 requires a modeled array and integer index.");
@@ -634,66 +1299,64 @@ public static class StaticStringTableInterpreter
                     }
                     stack.Add(loadedElement);
                     break;
-                case 58:
+                case VmMeaning.ExclusiveOr:
                     if (!Pop(out var xorRight) || !Pop(out var xorLeft) ||
                         !xorLeft.IsInteger || !xorRight.IsInteger ||
                         !TryEvaluateVmIntegerBinary(
-                            instruction.OpCode, xorLeft.AsInt64(), xorRight.AsInt64(),
+                            meaning, xorLeft.AsInt64(), xorRight.AsInt64(),
                             out var xorResult))
                         return VmFailure("xor requires two known integers.");
-                    stack.Add(StaticValue.FromInt64(xorResult));
+                    stack.Add(Held(xorResult));
                     break;
-                case 68:
+                case VmMeaning.Add:
                     if (!Pop(out var addRight) || !Pop(out var addLeft) ||
                         !addLeft.IsInteger || !addRight.IsInteger ||
                         !TryEvaluateVmIntegerBinary(
-                            instruction.OpCode, addLeft.AsInt64(), addRight.AsInt64(),
+                            meaning, addLeft.AsInt64(), addRight.AsInt64(),
                             out var addResult))
                         return VmFailure("add requires two known integers.");
-                    stack.Add(StaticValue.FromInt64(addResult));
+                    stack.Add(Held(addResult));
                     break;
-                case 75:
+                case VmMeaning.Complement:
                     if (!Pop(out var complement) || !complement.IsInteger)
                         return VmFailure("not requires one known integer.");
-                    stack.Add(StaticValue.FromInt64(~complement.AsInt64()));
+                    stack.Add(Held(~complement.AsInt64()));
                     break;
-                case 172:
+                case VmMeaning.ConvertToByte:
                     if (!Pop(out var convertedByte) || !convertedByte.IsInteger)
                         return VmFailure("conv.u1 requires a known integer.");
                     stack.Add(StaticValue.FromInt32(unchecked((byte)convertedByte.AsInt64())));
                     break;
-                case 22:
+                case VmMeaning.Call:
                     if (instruction.Operand is not int token ||
                         module.ResolveToken(unchecked((uint)token)) is not IMethod called ||
-                        called.ResolveMethodDef() is not { } definition)
-                        return VmFailure("call token did not resolve to a managed method.");
-                    var parameterCount = definition.MethodSig?.Params.Count ?? 0;
+                        called.MethodSig is not { } signature)
+                        return VmFailure("call token did not resolve to a method.");
                     var callArguments = new StaticValue[
-                        parameterCount + (definition.MethodSig?.HasThis == true ? 1 : 0)];
+                        signature.Params.Count + (signature.HasThis ? 1 : 0)];
                     for (var callIndex = callArguments.Length - 1; callIndex >= 0; callIndex--)
                     {
                         if (!Pop(out callArguments[callIndex]))
                             return VmFailure("call consumed more values than the VM stack contains.");
                     }
-                    var call = machine.Execute(definition, callArguments);
+                    var call = machine.Invoke(called, callArguments);
                     if (!call.Succeeded)
                         return VmFailure(
-                            $"call {definition.MDToken} failed as {call.Status}: {call.Diagnostic}");
-                    if (definition.ReturnType.ElementType != ElementType.Void)
+                            $"call {called.FullName} failed as {call.Status}: {call.Diagnostic}");
+                    if (signature.RetType.ElementType != ElementType.Void)
                         stack.Add(call.Value);
                     break;
-                case 166:
+                case VmMeaning.NewObject:
                     if (instruction.Operand is not int constructorToken ||
                         module.ResolveToken(unchecked((uint)constructorToken)) is not IMethod constructor ||
                         constructor.Name != ".ctor" ||
-                        constructor.ResolveMethodDef() is not { } constructorDefinition ||
+                        constructor.MethodSig is not { } constructorSignature ||
                         !machine.State.Heap.TryAllocateObject(
                             constructor.DeclaringType.FullName, out var constructed))
                         return VmFailure(
-                            "newobj token did not resolve to a modeled managed constructor.");
-                    var constructorParameterCount =
-                        constructorDefinition.MethodSig?.Params.Count ?? 0;
-                    var constructorArguments = new StaticValue[constructorParameterCount + 1];
+                            "newobj token did not resolve to a constructor of a type that can be made.");
+                    var constructorArguments =
+                        new StaticValue[constructorSignature.Params.Count + 1];
                     constructorArguments[0] = constructed;
                     for (var constructorIndex = constructorArguments.Length - 1;
                          constructorIndex >= 1;
@@ -703,32 +1366,33 @@ public static class StaticStringTableInterpreter
                             return VmFailure(
                                 "newobj consumed more values than the VM stack contains.");
                     }
-                    var construction = machine.Execute(
-                        constructorDefinition, constructorArguments);
+                    var construction = machine.Invoke(constructor, constructorArguments);
                     if (!construction.Succeeded)
                         return VmFailure(
-                            $"constructor {constructorDefinition.MDToken} failed as " +
+                            $"constructor {constructor.FullName} failed as " +
                             $"{construction.Status}: {construction.Diagnostic}");
                     stack.Add(constructed);
                     break;
                 default:
-                    var resolvedOperand = instruction.Operand is int metadataToken &&
-                        (metadataToken & unchecked((int)0xFF000000)) != 0
-                            ? module.ResolveToken(unchecked((uint)metadataToken))?.ToString()
-                            : null;
-                    return VmFailure(
-                        $"reachable opcode {instruction.OpCode} operand " +
-                        $"{FormatVmOperand(instruction.Operand)} ({resolvedOperand ?? "unresolved"}) " +
-                        "has no structurally proven evaluator.");
+                    return VmFailure($"{meaning} has no evaluator here.");
             }
+            if (stack.Count > 0)
+                walked[^1] += $" -> {Brief(stack[^1])}";
             pc = next;
             continue;
 
             (bool Success, int Steps, string Diagnostic) VmFailure(string reason)
             {
+                DumpWalk(walked);
+                var operand = instruction.Operand is int metadataToken &&
+                    (metadataToken & unchecked((int)0xFF000000)) != 0
+                        ? module.ResolveToken(unchecked((uint)metadataToken))?.ToString()
+                        : null;
                 var message =
                     $"Serialized VM ID 0 stopped at instruction {pc}/{method.Instructions.Count}, " +
-                    $"opcode {instruction.OpCode}, stackDepth={stack.Count}, steps={steps}: {reason} " +
+                    $"opcode {instruction.OpCode} operand " +
+                    $"{FormatVmOperand(instruction.Operand)}{(operand is null ? null : $" ({operand})")}" +
+                    $", stackDepth={stack.Count}, steps={steps}: {reason} " +
                     $"Trail={string.Join(" ", trail.Select(index =>
                         $"{index}:{method.Instructions[index].OpCode}"))} " +
                     $"Window={string.Join(" ", method.Instructions.Skip(Math.Max(0, pc - 6)).Take(13)
@@ -739,10 +1403,45 @@ public static class StaticStringTableInterpreter
             }
         }
 
+        DumpWalk(walked);
         if (steps >= maximumSteps)
             return (false, steps,
                 $"Serialized VM ID 0 exceeded {maximumSteps} evaluator steps.");
         return (true, steps, string.Empty);
+    }
+
+    // EXPERIMENT: one value, short enough to sit at the end of a line of the walk.
+    private static string Brief(StaticValue value) => value.Kind switch
+    {
+        StaticValueKind.Int32 or StaticValueKind.Int64 => $"{value.AsInt64()}",
+        StaticValueKind.HeapReference => $"heap{value.HeapId}",
+        _ => $"{value.Kind}"
+    };
+
+    // EXPERIMENT, alongside REACTORUNPACK_VM_NUMBERING: the walk of a reading that stopped is the
+    // only way to see which operation it misread, so every exit writes one where asked to.
+    private static void DumpWalk(List<string> walked)
+    {
+        if (Environment.GetEnvironmentVariable("REACTORUNPACK_VM_DUMP") is { Length: > 0 } where)
+            File.AppendAllLines(Path.Combine(where, "walked.txt"), walked);
+    }
+
+    // EXPERIMENT: the key and the initialization vector are locals of the virtual frame, so the
+    // frame at the end of a reading is where a wrong one shows itself.
+    private static void DumpLocals(StaticMachine machine, StaticValue[] locals)
+    {
+        if (Environment.GetEnvironmentVariable("REACTORUNPACK_VM_DUMP") is not { Length: > 0 } where)
+            return;
+        File.AppendAllLines(Path.Combine(where, "locals.txt"),
+            locals.Select((local, index) =>
+            {
+                var bytes = local.Kind == StaticValueKind.HeapReference
+                    ? machine.State.Heap.GetBytesSnapshot(local)
+                    : null;
+                return $"loc{index} {local.Kind}" +
+                    (local.IsInteger ? $" {local.AsInt64()}" : null) +
+                    (bytes is null ? null : $" {bytes.Length} bytes {Convert.ToHexString(bytes)}");
+            }));
     }
 
     private static bool TryVmTruth(StaticValue value, out bool truth)
@@ -768,31 +1467,33 @@ public static class StaticStringTableInterpreter
     }
 
     internal static bool TryEvaluateVmIntegerBinary(
-        byte opcode,
+        VmMeaning meaning,
         long left,
         long right,
         out long result)
     {
-        result = opcode switch
+        result = meaning switch
         {
-            24 => left >> ((int)right & 0x3F),
-            54 => unchecked(left << ((int)right & 0x3F)),
-            58 => left ^ right,
-            60 => unchecked(left - right),
-            68 => unchecked(left + right),
+            VmMeaning.ShiftRight => left >> ((int)right & 0x3F),
+            VmMeaning.ShiftLeft => unchecked(left << ((int)right & 0x3F)),
+            VmMeaning.ExclusiveOr => left ^ right,
+            VmMeaning.Subtract => unchecked(left - right),
+            VmMeaning.Add => unchecked(left + right),
             _ => 0
         };
-        return opcode is 24 or 54 or 58 or 60 or 68;
+        return meaning is VmMeaning.ShiftRight or VmMeaning.ShiftLeft or VmMeaning.ExclusiveOr
+            or VmMeaning.Subtract or VmMeaning.Add;
     }
 
     internal static bool TryEvaluateVmControlFlow(
-        byte opcode,
+        VmMeaning meaning,
         out int handlerInstructionPointer,
         out bool returns)
     {
-        handlerInstructionPointer = opcode == 91 ? -3 : 0;
-        returns = opcode == 91 && handlerInstructionPointer + 1 <= -2;
-        return opcode == 91;
+        var ends = meaning == VmMeaning.Return;
+        handlerInstructionPointer = ends ? -3 : 0;
+        returns = ends && handlerInstructionPointer + 1 <= -2;
+        return ends;
     }
 
     private static int ReadVmInteger(byte[] bytes, ref int cursor)
@@ -932,21 +1633,25 @@ public static class StaticStringTableInterpreter
     {
         private readonly IStaticIntrinsicRegistry _defaults;
         private readonly IReadOnlyDictionary<string, IMethod> _targets;
+        private readonly IReadOnlyList<(FieldDef Field, IMethod Target)> _bindings;
         private readonly ModuleDefMD _module;
 
         private ProxyIntrinsicRegistry(
             IStaticIntrinsicRegistry defaults,
             IReadOnlyDictionary<string, IMethod> targets,
+            IReadOnlyList<(FieldDef Field, IMethod Target)> bindings,
             ModuleDefMD module)
         {
             _defaults = defaults;
             _targets = targets;
+            _bindings = bindings;
             _module = module;
         }
 
         public static ProxyIntrinsicRegistry Create(ModuleDefMD module)
         {
             var targets = new Dictionary<string, IMethod>(StringComparer.Ordinal);
+            var bindings = new List<(FieldDef, IMethod)>();
             var facts = ReactorStructureDetector.Analyze(module);
             if (StructuralStreamDiscovery.TryDiscoverProxyProfile(
                     module, facts, out var profile) && profile is not null)
@@ -956,14 +1661,57 @@ public static class StaticStringTableInterpreter
                     if (module.ResolveToken(binding.FieldToken) is not FieldDef field ||
                         module.ResolveToken(binding.TargetToken) is not IMethod target)
                         continue;
+                    bindings.Add((field, target));
                     var delegateType = field.FieldSig?.Type.RemovePinnedAndModifiers().FullName;
                     if (!string.IsNullOrEmpty(delegateType))
                         targets.TryAdd(delegateType, target);
                 }
             }
             return new ProxyIntrinsicRegistry(
-                StaticIntrinsicRegistry.CreateDefault(), targets, module);
+                StaticIntrinsicRegistry.CreateDefault(), targets, bindings, module);
         }
+
+        /// <summary>
+        /// Puts each decoded proxy delegate in the field the module reads it from.
+        /// </summary>
+        /// <remarks>
+        /// A build gives one delegate type to every call of a given signature and one field to every
+        /// call site, so a hundred fields can share a type and stand for a hundred different methods.
+        /// The field is therefore the only thing that says which method a call meant, and it is known
+        /// here: the proxy resource was decoded before the run started. Seeding the fields lets the
+        /// object a call site loads carry its own answer, so the delegate the module invokes and the
+        /// method the machine runs are the same one.
+        ///
+        /// Without this the run would have to guess the target from the delegate's type, which is
+        /// right only for a type used once and silently wrong the rest of the time. Nothing about the
+        /// module is assumed: a field left unseeded is one the decoder did not account for, and a call
+        /// through it still stops rather than being sent somewhere plausible.
+        /// </remarks>
+        public void Bind(StaticMachine machine)
+        {
+            foreach (var (field, target) in _bindings)
+            {
+                if (!machine.State.Heap.TryAllocateObject(
+                        field.FieldSig?.Type.RemovePinnedAndModifiers().FullName ?? "System.Delegate",
+                        out var bound))
+                {
+                    return;
+                }
+
+                machine.State.Heap.TrySetModelValue(bound, ProxyTargetKey, target);
+                machine.State.WriteStaticField(field, bound);
+            }
+        }
+
+        /// <summary>What a seeded proxy delegate remembers about the method it stands for.</summary>
+        /// <remarks>
+        /// Deliberately not the key the machine puts on delegates it watched being constructed. Those
+        /// carry a receiver and are called with it prepended; these are what
+        /// <c>Delegate.CreateDelegate</c> returns for a method resolved from a token, where the
+        /// instance, if there is one, is the first of the invocation's own arguments. Sharing a key
+        /// would invite the machine to call one as though it were the other.
+        /// </remarks>
+        internal const string ProxyTargetKey = "ReactorProxyTarget";
 
         public bool TryResolve(IMethod method, out IStaticIntrinsic intrinsic)
         {
@@ -1175,10 +1923,33 @@ public static class StaticStringTableInterpreter
 
     private sealed class ProxyIntrinsic(
         IStaticIntrinsicRegistry defaults,
-        IMethod target,
+        IMethod fallback,
         ModuleDefMD module) : IStaticIntrinsic
     {
         public bool Matches(IMethod method) => true;
+
+        /// <summary>
+        /// Which reflection type the runtime would hand back for a resolved token.
+        /// </summary>
+        /// <remarks>
+        /// <c>ResolveMethod</c> is declared as returning a <c>MethodBase</c> and never returns one:
+        /// what comes back is a <c>ConstructorInfo</c> or a <c>MethodInfo</c>, and the caller casts to
+        /// whichever it expects. Modelling the declared type instead of the real one makes every such
+        /// cast fail, which is worse than it sounds — the failure is a null the program then works
+        /// with, so the run continues and breaks somewhere with no connection to this call. The token
+        /// says which of the two it is, so there is nothing to guess.
+        /// </remarks>
+        private static string Reflected(object resolved) => resolved switch
+        {
+            TypeDef or TypeRef or TypeSpec => "System.Type",
+            FieldDef or MemberRef { IsFieldRef: true } => "System.Reflection.FieldInfo",
+            MethodDef { IsConstructor: true } or
+                MemberRef { IsMethodRef: true, Name.String: ".ctor" or ".cctor" } =>
+                "System.Reflection.ConstructorInfo",
+            MethodDef or MethodSpec or MemberRef { IsMethodRef: true } =>
+                "System.Reflection.MethodInfo",
+            _ => "System.Reflection.MemberInfo"
+        };
 
         public IntrinsicResult Invoke(
             IntrinsicContext context,
@@ -1188,6 +1959,16 @@ public static class StaticStringTableInterpreter
             if (arguments.Count == 0)
                 return IntrinsicResult.Invalid("A proxy invocation has no delegate instance.");
             var forwarded = arguments.Skip(1).ToArray();
+            // The delegate itself knows what it was bound to whenever it came from a seeded field,
+            // which is the only account of this call that distinguishes it from every other call of
+            // the same signature. Its type is a last resort, and correct only where the build gave
+            // that type a single binding.
+            var target =
+                context.State.Heap.TryGetModelValue<IMethod>(
+                    arguments[0], ProxyIntrinsicRegistry.ProxyTargetKey, out var declared) &&
+                declared is not null
+                    ? declared
+                    : fallback;
             if (target.DeclaringType.FullName == "System.Threading.Monitor")
             {
                 if (target.Name == "Enter" && forwarded.Length == 2 &&
@@ -1245,10 +2026,9 @@ public static class StaticStringTableInterpreter
                         $"Metadata token 0x{forwarded[1].AsInt32():X8} did not resolve.");
                 var runtimeType = targetName switch
                 {
-                    "ResolveMethod" => "System.Reflection.MethodBase",
+                    "ResolveMethod" or "ResolveMember" => Reflected(resolved),
                     "ResolveField" => "System.Reflection.FieldInfo",
                     "ResolveType" => "System.Type",
-                    "ResolveMember" => "System.Reflection.MemberInfo",
                     _ => string.Empty
                 };
                 if (runtimeType.Length == 0 ||
@@ -1381,8 +2161,16 @@ public static class StaticStringTableInterpreter
                 return IntrinsicResult.Completed(StaticValue.Null);
             }
             if (!defaults.TryResolve(target, out var intrinsic))
+            {
+                // Not every proxy stands in front of the framework. A build can route one of its
+                // own methods through the same delegate, and that method is not something to model:
+                // it is in the file, so the machine runs it as it would any other call — including
+                // when the delegate names an abstract method and the object decides what runs.
+                if (target.ResolveMethodDef() is not null && context.Call is { } call)
+                    return call(target, forwarded);
                 return IntrinsicResult.Invalid(
                     $"Proxy target {target.FullName} is not a supported static intrinsic.");
+            }
             return intrinsic.Invoke(context, target, forwarded);
         }
 

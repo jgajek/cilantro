@@ -96,6 +96,35 @@ public sealed class StaticMachine
             State.Heap.AllocatedBytes);
     }
 
+    /// <summary>
+    /// Performs one call the way the machine's own call instruction performs one.
+    /// </summary>
+    /// <remarks>
+    /// A protector's virtual program is a list of operations rather than instructions, so whatever
+    /// steps through it is not this machine's instruction loop. The calls it makes are still this
+    /// machine's calls: a body in the module is run, an override is dispatched to the type the
+    /// receiver turned out to be, and everything else is offered to the models. Nothing about that
+    /// belongs to the instruction loop, and a reader that had to decide it again would be a second
+    /// answer to a question with one answer — which is how a framework type comes to be modeled in
+    /// one reading and refused in another.
+    /// </remarks>
+    /// <param name="method">The method the call names, resolved or not.</param>
+    /// <param name="arguments">Its arguments, the receiver first where it has one.</param>
+    public StaticExecutionResult Invoke(
+        IMethod method,
+        IReadOnlyList<StaticValue>? arguments = null)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        var budget = new StaticWorkBudget(_limits.MaximumSteps);
+        var result = Reenter(method, arguments ?? [], budget, 0);
+        return new StaticExecutionResult(
+            result.Status,
+            result.Value,
+            result.Diagnostic,
+            budget.ConsumedSteps,
+            State.Heap.AllocatedBytes);
+    }
+
     // Every frame is tracked so that side effects and loader observations can be attributed to the
     // call subtree that produced them, which is what later passes need in order to prove what is
     // safe to remove.
@@ -949,6 +978,10 @@ public sealed class StaticMachine
                             }
                             if (instruction.OpCode.Code == Code.Isinst)
                             {
+                                if (Declined(value, expected, instruction))
+                                    throw new InvalidOperationException(
+                                        $"Whether this is a {expected} cannot be read from the " +
+                                        "metadata in hand, so the test was not answered.");
                                 stack.Add(StaticValue.Null);
                                 break;
                             }
@@ -2090,6 +2123,62 @@ public sealed class StaticMachine
     /// models, the type questions, the enum handling — sees the type the program is actually working
     /// with and needs to know nothing about generics.
     /// </remarks>
+    /// <summary>
+    /// Discloses a type test the machine answered no to without being able to settle it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>isinst</c> answering null is a legitimate answer and also the machine's most dangerous one.
+    /// The program takes it as a fact about its own object and acts on it, so where the machine said no
+    /// only because it could not tell, the run continues down a path the program would never have
+    /// taken and fails somewhere else entirely — most often at the first field read of the null.
+    /// Nothing about that later failure points back here, which is what makes this worth a line in the
+    /// ledger rather than a silent answer.
+    /// </para>
+    /// <para>
+    /// Only the unsettled ones. A test whose answer the hierarchy gives is the program's own logic —
+    /// an engine asking an object which of its dozen instruction kinds it is will be told no eleven
+    /// times, and reporting those would bury the one that matters in the eleven that do not.
+    /// </para>
+    /// </remarks>
+    /// <returns>Whether a run being asked to prove itself should refuse rather than answer no.</returns>
+    private bool Declined(StaticValue value, string? expected, Instruction instruction)
+    {
+        var named = State.Heap.TryGetRuntimeTypeName(value, out var actual) && actual is not null;
+        if (named && Settles(actual, expected))
+            return false;
+        var key = $"isinst:{(named ? actual : "unrecorded")}->{expected ?? "?"}";
+        var detail = named
+            ? $"Whether a {actual} is a {expected} could not be read from the metadata in hand."
+            : $"Something the machine never recorded a type for was asked whether it is a {expected}.";
+        State.Blockers.Site = (_frames.Count != 0 ? _frames[^1] : null, instruction);
+        if (State.Strict)
+        {
+            State.Blockers.Record(BlockerKind.UnknownValue, key, detail);
+            return true;
+        }
+
+        State.Blockers.Continued(
+            BlockerKind.UnknownValue, key, $"{detail} The test answered no.");
+        return false;
+    }
+
+    /// <summary>Whether the hierarchy in hand can answer the question at all.</summary>
+    /// <remarks>
+    /// Asked of whatever is in hand rather than only of a machine that was told which module it is
+    /// reading. Most questions of this kind are between two of the framework's own types — an
+    /// enumerator at the end of a <c>foreach</c> being asked whether it wants disposing is the
+    /// commonest by far — and the framework answers those whether a subject module was named or
+    /// not. Requiring one turned every such test into an unsettled one, which a run asked to prove
+    /// itself then stopped on, in the epilogue of an ordinary loop.
+    /// </remarks>
+    private bool Settles(string? actual, string? expected) =>
+        Ancestry.Reaches(
+            State.ModuleMetadata is { } metadata ? Searchable(metadata) : State.TrustedModules,
+            State.ModuleMetadata,
+            actual,
+            expected) is not null;
+
     /// <summary>Whether what is on the stack can stand as an instance of the named type.</summary>
     private bool Castable(StaticValue value, string? expected, ITypeDefOrRef? named) =>
         expected == "System.Object" ||
@@ -2186,6 +2275,11 @@ public sealed class StaticMachine
     /// Reflection reaches framework methods as readily as the file's own, so a call arriving here
     /// with no body to run is not a failure — it is a call the machine already knows how to answer
     /// by other means, and it is answered the same way a direct call to it would be.
+    ///
+    /// A method named here can also be one no instance ever runs: an abstract or overridden one,
+    /// where what runs is decided by the object it is called on. Reflection and the protector's own
+    /// delegates both name methods that way, and both mean the same thing a <c>callvirt</c> means,
+    /// so the object is asked before the name is given up on.
     /// </remarks>
     private IntrinsicResult Reenter(
         IMethod method,
@@ -2197,6 +2291,17 @@ public sealed class StaticMachine
         {
             var result = ExecuteFrame(
                 definition, [.. arguments], budget, depth + 1, GenericScope.For(method, null));
+            return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
+        }
+
+        if (method.ResolveMethodDef() is { IsVirtual: true } declared &&
+            !declared.IsStatic &&
+            arguments.Count > 0 &&
+            method.DeclaringType?.Module is { } module &&
+            ResolveVirtualTarget(method, arguments[0], module) is { } dispatched)
+        {
+            var result = ExecuteFrame(
+                dispatched, [.. arguments], budget, depth + 1, GenericScope.For(method, null));
             return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
         }
 
