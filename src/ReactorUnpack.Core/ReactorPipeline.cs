@@ -532,7 +532,7 @@ public sealed record PipelineResult(
 
 public sealed class ReactorPipeline
 {
-    public const string Version = "0.2.0";
+    public const string Version = "0.3.0";
 
     /// <summary>
     /// How everything the tool writes as JSON is written, so that all of it reads the same way.
