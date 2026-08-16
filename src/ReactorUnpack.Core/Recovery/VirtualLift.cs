@@ -366,7 +366,7 @@ public static class VirtualLift
     }
 
     /// <summary>The classes an assembly's own metadata arrives in when a program reaches for it.</summary>
-    private static readonly HashSet<string> Reflected = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> Reflected = new(StringComparer.Ordinal)
     {
         "System.Type",
         "System.RuntimeType",
@@ -380,7 +380,7 @@ public static class VirtualLift
     };
 
     /// <summary>What the assembly's string heap holds at an offset, where it holds anything.</summary>
-    private static string? Says(long value, ModuleDef module)
+    internal static string? Says(long value, ModuleDef module)
     {
         if (value is < 0 or > uint.MaxValue || module is not ModuleDefMD image)
             return null;
@@ -602,7 +602,7 @@ public static class VirtualLift
     /// accounts for the measurement, and if none of them does then it is something else and stays
     /// unread.
     /// </remarks>
-    private static HashSet<int> Calling(VirtualProgram program, ModuleDef module)
+    internal static HashSet<int> Calling(VirtualProgram program, ModuleDef module)
     {
         var named = new Dictionary<int, List<(int Pops, int Pushes)>>();
         var refused = new HashSet<int>();

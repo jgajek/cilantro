@@ -603,6 +603,7 @@ public sealed class ReactorPipeline
         // Reading the engine is what learns this build's numbering, so the one reading of the string
         // table that could not assume a numbering is only possible from here on.
         new StringTableRelearningPass(),
+        new StringLookupRecoveryPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
         // Building the read-back methods precedes cleanup, which would otherwise delete the very
@@ -2045,6 +2046,26 @@ public sealed class StringRecoveryPass : DeobfuscationPass
             replacements.Add((site.Method, site.Instruction, matchingRecords[0].Value));
         }
 
+        return Rewrite(context, pass, aliases, callSites.Length, replacements);
+    }
+
+    /// <summary>
+    /// Turns every proven resolver call into the string it hands back, all of them or none.
+    /// </summary>
+    /// <remarks>
+    /// Split out from the proving above because a table of bytes is not the only thing a proof can
+    /// come from. Where the strings are kept somewhere no run of bytes describes, they are read by
+    /// asking the resolver instead, and what is then owed is this: the same all-or-nothing rewrite,
+    /// the same refusal to leave a reference to the resolver behind, and the same verification of
+    /// the module before anything is committed.
+    /// </remarks>
+    internal static (PassStatus, int, IReadOnlyList<string>) Rewrite(
+        ArtifactContext context,
+        string pass,
+        IReadOnlyCollection<MethodDef> aliases,
+        int callSiteCount,
+        IReadOnlyList<(MethodDef Method, Instruction Call, string Value)> replacements)
+    {
         var transactions = replacements.Select(item => item.Method)
             .Distinct()
             .ToDictionary(method => method, method => new BodyMutationTransaction(method));
@@ -2103,8 +2124,13 @@ public sealed class StringRecoveryPass : DeobfuscationPass
                 "restore-string",
                 $"{replacement.Method.MDToken} IL_{replacement.Call.Offset:X4}",
                 JsonSerializer.Serialize(replacement.Value)));
-        context.SetFact("strings.callSites", callSites.Length);
-        context.SetFact("strings.replacedSites", replacements.Count);
+        // Added to rather than set, because a module can keep its strings in more than one place and
+        // each reading accounts for its own sites. A count that overwrote would report the last
+        // reading's work as the whole run's.
+        context.TryGetFact<int>("strings.callSites", out var countedBefore);
+        context.TryGetFact<int>("strings.replacedSites", out var restoredBefore);
+        context.SetFact("strings.callSites", countedBefore + callSiteCount);
+        context.SetFact("strings.replacedSites", restoredBefore + replacements.Count);
         // Every call the resolver and its aliases existed to serve is now an ldstr, which leaves
         // the decoding machinery behind them with nothing to decode either.
         RecoveryOrphans.DeclareSubtree(context, aliases);

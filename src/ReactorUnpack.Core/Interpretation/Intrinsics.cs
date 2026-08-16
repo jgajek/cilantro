@@ -3965,7 +3965,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 or "get_IsGenericParameter" or "get_BaseType" or "GetInterfaces"
                 or "get_IsGenericTypeDefinition" or "get_ContainsGenericParameters"
                 or "get_AssemblyQualifiedName" or "get_MemberType" or "GetGenericTypeDefinition"
-                or "GetTypeCode" &&
+                or "GetTypeCode"
+                or "MakeByRefType" or "MakePointerType" or "MakeArrayType" &&
             arguments.Count == 1 &&
             heap.TryGetModelValue<object>(arguments[0], "Metadata", out var described) &&
             described is not null)
@@ -4272,6 +4273,23 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                     : heap.TryAllocateType(typeName[..^shape], out var held)
                         ? IntrinsicResult.Completed(held)
                         : IntrinsicResult.Invalid("Could not allocate an element type.");
+            // Naming the shape built around a type is the inverse of taking it apart above, and the
+            // machine holds a type by its name, so each of these is the suffix the framework itself
+            // spells. Code that rebuilds a call from metadata reaches for these whenever a parameter
+            // is by reference or an array, and without them a signature with one is unreachable
+            // however well the rest of the signature is read.
+            case "MakeByRefType":
+            case "MakePointerType":
+            case "MakeArrayType":
+                var suffix = question switch
+                {
+                    "MakeByRefType" => "&",
+                    "MakePointerType" => "*",
+                    _ => "[]"
+                };
+                return heap.TryAllocateType(typeName + suffix, out var built)
+                    ? IntrinsicResult.Completed(built)
+                    : IntrinsicResult.Invalid("Could not allocate a constructed type.");
         }
 
         if (WellKnown(typeName, subject) is not { } known)
@@ -7991,6 +8009,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             context.State.Heap.TrySetModelValue(resolved, "Metadata", member);
             if (member is TypeDef or FieldDef or MethodDef)
                 context.State.Heap.TrySetModelValue(resolved, HomeModuleMark, true);
+            // A member reached by token carries the signature this file writes down for it, whether
+            // it is defined here or only referred to. That is the shape read rather than assumed, so
+            // a call assembled around it is one the machine can pop the right number of values for,
+            // and saying so here is what lets a runtime that rebuilds its calls by token be followed
+            // through the assembling.
+            if (member is IMethod { MethodSig: not null })
+            {
+                context.State.Heap.TrySetModelValue(
+                    resolved, ReflectionEmitIntrinsic.Confirmed, true);
+            }
+
             return IntrinsicResult.Completed(resolved);
         }
         // A literal reached by token is the same literal the file spells out in its user-string

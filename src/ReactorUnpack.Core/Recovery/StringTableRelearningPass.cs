@@ -77,12 +77,11 @@ public sealed class StringTableRelearningPass : DeobfuscationPass
         var diagnostics = new List<string>();
         foreach (var program in programs)
         {
-            var learned = program.Operations;
-            if (learned.Count == 0)
+            if (program.Operations.Count == 0)
                 continue;
             if (!StaticStringTableInterpreter.TryCapture(
                     context.Module, context.OriginalImage, resolvers[0], out var capture,
-                    out var diagnostic, BootstrapMachine.Environment(context), learned) ||
+                    out var diagnostic, BootstrapMachine.Environment(context), program) ||
                 capture is null)
             {
                 diagnostics.Add(

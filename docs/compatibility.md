@@ -834,6 +834,42 @@ A table must be unique and strictly length-framed UTF-16, and every reachable
 resolver use must have a proven offset. Replacements are atomic across the
 assembly; one unresolved use causes zero string edits.
 
+#### Strings kept where no table can be framed
+
+A sample is often protected twice — once by whoever wrote it and again by
+whoever sold them Reactor — and the layer underneath does not have to keep its
+strings anywhere a run of bytes describes. In the `Lqcuzgc` payload it decrypts
+them once into a `Hashtable` parked in a slot of the application domain, and
+every use is a call passing the number the string was filed under. There is no
+table for the reading above to frame, so that reading finds nothing and, on its
+own, reports the seventeen strings of Reactor's own layer as seventeen of
+seventeen: true of the layer it read, wrong about the file.
+
+So a second reading does not look for the table. It asks the method that fetches
+the strings — the one thing that knows where they are — for each number that
+reaches it, interpreting it in the same bounded machine as everything else, and
+takes the answer. Its gate is what it can prove rather than what it recognizes:
+the declaring type must be one the assembly does not show the outside world,
+every call reaching the method must pass a number the slice can settle, and each
+answer must be a string the machine holds concretely. Anything else leaves that
+lookup entirely alone, because a lookup half restored leaves the rest of its
+calls pointing at machinery the cleanup afterwards is entitled to delete.
+
+The reading runs after Reactor's own strings are back, and the ordering is not a
+preference. The inner layer reaches its own resource through a Reactor string, so
+asking it anything earlier means asking through the virtual machine, and the
+machine then has to interpret the protector's interpreter running the protector's
+loader — which on this fixture walks as far as the payload's entry-point call
+before stopping. Once the outer layer is off, the same question is ordinary code
+and is answered in fourteen seconds. `Lqcuzgc` yields 155 strings this way for
+172 across both layers, among them the sandbox, debugger and hypervisor names the
+sample checks for and the base64 protobuf holding its reporting endpoint.
+
+Uses that take the method's address for a delegate rather than calling it are
+reported and not counted, because no rewrite of call sites could ever bring that
+number down; uses that are calls and were not read are counted, so a run cannot
+report every string a file has as recovered when a layer of them was untouched.
+
 ## Verification gates
 
 Before emission, the tool checks:

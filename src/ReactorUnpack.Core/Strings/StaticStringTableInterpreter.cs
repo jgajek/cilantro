@@ -60,15 +60,20 @@ public static class StaticStringTableInterpreter
         BranchIfLessOrEqual,
         BranchByTable,
         Return,
+        Throw,
         Add,
         Subtract,
+        Multiply,
         ExclusiveOr,
         ShiftLeft,
         ShiftRight,
+        CompareEqual,
         Negate,
         Complement,
         Duplicate,
         Discard,
+        PushString,
+        PushToken,
         ConvertToByte,
         ConvertToInt32,
         ConvertToUInt32,
@@ -105,14 +110,17 @@ public static class StaticStringTableInterpreter
         ["branch by table"] = VmMeaning.BranchByTable,
         ["returns the value it takes"] = VmMeaning.Return,
         ["stops the program"] = VmMeaning.Return,
+        [VirtualSemantics.Throwing] = VmMeaning.Throw,
         ["dup"] = VmMeaning.Duplicate,
         ["discards what it takes"] = VmMeaning.Discard,
         ["does nothing at all"] = VmMeaning.Nothing,
         ["add"] = VmMeaning.Add,
         ["sub"] = VmMeaning.Subtract,
+        ["mul"] = VmMeaning.Multiply,
         ["xor"] = VmMeaning.ExclusiveOr,
         ["shl"] = VmMeaning.ShiftLeft,
         ["shr"] = VmMeaning.ShiftRight,
+        ["ceq"] = VmMeaning.CompareEqual,
         ["neg"] = VmMeaning.Negate,
         ["not"] = VmMeaning.Complement
     };
@@ -171,17 +179,28 @@ public static class StaticStringTableInterpreter
     /// would put one build's meaning on another build's number, which is the failure this is here
     /// to prevent, so an operation the probe did not name is left out and the evaluation stops at
     /// it if the program uses it.
+    ///
+    /// The program itself settles two kinds the trials cannot. An operation carrying a method the
+    /// assembly names, measured taking and leaving exactly what that method's signature says, is a
+    /// call of it; and one that only ever leaves a value of a kind, carrying a number that names
+    /// something of that kind in the assembly, is fetching that thing. Both are read off this
+    /// build's own program rather than assumed, and both are what the listing already says of the
+    /// same operations, so the evaluator and the listing agree by construction.
     /// </remarks>
     internal static Dictionary<int, VmReading> Numbering(
-        IReadOnlyDictionary<int, VirtualOperation> operations,
+        VirtualProgram program,
+        ModuleDef module,
         out IReadOnlyList<string> unnamed)
     {
-        ArgumentNullException.ThrowIfNull(operations);
+        ArgumentNullException.ThrowIfNull(program);
+        ArgumentNullException.ThrowIfNull(module);
+        var calls = VirtualLift.Calling(program, module);
         var numbering = new Dictionary<int, VmReading>();
         var left = new List<string>();
-        foreach (var (opcode, operation) in operations.OrderBy(entry => entry.Key))
+        foreach (var (opcode, operation) in program.Operations.OrderBy(entry => entry.Key))
         {
-            var meaning = Meaning(operation);
+            var meaning = Meaning(operation) ??
+                (calls.Contains(opcode) ? VmMeaning.Call : Fetches(program, operation, opcode, module));
             if (meaning is { } established)
                 numbering[opcode] = new VmReading(established, Bits(operation));
             else
@@ -189,6 +208,61 @@ public static class StaticStringTableInterpreter
         }
         unnamed = left;
         return numbering;
+    }
+
+    /// <summary>
+    /// What an operation nothing named is fetching, where the kind of thing it leaves and the
+    /// number it carries agree about what that is.
+    /// </summary>
+    /// <remarks>
+    /// Every sighting has to agree, because one operand that names nothing is enough to say the
+    /// number is not what the reading takes it for. The evaluator resolves each operand again when
+    /// it performs the operation, so nothing here is relied on twice.
+    /// </remarks>
+    private static VmMeaning? Fetches(
+        VirtualProgram program,
+        VirtualOperation operation,
+        int opcode,
+        ModuleDef module)
+    {
+        if (operation.Name is null || operation.Name != operation.Leaving)
+            return null;
+        var fetching = operation.Left switch
+        {
+            "System.String" => VmMeaning.PushString,
+            { } kind when VirtualLift.Reflected.Contains(kind) => VmMeaning.PushToken,
+            _ => (VmMeaning?)null
+        };
+        if (fetching is not { } fetched)
+            return null;
+        var sightings = 0;
+        foreach (var instruction in program.Instructions.Where(one => one.Opcode == opcode))
+        {
+            if (instruction.Operand is not VirtualOperand.Number number)
+                return null;
+            var named = fetched == VmMeaning.PushString
+                ? VirtualLift.Says(number.Value, module) is not null
+                : Resolved(number.Value, module) is not null;
+            if (!named)
+                return null;
+            sightings++;
+        }
+        return sightings > 0 ? fetched : null;
+    }
+
+    /// <summary>What a number names in the assembly, where it names anything at all.</summary>
+    private static IMDTokenProvider? Resolved(long value, ModuleDef module)
+    {
+        if (value is < int.MinValue or > int.MaxValue || module is not ModuleDefMD image)
+            return null;
+        try
+        {
+            return image.ResolveToken(unchecked((int)value));
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>How wide the value an operation leaves is, as the trials found it held.</summary>
@@ -398,14 +472,14 @@ public static class StaticStringTableInterpreter
         out StaticStringTableCapture? capture,
         out string diagnostic,
         RunEnvironment? environment = null,
-        IReadOnlyDictionary<int, VirtualOperation>? learned = null)
+        VirtualProgram? learned = null)
     {
         capture = null;
 
         // Where the caller has had the engine read, this build's own numbering is used and nothing
         // is carried over from the numbering this reading was written against.
         IReadOnlyList<string> unnamed = [];
-        var numbering = learned is null ? null : Numbering(learned, out unnamed);
+        var numbering = learned is null ? null : Numbering(learned, module, out unnamed);
         var resourceName = FindResourceName(resolver);
         var initializer = FindInitializer(resolver);
         if (resourceName is null || initializer is null)
@@ -1085,6 +1159,23 @@ public static class StaticStringTableInterpreter
                 case VmMeaning.PushNull:
                     stack.Add(StaticValue.Null);
                     break;
+                case VmMeaning.PushString:
+                    if (instruction.Operand is not int said ||
+                        VirtualLift.Says(said, module) is not { } literal ||
+                        !machine.State.Heap.TryAllocateString(literal, out var pushedText))
+                        return VmFailure("ldstr operand does not name a string of this assembly.");
+                    stack.Add(pushedText);
+                    break;
+                case VmMeaning.PushToken:
+                    // The machine's own ldtoken hands on the metadata itself and lets the framework
+                    // method that follows turn it into the class the program wanted, so this hands on
+                    // the same thing rather than a second modelling of the same idea.
+                    if (instruction.Operand is not int named ||
+                        Resolved(named, module) is not { } member ||
+                        !machine.State.Heap.TryAllocateMetadataHandle(member, out var handle))
+                        return VmFailure("ldtoken operand does not name a member of this assembly.");
+                    stack.Add(handle);
+                    break;
                 case VmMeaning.ShiftRight:
                     if (!Pop(out var shiftSignedRight) || !Pop(out var shiftSignedLeft) ||
                         !shiftSignedLeft.IsInteger || !shiftSignedRight.IsInteger ||
@@ -1112,6 +1203,15 @@ public static class StaticStringTableInterpreter
                     DumpWalk(walked);
                     DumpLocals(machine, locals);
                     return (true, steps, string.Empty);
+                case VmMeaning.Throw:
+                    // A program that throws where it is walked has not built a table, and saying so
+                    // is the whole finding: the operation was performed correctly and what it did
+                    // was end the run. What it threw is on the stack and named by its type.
+                    return VmFailure(
+                        Pop(out var thrown) &&
+                        machine.State.Heap.TryGetRuntimeTypeName(thrown, out var kind)
+                            ? $"the program threw {kind}."
+                            : "the program threw.");
                 case VmMeaning.LoadLocal:
                     if (instruction.Operand is not int loadLocal ||
                         (uint)loadLocal >= (uint)locals.Length)
@@ -1317,6 +1417,25 @@ public static class StaticStringTableInterpreter
                         return VmFailure("add requires two known integers.");
                     stack.Add(Held(addResult));
                     break;
+                case VmMeaning.Multiply:
+                    if (!Pop(out var productRight) || !Pop(out var productLeft) ||
+                        !productLeft.IsInteger || !productRight.IsInteger ||
+                        !TryEvaluateVmIntegerBinary(
+                            meaning, productLeft.AsInt64(), productRight.AsInt64(),
+                            out var product))
+                        return VmFailure("mul requires two known integers.");
+                    stack.Add(Held(product));
+                    break;
+                case VmMeaning.CompareEqual:
+                    if (!Pop(out var equalRight) || !Pop(out var equalLeft))
+                        return VmFailure("ceq requires two values.");
+                    if (!TrySettleSameness(equalLeft, equalRight, out var same))
+                    {
+                        return VmFailure(
+                            $"ceq cannot settle {equalLeft.Kind} against {equalRight.Kind}.");
+                    }
+                    stack.Add(StaticValue.FromInt32(same ? 1 : 0));
+                    break;
                 case VmMeaning.Complement:
                     if (!Pop(out var complement) || !complement.IsInteger)
                         return VmFailure("not requires one known integer.");
@@ -1479,10 +1598,41 @@ public static class StaticStringTableInterpreter
             VmMeaning.ExclusiveOr => left ^ right,
             VmMeaning.Subtract => unchecked(left - right),
             VmMeaning.Add => unchecked(left + right),
+            VmMeaning.Multiply => unchecked(left * right),
             _ => 0
         };
         return meaning is VmMeaning.ShiftRight or VmMeaning.ShiftLeft or VmMeaning.ExclusiveOr
-            or VmMeaning.Subtract or VmMeaning.Add;
+            or VmMeaning.Subtract or VmMeaning.Add or VmMeaning.Multiply;
+    }
+
+    /// <summary>
+    /// Whether two values are the same value, where being the same is a question this can answer.
+    /// </summary>
+    /// <remarks>
+    /// Two numbers are the same when they are equal, and two references when they are the same
+    /// reference — which for the objects modelled here they are exactly when they were allocated
+    /// together, since nothing folds two allocations into one. Anything unknown makes the answer
+    /// unknown rather than false: a comparison of something we could not read is not a comparison
+    /// that failed.
+    /// </remarks>
+    private static bool TrySettleSameness(StaticValue left, StaticValue right, out bool same)
+    {
+        same = false;
+        if (left.IsInteger && right.IsInteger)
+        {
+            same = left.AsInt64() == right.AsInt64();
+            return true;
+        }
+        if (left.Kind == StaticValueKind.Unknown || right.Kind == StaticValueKind.Unknown)
+            return false;
+        if (left.Kind is StaticValueKind.Null or StaticValueKind.HeapReference &&
+            right.Kind is StaticValueKind.Null or StaticValueKind.HeapReference)
+        {
+            same = left.Kind == right.Kind &&
+                (left.Kind == StaticValueKind.Null || left.HeapId == right.HeapId);
+            return true;
+        }
+        return false;
     }
 
     internal static bool TryEvaluateVmControlFlow(
