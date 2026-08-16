@@ -78,6 +78,142 @@ it. Four cells deserve their footnote:
 - **"Detects, refuses"** means the run stops and says what it found, rather than
   writing a mangled file that looks like a result.
 
+## All four on one hard sample
+
+The tables above are read off each project's source. This section is the opposite
+kind of evidence: all four tools run on the same file, with the outputs measured
+rather than taken from what each tool printed about itself.
+
+The file is `81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a`,
+858,112 bytes, the .NET payload out of a Reactor crypter. It is worth using as a
+yardstick because it is protected **twice**: Reactor on the outside, and a second
+obfuscator underneath it that keeps its strings somewhere Reactor tooling has no
+reason to look. Two things about its shape decide the whole result:
+
+1. **Reactor's string table is built by a virtualized method.** The table is not
+   a run of encrypted bytes anyone can decrypt in place. It is produced at run
+   time by `Rj743eA3ha`, a method that is no longer CIL at all — it is 4,854
+   operations of bytecode for a per-build interpreter. To get the table you have
+   to read that program.
+2. **The second layer's strings are behind the first.** Under Reactor there are
+   155 more string sites, fetched from a dictionary parked in a slot of the
+   application domain. The code that fills that dictionary is itself written in
+   Reactor-encrypted strings, so the inner layer only becomes readable after the
+   outer one is already undone.
+
+The input has 36 distinct string literals, 673 types and 3,708 methods.
+
+### What came out
+
+| | ReactorUnpack | NETReactorSlayer | de4dotEx | Krypton |
+| --- | --- | --- | --- | --- |
+| Produced an output file | yes | only with its string stage switched off | only when told which obfuscator | yes |
+| Wall time | 6m 55s | 2.9s | 2.3s | 18s |
+| **Distinct string literals in the output** | **192** | 31 | 8 | **0** |
+| Reactor's own 17 string sites | **all 17** (11 distinct literals) | none | **all 17** (7 of those 11) | none |
+| The inner layer's 155 string sites | **all 155** | none, all 155 left as calls | none, all 155 left as calls | not reached |
+| String lookups left unresolved | **0** | 172 | 155 | n/a, still behind proxies |
+| C2 address, port, campaign ID | **recovered** | no | no | no |
+| The virtualized table builder | **rebuilt, 15,271 instructions** | detected and warned about | type removed | rebuild rejected by its own safety gate |
+| Ran the sample | **no** | yes — and died there | no | attempted, could not on Linux |
+
+The row that decides an analyst's afternoon is the configuration. Only
+ReactorUnpack's output contains this, and it is the answer to "what is this
+thing":
+
+```
+https://logs.uvexio.com    port 8443    campaign 36f871795ba82    TEA key
+/ping  /userinfo  /browser  /crypto  /discord  /application  /plugin
+/filesearch/req  /filesearch/res  /chunk/start  /chunk/data  /chunk/end
+X-Api-Key
+```
+
+...alongside the sample's entire anti-analysis blacklist, which is the other
+thing you want on first contact: `sbiedll.dll`, `cuckoomon.dll`, `x64dbg`,
+`x32dbg`, `windbg`, `ollydbg`, `ida`, `wireshark`, `procmon`, `fiddler`, the
+VMware / VirtualBox / QEMU / Xen / Parallels driver and registry paths, the four
+`SELECT * FROM Win32_*` queries, and the MAC prefixes each hypervisor hands out.
+
+de4dotEx's output keeps the same configuration blob in the form the inner layer
+stored it, `n4Q4kpXa4q8ugJzSr4kii...`, which tells you nothing. Krypton's output
+has no string literals in it at all.
+
+### Why each of the other three stopped where it did
+
+None of this is a bug in those tools. Each stopped for a reason that follows
+from how it is built, and on a sample without the second layer all four would
+look much more alike.
+
+- **NETReactorSlayer** got furthest of the three on Reactor itself — it removed
+  the anti-tamper and anti-debug, fixed 4,562 proxied calls and 13 metadata
+  tokens, and correctly warned `CODE VIRTUALIZATION HAS BEEN DETECTED`. Then it
+  **segfaulted**, writing nothing. The crash is in `StringDecrypter`, which is
+  the stage that reflectively invokes the sample's own decrypter: disable that
+  one stage with `--dec-strings false` and it finishes in 2.9 seconds. So the
+  failure is precisely at the point where it hands control to the malware. Its
+  method decrypter also could not start (`Could not initialize decrypter`),
+  leaving NecroBit in place.
+- **de4dotEx** was the only one to crack Reactor's own string layer without
+  reading the virtual machine, which is a real result. It got there through its
+  own reimplementation of the resource-backed decrypter, clearing all 17 sites
+  and the resolver behind them; 7 of the 8 literals in its output are ones we
+  also recover, the missing 4 being at sites in code it deleted. It then removed
+  the type holding the virtualized method — defensible, since that method is
+  Reactor's own table builder rather than the malware's code — and left all 155
+  inner-layer lookups as calls to a `(int) -> string` method it does not
+  recognise as a string resolver, because no run of bytes in the file looks like
+  a table. Two smaller notes: it identified this Reactor 6 sample as `>= 7.0`,
+  and on automatic detection it crashed in the **Babel** detector before ever
+  reaching Reactor, so it only ran at all once told `-p dr4`.
+- **Krypton** mapped the virtual machine and recompiled both methods, then its
+  own IL safety gate refused to install the big one — `cil issues=26106,
+  dnlib issues=854` against a limit of 512 — which is the honest outcome for a
+  tool whose promise is that the output still runs. Its cleanup stage then
+  stubbed that method's body to a single `ret`. Strings and resources are opt-in
+  and we enabled both; the string stage found a decoder candidate but no call
+  sites, because the calls are still behind Reactor's proxies at that point.
+
+### What this does not show
+
+Read the table as one hard sample, not a ranking.
+
+- **The Linux environment penalised two of them.** Slayer and Krypton both lean
+  on running the sample, and both were run here on Linux under .NET 10, where
+  Reactor's runtime cannot do what it expects. Krypton's helper,
+  `Krypton.Runner.exe`, is a .NET Framework 4.8 executable and simply could not
+  start, so its `HiddenCallRecovery` stage was unavailable and its default run
+  came out byte-identical to one with that stage disabled. **On Windows both
+  would do better than this**, and Slayer's string stage might well succeed
+  outright — that is the whole point of invoking the real decrypter.
+- **We are much slower.** 6m 55s against 2.3s. Three minutes of that is reading
+  the virtual machine; `--no-devirtualize` finishes in 3m 15s with all 172
+  strings still recovered, so the string result does not depend on the rebuild.
+  Interpreting a loader instead of running it costs two to three orders of
+  magnitude more time, every time.
+- **One sample cannot rank renaming, Reactor 7, or native stubs**, all of which
+  the others do better or at all. See [Where ReactorUnpack loses](#where-reactorunpack-loses).
+
+### Reproducing it
+
+Tools built from source at their August 2026 tips, on Linux with .NET 10:
+
+```bash
+# ours
+ReactorUnpack Lqcuzgc.dll
+
+# NETReactorSlayer — omit the flag to reproduce the segfault
+dotnet NETReactorSlayer.CLI.dll Lqcuzgc.dll --dec-strings false --no-pause true
+
+# de4dotEx — without -p dr4 it crashes in an unrelated family's detector
+de4dot -f Lqcuzgc.dll -o out.dll -p dr4
+
+# Krypton — both stages are opt-in
+KRYPTON_STRING_DECRYPT=1 KRYPTON_RESOURCE_DECRYPT=1 dotnet Krypton.dll Lqcuzgc.dll
+```
+
+Literal counts are distinct `ldstr` operands over every method body; unresolved
+lookups are `call`/`callvirt` sites targeting a static `(int) -> string` method.
+
 ## How each one behaves
 
 | | ReactorUnpack | NETReactorSlayer | de4dotEx | Krypton |
@@ -147,9 +283,11 @@ side.
 - **Names.** Slayer and de4dotEx rename the whole de4dot surface, public types
   included. This tool renames only non-public members whose names it can prove
   are generated, so the result is less uniformly readable.
-- **Speed.** Ten to thirty seconds on a normal sample and a minute or two on a
-  virtualized one, against a few seconds for the others. Interpreting the loader
-  is the price of not running it.
+- **Speed.** Ten to thirty seconds on a normal sample, and minutes on a
+  virtualized one — seven of them on the sample measured
+  [above](#all-four-on-one-hard-sample) — against two or three seconds for the
+  others. Interpreting the loader is the price of not running it, and it is a
+  factor of a hundred or more.
 - **A binary you can execute.** Krypton's output is meant to run; this tool's
   cleaned copy is meant to be read, and the virtualized methods built back into
   it are labelled as readings rather than offered as working code.

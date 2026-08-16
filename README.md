@@ -5,7 +5,21 @@ with .NET Reactor — by reading the file, never by running it.**
 
 Open a Reactor-protected sample in dnSpyEx and you get empty methods, no strings,
 and class names like `H1lrRRwH0tOVtn61XvY`. Reactor is a commercial protector
-that malware authors buy to stop exactly what you are about to do.
+that malware authors buy to stop exactly what you are about to do, and it works:
+there is nothing to read, nothing to grep for, and no obvious way in. Worse, the
+part you actually want is usually not in the file at all. It is encrypted inside
+it — the stealer, the loader, the thing that names the family — waiting to be
+unpacked by code you cannot read either.
+
+This hands that back. One command gives you a copy of the assembly you can open
+in a decompiler and read, the payload hidden inside it written out as a file where
+the sample carries one, and a report of what was proved, what was assumed, and
+what could not be done. On a sample that comes out clean, that is the difference
+between a day in a debugger and a couple of minutes of reading.
+
+It is for whoever has a sample and a deadline: an analyst triaging a detonation,
+someone trying to name a family before the sandbox report lands, and pipelines
+with nobody in them to read a summary at all.
 
 ```
 ReactorUnpack suspicious.exe
@@ -46,9 +60,34 @@ No options to get right, no runtime to install, no VM, and nothing executed:
 
 ## Why this one
 
-Four open-source tools deal with .NET Reactor. These are the reasons to reach for
-this one; [docs/parity.md](docs/parity.md) is the full comparison, including
-where it loses.
+Four open-source tools deal with .NET Reactor. Here are all four on the same
+sample — a Reactor crypter payload that is protected twice, with a second
+obfuscator hiding strings underneath Reactor
+([`81cf796c…`](docs/parity.md#all-four-on-one-hard-sample)):
+
+| | ReactorUnpack | [Slayer](https://github.com/SychicBoy/NETReactorSlayer) | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) | [Krypton](https://github.com/dawwinci/krypton-devirtualizer) |
+| --- | --- | --- | --- | --- |
+| Readable strings in the output | **192** | 31 | 8 | 0 |
+| Of the 172 encrypted string sites | **all 172** | none | 17 | none |
+| C2 address, port, campaign ID | **recovered** | no | no | no |
+| Ran the sample | **no** | yes — and crashed there | no | tried to |
+| Time | 6m 55s | 2.9s | 2.3s | 18s |
+
+Only this tool's output names the thing: `https://logs.uvexio.com` on port 8443,
+campaign `36f871795ba82`, and the sample's full anti-analysis blacklist from
+`sbiedll.dll` to `x64dbg`. The 155 strings that carry all of it sit in a layer
+*underneath* Reactor, in a dictionary with no encrypted byte table to find, built
+by code that is itself written in Reactor-encrypted strings. You have to finish
+the outer layer before the inner one is even legible — and Reactor's own table
+here is built by a method that is no longer CIL. That is the case this tool is
+built for.
+
+It is also slower than every alternative by two orders of magnitude, and on
+Windows the two tools that run the sample would do better than they did here.
+[docs/parity.md](docs/parity.md) has the full measurement, the reproduction
+commands, and where this tool loses.
+
+The reasons behind that result:
 
 **Nothing is executed. Not once, not in a helper process.** Most .NET
 deobfuscators load the malware and call its own decryption routines — that is
