@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jgajek/reactor-unpack/schema/error.schema.json",
+  "title": "ReactorUnpack refusal",
+  "description": "What `--json` prints instead of a manifest when the run could not be attempted at all: an unreadable file, a bad option, a declarations file that does not parse. The exit code is 2, as it is without --json.",
+  "type": "object",
+  "required": ["Error", "Schema"],
+  "properties": {
+    "Error": {
+      "description": "What was wrong with what was handed in, in the words a person would have been shown.",
+      "type": "string"
+    },
+    "Schema": {
+      "type": "string",
+      "pattern": "^reactorunpack\\.error/[0-9]+$"
+    }
+  },
+  "additionalProperties": false
+}

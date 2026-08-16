@@ -1,4 +1,5 @@
-﻿using ReactorUnpack.Cli;
+﻿using System.Text.Json;
+using ReactorUnpack.Cli;
 using ReactorUnpack.Core;
 using ReactorUnpack.Core.Corpus;
 using ReactorUnpack.Core.Interpretation;
@@ -23,10 +24,13 @@ internal static class ReactorCommand
             return args.Length == 0 ? 2 : 0;
         }
 
+        // Read before the loop as well as in it, so that a run asking for JSON still answers in JSON
+        // when the thing that went wrong was the command line itself.
+        _json = args.Contains("--json");
         var analyzeOnly = false;
         var failOnPartial = false;
         var removeRuntime = true;
-        var renameSymbols = false;
+        bool? renameSymbols = null;
         var verbose = false;
         string? output = null;
         string? reportDirectory = null;
@@ -34,6 +38,7 @@ internal static class ReactorCommand
         string? declarations = null;
         var allowDeclaredCalls = false;
         var strict = false;
+        bool? devirtualize = null;
         string? input = null;
         var libraries = new List<string>();
 
@@ -56,9 +61,14 @@ internal static class ReactorCommand
                 case "--rename":
                     renameSymbols = true;
                     break;
+                case "--keep-names":
+                    renameSymbols = false;
+                    break;
                 case "-v":
                 case "--verbose":
                     verbose = true;
+                    break;
+                case "--json":
                     break;
                 case "-o":
                 case "--output":
@@ -87,6 +97,12 @@ internal static class ReactorCommand
                     break;
                 case "--strict":
                     strict = true;
+                    break;
+                case "--devirtualize":
+                    devirtualize = true;
+                    break;
+                case "--no-devirtualize":
+                    devirtualize = false;
                     break;
                 default:
                     if (args[index].StartsWith('-'))
@@ -119,7 +135,17 @@ internal static class ReactorCommand
                 LibraryPaths: libraries,
                 DeclarationsPath: declarations,
                 AllowDeclaredCalls: allowDeclaredCalls,
-                Strict: strict));
+                Strict: strict,
+                Devirtualize: devirtualize));
+
+            if (_json)
+            {
+                // Nothing else goes to standard output in this mode: a caller piping it into a
+                // parser should get one object and no prose wrapped around it.
+                Console.WriteLine(JsonSerializer.Serialize(
+                    RunManifest.Of(result), ReactorPipeline.ReportJsonOptions));
+                return result.Success ? 0 : 1;
+            }
 
             if (verbose)
                 Explain.PassLog(result.Report);
@@ -163,8 +189,18 @@ internal static class ReactorCommand
         return true;
     }
 
+    /// <summary>Whether this run answers in JSON, which changes how a refusal is said as well.</summary>
+    private static bool _json;
+
     private static int Fail(string message)
     {
+        if (_json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(
+                new RunFailure(message), ReactorPipeline.ReportJsonOptions));
+            return 2;
+        }
+
         Console.Error.WriteLine($"error: {message}");
         Console.Error.WriteLine("Run ReactorUnpack --help for usage.");
         return 2;
@@ -229,15 +265,30 @@ internal static class ReactorCommand
             That writes suspicious.cleaned.exe beside the input, plus a reactorunpack
             folder holding the full report and any files that were hidden inside.
 
+            By default it does everything that makes the result easier to read: it renames
+            Reactor's generated symbols and, where a method is bytecode for an interpreter,
+            builds that method back into code in the clean copy, marked as the tool's reading
+            rather than something it proved. --strict turns both off and stops wherever a
+            normal run would assume its way past something.
+
             Options:
               -v, --verbose            Show every step the tool took
+                  --json               Print one JSON object instead of the summary, naming
+                                       every file written and what to declare to get further
                   --analyze-only       Report what is there without writing a clean copy
               -o, --output PATH        Write the clean copy somewhere else
                   --report-dir DIR     Write the report somewhere else
                   --keep-runtime       Leave Reactor's own code in place instead of removing it
-                  --rename             Give obfuscated names readable placeholders
+                  --rename             Give obfuscated names readable placeholders (default,
+                                       and how to ask for it in a strict run)
+                  --keep-names         Leave Reactor's generated names as they are
+                  --devirtualize       Build virtualized methods back into code in the clean copy,
+                                       marked as a reading rather than a proof (default, and how
+                                       to ask for it in a strict run)
+                  --no-devirtualize    Leave virtualized methods as the stubs they shipped as
                   --fail-on-partial    Write nothing unless every stage fully succeeded
-                  --strict             Assume nothing: stop where a normal run would carry on
+                  --strict             Assume nothing: stop where a normal run would carry on,
+                                       and leave the assembly as it stands
                   --host-profile FILE  State what the Windows machine the sample expects looks like
                   --library FILE       Let the reader follow calls into this assembly (repeatable)
                   --declarations FILE  Everything above in one file, plus budgets and passes to skip
@@ -249,6 +300,8 @@ internal static class ReactorCommand
             When a run stops short it writes reactorunpack/NAME.blockers.json, which names
             each thing that stopped it and the declaration that would get past it. Docs:
             docs/declarations.md
+
+            Driving it from a program or an agent: --json, and docs/agents.md
 
             Development:
               ReactorUnpack corpus run [--manifest PATH] [--samples DIR] [--output DIR] [--strict]

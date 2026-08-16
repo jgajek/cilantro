@@ -1,5 +1,6 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using ReactorUnpack.Core;
 using ReactorUnpack.Core.Interpretation;
 
 namespace ReactorUnpack.Tests;
@@ -352,6 +353,39 @@ public sealed class TriageModeTests
         var blocker = Assert.Single(machine.State.Blockers.Blockers);
         Assert.Equal(BlockerKind.UnknownValue, blocker.Kind);
         Assert.Equal("isinst:Tests.Derived->Tests.Base", blocker.Key);
+    }
+
+    /// <summary>
+    /// The two things a triage run does to the assembly for the reader's sake, and a strict run
+    /// does not: it renames what the protector generated, and it builds the virtualized methods
+    /// back into a copy of their own.
+    /// </summary>
+    /// <remarks>
+    /// Neither is the protector's own output, which is why rigour declines them and why a triage run
+    /// wants them: one is a name nobody wrote, the other is the tool's reading of a program. Saying
+    /// so by mode rather than by flag is the point — the analyst who reaches for this first should
+    /// not have to know either option exists, and the one who reaches for rigour should not have to
+    /// remember to turn them off.
+    /// </remarks>
+    [Fact]
+    public void ATriageRunRenamesAndBuildsBackWhereARigorousOneDoesNeither()
+    {
+        Assert.True(new PipelineOptions().Renames);
+        Assert.True(new PipelineOptions().Devirtualizes);
+        Assert.False(new PipelineOptions(Strict: true).Renames);
+        Assert.False(new PipelineOptions(Strict: true).Devirtualizes);
+    }
+
+    /// <summary>
+    /// Said outright, either way, in either mode: the mode decides only what was left unsaid.
+    /// </summary>
+    [Fact]
+    public void WhatTheRunWasToldToDoOutweighsWhatItsModeWouldHaveChosen()
+    {
+        Assert.True(new PipelineOptions(Strict: true, RenameSymbols: true).Renames);
+        Assert.True(new PipelineOptions(Strict: true, Devirtualize: true).Devirtualizes);
+        Assert.False(new PipelineOptions(RenameSymbols: false).Renames);
+        Assert.False(new PipelineOptions(Devirtualize: false).Devirtualizes);
     }
 
     /// <summary>A base class and a constructor for something derived from it.</summary>

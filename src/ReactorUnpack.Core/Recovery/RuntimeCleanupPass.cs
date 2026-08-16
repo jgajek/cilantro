@@ -55,7 +55,15 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         // used, because an island of code the protector abandoned looks alive under any other
         // reading. Being wrong about that alone deletes nothing: attribution still has to show
         // recovery is what left the code with no use.
-        var reachability = ModuleReachability.Compute(context.Module, typeInitializersAlwaysRun: false);
+        //
+        // A method the run built a body into is a root whatever the module says. A virtualized
+        // method is typically one nothing calls by name, so the ordinary reading has it dead, and
+        // deleting the very body the run was asked to produce — along with the helpers its code
+        // calls — is not cleanup.
+        var reachability = ModuleReachability.Compute(
+            context.Module,
+            typeInitializersAlwaysRun: false,
+            Rebuilt(context));
         var orphans = RecoveryOrphans.Of(context);
         var considered = context.Module.GetTypes()
             .Where(type => type != context.Module.GlobalType)
@@ -131,6 +139,26 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             $"Retained the rest: {retained}",
             attribution
         ]);
+    }
+
+    /// <summary>
+    /// The methods a rebuild wrote bodies into, resolved in the module cleanup is about to prune.
+    /// </summary>
+    private static IReadOnlyList<MethodDef> Rebuilt(ArtifactContext context)
+    {
+        if (!context.TryGetFact<IReadOnlySet<uint>>(
+                VirtualizationRebuildPass.RebuiltFact, out var tokens) ||
+            tokens is null)
+        {
+            return [];
+        }
+        return
+        [
+            .. tokens
+                .Select(token => context.Module.ResolveToken(token) as MethodDef)
+                .Where(method => method is not null)
+                .Select(method => method!)
+        ];
     }
 
     /// <summary>

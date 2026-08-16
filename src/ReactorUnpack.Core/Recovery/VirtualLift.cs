@@ -11,7 +11,9 @@ namespace ReactorUnpack.Core.Recovery;
 /// method body that is nearly right is worse than none: an analyst who is told a program does
 /// something it does not will act on it, whereas one who is told an operation is unknown will go
 /// and look. So every operation whose meaning was not established is written as <c>??</c> with
-/// whatever was counted about it, and nothing here is ever put back into the assembly.
+/// whatever was counted about it, and nothing here is ever put back into the cleaned assembly.
+/// <see cref="VirtualBody"/> will build these readings into a body on request, into an assembly of
+/// its own that is marked for what it is.
 ///
 /// What can be said is said in the assembly's own terms. The operations that were named map onto
 /// ordinary IL, and the operands that turned out to be metadata tokens name the methods, fields and
@@ -49,6 +51,7 @@ public static class VirtualLift
         ["does nothing at all"] = "nop",
         ["returns the value it takes"] = "ret",
         ["stops the program"] = "ret",
+        [VirtualSemantics.Throwing] = "throw",
         ["add"] = "add",
         ["sub"] = "sub",
         ["mul"] = "mul",
@@ -138,6 +141,85 @@ public static class VirtualLift
     /// its table has no place for leaves the position where it was, which is the next operation.
     /// </remarks>
     private static bool Falls(string? name) => name is not "branch";
+
+    /// <summary>One operation of a program, as everything established about it leaves it.</summary>
+    /// <param name="Index">Where it sits in the program, which is what a jump names.</param>
+    /// <param name="Mnemonic">The IL it stands for, or null where nothing established one.</param>
+    /// <param name="Operand">What it carries, in the form the engine decoded it to.</param>
+    /// <param name="Targets">Everywhere it can hand the path to, for an operation that jumps.</param>
+    /// <param name="Conjectured">Whether those places were read off it rather than watched.</param>
+    /// <param name="Pops">How many values it takes here, which a call decides per site.</param>
+    /// <param name="Pushes">How many it leaves here.</param>
+    /// <param name="Condition">The comparison a conditional jump goes on, where one was settled.</param>
+    /// <param name="Depth">
+    /// How deep the stack is when it begins. Null where no path arrives at it at all, which says
+    /// nothing against the reading — a program has dead operations like any other.
+    /// </param>
+    /// <param name="Disputed">
+    /// Whether two paths arrive at it at two different depths, which is the reading contradicting
+    /// itself and means one of the operations before it is read wrong.
+    /// </param>
+    public sealed record Line(
+        int Index,
+        string? Mnemonic,
+        VirtualOperand Operand,
+        IReadOnlyList<int>? Targets,
+        bool Conjectured,
+        int? Pops,
+        int? Pushes,
+        string? Condition,
+        int? Depth,
+        bool Disputed);
+
+    /// <summary>
+    /// The whole of what was established about a program, in the form something other than a
+    /// listing can act on.
+    /// </summary>
+    /// <remarks>
+    /// The renderer and anything that would build a method body have to agree exactly about what
+    /// each operation was found to be, or the file an analyst reads and the code they run are two
+    /// different readings wearing one name. So the conclusions are drawn once, here, and the
+    /// listing becomes one way of printing them.
+    /// </remarks>
+    public static IReadOnlyList<Line> Plan(VirtualProgram program, ModuleDef module)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        ArgumentNullException.ThrowIfNull(module);
+
+        var conjectured = new HashSet<int>();
+        var going = Destinations(program, conjectured);
+        var calling = Calling(program, module);
+        var arity = Arities(program, module, calling);
+        var forced = Forced(program, going, arity, Bounds(program, module));
+        var depths = Depths(
+            program, going, arity, forced,
+            new Dictionary<string, List<int>>(StringComparer.Ordinal), []);
+
+        var lines = new List<Line>(program.Instructions.Count);
+        foreach (var instruction in program.Instructions)
+        {
+            var mnemonic = Widened(
+                program, instruction, Mnemonic(program, instruction, module, calling));
+            var known = program.Operations.GetValueOrDefault(instruction.Opcode);
+            var counted = arity.TryGetValue(instruction.Index, out var measured)
+                ? ((int?)measured.Pops, (int?)measured.Pushes)
+                : (null, null);
+            lines.Add(new Line(
+                instruction.Index,
+                mnemonic,
+                instruction.Operand,
+                going.GetValueOrDefault(instruction.Index),
+                conjectured.Contains(instruction.Index),
+                counted.Item1,
+                counted.Item2,
+                known?.Decides,
+                depths.TryGetValue(instruction.Index, out var depth) && depth != Disagreed
+                    ? depth
+                    : null,
+                depths.GetValueOrDefault(instruction.Index, 0) == Disagreed));
+        }
+        return lines;
+    }
 
     /// <summary>What a reading of a program came to, in the numbers a gate can be set on.</summary>
     /// <param name="Operations">How many operations the program has.</param>
@@ -997,7 +1079,7 @@ public static class VirtualLift
     /// <summary>Whether an operation ends the path it is on rather than handing it onwards.</summary>
     private static bool Terminal(VirtualProgram program, VirtualInstruction instruction) =>
         program.Operations.TryGetValue(instruction.Opcode, out var known) &&
-        known.Name is "returns the value it takes" or "stops the program";
+        known.Name is "returns the value it takes" or "stops the program" or VirtualSemantics.Throwing;
 
     /// <summary>The depth given to an operation two paths disagreed about.</summary>
     private const int Disagreed = int.MinValue;

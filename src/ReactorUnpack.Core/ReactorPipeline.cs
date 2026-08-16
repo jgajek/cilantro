@@ -52,6 +52,14 @@ public sealed record ResourceInfo(
     string Sha256,
     string Classification);
 
+/// <param name="WrittenTo">
+/// The file the run wrote this payload to, once it has written it.
+/// </param>
+/// <remarks>
+/// The path is in the report because the payload is what most callers came for, and a hash alone
+/// leaves them matching an entry against a directory listing by convention. Naming the file makes the
+/// report enough on its own: everything a caller does next is done to a file.
+/// </remarks>
 public sealed record PayloadInfo(
     string SourceResource,
     string SourceSha256,
@@ -62,7 +70,8 @@ public sealed record PayloadInfo(
     string AssemblyName,
     string ModuleName,
     uint EntryPointToken,
-    IReadOnlyList<string> EmbeddedResources);
+    IReadOnlyList<string> EmbeddedResources,
+    string? WrittenTo = null);
 
 public sealed record ExtractedPayload(PayloadInfo Info, byte[] Bytes);
 
@@ -436,7 +445,17 @@ public sealed record PipelineOptions(
     bool PreserveTokens = true,
     bool FailOnPartial = false,
     bool RemoveRuntime = true,
-    bool RenameSymbols = false,
+
+    /// <summary>
+    /// Whether to give Reactor's generated names readable placeholders. Null follows the mode.
+    /// </summary>
+    /// <remarks>
+    /// A triage run renames, because the analyst it is for is about to read the result and every
+    /// name in it is a machine's. A strict run does not, because the names as they stand are what a
+    /// signature is written against and what a second tool's output is compared with, and an expert
+    /// who wants them changed can say so.
+    /// </remarks>
+    bool? RenameSymbols = null,
     string? OutputPath = null,
     string? ReportDirectory = null,
     string? HostProfilePath = null,
@@ -453,7 +472,36 @@ public sealed record PipelineOptions(
     /// of what the report says rests on a machine nobody described and on calls nobody read, and the
     /// report says which. What it buys is measured in <c>docs/compatibility.md</c>.
     /// </remarks>
-    bool Strict = false);
+    bool Strict = false,
+
+    /// <summary>
+    /// Whether to build the virtualized methods back into code in the cleaned copy. Null follows
+    /// the mode.
+    /// </summary>
+    /// <remarks>
+    /// A triage run builds them, because a method nobody can read is the thing the analyst is
+    /// stuck on, and a stub sitting in an otherwise readable assembly is exactly where they get
+    /// stuck. A strict run does not, because it is the one thing the tool produces that it cannot
+    /// prove: everything else in the cleaned assembly is the protector's own output, while a body
+    /// built from a reading is the reading itself, and if the reading is wrong the body is wrong
+    /// in a way no reader can see.
+    ///
+    /// Where they are built, each one is marked with an attribute saying so, which a decompiler
+    /// shows above the method, and where the module's own work can test the bodies the tool runs
+    /// that test and reports the verdict.
+    /// </remarks>
+    bool? Devirtualize = null)
+{
+    /// <summary>
+    /// Whether this run gives Reactor's generated names readable placeholders.
+    /// </summary>
+    public bool Renames => RenameSymbols ?? !Strict;
+
+    /// <summary>
+    /// Whether this run builds the virtualized methods back into code in the cleaned copy.
+    /// </summary>
+    public bool Devirtualizes => Devirtualize ?? !Strict;
+}
 
 public sealed record PipelineResult(
     bool Success,
@@ -468,13 +516,33 @@ public sealed record PipelineResult(
 
     /// <summary>Where the account of what stopped the run was written.</summary>
     public string? BlockerReportPath { get; init; }
+
+    /// <summary>Where the old name of everything renamed was written, if anything was.</summary>
+    public string? RenameMapPath { get; init; }
+
+    /// <summary>How many virtualized methods the cleaned copy holds as code rather than as a stub.</summary>
+    public int RebuiltMethods { get; init; }
+
+    /// <summary>What came of building those bodies, method by method.</summary>
+    public IReadOnlyList<string> DevirtualizationNotes { get; init; } = [];
+
+    /// <summary>What running the built copy established about the bodies built into it.</summary>
+    public DevirtualizationCheck DevirtualizationCheck { get; init; }
 }
 
 public sealed class ReactorPipeline
 {
-    public const string Version = "0.1.0";
+    public const string Version = "0.2.0";
 
-    private static readonly JsonSerializerOptions ReportJsonOptions = new()
+    /// <summary>
+    /// How everything the tool writes as JSON is written, so that all of it reads the same way.
+    /// </summary>
+    /// <remarks>
+    /// Public because the reports on disk are not the only JSON a caller sees: <c>--json</c> puts a
+    /// manifest of the run on standard output, and a caller that has learned how one of them spells
+    /// things should not find the other spelling them differently.
+    /// </remarks>
+    public static JsonSerializerOptions ReportJsonOptions { get; } = new()
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
@@ -537,6 +605,10 @@ public sealed class ReactorPipeline
         new StringTableRelearningPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
+        // Building the read-back methods precedes cleanup, which would otherwise delete the very
+        // stubs the bodies go into, and follows the payload passes, which have to see the module
+        // doing its own work rather than the tool's account of it.
+        new VirtualizationRebuildPass(),
         new RuntimeCleanupPass(),
         new SymbolRenamingPass(),
         new MetadataSanitizationPass()
@@ -575,7 +647,14 @@ public sealed class ReactorPipeline
             inputPath,
             [.. options.LibraryPaths ?? [], .. declarations.Libraries]);
         context.SetFact("options.removeRuntime", options.RemoveRuntime);
-        context.SetFact("options.renameSymbols", options.RenameSymbols);
+
+        // What the caller did not decide, the mode decides: a triage run does the things that make
+        // the result easier to read, and a strict one leaves the assembly as close to what it can
+        // prove as it can.
+        context.SetFact("options.renameSymbols", options.Renames);
+        // A run asked only to say what is there builds nothing, so it does not pay for the building
+        // or for the run that checks it.
+        context.SetFact("options.devirtualize", options.Devirtualizes && !options.AnalyzeOnly);
         var environment = new RunEnvironment(host, declarations, strict: options.Strict);
         context.SetFact(BootstrapMachine.RunEnvironmentFact, environment);
         RecordLibraries(context);
@@ -668,7 +747,7 @@ public sealed class ReactorPipeline
             : Path.GetFullPath(options.OutputPath);
 
         var payloadPaths = WritePayloads(context, reportDirectory, stem);
-        WriteRenameMap(context, reportDirectory, stem);
+        var renameMapPath = WriteRenameMap(context, reportDirectory, stem);
         var virtualProgramPaths = WriteVirtualPrograms(context, reportDirectory, stem);
 
         // Emission happens before the report is written so that a module which verifies in memory
@@ -679,9 +758,12 @@ public sealed class ReactorPipeline
         // cleanup deleted something, which is the only case where it is unachievable.
         context.TryGetFact<int>("cleanup.removedTypeCount", out var removedTypeCount);
         context.TryGetFact<int>("cleanup.removedMethodCount", out var removedMethodCount);
+        context.TryGetFact<int>(
+            VirtualizationRebuildPass.AddedTypesFact, out var addedTypeCount);
         var preserveTokens = options.PreserveTokens &&
             removedTypeCount == 0 &&
-            removedMethodCount == 0;
+            removedMethodCount == 0 &&
+            addedTypeCount == 0;
 
         if (canEmit)
         {
@@ -709,7 +791,7 @@ public sealed class ReactorPipeline
         }
 
         var resourceInfos = ResourceInspector.Inspect(context.Module);
-        var report = BuildReport(context, resourceInfos, verification);
+        var report = BuildReport(context, resourceInfos, verification, payloadPaths);
         WriteJson(analysisPath, report);
         WriteJson(changesPath, context.Changes);
         var blockersPath = Path.Combine(reportDirectory, $"{stem}.blockers.json");
@@ -725,6 +807,15 @@ public sealed class ReactorPipeline
             options.Strict,
             environment.Blockers.Continuations));
 
+        // What the rebuild did is read back rather than done here: the bodies went into the module
+        // during the run, before cleanup could delete the methods they belong to.
+        context.TryGetFact<IReadOnlyList<string>>(
+            VirtualizationRebuildPass.NotesFact, out var devirtualizationNotes);
+        context.TryGetFact<DevirtualizationCheck>(
+            VirtualizationRebuildPass.CheckFact, out var devirtualizationCheck);
+        context.TryGetFact<IReadOnlySet<uint>>(
+            VirtualizationRebuildPass.RebuiltFact, out var rebuiltMethods);
+
         return new PipelineResult(
             canEmit || options.AnalyzeOnly && !fatalFailure,
             analysisPath,
@@ -734,14 +825,26 @@ public sealed class ReactorPipeline
             report)
         {
             VirtualProgramPaths = virtualProgramPaths,
-            BlockerReportPath = blockersPath
+            BlockerReportPath = blockersPath,
+            RenameMapPath = renameMapPath,
+            DevirtualizationNotes = devirtualizationNotes ?? [],
+            DevirtualizationCheck = devirtualizationCheck,
+            // Only where the cleaned copy was written does the count describe something the analyst
+            // has: the bodies went into the module either way, but a run that withheld the copy
+            // delivered no code to read.
+            RebuiltMethods = outputPath is null ? 0 : rebuiltMethods?.Count ?? 0
         };
     }
 
+    /// <param name="payloadPaths">
+    /// Where each payload was written, in the order they were extracted, or empty where the run wrote
+    /// none.
+    /// </param>
     private static ArtifactReport BuildReport(
         ArtifactContext context,
         IReadOnlyList<ResourceInfo> resources,
-        VerificationResult verification)
+        VerificationResult verification,
+        List<string>? payloadPaths = null)
     {
         var types = context.Module.GetTypes().ToArray();
         var methods = types.SelectMany(type => type.Methods).ToArray();
@@ -778,7 +881,12 @@ public sealed class ReactorPipeline
             methods.Count(method => method.HasBody),
             resources.Count,
             resources,
-            payloads?.Select(payload => payload.Info).ToArray() ?? [],
+            payloads?.Select((payload, index) => payload.Info with
+            {
+                WrittenTo = payloadPaths is not null && index < payloadPaths.Count
+                    ? payloadPaths[index]
+                    : null
+            }).ToArray() ?? [],
             context.Evidence,
             context.PassResults,
             new RecoveryReportMetrics(
@@ -1056,12 +1164,15 @@ public sealed class ReactorPipeline
         context.TryGetFact<int>("cleanup.removedFieldCount", out var removedFieldCount);
         context.TryGetFact<IReadOnlySet<string>>("rename.removedPublicApi", out var renameRemovedApi);
         context.TryGetFact<IReadOnlySet<string>>("rename.addedPublicApi", out var renameAddedApi);
+        context.TryGetFact<IReadOnlySet<uint>>(
+            VirtualizationRebuildPass.AddedMethodsFact, out var addedMethods);
+        context.TryGetFact<int>(VirtualizationRebuildPass.AddedTypesFact, out var addedTypeCount);
 
         var removedApi = Union(cleanupRemovedApi, renameRemovedApi);
         var addedApi = renameAddedApi;
         if (removedResources is null && addedResources is null && removedApi is null &&
             addedApi is null && removedMethods is null && removedTypeCount == 0 &&
-            removedFieldCount == 0)
+            removedFieldCount == 0 && addedMethods is null && addedTypeCount == 0)
         {
             return RewriteAllowance.None;
         }
@@ -1073,7 +1184,9 @@ public sealed class ReactorPipeline
             RemovedMethodTokens: removedMethods,
             RemovedTypeCount: removedTypeCount,
             RemovedFieldCount: removedFieldCount,
-            AddedPublicApi: addedApi);
+            AddedPublicApi: addedApi,
+            AddedMethodTokens: addedMethods,
+            AddedTypeCount: addedTypeCount);
     }
 
     private static IReadOnlySet<string>? Union(IReadOnlySet<string>? left, IReadOnlySet<string>? right)
@@ -1090,15 +1203,20 @@ public sealed class ReactorPipeline
     /// <summary>
     /// Emits the old-to-new symbol map beside the other JSON reports when renaming ran.
     /// </summary>
-    private static void WriteRenameMap(ArtifactContext context, string reportDirectory, string stem)
+    private static string? WriteRenameMap(
+        ArtifactContext context,
+        string reportDirectory,
+        string stem)
     {
         if (!context.TryGetFact<IReadOnlyDictionary<string, string>>("rename.map", out var map) ||
             map is null || map.Count == 0)
         {
-            return;
+            return null;
         }
 
-        WriteJson(Path.Combine(reportDirectory, $"{stem}.renames.json"), map);
+        var path = Path.Combine(reportDirectory, $"{stem}.renames.json");
+        WriteJson(path, map);
+        return path;
     }
 
     private static void ValidateDependencies(IReadOnlyList<IDeobfuscationPass> passes)
@@ -2121,32 +2239,50 @@ public static class AssemblyVerifier
             var effective = allowance ?? RewriteAllowance.None;
             var current = ArtifactStructuralSnapshot.Capture(module);
             var removedMethods = effective.RemovedMethodTokenSet;
+            var addedMethods = effective.AddedMethodTokenSet;
             var resourceDelta = effective.AddedResourceSet.Count - effective.RemovedResourceSet.Count;
-            if (current.TypeCount != originalStructure.TypeCount - effective.RemovedTypeCount)
+            var typeDelta = effective.AddedTypeCount - effective.RemovedTypeCount;
+            if (current.TypeCount != originalStructure.TypeCount + typeDelta)
                 diagnostics.Add("Type count changed during rewriting.");
-            if (current.MethodCount != originalStructure.MethodCount - removedMethods.Count)
+            if (current.MethodCount !=
+                originalStructure.MethodCount - removedMethods.Count + addedMethods.Count)
+            {
                 diagnostics.Add("Method count changed during rewriting.");
+            }
             if (current.FieldCount != originalStructure.FieldCount - effective.RemovedFieldCount)
                 diagnostics.Add("Field count changed during rewriting.");
             if (current.ResourceCount != originalStructure.ResourceCount + resourceDelta)
                 diagnostics.Add("Resource count changed during rewriting.");
-            if (!MethodTokensMatch(originalStructure.MethodRvas.Keys, current.MethodRvas.Keys, removedMethods))
+            if (!MethodTokensMatch(
+                    originalStructure.MethodRvas.Keys, current.MethodRvas.Keys,
+                    removedMethods, addedMethods))
+            {
                 diagnostics.Add("Method token set changed during rewriting.");
+            }
         }
 
         return new VerificationResult(diagnostics.Count == 0, diagnostics);
     }
 
     /// <summary>
-    /// Confirms the surviving method tokens are exactly the original set minus the declared removals.
+    /// Confirms the surviving method tokens are exactly the original set, less what was declared
+    /// removed and plus what was declared added.
     /// </summary>
+    /// <remarks>
+    /// A method the run added has no token yet: the writer assigns one, and until then dnlib reads
+    /// it as the zero row of the method table. That is what the snapshot sees, so it is what the
+    /// declaration names, and one addition is as far as this goes — two would be the same token
+    /// twice and the snapshot would refuse to record them.
+    /// </remarks>
     private static bool MethodTokensMatch(
         IEnumerable<uint> original,
         IEnumerable<uint> current,
-        IReadOnlySet<uint> removed)
+        IReadOnlySet<uint> removed,
+        IReadOnlySet<uint> added)
     {
         var expected = new HashSet<uint>(original);
         expected.ExceptWith(removed);
+        expected.UnionWith(added);
         return expected.SetEquals(current);
     }
 

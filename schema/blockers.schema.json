@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jgajek/reactor-unpack/schema/blockers.schema.json",
+  "title": "ReactorUnpack blocker report",
+  "description": "`reactorunpack/NAME.blockers.json`: what stopped a run, and what to declare to get past it. This is the file a caller reads between one run and the next.",
+  "type": "object",
+  "required": [
+    "ToolVersion",
+    "InputPath",
+    "InputSha256",
+    "DeclarationsName",
+    "DeclarationsSha256",
+    "CallsAllowed",
+    "Blockers",
+    "UnconsultedDeclarations",
+    "Strict",
+    "ContinuedPast"
+  ],
+  "properties": {
+    "ToolVersion": { "type": "string" },
+    "InputPath": { "type": "string" },
+    "InputSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "DeclarationsName": {
+      "description": "What the declarations file called itself, so a decision can be shown to have been made about this one.",
+      "type": "string"
+    },
+    "DeclarationsSha256": { "type": "string" },
+    "CallsAllowed": {
+      "description": "Whether the run was given --allow-declared-calls, without which anything declared about a call is ignored.",
+      "type": "boolean"
+    },
+    "Blockers": {
+      "description": "What stopped the run, in the order first hit.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/blocker" }
+    },
+    "UnconsultedDeclarations": {
+      "description": "What was declared and never asked about. Usually a key spelled differently from the one the run asks under, which is a different mistake from a declaration that did not work.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "Strict": { "type": "boolean" },
+    "ContinuedPast": {
+      "description": "What the run met and carried on past, which a strict run would have stopped at. Worth reading when the result looks wrong, and not otherwise.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/blocker" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "blocker": {
+      "title": "One thing that stopped a run",
+      "type": "object",
+      "required": ["Kind", "Key", "Detail", "Remedy", "Where", "Pass", "Times", "Declare"],
+      "properties": {
+        "Kind": {
+          "description": "Which sort of stop this is, which is to say what would get past it.",
+          "enum": [
+            "unstatedFact",
+            "unmodeledCall",
+            "platformCall",
+            "budget",
+            "unsupportedInstruction",
+            "unsupportedBody",
+            "unknownValue",
+            "threw"
+          ]
+        },
+        "Key": {
+          "description": "What the stop is about — a fact key, a method signature, a native entry point, a budget name — which is also what makes two occurrences the same occurrence.",
+          "type": "string"
+        },
+        "Detail": { "type": "string" },
+        "Remedy": {
+          "description": "What to write in a declarations file to get past this. Null where no declaration will, and the next step is a change to the tool.",
+          "oneOf": [{ "$ref": "#/$defs/remedy" }, { "type": "null" }]
+        },
+        "Where": { "type": ["string", "null"] },
+        "Pass": { "type": ["string", "null"] },
+        "Times": { "type": "integer", "minimum": 1 },
+        "Declare": {
+          "description": "The same remedy written out as a line of the file, for a person. Derived from Remedy; a program should use Remedy.",
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "remedy": {
+      "title": "A declaration that would get past a stop",
+      "description": "Applying one is `declarations[Section][Name] = Value` and nothing else. Where Wants is null the value is complete and can be applied without a decision; where it is not, Value holds exactly one null standing where the caller's answer goes.",
+      "type": "object",
+      "required": ["Section", "Name", "Value", "Wants", "Flag"],
+      "properties": {
+        "Section": {
+          "description": "Which part of the declarations file this goes in.",
+          "enum": ["facts", "budgets", "calls"]
+        },
+        "Name": {
+          "description": "The key within that section, spelled as the run asks for it.",
+          "type": "string"
+        },
+        "Value": {
+          "description": "What to write there. A budget carries a figure already — twice what was refused, as a starting point rather than a promise."
+        },
+        "Wants": {
+          "description": "What the caller has to decide, named as a type where the tool knows one. Null where the tool filled the value in itself.",
+          "type": ["string", "null"]
+        },
+        "Flag": {
+          "description": "A switch the run needs as well as the declaration.",
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

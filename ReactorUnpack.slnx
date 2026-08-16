@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/ReactorUnpack.Cli/ReactorUnpack.Cli.csproj" />
     <Project Path="src/ReactorUnpack.Core/ReactorUnpack.Core.csproj" />
+    <Project Path="src/ReactorUnpack.Mcp/ReactorUnpack.Mcp.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ReactorUnpack.Tests/ReactorUnpack.Tests.csproj" />

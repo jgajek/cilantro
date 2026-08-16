@@ -1141,7 +1141,7 @@ public sealed class StaticMachine
                                             BlockerKind.PlatformCall,
                                             entry,
                                             left,
-                                            Declaring.Call(target.FullName, Returning(target)),
+                                            Declaring.Call(target),
                                             instruction);
                                         return FrameResult.Fail(
                                             StaticExecutionStatus.Unsupported, left);
@@ -1166,7 +1166,7 @@ public sealed class StaticMachine
                                             BlockerKind.UnmodeledCall,
                                             target.FullName,
                                             unmodeled,
-                                            Declaring.Call(target.FullName, Returning(target)),
+                                            Declaring.Call(target),
                                             instruction);
                                         return FrameResult.Fail(
                                             StaticExecutionStatus.Unsupported, unmodeled);
@@ -2646,7 +2646,7 @@ public sealed class StaticMachine
                     BlockerKind.UnmodeledCall,
                     target.FullName,
                     silent,
-                    Declaring.Call(target.FullName, returnsSomething: true),
+                    Declaring.Call(target),
                     instruction);
                 result = FrameResult.Fail(StaticExecutionStatus.Unsupported, silent);
                 return true;
@@ -2670,7 +2670,7 @@ public sealed class StaticMachine
                 BlockerKind.UnmodeledCall,
                 target.FullName,
                 unusable,
-                Declaring.Call(target.FullName, returnsSomething: true),
+                Declaring.Call(target),
                 instruction);
             result = FrameResult.Fail(StaticExecutionStatus.Unsupported, unusable);
             return true;
@@ -2726,7 +2726,7 @@ public sealed class StaticMachine
             kind,
             key,
             detail,
-            Declaring.Call(target.FullName, returns));
+            Declaring.Call(target));
         State.Observe(
             LoaderObservationKind.SteppedCall,
             $"{target.FullName} {(returns ? "returned something unknown" : "was not followed")}");
@@ -2791,7 +2791,7 @@ public sealed class StaticMachine
         BlockerKind kind,
         string key,
         string detail,
-        string? declare = null,
+        Remedy? declare = null,
         Instruction? instruction = null)
     {
         var method = _frames.Count != 0 ? _frames[^1].FullName : null;

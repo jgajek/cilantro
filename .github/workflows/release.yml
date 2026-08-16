@@ -40,6 +40,17 @@ jobs:
           -p:PublishSingleFile=true
           -o publish/${{ matrix.runtime }}
 
+      # The MCP server ships in the same archive rather than one of its own. It is the same tool
+      # reached a different way, and somebody who has downloaded ReactorUnpack and then wants to
+      # point an agent at it should not have to work out that there is a second download.
+      - name: Publish the MCP server for ${{ matrix.runtime }}
+        run: >
+          dotnet publish src/ReactorUnpack.Mcp
+          -c Release
+          -r ${{ matrix.runtime }}
+          -p:PublishSingleFile=true
+          -o publish/${{ matrix.runtime }}
+
       # The archive is named for the tag, and the tool reports its own version. If those disagree the
       # download is mislabelled, and nobody reading a bug report against it can tell which build they
       # have. Only the Linux job can ask the binary; both jobs build the same source.

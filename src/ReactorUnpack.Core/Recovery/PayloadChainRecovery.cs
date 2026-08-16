@@ -67,12 +67,36 @@ public static class PayloadChainRecovery
     public sealed record Recovered(MethodDef Root, byte[] Image, string AssemblyName, string Sha256);
 
     /// <summary>
+    /// How a caller wants the interpretation done, for callers who need it done differently.
+    /// </summary>
+    /// <param name="Repeat">
+    /// Whether to interpret each root twice and require the two runs to agree. The payload pass
+    /// wants that, because it is deciding whether to believe an answer it has no other check on. A
+    /// caller comparing this module's answer against another module's already has its check, and
+    /// the second interpretation would only cost it twice as much to learn the same thing.
+    /// </param>
+    /// <param name="Machine">
+    /// Called with each machine before it runs, for a caller that wants to watch. The one use is
+    /// finding out whether a particular method was actually entered, which is the difference
+    /// between a comparison that tested something and one that tested nothing.
+    /// </param>
+    public sealed record Watch(bool Repeat = true, Action<StaticMachine>? Machine = null);
+
+    /// <summary>
     /// Recovers every assembly the module unpacks for itself, or explains why none could be.
     /// </summary>
     public static IReadOnlyList<Recovered> Recover(
         ArtifactContext context,
+        out IReadOnlyList<string> diagnostics) =>
+        Recover(context, new Watch(), out diagnostics);
+
+    /// <inheritdoc cref="Recover(ArtifactContext, out IReadOnlyList{string})"/>
+    public static IReadOnlyList<Recovered> Recover(
+        ArtifactContext context,
+        Watch watch,
         out IReadOnlyList<string> diagnostics)
     {
+        ArgumentNullException.ThrowIfNull(watch);
         var notes = new List<string>();
         var roots = UnpackingRoots(context.Module);
         if (roots.Length == 0)
@@ -85,7 +109,7 @@ public static class PayloadChainRecovery
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var root in roots)
         {
-            var images = Harvest(context, root, out var why);
+            var images = Harvest(context, root, watch, out var why);
             if (images is null)
             {
                 notes.Add($"{root.Name}: {why}");
@@ -94,11 +118,14 @@ public static class PayloadChainRecovery
 
             // The same interpretation twice, agreeing, is what rules out an answer that depended on
             // the order the machine happened to do things in.
-            var again = Harvest(context, root, out _);
-            if (again is null || !SameImages(images, again))
+            if (watch.Repeat)
             {
-                notes.Add($"{root.Name}: the interpretation was not reproducible");
-                continue;
+                var again = Harvest(context, root, watch, out _);
+                if (again is null || !SameImages(images, again))
+                {
+                    notes.Add($"{root.Name}: the interpretation was not reproducible");
+                    continue;
+                }
             }
 
             foreach (var image in images)
@@ -228,24 +255,30 @@ public static class PayloadChainRecovery
     /// <summary>
     /// Interprets a root and returns the images it tried to load that parse as assemblies.
     /// </summary>
-    private static byte[][]? Harvest(ArtifactContext context, MethodDef root, out string diagnostic)
+    private static byte[][]? Harvest(
+        ArtifactContext context,
+        MethodDef root,
+        Watch watch,
+        out string diagnostic)
     {
-        var harvested = Harvest(context, root, MaximumSteps, out diagnostic, out var exhausted);
+        var harvested = Harvest(context, root, watch, MaximumSteps, out diagnostic, out var exhausted);
         return harvested is null && exhausted
-            ? Harvest(context, root, PatientSteps, out diagnostic, out _)
+            ? Harvest(context, root, watch, PatientSteps, out diagnostic, out _)
             : harvested;
     }
 
     private static byte[][]? Harvest(
         ArtifactContext context,
         MethodDef root,
+        Watch watch,
         int budget,
         out string diagnostic,
         out bool exhausted)
     {
         exhausted = false;
         diagnostic = string.Empty;
-        if (!BootstrapMachine.TryRunInitializers(context, budget, out var machine, out var seed) ||
+        if (!BootstrapMachine.TryRunInitializers(
+                context, budget, out var machine, out var seed, watch.Machine) ||
             machine is null)
         {
             diagnostic = seed;

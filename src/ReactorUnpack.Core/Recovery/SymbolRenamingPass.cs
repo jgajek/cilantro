@@ -5,7 +5,7 @@ using ReactorUnpack.Core.Verification;
 namespace ReactorUnpack.Core.Recovery;
 
 /// <summary>
-/// Opt-in deterministic renaming of Reactor's machine-generated symbols.
+/// Deterministic renaming of Reactor's machine-generated symbols, done on a triage run.
 /// </summary>
 /// <remarks>
 /// Renaming is reference-safe within a module because dnlib resolves call sites, overrides, and
@@ -16,7 +16,7 @@ namespace ReactorUnpack.Core.Recovery;
 /// generated. Renaming a non-public type can still cascade into the full names of public members it
 /// declares or that reference it, so the pass measures the public-API set before and after and
 /// declares that exact delta to the identity gate, which still fails on anything undeclared. It
-/// writes an old-to-new map for auditing and runs solely under <c>--rename</c>.
+/// writes an old-to-new map for auditing, and a strict run leaves the names alone.
 /// </remarks>
 public sealed class SymbolRenamingPass : DeobfuscationPass
 {
@@ -29,7 +29,7 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
         ArtifactContext context)
     {
         if (!context.TryGetFact<bool>("options.renameSymbols", out var enabled) || !enabled)
-            return (PassStatus.Success, 0, ["Symbol renaming is opt-in; skipped without --rename."]);
+            return (PassStatus.Success, 0, ["Names were left as they are, this run not renaming."]);
 
         var beforeApi = ArtifactIdentitySnapshot.Capture(context.Module).PublicApi
             .ToHashSet(StringComparer.Ordinal);

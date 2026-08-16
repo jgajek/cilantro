@@ -91,6 +91,7 @@ public sealed class StaticIntrinsicRegistry : IStaticIntrinsicRegistry
         new SequenceIntrinsic(),
         new NumberIntrinsic(),
         new ConversionIntrinsic(),
+        new NumberConversionIntrinsic(),
         new ReflectionEmitIntrinsic(),
         new StackFrameIntrinsic(),
         new DebuggerIntrinsic(),
@@ -1227,6 +1228,119 @@ public sealed class ConversionIntrinsic : IStaticIntrinsic
         }
 
         return IntrinsicResult.Invalid($"Unsupported conversion {method.Name}.");
+    }
+}
+
+/// <summary>
+/// Reads a number out of whatever it arrived in and gives it back at another width.
+/// </summary>
+/// <remarks>
+/// Ordinary code reaches for these whenever a value has been through <c>object</c> — a table of
+/// settings, a deserialized field, an argument declared loosely — and so does a method body built
+/// back from a virtual program, where every value is boxed because the engine boxed it.
+///
+/// The overflow behaviour is the real one. <c>Convert.ToInt32</c> of a value too large for an
+/// <c>int</c> throws rather than truncating, and a model that quietly truncated would have the
+/// machine compute a number the runtime never would, which is the one thing a model must not do.
+/// The width the value was boxed at decides whether its top bit is a sign, since that is the whole
+/// difference between a conversion that fits and one that does not.
+/// </remarks>
+public sealed class NumberConversionIntrinsic : IStaticIntrinsic
+{
+    private static readonly HashSet<string> Widths = new(StringComparer.Ordinal)
+    {
+        "ToBoolean", "ToByte", "ToSByte", "ToInt16", "ToUInt16", "ToChar",
+        "ToInt32", "ToUInt32", "ToInt64", "ToUInt64"
+    };
+
+    public bool Matches(IMethod method) =>
+        method?.DeclaringType?.FullName == "System.Convert" &&
+        Widths.Contains(method.Name.String) &&
+        method.MethodSig?.Params.Count == 1;
+
+    public IntrinsicResult Invoke(
+        IntrinsicContext context,
+        IMethod method,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(method);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (arguments.Count != 1)
+            return IntrinsicResult.Invalid($"{method.FullName} takes one value.");
+        if (!arguments[0].IsKnown)
+            return IntrinsicResult.Unknown($"{method.FullName} received an unknown value.");
+
+        var heap = context.State.Heap;
+
+        // A null reference converts to zero, and false, which is what the real one does rather
+        // than a special case invented here.
+        if (arguments[0].Kind == StaticValueKind.Null)
+            return IntrinsicResult.Completed(StaticValue.FromInt32(0));
+        if (Held(heap, arguments[0]) is not { } held)
+            return IntrinsicResult.Invalid(
+                $"{method.FullName} was given something that is not a number.");
+
+        if (method.Name == "ToBoolean")
+            return IntrinsicResult.Completed(StaticValue.FromInt32(held != 0M ? 1 : 0));
+        (decimal Low, decimal High) range = method.Name.String switch
+        {
+            "ToByte" => (byte.MinValue, byte.MaxValue),
+            "ToSByte" => (sbyte.MinValue, sbyte.MaxValue),
+            "ToInt16" => (short.MinValue, short.MaxValue),
+            "ToUInt16" => (ushort.MinValue, ushort.MaxValue),
+            "ToChar" => (char.MinValue, char.MaxValue),
+            "ToUInt32" => (uint.MinValue, uint.MaxValue),
+            "ToInt64" => (long.MinValue, long.MaxValue),
+            "ToUInt64" => (ulong.MinValue, ulong.MaxValue),
+            _ => (int.MinValue, int.MaxValue)
+        };
+        var (low, high) = range;
+        if (held < low || held > high)
+            return IntrinsicResult.Invalid(
+                $"{method.FullName} was given {held}, which is outside what it can hold, so the " +
+                "real call would throw.");
+        return IntrinsicResult.Completed(method.Name.String switch
+        {
+            "ToInt64" => StaticValue.FromInt64((long)held),
+            "ToUInt64" => StaticValue.FromInt64(unchecked((long)(ulong)held)),
+            "ToUInt32" => StaticValue.FromInt32(unchecked((int)(uint)held)),
+            _ => StaticValue.FromInt32((int)held)
+        });
+    }
+
+    /// <summary>The number a value holds, whatever it arrived in.</summary>
+    /// <remarks>
+    /// A decimal is the return because it is the one type here that holds every value a
+    /// <c>long</c> can and every value a <c>ulong</c> can, and the point of reading a box is to
+    /// find out which of those two a run of bits was.
+    /// </remarks>
+    private static decimal? Held(StaticHeap heap, StaticValue value)
+    {
+        if (value.Kind == StaticValueKind.Int32 && value.IsKnown)
+            return value.AsInt32();
+        if (value.Kind == StaticValueKind.Int64 && value.IsKnown)
+            return value.AsInt64();
+        if (heap.TryGetString(value, out var text))
+        {
+            return long.TryParse(text.Trim(), CultureInfo.InvariantCulture, out var spelled)
+                ? spelled
+                : null;
+        }
+        if (!heap.TryUnbox(value, out var boxed) || !boxed.IsKnown ||
+            !heap.TryGetRuntimeTypeName(value, out var was))
+            return null;
+
+        // What was boxed decides how its top bit reads. The machine keeps a boxed unsigned number
+        // in a signed slot, so the bits of a large uint and of a negative int are the same bits,
+        // and only the name the box carries tells them apart.
+        return was switch
+        {
+            "System.UInt32" => unchecked((uint)(int)Held(heap, boxed).GetValueOrDefault()),
+            "System.UInt64" or "System.UIntPtr" =>
+                unchecked((ulong)(long)Held(heap, boxed).GetValueOrDefault()),
+            _ => Held(heap, boxed)
+        };
     }
 }
 

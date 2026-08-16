@@ -220,6 +220,23 @@ Budgets are `steps`, `allocatedBytes` and `depth`, and replace the per-pass
 figures wherever they are set. Skipping a pass leaves it recorded as incomplete,
 so the emission gate still withholds the cleaned copy.
 
+### What the output promises
+
+The three files a run writes and the object `--json` prints have published
+schemas in [`schema/`](../schema/), and the promise attached to them is that no
+field is removed, renamed or given a new meaning while the major version in the
+document stays where it is. Fields are added; a reader that refuses unknown ones
+will break, and one that ignores them will not. A field that can be absent is
+`null` rather than missing, and both `BlockerKind` and `PassStatus` may gain
+members.
+
+The schemas are held to the types by a test rather than by attention: every
+property the serializer writes has to appear in the schema and the other way
+about, so a field added without being written down fails the build. There is no
+separate mode for a program driving the tool — the modes are about what may be
+assumed, which is a different question from what the answer is shaped like. See
+[agents.md](agents.md).
+
 ### Trusted third-party assemblies
 
 `--library` supplies an assembly whose IL the interpreter may run. The assembly
@@ -690,10 +707,11 @@ What all of that comes to is written out separately, in the assembly's own
 terms: each named operation as the IL it stands for, each token operand as what
 it names, and everything unsettled as `??` beside its operand and what was
 counted. Every operation in each of the three samples now comes out that way —
-2,935, 2,952 and 3,007 of them, none left unread. It is a report and stays one
-— the stubs are left exactly as they were, nothing is emitted, and the pass does
-not gate emission, because a program that could not be read back says nothing
-about whether the rest of the recovery is sound.
+2,935, 2,952 and 3,007 of them, none left unread, and 4,854 of 4,854 in the
+payload sample on the fourth engine. By default it is a report and stays one:
+the stubs are left exactly as they were, nothing is written into the cleaned
+copy, and the pass does not gate emission, because a program that could not be
+read back says nothing about whether the rest of the recovery is sound.
 
 Writing it out turned up something the listing had been hiding. The dispatcher's
 jump carries a table of places rather than one, which is to say it is a switch —
@@ -731,6 +749,63 @@ solved effect is used to solve the next but has to survive being carried through
 the rest of the program, and is withdrawn if it contradicts a depth arrived at
 another way. It gives an effect and not a reading, so nothing is named on the
 strength of it.
+
+### Building the program back into IL
+
+A triage run writes the virtualized methods into the cleaned copy as IL instead
+of a stub, each marked with an internal `ReactorUnpack.RebuiltFromReading`
+attribute that decompilers show above the method; a strict run builds nothing
+unless asked with `--devirtualize`. The attribute type and its constructor are
+the only declarations the tool adds to an assembly, and both are declared to the
+identity gate the way deletions are. The lowering
+assumes nothing the reading did not establish: every value is carried as an
+`object`, every slot is an `object` local, and a value is converted back only
+where the assembly itself says what it must be. An operation whose meaning was
+never established refuses the whole method rather than that instruction, and an
+operation the stack walk never arrives at is emitted as a `throw`, there being no
+stack for it to work on.
+
+| | `Qafcakg` | `Mlfhntkcvb` | `Qbjuef` | `Lqcuzgc` |
+| --- | --- | --- | --- | --- |
+| operations built | 2,935 | 2,952 | 3,007 | 4,854 |
+| instructions emitted | 8,997 | 8,886 | 9,290 | 15,270 |
+| object slots | 13 | 12 | 13 | 44 |
+| unreachable places emitted as `throw` | 14 | 4 | 6 | 8 |
+| guarded regions emitted as catch clauses | 0 | 0 | 0 | 4 |
+| `ilverify` errors in the built method | 0 | 0 | 0 | 0 |
+| ran and unpacked what the original unpacked | yes | yes | not made | not made |
+
+The files themselves are not error-free — Reactor's own code accounts for 17, 17,
+14 and 77 `ilverify` complaints across them, and 22 in the cleaned copy of
+`Qafcakg` — but a cleaned copy with the bodies in reports exactly the same set as
+one built without them, so nothing emitted added one.
+
+Verifiable IL can still be the wrong IL, so where the sample's own work can be
+compared it is. A second copy of the input is prepared identically, the built
+bodies replace the stubs, and the startup path is interpreted again; if the same
+payload comes out, SHA-256 for SHA-256, the bodies did what the engine did.
+`Qafcakg` and `Mlfhntkcvb` pass that way, each unpacking both of its payloads
+with a built body entered on the path. The other two report that the check was
+not made and why: `Qbjuef` unpacks the same payload either way without ever
+entering a built body, and `Lqcuzgc` is itself an extracted payload with no
+startup path to run. A check that could not be made is never reported as one that
+passed.
+
+### Guarded regions
+
+The fourth engine, in the `Lqcuzgc` payload, is the only one here whose programs
+use exception handling, and it keeps that outside the operations: a region is an
+object holding a range of operations, a handler, and a caught type. Recovering
+the numbers was not enough, because nothing in them says which range is which,
+and a handler emitted over the wrong range runs the wrong code precisely when
+something has already gone wrong. Following the objects that hold the clauses
+settles it, giving all four regions of that program as a guarded span, a handler
+span and a type — `22-31 guarded, handled at 32-33, catching System.Object` and
+three more. Emission then requires what the runtime requires: a jump leaving a
+guarded region becomes `leave` and must carry nothing on the stack, regions must
+nest or be disjoint, and a try or handler block must end in a terminal
+instruction. A conditional jump or a jump table crossing a region boundary has no
+`leave` form and refuses the method rather than being approximated.
 
 ### Protected strings
 
@@ -779,8 +854,11 @@ hashes, pass counts, and independent dnlib reload.
 - JIT-hook writes that do not deterministically target every catalogued stub;
 - Reactor VM instructions or exception paths outside the bounded model;
 - non-unique or incompletely referenced VM-backed string tables;
-- code-virtualization lifting, which stops at a listing of the decoded program
-  annotated with each operation's derived effect, rather than IL; and
+- code-virtualization recovery that could be called proof: what goes into the
+  cleaned copy is IL built from a listing of the decoded program, marked as the
+  tool's reading with an attribute on every method it wrote, and a method with an
+  unread operation or an unemittable jump out of a guarded region is refused whole
+  rather than approximated; and
 - dynamic execution of protected assemblies.
 
 Native-stub unpacking (NecroBit native / QuickLZ) is a deferred capability, not
@@ -789,7 +867,8 @@ native header, or a non-IL-only image and reports the input as unsupported with
 a specific diagnostic naming the deferred stage.
 
 Destructive removal of runtime/proxy types and symbol renaming are no longer
-permanently out of scope; they are opt-in and off by default (see below).
+permanently out of scope. Both are what a triage run does and neither is what a
+strict run does, and each can be turned the other way by name (see below).
 
 The JIT-hook generation is detected through duplicate raw metadata rows,
 hundreds of `NoInlining` default-return stubs, high-entropy patch resources,
@@ -838,6 +917,11 @@ code that nothing accounts for is counted in the pass diagnostics and kept. The
 whole pass is additionally gated by `RewritePolicy.CanRemoveRuntime` (recovery
 complete, no surviving use site, confidence at least 0.95).
 
+A method the run built a body into is a root regardless of what reaches it. A
+virtualized method is typically one nothing calls by name, so the ordinary
+reading has it dead; deleting it, and the helpers its new body calls, would
+remove the thing the run was asked to produce.
+
 Cleanup and loader-call elision are the two places that model a type initializer
 as running only when its type is used, which is what the runtime does and what
 lets an abandoned island of protector code be recognized as dead. Every other
@@ -884,21 +968,25 @@ where it did. It declines if any bundle went unrecovered or a resource still
 looks like an unextracted assembly payload, either of which would mean the hook
 still serves something the module lacks.
 
-`--rename` stays off by default. It runs `symbol-renaming`, which deterministically
-renames only non-public members whose names are structurally proven
-Reactor-generated, skipping virtual, P/Invoke, constructor, and
+Renaming runs on a triage run and not on a strict one, and `--rename` and
+`--keep-names` say which regardless. It runs `symbol-renaming`, which
+deterministically renames only non-public members whose names are structurally
+proven Reactor-generated, skipping virtual, P/Invoke, constructor, and
 serialization-sensitive members, and writes an old-to-new map beside the JSON
-reports.
+reports. The corpus harness pins it off, along with building virtualized methods
+back, so that an outcome measures recovery rather than presentation.
 
 Identity verification is policy-aware rather than bypassed: each pass declares
 the exact removals, additions, and renames it made, and the snapshot comparison
 still fails on any change outside that declared allowance.
 
-A full stage-by-stage comparison against NETReactorSlayer's fifteen stages is in
+A comparison against the other Reactor tools — NETReactorSlayer stage by stage,
+de4dotEx and Krypton by what each handles and whether it runs the sample — is in
 [parity.md](parity.md).
 
 ## Clean-room boundary
 
 Behavioral specifications came from the supplied binaries and independently
-authored tests. No source or binaries from NETReactorSlayer or de4dot are used.
-The project depends on dnlib under its MIT license.
+authored tests. No source or binaries from NETReactorSlayer, de4dot, de4dotEx,
+or Krypton are used, and none of them is called at runtime. The project depends
+on dnlib under its MIT license.

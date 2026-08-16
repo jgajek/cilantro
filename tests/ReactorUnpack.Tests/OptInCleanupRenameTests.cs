@@ -168,7 +168,7 @@ public sealed class OptInCleanupRenameTests
     }
 
     [Fact]
-    public void RenamingIsWithheldWithoutTheOptIn()
+    public void RenamingIsWithheldWhereTheRunDidNotAskForIt()
     {
         using var context = SyntheticContext.Build(BuildRenamableModule);
 

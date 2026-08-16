@@ -234,9 +234,16 @@ public static class CorpusRunner
         // per-sample expectations and from every pass status being recorded in the outcome. The
         // interpretation mode is asked for by whoever runs the corpus rather than written into the
         // manifest, because the point of running it both ways is to compare the same expectations.
+        // Renaming and building virtualized methods back are what a triage run does for the analyst
+        // reading the result, and neither is what this harness measures: one rewrites the names an
+        // outcome is compared by, and the other doubles the time a virtualized sample takes to say
+        // something the manifest does not ask about. Both are pinned off so that an outcome means
+        // the same thing in every run rather than following the mode.
         var result = new ReactorPipeline().Run(path, new PipelineOptions(
             AnalyzeOnly: analysisOnly,
             PreserveTokens: true,
+            RenameSymbols: false,
+            Devirtualize: false,
             OutputPath: outputPath,
             ReportDirectory: sampleOutputDirectory,
             HostProfilePath: Beside(manifestDirectory, sample.HostProfile),

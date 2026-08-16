@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jgajek/reactor-unpack/schema/analysis.schema.json",
+  "title": "ReactorUnpack analysis report",
+  "description": "`reactorunpack/NAME.analysis.json`: everything one run learned about one file. The manifest that `--json` prints is the short answer; this is the long one, and it is where the evidence lives.",
+  "type": "object",
+  "required": [
+    "ToolVersion",
+    "InputPath",
+    "InputSha256",
+    "InputLength",
+    "ModuleName",
+    "RuntimeVersion",
+    "EntryPointToken",
+    "TypeCount",
+    "MethodCount",
+    "ConcreteMethodCount",
+    "ResourceCount",
+    "Resources",
+    "Payloads",
+    "Evidence",
+    "Passes",
+    "Recovery",
+    "VerificationPassed",
+    "VerificationDiagnostics",
+    "HostProfile",
+    "Blockers",
+    "Declarations",
+    "ContinuedPast",
+    "Strict"
+  ],
+  "properties": {
+    "ToolVersion": { "type": "string" },
+    "InputPath": { "type": "string" },
+    "InputSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "InputLength": { "type": "integer", "minimum": 0 },
+    "ModuleName": { "type": ["string", "null"] },
+    "RuntimeVersion": { "type": ["string", "null"] },
+    "EntryPointToken": { "type": "integer", "minimum": 0 },
+    "TypeCount": { "type": "integer", "minimum": 0 },
+    "MethodCount": { "type": "integer", "minimum": 0 },
+    "ConcreteMethodCount": { "type": "integer", "minimum": 0 },
+    "ResourceCount": { "type": "integer", "minimum": 0 },
+    "Resources": { "type": "array", "items": { "$ref": "#/$defs/resource" } },
+    "Payloads": { "type": "array", "items": { "$ref": "#/$defs/payload" } },
+    "Evidence": {
+      "description": "What the run observed, entry by entry. `capability` entries are what the file is protected with.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "Passes": { "type": "array", "items": { "$ref": "#/$defs/pass" } },
+    "Recovery": { "$ref": "#/$defs/recovery" },
+    "VerificationPassed": { "type": "boolean" },
+    "VerificationDiagnostics": { "type": "array", "items": { "type": "string" } },
+    "HostProfile": {
+      "description": "Which portrait of a Windows machine the run used, and which of its facts it actually consulted.",
+      "oneOf": [{ "$ref": "#/$defs/hostProfile" }, { "type": "null" }]
+    },
+    "Blockers": {
+      "type": ["array", "null"],
+      "items": { "$ref": "blockers.schema.json#/$defs/blocker" }
+    },
+    "Declarations": {
+      "oneOf": [{ "$ref": "#/$defs/declarations" }, { "type": "null" }]
+    },
+    "ContinuedPast": {
+      "type": ["array", "null"],
+      "items": { "$ref": "blockers.schema.json#/$defs/blocker" }
+    },
+    "Strict": {
+      "description": "Whether the run refused wherever it would otherwise have assumed its way past something. Everything else here is conditional on the answer.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "resource": {
+      "title": "One embedded resource, as the run found it",
+      "type": "object",
+      "required": ["Name", "Length", "Entropy", "Sha256", "Classification"],
+      "properties": {
+        "Name": { "type": "string" },
+        "Length": { "type": "integer", "minimum": 0 },
+        "Entropy": { "type": "number" },
+        "Sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "Classification": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "payload": {
+      "title": "A file that was hidden inside the sample",
+      "type": "object",
+      "required": [
+        "SourceResource",
+        "SourceSha256",
+        "EncodedLength",
+        "DecodedStreamSha256",
+        "PayloadLength",
+        "PayloadSha256",
+        "AssemblyName",
+        "ModuleName",
+        "EntryPointToken",
+        "EmbeddedResources",
+        "WrittenTo"
+      ],
+      "properties": {
+        "SourceResource": { "type": "string" },
+        "SourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "EncodedLength": { "type": "integer", "minimum": 0 },
+        "DecodedStreamSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "PayloadLength": { "type": "integer", "minimum": 0 },
+        "PayloadSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "AssemblyName": { "type": "string" },
+        "ModuleName": { "type": "string" },
+        "EntryPointToken": { "type": "integer", "minimum": 0 },
+        "EmbeddedResources": { "type": "array", "items": { "type": "string" } },
+        "WrittenTo": {
+          "description": "The file this payload was written to.",
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "title": "One thing the run observed",
+      "type": "object",
+      "required": ["Category", "Message", "Location", "Confidence"],
+      "properties": {
+        "Category": { "type": "string" },
+        "Message": { "type": "string" },
+        "Location": { "type": ["string", "null"] },
+        "Confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "pass": {
+      "title": "One stage of the run and what came of it",
+      "type": "object",
+      "required": ["Pass", "Status", "Changes", "Diagnostics", "Duration"],
+      "properties": {
+        "Pass": { "type": "string" },
+        "Status": { "enum": ["success", "partial", "unsupported", "failed"] },
+        "Changes": { "type": "integer", "minimum": 0 },
+        "Diagnostics": { "type": "array", "items": { "type": "string" } },
+        "Duration": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "recovery": {
+      "title": "How much came back",
+      "type": "object",
+      "required": [
+        "RestoredMethodBodies",
+        "RemainingMethodStubs",
+        "StringCallSites",
+        "ReplacedStringSites",
+        "MutationCount",
+        "BooleansRecovered",
+        "TokensRestored",
+        "ResourcesRestored",
+        "UnreachableInstructionsRemoved",
+        "RemainingSwitchDispatchers",
+        "RuntimeTypesRemoved",
+        "SymbolsRenamed",
+        "RemainingUnreachableInstructions",
+        "VirtualOperations",
+        "VirtualOperationsRead",
+        "VirtualOperationsWalked",
+        "VirtualDepthDisagreements",
+        "ConstantStringSites"
+      ],
+      "properties": {
+        "RestoredMethodBodies": { "type": "integer", "minimum": 0 },
+        "RemainingMethodStubs": { "type": "integer", "minimum": 0 },
+        "StringCallSites": { "type": "integer", "minimum": 0 },
+        "ReplacedStringSites": { "type": "integer", "minimum": 0 },
+        "MutationCount": { "type": "integer", "minimum": 0 },
+        "BooleansRecovered": { "type": "integer", "minimum": 0 },
+        "TokensRestored": { "type": "integer", "minimum": 0 },
+        "ResourcesRestored": { "type": "integer", "minimum": 0 },
+        "UnreachableInstructionsRemoved": { "type": "integer", "minimum": 0 },
+        "RemainingSwitchDispatchers": { "type": "integer", "minimum": 0 },
+        "RuntimeTypesRemoved": { "type": "integer", "minimum": 0 },
+        "SymbolsRenamed": { "type": "integer", "minimum": 0 },
+        "RemainingUnreachableInstructions": { "type": "integer", "minimum": 0 },
+        "VirtualOperations": {
+          "description": "How many operations the virtualized methods hold in total.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "VirtualOperationsRead": {
+          "description": "How many of them the tool could say the meaning of.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "VirtualOperationsWalked": { "type": "integer", "minimum": 0 },
+        "VirtualDepthDisagreements": { "type": "integer", "minimum": 0 },
+        "ConstantStringSites": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "hostProfile": {
+      "title": "The machine the run assumed, and what it was asked",
+      "type": "object",
+      "required": ["Name", "Sha256", "Consulted"],
+      "properties": {
+        "Name": { "type": "string" },
+        "Sha256": { "type": "string" },
+        "Consulted": { "type": "array", "items": { "$ref": "#/$defs/hostFact" } }
+      },
+      "additionalProperties": false
+    },
+    "hostFact": {
+      "title": "One thing the run wanted to know about the machine",
+      "type": "object",
+      "required": ["Key", "Answer", "Answered", "Times", "Stated"],
+      "properties": {
+        "Key": { "type": "string" },
+        "Answer": { "type": "string" },
+        "Answered": { "type": "boolean" },
+        "Times": { "type": "integer", "minimum": 0 },
+        "Stated": {
+          "description": "Whether a person said this, as against the tool having assumed it. A reader who wants to know how much of a recovery rests on invention reads this.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "declarations": {
+      "title": "What the run was told, and what came of it",
+      "type": "object",
+      "required": [
+        "Name",
+        "Sha256",
+        "CallsAllowed",
+        "Libraries",
+        "SkippedPasses",
+        "DeclaredCallsUsed",
+        "DeclaredCallsUnused"
+      ],
+      "properties": {
+        "Name": { "type": "string" },
+        "Sha256": { "type": "string" },
+        "CallsAllowed": { "type": "boolean" },
+        "Libraries": { "type": "array", "items": { "type": "string" } },
+        "SkippedPasses": { "type": "array", "items": { "type": "string" } },
+        "DeclaredCallsUsed": { "type": "array", "items": { "type": "string" } },
+        "DeclaredCallsUnused": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

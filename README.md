@@ -1,13 +1,17 @@
 # ReactorUnpack
 
-**Recovers readable code from .NET malware protected with .NET Reactor — without ever running it.**
+**Recovers readable code and the hidden next stage from .NET malware protected
+with .NET Reactor — by reading the file, never by running it.**
 
-You pulled a .NET sample out of a sandbox, opened it in dnSpyEx, and every method
-is empty. No strings. Class names like `H1lrRRwH0tOVtn61XvY`. That is .NET
-Reactor, a commercial protector that malware authors buy to stop exactly what you
-are trying to do.
+Open a Reactor-protected sample in dnSpyEx and you get empty methods, no strings,
+and class names like `H1lrRRwH0tOVtn61XvY`. Reactor is a commercial protector
+that malware authors buy to stop exactly what you are about to do.
 
-ReactorUnpack undoes it and hands you a copy you can actually read.
+```
+ReactorUnpack suspicious.exe
+```
+
+No options to get right, no runtime to install, no VM, and nothing executed:
 
 ```
   File     rsServiceController.dll  (191.3 KB)
@@ -40,154 +44,115 @@ ReactorUnpack undoes it and hands you a copy you can actually read.
   Open the cleaned copy in dnSpyEx or ILSpy to read the code.
 ```
 
-## Why you might want it
+## Why this one
 
-**It never runs the sample.** This is the important one. Most .NET deobfuscators
-work by loading the malware into memory and calling its own decryption routines.
-That is malware execution, on your machine, and it is why those tools carry
-warnings about only being used in a VM. ReactorUnpack reads the file as data and
-works out what the decryption *would* produce, so analysing a sample is as safe
-as running `strings` on it.
+Four open-source tools deal with .NET Reactor. These are the reasons to reach for
+this one; [docs/parity.md](docs/parity.md) is the full comparison, including
+where it loses.
 
-**It tells you when it is unsure.** If it cannot prove a change is correct, it
-does not make the change, and it says so. It will refuse to write a cleaned copy
-rather than hand you a subtly broken file that wastes an afternoon. Everything it
-did is listed in the report.
+**Nothing is executed. Not once, not in a helper process.** Most .NET
+deobfuscators load the malware and call its own decryption routines — that is
+why they carry warnings about only being used in a VM. ReactorUnpack works out
+what the decryption *would* produce. Analysing a sample is as safe as running
+`strings` on it, which makes it usable on a laptop, a build agent, or a queue.
 
-**It gets the hidden files out.** Reactor is often used to wrap a second payload.
-ReactorUnpack decrypts and extracts those, so the thing you actually care about
-is sitting on disk instead of buried in an encrypted blob.
+**It refuses rather than guesses.** If it cannot prove a change is correct it
+does not make it, and it says so. It will write no cleaned copy at all rather
+than hand you a subtly broken file that costs you an afternoon. Anything it had
+to assume is labelled as assumed, in the summary and in the report.
 
-**It reads the methods that no decompiler can show you.** Reactor's strongest
-option replaces a method with bytecode for an interpreter it generates per
-sample. ReactorUnpack works out what that bytecode means and writes it out as
-readable operations, which is usually enough to say what a method you cannot
-read is for.
+**It gets the next stage out.** Reactor is most often a wrapper around something
+else, and that something else is what you actually want. It comes out to a file,
+whatever crypter put it there — not just Reactor's own.
 
-**It leaves your file alone.** The input is never modified. Output goes to new
-files beside it.
+**It reads the methods no decompiler can show — and checks that it read them
+right.** Reactor's strongest option replaces a method with bytecode for an
+interpreter it generates per sample. ReactorUnpack recovers that program, works
+out what it means, and builds it back into real code in the cleaned copy. Where
+the sample's own unpacking path goes through such a method, it then interprets
+that path twice — once as shipped, once with the rebuilt bodies in place — and
+tells you whether the same payload comes out byte for byte.
+
+**MIT, single file, agent-ready.** The other three Reactor tools are GPLv3, which
+decides whether you can build on them. This one is MIT and clean-room. It ships
+as one binary with no dependencies, and it speaks JSON and MCP for pipelines that
+have no one to read a summary.
+
+| If you want to | Reach for |
+| --- | --- |
+| Know what an unfamiliar sample is and get the next stage out, without running it | **ReactorUnpack** |
+| Read a virtualized method without running anything | **ReactorUnpack** |
+| The most thoroughly cleaned assembly a Reactor tool will give you | [NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer) |
+| Handle Reactor 7+, or a sample that turns out not to be Reactor at all | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) |
+| A devirtualized binary you can run and debug | [Krypton](https://github.com/dawwinci/krypton-devirtualizer) |
+| Rename everything, including public types, the way de4dot does | Slayer or de4dotEx |
 
 ## Install
 
-Download the archive for your platform from the
-[Releases page](https://github.com/jgajek/reactor-unpack/releases) and unpack it.
-
-There is nothing to install. It is a single file with everything it needs
-inside, so it works on a fresh analysis VM that has never had .NET on it.
+Download from the
+[Releases page](https://github.com/jgajek/reactor-unpack/releases) and unpack.
+There is nothing to install: it is a single file with everything it needs inside,
+so it works on a fresh analysis VM that has never had .NET on it.
 
 | Platform | Download |
 | --- | --- |
 | Windows 64-bit | `ReactorUnpack-win-x64.zip` |
 | Linux 64-bit | `ReactorUnpack-linux-x64.tar.gz` |
 
-Check the download against `SHA256SUMS.txt` if you care to, which you should.
+Check it against `SHA256SUMS.txt`, which you should. `ReactorUnpackMcp` is in the
+same archive — the same tool, spoken to over the Model Context Protocol.
 
 ## Use it
-
-Point it at the file:
 
 ```
 ReactorUnpack suspicious.exe
 ```
 
-That is the whole thing. There are no required options.
+That is the whole thing. It leaves two things beside your sample:
 
-It leaves two things next to your sample:
-
-- **`suspicious.cleaned.exe`** — the readable copy. Open this in
+- **`suspicious.cleaned.exe`** — the readable copy. Open it in
   [dnSpyEx](https://github.com/dnSpyEx/dnSpy) or
   [ILSpy](https://github.com/icsharpcode/ILSpy).
-- **`reactorunpack/`** — a folder with the full JSON report, a list of every
-  change made, and any files that were hidden inside the sample.
+- **`reactorunpack/`** — the full JSON report, every change made, whatever was
+  hidden inside the sample, and the operation-by-operation reading of any method
+  that shipped as interpreter bytecode.
 
-If you only want to know what a file is without producing anything:
+Your input file is never touched.
 
-```
-ReactorUnpack suspicious.exe --analyze-only
-```
+| Option | What it does |
+| --- | --- |
+| `--analyze-only` | Say what the file is without writing anything |
+| `--strict` | Assume nothing (below) |
+| `--json` | Print the run as one object instead of a summary |
+| `--verbose` | Show every step, which is what a bug report wants |
 
-If you want to watch what it is doing, or you are reporting a problem:
+`ReactorUnpack --help` has the rest; there are only a handful.
 
-```
-ReactorUnpack suspicious.exe --verbose
-```
+### Two modes, and why the default is the loose one
 
-Run `ReactorUnpack --help` for the rest. There are only a handful.
+Malware asks where it is running: the machine name, a disk serial, whether a
+debugger is attached. Since nothing is being executed, there is no such machine
+to read the answers off.
 
-### When the sample asks about the machine
+**By default** the tool answers as a plausible Windows 10 workstation, steps over
+the framework calls it has not modelled, and marks every one of those answers as
+assumed rather than stated. You get the most it can say, clearly labelled as to
+where it came from. This is the mode for a first look at something unfamiliar.
 
-Malware asks where it is: the machine name, a disk serial number, whether a
-debugger is attached. This tool runs on Linux and never runs the sample, so there
-is no such machine to read the answers off. It answers from a **host profile**
-instead, and says which answers it used.
+**`--strict`** assumes nothing. It stops at any call it cannot read, and leaves
+the assembly as it stands — no renaming, no rebuilding virtualized methods, since
+both of those are the tool's reading rather than the protector's output. Less
+comes out, and all of it rests on the file alone. This is the mode for an answer
+you are going to rely on. Either extra can still be asked for by name, with
+`--rename` and `--devirtualize`.
 
-Out of the box it answers as a plausible Windows 10 workstation — a machine name, a
-user, a disk serial, a screen size — and marks every one of those answers in the
-summary as assumed rather than stated. Nothing you have to write, and nothing
-hidden: the `ASSUMED` block lists exactly what was asked and what it was told, and
-the report carries the profile's hash next to the sample's, because an assumed fact
-is used like any other value and can end up in the cleaned copy.
-
-Where the answer matters and you know it, say so, and the summary then credits you
-with it rather than the tool:
-
-```
-ReactorUnpack suspicious.exe --host-profile profiles/windows-10-workstation.json
-```
-
-Some questions no profile answers — a registry value holding the key, most often.
-Those still stop the run, naming the fact that would let it continue, because a
-made-up machine name costs you a plausible detail while a made-up blob would answer
-the only question you asked, and answer it wrongly.
-
-A fact can be bytes, written as `{ "base64": "..." }`. That is what to use when
-the sample keeps its next stage in a binary registry value: paste the value in and
-the run unpacks the stage out of it.
-
-### When the sample unpacks itself through a library
-
-Some samples decrypt themselves using a third-party assembly they reference but
-do not carry. Supply it and the reader can follow the call:
-
-```
-ReactorUnpack suspicious.exe --library ./protobuf-net.dll
-```
-
-The assembly has to be one the sample actually references, its hash is recorded
-in the report, and nothing in it is executed — its IL is read the same way the
-sample's is. Repeat the option for more than one.
-
-### When the tool cannot read a call
-
-The reader models a large part of the framework but not all of it, and a sample it
-has not met before will call something outside that. By default such a call is
-stepped over: one that hands nothing back cost the run nothing, and one that returns
-something returns a value marked as not known. Most of them are on the way rather
-than in the way — a thread is started, a window title is fetched — and stopping at
-the first would lose everything behind it.
-
-Nothing is guessed at. The tool never invents what a call returned, and an unknown
-value may be carried but may never become a value: the moment it would have to be a
-branch, an index, or a length, the run stops. Every call stepped over is listed in
-the summary and in `blockers.json`.
-
-When the reading is going to be relied on, ask for rigour instead:
-
-```
-ReactorUnpack suspicious.exe --strict
-```
-
-That assumes nothing about the machine beyond the fifteen answers the interpreter
-has always given, and stops at any call it cannot read — which is what this tool did
-everywhere before triage became the default. Less comes out, and everything that
-does rests only on the file and on what you stated.
+Nothing is ever invented. An unknown value may be carried, but the moment it
+would have to become a branch, an index, or a length, the run stops.
 
 ### When a run stops short
 
-A sample the tool has not met before may still stop it somewhere. Every run
-therefore writes `reactorunpack/suspicious.blockers.json`, which names each thing
-that stopped it, the method and offset it happened at, how often it came up, and
-the exact line to write down to get past it:
+Every run writes `reactorunpack/suspicious.blockers.json`, naming each thing that
+stopped it, where, how often, and the exact line that would get past it:
 
 ```json
 {
@@ -199,69 +164,86 @@ the exact line to write down to get past it:
 }
 ```
 
-Those declarations go in one file, which also carries the host facts, the
-libraries, how much work the run may do, and stages to leave out:
+What you know goes back in one file — host facts, assemblies the sample needs but
+does not carry, how much work the run may do, and, with `--allow-declared-calls`,
+what a call the tool cannot read does:
 
 ```
 ReactorUnpack suspicious.exe --declarations ptnifif.json
 ```
 
-So where a run does stop, the way through is a loop: run it, read what stopped it,
-write down what you know, run it again. You should not need it for a first look —
-that is what the default is for — and it is worth the trouble when a particular
-sample's payload is the thing you actually want. Where no declaration would help,
-the entry says so, and that is a bug report rather than a file to edit. The file can
-also say what a call the tool cannot read does — the one thing that puts a value
-into the reading that no code produced, so it takes `--allow-declared-calls`, is
-never allowed to displace real code, and is printed in the summary wherever it was
-used. [docs/declarations.md](docs/declarations.md) is the contract.
+So the way through a stubborn sample is a loop: run it, read what stopped it,
+write down what you know, run it again. Where no declaration would help, the
+entry says so, and that is a bug report rather than a file to edit.
+[docs/declarations.md](docs/declarations.md) is the contract.
+
+## Driving it from a pipeline
+
+The other way this gets used is with nobody watching. There is no separate mode
+for it: what a program needs is the same decisions with a machine-readable
+answer, not different decisions.
+
+```
+ReactorUnpack suspicious.exe --json
+```
+
+One object on stdout, naming every file written, every payload with its hash and
+the path it landed on, and every stop — each carrying a `Remedy` a program
+applies as `declarations[Section][Name] = Value` without parsing English.
+`MoreToDeclare` is the loop's stopping condition: false means another round
+cannot help and the sample needs a change to the tool.
+
+The same tool is also an MCP server, with `unpack`, `next_declarations` — which
+turns what stopped a run into the file to run with next — and `read_output`:
+
+```jsonc
+{ "mcpServers": { "reactorunpack": { "command": "/opt/reactorunpack/ReactorUnpackMcp" } } }
+```
+
+Nothing escalates on its own. A budget stop comes back with the figure to raise
+it to; whether the extra minutes are worth spending stays with the caller. And
+`read_output` will not hand an extracted payload back to a model — that is
+malware, and the manifest names the path so a sandbox can be pointed at it.
+
+[docs/agents.md](docs/agents.md) is the guide, [schema/](schema/) is what the
+output promises and for how long.
 
 ## The two hard parts
 
-Most of what Reactor does has a standard answer, and the section after this one
-lists all of it. Two things are harder than the rest, and they are usually the
-reason to reach for this tool rather than another.
+Most of what Reactor does has a standard answer. Two things are harder, and they
+are usually the reason to reach for this tool rather than another.
 
 ### Getting the hidden file out
 
-Reactor is very often used as a wrapper. The sample you have is a shell whose
-real job is to decrypt something else and run it, and that something else is what
-you actually want. ReactorUnpack works out what the unpacker would have produced
-and writes it to `reactorunpack/suspicious.payloads/`, ready to be analysed on its
-own — and if it turns out to be Reactor-protected in its turn, to be put through
-the tool again.
+The sample you have is often a shell whose real job is to decrypt something else
+and run it. ReactorUnpack works out what that unpacker would have produced and
+writes it to `reactorunpack/suspicious.payloads/`, ready to analyse on its own —
+or to put through the tool again, if it turns out to be Reactor-protected in its
+turn. Three cases come up, and all three end with you knowing something:
 
-Three cases come up, and all three end with you knowing something:
-
-- **The payload is carried in the file**, as an encrypted resource or a blob of
-  bytes. This is the common one, and the file comes out.
+- **The payload is carried in the file**, as an encrypted resource or a blob.
+  This is the common one, and the file comes out.
 - **The payload is downloaded.** There is nothing to unpack, so the reader
   follows the sample as far as the connection — including through `async`
-  methods, which it drives to completion — and stops and tells you where the
-  connection was going, host and port. That address is the thing worth having.
+  methods, which it drives to completion — and tells you where it was going, host
+  and port. That address is the thing worth having.
 - **The unpacker is itself virtualized**, so there is no unpacker code to follow.
-  ReactorUnpack runs the interpreter instead and lets it do the unpacking. It
-  costs about a minute rather than a few seconds, and the file still comes out.
+  The tool then reads Reactor's interpreter the same way it reads everything
+  else, and lets it do the unpacking. That costs about a minute rather than a few
+  seconds, and the file still comes out.
 
 ### Reading methods that were turned into bytecode
 
 Reactor's strongest option replaces a method's code with a numbered list of
-operations for an interpreter it generates and embeds. The original code does not
-exist anywhere in the file, so there is nothing to decrypt, and no public tool —
-this one included — turns those methods back into real code.
+operations for an interpreter it generates and embeds. The original code is not
+in the file anywhere, so there is nothing to decrypt, and no public tool — this
+one included — recovers the source.
 
-What ReactorUnpack does instead is read the hidden program and tell you what it
-says. It names the affected methods, recovers the program behind each one by
-running the protector's own decoder, works out what the operations mean by
-experiment and by watching the interpreter run, and writes the result out twice:
-as an annotated listing showing how each reading was arrived at, and as ordinary
-assembly operations with every method, field and type the hidden code touches
-named. A stack-depth walk over the whole program then checks the readings against
-each other, and reports where it could not.
-
-You do not get C#. You get enough to say what a method you cannot read is for —
-often, as in this fragment from a method with no body at all, quite a lot more
-than that:
+What you get instead is the hidden program, read and named. The tool recovers it
+by interpreting the protector's own decoder, works out what each operation means
+by experiment and by watching the interpreter work, checks the readings against
+each other with a stack-depth walk over the whole program, and writes it out with
+every method, field and type the hidden code touches named:
 
 ```
    2627:  newobj     System.Security.Cryptography.CryptoStream::.ctor(...)
@@ -273,67 +255,81 @@ than that:
 ```
 
 Those three unreadable names are ordinary methods elsewhere in the sample, and
-looking them up takes a minute: they are one-line wrappers around
-`Stream.Write`, `CryptoStream.FlushFinalBlock` and `MemoryStream.ToArray`. So the
-fragment is a decryptor, writing a byte array through a cipher and keeping the
-result — read out of a method whose code does not exist in the file.
+looking them up takes a minute: one-line wrappers around `Stream.Write`,
+`CryptoStream.FlushFinalBlock` and `MemoryStream.ToArray`. So the fragment is a
+decryptor, writing a byte array through a cipher and keeping the result — read
+out of a method whose code does not exist in the file.
 
-Nothing from the reading is put back into the assembly, because a reading is not
-the same kind of proof as a decrypted method body and the two are not going to be
-mixed. [docs/devirtualization.md](docs/devirtualization.md) is the whole story,
-written for someone who does not work in .NET.
+You also get it as code, in the cleaned copy, where the rest of the recovery
+already is: verbose, boxed, still flattened, but readable in a decompiler and
+navigable by cross-reference. A reading is not the same kind of proof as a
+decrypted body, so each rebuilt method carries a `[RebuiltFromReading]` attribute
+that dnSpy and ILSpy show on the line above it. And where the sample's own work
+can test the reading, the tool makes it do so and reports the verdict:
+
+> Checked by running it: with the built bodies in place of the stubs, the module
+> unpacks SHA-256 `7fa1a9d7…` and SHA-256 `81cf796c…` — byte for byte what it
+> unpacks as it shipped, and a built body was entered 2 time(s) doing it.
+
+Both of those unpackings are interpretations, not executions — the check costs
+the guarantee at the top of this page nothing. Where it cannot be made, the tool
+says so rather than implying one.
+[docs/devirtualization.md](docs/devirtualization.md) is the whole story, written
+for someone who does not work in .NET.
 
 ## What it handles
 
 .NET Reactor 6, which covers the large majority of Reactor-protected samples in
-circulation. Specifically: encrypted method bodies (NecroBit), encrypted strings,
-scrambled control flow, junk-call insertion, proxied calls, hidden metadata
-references, anti-tamper and anti-debug checks, encrypted embedded resources, and
-embedded payload assemblies.
+circulation: encrypted method bodies (NecroBit), encrypted strings, scrambled
+control flow, junk-call insertion, proxied calls, hidden metadata references,
+anti-tamper and anti-debug checks, encrypted embedded resources, embedded payload
+assemblies, and code virtualization.
 
 ## What it does not handle
 
 Being straight about this matters more than the feature list.
 
-- **Turning virtualized methods back into code.** As above: they are read and
-  reported, not restored, and the stubs are left as they are in the cleaned copy.
-- **Native-packed files.** If the sample is wrapped in a native stub rather than
-  being a pure .NET file, it is detected and reported as unsupported rather than
-  being mangled. See [docs/how-net-reactor-works.md](docs/how-net-reactor-works.md).
-- **Other protectors.** ConfuserEx, Eazfuscator, Babel, and friends are out of
-  scope. Try [de4dot](https://github.com/de4dot/de4dot) for those.
+- **Proving what a virtualized method did.** The bodies built into the cleaned
+  copy are the tool's reading, not code recovered from the file, and each says so
+  in an attribute. Where the sample's own work can test them it does; where it
+  cannot, the reading stands unchecked.
+- **Native-packed files.** A sample wrapped in a native stub rather than being
+  pure .NET is detected and reported as unsupported, not mangled.
+- **Reactor 7 and later, and other protectors.** ConfuserEx, Eazfuscator, Babel
+  and friends are out of scope — try
+  [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx).
 - **Getting original names back.** Reactor destroys them; they are not in the
-  file. `--rename` substitutes readable placeholders, which helps navigation but
-  is not the same thing.
+  file. The cleaned copy substitutes readable placeholders, which helps
+  navigation but is not the same thing.
 
 If a sample is not Reactor-protected, it says so and stops.
 
 ## Is the cleaned file safe to run?
 
-**No.** It is still malware. The cleaned copy is for reading in a decompiler.
-It is not sanitised, defanged, or made safe in any way — quite the opposite, it
-is the malware with its protection removed. Treat it exactly as you would treat
-the original.
+**No.** It is still malware, and it is now malware with its protection removed,
+which is worse. The cleaned copy is for reading in a decompiler. It is not
+sanitised or defanged in any way. Treat it exactly as you would the original.
 
 ## Documentation
 
 - **[How .NET Reactor works](docs/how-net-reactor-works.md)** — what each
-  protection actually does to the file, written for someone who does not know
-  .NET internals. Start here if the output mentioned something you did not
-  recognise.
+  protection does to the file, for someone who does not know .NET internals.
+  Start here if the output mentioned something you did not recognise.
 - **[How ReactorUnpack undoes it](docs/how-recovery-works.md)** — the technique
   used against each protection, and why it is safe to do statically.
-- **[Virtualized methods](docs/devirtualization.md)** — what code virtualization
-  does to a method, how the hidden program is recovered and read, and how much of
-  that would work against a protector other than Reactor.
+- **[Virtualized methods](docs/devirtualization.md)** — what virtualization does
+  to a method, how the hidden program is recovered and read, and how much of that
+  would work against a protector other than Reactor.
 - **[Reading the output](docs/reading-the-output.md)** — the report format, what
   each number means, and what to do when something does not work.
 - **[Declarations](docs/declarations.md)** — what a run can be told, what it
   reports back when it stops, and the loop between the two.
-- **[Compatibility and provenance](docs/compatibility.md)** — the precise
-  support contract and verification gates.
-- **[Comparison with NETReactorSlayer](docs/parity.md)** — stage-by-stage,
-  including where this tool is weaker.
+- **[Driving it from a program](docs/agents.md)** — `--json`, the MCP server, and
+  how a pipeline works a sample through the loop without a person in it.
+- **[Compatibility and provenance](docs/compatibility.md)** — the precise support
+  contract and the verification gates.
+- **[How it compares](docs/parity.md)** — which of NETReactorSlayer, de4dotEx,
+  Krypton and this one to reach for, and where this one is weaker.
 - **[Corpus](docs/corpus.md)** — how correctness is measured.
 
 ## Building from source
@@ -349,22 +345,22 @@ dotnet test ReactorUnpack.slnx -c Release
 Use `-c Release` for the tests. Most of the suite is the analysis engine working
 through real samples, which an unoptimised build runs about five times slower.
 
-While you work, run the suite without the five tests that put whole samples
+While you work, run the suite without the six tests that put whole samples
 through the machine:
 
 ```bash
 dotnet test ReactorUnpack.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 321 of the 327 tests in about three seconds, against the fourteen minutes
-those six cost between them. They still run on a plain `dotnet test`, which is what
-to do before pushing, because they are the ones that prove the tool recovers real
-malware.
+That is 396 of the 402 tests in about five seconds, against the eight minutes
+those six cost between them. They still run on a plain `dotnet test`, which is
+what to do before pushing, because they are the ones that prove the tool recovers
+real malware.
 
-When the change is to one pass and you need a real sample to see it, skip the passes
-that come after the one you are working on rather than waiting for the whole
-pipeline. Payload extraction and virtualization disassembly account for two minutes
-of a run on their own, and nothing before them depends on either:
+When the change is to one pass and you need a real sample to see it, skip the
+passes that come after the one you are working on rather than waiting for the
+whole pipeline. Payload extraction and virtualization disassembly account for two
+minutes of a run on their own, and nothing before them depends on either:
 
 ```bash
 cat > /tmp/fast.json <<'JSON'
@@ -374,11 +370,11 @@ dotnet run --project src/ReactorUnpack.Cli -c Release --no-build -- \
     samples/NAME.exe --analyze-only --declarations /tmp/fast.json --report-dir /tmp/loop
 ```
 
-Eleven seconds instead of two and a half minutes, and the report still carries the
-passes you kept, with their diagnostics and blockers. The output is not a recovery —
-skipping a pass that gates emission means no cleaned copy is written, which is the
-point: this is for reading a report, and the full run is what says whether the change
-was right.
+Eleven seconds instead of two and a half minutes, and the report still carries
+the passes you kept, with their diagnostics and blockers. The output is not a
+recovery — skipping a pass that gates emission means no cleaned copy is written,
+which is the point: this is for reading a report, and the full run is what says
+whether the change was right.
 
 The samples themselves are malware and are not in the repository, so a fresh
 checkout has none. The tests that read one are skipped there rather than failed,

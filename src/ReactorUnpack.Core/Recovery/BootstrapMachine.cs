@@ -72,15 +72,22 @@ public static class BootstrapMachine
     /// <summary>
     /// Creates a seeded machine and runs the loader initializers, or explains why it could not.
     /// </summary>
+    /// <param name="watching">
+    /// Called with the machine before anything runs in it, for a caller that wants to watch. It is
+    /// called here rather than after this returns because the initializers are part of what runs,
+    /// and in a module whose initializer is the protected one they are the interesting part.
+    /// </param>
     public static bool TryRunInitializers(
         ArtifactContext context,
         int maximumSteps,
         out StaticMachine? machine,
-        out string diagnostic)
+        out string diagnostic,
+        Action<StaticMachine>? watching = null)
     {
         if (!TrySeed(context, maximumSteps, out machine, out diagnostic) || machine is null)
             return false;
 
+        watching?.Invoke(machine);
         RunInitializers(context, machine);
         if (machine.State.ModuleFileIsAbsent || Refusal(machine) is not { } refusal)
             return true;
@@ -94,6 +101,7 @@ public static class BootstrapMachine
         if (!TrySeed(context, maximumSteps, out machine, out diagnostic) || machine is null)
             return false;
 
+        watching?.Invoke(machine);
         RunInitializers(context, machine);
         return true;
     }

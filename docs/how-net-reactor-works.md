@@ -210,8 +210,8 @@ and it really is per sample: across the samples examined here, the same engine
 numbers the same operations differently in every build, so a table of opcode
 meanings learned from one is worthless on the next.
 
-ReactorUnpack does not lift it, and neither does any other public tool. What it
-does instead is recover the hidden program and read it: the affected methods are
+No other public tool lifts it at all. What ReactorUnpack does is recover the
+hidden program and read it: the affected methods are
 named, the program behind each one is taken by running the engine's own decoder
 rather than by parsing its bytecode, and what each operation means is established
 by making the engine perform it on chosen values, by watching what it fetches,
@@ -221,6 +221,14 @@ and as the assembly operations it stands for, with every reference into the
 assembly named, and a walk of the stack's depth over the whole program is used to
 check the readings against each other. You cannot read the method, but you can
 usually tell what it is for and how it is shaped.
+
+It also builds those readings back into IL in the cleaned copy, where a
+decompiler will open and follow them — verbose, boxed, and still flattened, but
+navigable. A body built that way is a reading rather than a proof, so each method
+it goes into is marked with an attribute saying so and a `--strict` run builds
+none of them unless you ask with `--devirtualize`; where the protected method is
+on the sample's own unpacking path, the tool interprets that path with the built
+bodies in place and reports whether the same payload came out.
 
 That is a large subject and it has its own document:
 [devirtualization.md](devirtualization.md) covers what the protection does, how

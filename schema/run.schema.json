@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jgajek/reactor-unpack/schema/run.schema.json",
+  "title": "ReactorUnpack run manifest",
+  "description": "What `ReactorUnpack --json` prints on standard output: one run, said in one object. Everything the run wrote is named here, so a caller never has to rebuild a path from the naming convention.",
+  "type": "object",
+  "required": [
+    "Schema",
+    "ToolVersion",
+    "Success",
+    "InputPath",
+    "InputSha256",
+    "InputLength",
+    "Strict",
+    "Protections",
+    "Wrote",
+    "Payloads",
+    "Recovery",
+    "RebuiltMethods",
+    "RebuiltCheck",
+    "Verified",
+    "VerificationDiagnostics",
+    "Passes",
+    "Blockers",
+    "ContinuedPast",
+    "MoreToDeclare"
+  ],
+  "properties": {
+    "Schema": {
+      "description": "Which version of this shape the object is. Read it first and refuse a major version you were not written for.",
+      "type": "string",
+      "pattern": "^reactorunpack\\.run/[0-9]+$"
+    },
+    "ToolVersion": { "type": "string" },
+    "Success": {
+      "description": "Whether the run finished with something to stand behind. The same answer as exit code 0.",
+      "type": "boolean"
+    },
+    "InputPath": { "type": "string" },
+    "InputSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "InputLength": { "type": "integer", "minimum": 0 },
+    "Strict": {
+      "description": "Whether the run refused rather than assuming anything about the machine the sample expects.",
+      "type": "boolean"
+    },
+    "Protections": {
+      "description": "What the file was found to be protected with, by the tool's own names for them.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "Wrote": { "$ref": "#/$defs/outputs" },
+    "Payloads": {
+      "description": "What was hidden inside the file, each with the path it was written to.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/payload" }
+    },
+    "Recovery": { "$ref": "#/$defs/recovery" },
+    "RebuiltMethods": {
+      "description": "How many methods that shipped as bytecode for an interpreter are code in the cleaned copy.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "RebuiltCheck": {
+      "description": "What running the cleaned copy established about those bodies. `agreed` means it unpacked the same payload the original did.",
+      "enum": ["notMade", "agreed", "disagreed"]
+    },
+    "Verified": { "type": "boolean" },
+    "VerificationDiagnostics": {
+      "description": "Why the cleaned copy was withheld, where it was.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "Passes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pass" }
+    },
+    "Blockers": {
+      "description": "What stopped the run, each carrying what to declare to get past it where a declaration would.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/blocker" }
+    },
+    "ContinuedPast": {
+      "description": "How many calls a non-strict run walked past rather than stopping at. Named in full in the blocker report.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "MoreToDeclare": {
+      "description": "Whether any stop has a remedy, which is to say whether running again with a fuller declarations file could get further. False with stops still listed means the rest need a change to the tool, and a caller looping on this sample should stop.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "outputs": {
+      "title": "Every file the run wrote",
+      "type": "object",
+      "required": ["Cleaned", "Analysis", "Changes", "Blockers", "Renames", "Listings"],
+      "properties": {
+        "Cleaned": {
+          "description": "The readable copy of the assembly, or null where the run had nothing it could stand behind.",
+          "type": ["string", "null"]
+        },
+        "Analysis": { "type": "string" },
+        "Changes": { "type": "string" },
+        "Blockers": { "type": ["string", "null"] },
+        "Renames": { "type": ["string", "null"] },
+        "Listings": {
+          "description": "The programs behind virtualized methods, as text: two files per method, the operations as read and the same thing as IL.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "payload": { "$ref": "analysis.schema.json#/$defs/payload" },
+    "recovery": { "$ref": "analysis.schema.json#/$defs/recovery" },
+    "pass": { "$ref": "analysis.schema.json#/$defs/pass" },
+    "blocker": { "$ref": "blockers.schema.json#/$defs/blocker" }
+  }
+}

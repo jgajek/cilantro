@@ -1,25 +1,170 @@
-# Parity with NETReactorSlayer
+# How ReactorUnpack compares to the other Reactor tools
 
-This matrix maps ReactorUnpack's passes onto the fifteen stages that
-NETReactorSlayer ships under `NETReactorSlayer.Core/Stages/`. It records what is
-implemented, where ReactorUnpack is stronger or weaker, and what remains a
-deliberate, fail-closed boundary. Everything here is static: no protected
-assembly is executed, and every mutating pass rolls back unless structural
-verification passes.
+Four open-source tools deal with .NET Reactor, and they are not competitors so
+much as different jobs. This page says which one to reach for, what each of
+them handles, and where ReactorUnpack is weaker than the alternatives — because
+the fastest way to waste an afternoon is to use a tool for the thing it does not
+do.
+
+- **[NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer)** — the
+  general-purpose Reactor unpacker most people start with. Fifteen stages, a
+  Windows GUI and a CLI that also runs on Linux, GPLv3.
+- **[de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx)** — the
+  maintained fork of de4dot, from G DATA Advanced Analytics. Handles about
+  twenty-five obfuscator families, Reactor among them, and is the one with
+  explicit support for Reactor 7.0 and later. GPLv3.
+- **[Krypton](https://github.com/dawwinci/krypton-devirtualizer)** — a
+  purpose-built devirtualizer whose goal is a devirtualized binary that still
+  runs. Continuation of PeterG75's Krypton, GPLv3.
+- **ReactorUnpack** — this tool. Reactor 6 only, never executes the sample, and
+  refuses to write anything it cannot prove. MIT.
+
+Everything below was checked against each project's source and release notes in
+August 2026. All three of the others are moving targets, and which Reactor
+version each handles best changes with them.
+
+## Which one to reach for
+
+| If you want to | Reach for | Because |
+| --- | --- | --- |
+| Know what an unfamiliar sample is, and get the next stage out, without running it | ReactorUnpack | Nothing in the sample executes, and the payload comes out of a static reading of the unpacker |
+| The most thoroughly cleaned assembly a Reactor tool will give you | NETReactorSlayer | Widest stage coverage of the four, and it invokes the sample's own decrypters, so codecs nobody has modeled still come out |
+| Handle a Reactor 7+ sample, or a sample that turns out not to be Reactor | de4dotEx | It is the one that states support for Reactor 7.0 and later, and the only one that covers other obfuscators at all |
+| A devirtualized binary you can run and debug | Krypton | That is its stated goal; it rebuilds VM methods in place and patches the output until it starts |
+| Read a virtualized method without running anything | ReactorUnpack | It builds the method back into the cleaned copy, reports the recovered program as a listing beside it, and says how each reading was arrived at |
+| Rename everything, including public types, the way de4dot does | Slayer or de4dotEx | Both carry the full de4dot renamer; ReactorUnpack renames only what it can prove is generated |
+
+If you have a Reactor 6 crypter and no idea what is inside it, a reasonable
+order is: ReactorUnpack first, because it costs you nothing to run it on a live
+sample and it hands you the payload; then Slayer or de4dotEx on that payload if
+you want a more aggressively cleaned assembly; then Krypton if what you are left
+with is virtualized and you would rather debug it than read it.
+
+## What each one handles
+
+| Protection | ReactorUnpack | NETReactorSlayer | de4dotEx | Krypton |
+| --- | --- | --- | --- | --- |
+| Method bodies encrypted (NecroBit) | Yes, statically | Yes | Yes | — |
+| Strings encrypted | Yes, statically | Yes | Yes | Opt-in |
+| Control flow flattened, junk woven in | Yes | Yes | Yes | Yes, in cleanup |
+| Calls hidden behind proxy delegates | Yes | Yes | Yes | Yes, by running it |
+| Metadata tokens proxied | Yes | Yes | Yes | — |
+| Booleans decrypted at run time | Yes | Yes | Yes | — |
+| Embedded resources encrypted | Yes | Yes | Yes | Opt-in |
+| Next stage hidden inside | Yes, any crypter | Reactor's own | Reactor's own | — |
+| Costura bundle | Yes | Yes | — | — |
+| Anti-tamper and anti-debug | Yes, where proven | Yes | Anti-debug, strong name | Heuristic patches |
+| Native-packed stub | Detects, refuses | Unpacks | Unpacks | — |
+| Methods turned into bytecode | Reads, rebuilds in place | Detects only | Rebuilds in place | Rebuilds in place |
+| Names destroyed | Non-public only | Full de4dot renamer | Full de4dot renamer | Pattern-based |
+| Protectors other than Reactor | — | — | About 25 families | — |
+
+A dash means the tool does not attempt it, which is not the same as failing at
+it. Four cells deserve their footnote:
+
+- **Krypton's strings and resources** are off unless you set
+  `KRYPTON_STRING_DECRYPT=1` or `KRYPTON_RESOURCE_DECRYPT=1`, and its own README
+  says both skip RSA and NecroBit-tier blobs. It has no method-body decryption
+  stage at all, so on a NecroBit sample you want another tool first.
+- **de4dotEx's Reactor devirtualizer** is on by default, but the release that
+  introduced it notes it has mainly been tested on protection-specific methods
+  such as string decryption, rather than on arbitrary program code.
+- **ReactorUnpack's rebuilt virtualized methods** go into the cleaned copy, each
+  marked with a `[RebuiltFromReading]` attribute that a decompiler shows above the
+  method, because a body built from a reading is not the same kind of result as a
+  decrypted one. Where the sample's own unpacking path runs through the method,
+  the tool interprets that path both ways and tells you whether the same payload
+  came out.
+- **"Detects, refuses"** means the run stops and says what it found, rather than
+  writing a mangled file that looks like a result.
+
+## How each one behaves
+
+| | ReactorUnpack | NETReactorSlayer | de4dotEx | Krypton |
+| --- | --- | --- | --- | --- |
+| Executes the protected sample | Never | Yes | Not on the Reactor path | Yes, by default |
+| Reactor versions | 6 only, refuses the rest | Not stated | 3.x through 7.0+ | Where the handler patterns are known |
+| What you get | Cleaned copy with virtualized methods built back into it, report, payloads | Cleaned copy | Cleaned copy | Runnable devirtualized copy and a per-method report |
+| When it cannot do something | Writes nothing and names the blocker | Skips the stage | Skips the stage | Skips the method |
+| Runs on | Single file, Windows or Linux, no runtime needed | CLI on .NET 6 or Framework, Windows or Linux; the GUI is Windows-only | .NET Framework or Mono, Docker image published | Windows x64, .NET 8 |
+| Licence | MIT | GPLv3 | GPLv3 | GPLv3 |
+
+## The question behind all of it: does the tool run the malware?
+
+This is the difference that matters most and the one least visible in a feature
+list. Reactor's decryption keys are in the sample, so the shortest way to get a
+plaintext is to let the sample decrypt it for you. Two of these four take that
+route, and both are stronger for it in exactly the way they are riskier.
+
+**NETReactorSlayer** loads the target with `Assembly.Load`/`UnsafeLoadFrom` and
+reflectively invokes the sample's own decrypter methods, defeating Reactor's
+caller check by patching `StackTrace.GetMethod`. That is why its string recovery
+is correct for codec variants nobody has modeled — and it is also why running it
+on malware is an execution event on your machine. The CLI runs on Linux, which
+puts it in a container where that matters less, at the cost of running the
+sample's code on a host it was not written for: a decrypter that reaches for a
+Windows API fails there rather than decrypting.
+
+**Krypton** runs the original assembly through a .NET 4.8 helper to capture
+Reactor's `DynamicMethod` delegate table, which is how it turns hidden calls back
+into direct ones. It is on by default and can be turned off with
+`KRYPTON_HCR_ENABLE=0`, at the cost of that recovery. Its output is also
+deliberately patched to keep running — `Hashtable` capacity sanitisation, a
+WinForms entry-guard bypass, anti-manipulation neutralisation — so the result is
+a runnable approximation rather than a faithful copy. For its purpose that is
+the right trade; it is worth knowing you have made it.
+
+**de4dotEx** does not execute the sample on the Reactor path: decryption is
+reimplemented in the tool, with de4dot's IL emulator for the algorithmic parts.
+Note that de4dot's *generic* string-decryption modes do run the target's code —
+the `--strtyp emulate` mode, despite the name, executes IL rather than emulating
+it — but the Reactor deobfuscator does not use them.
+
+**ReactorUnpack** never loads or invokes protected code. It reads the file as
+data and interprets the IL under a bounded machine with no real filesystem,
+registry, network, or process behind it, working out what the decryption *would*
+produce. That is the whole design constraint, and everything ReactorUnpack is
+worse at follows from it: no unmodeled codec can be run to see what it does, a
+native stub cannot be unpacked by letting it unpack itself, and a value the
+machine cannot establish stops the run instead of being guessed.
+
+## Where ReactorUnpack loses
+
+Worth knowing before you pick it up, and none of it is going to be fixed by
+trying harder — each item is the same design constraint seen from a different
+side.
+
+- **Anything but Reactor 6.** A 7.x sample, or a sample that turns out to be
+  ConfuserEx, is reported as unsupported and nothing is written. de4dotEx covers
+  both.
+- **Native-packed files.** The .NET part is inside a native stub, and the way
+  the other tools get it out is by unpacking that stub. This one detects the
+  case and stops. Slayer and de4dotEx unpack it.
+- **String codecs nobody has modeled.** Slayer calls the sample's own decrypter,
+  so a codec variant it has never seen still comes out. This tool has to
+  interpret the codec, and where it cannot, the strings stay encrypted and the
+  report says which sites.
+- **Names.** Slayer and de4dotEx rename the whole de4dot surface, public types
+  included. This tool renames only non-public members whose names it can prove
+  are generated, so the result is less uniformly readable.
+- **Speed.** Ten to thirty seconds on a normal sample and a minute or two on a
+  virtualized one, against a few seconds for the others. Interpreting the loader
+  is the price of not running it.
+- **A binary you can execute.** Krypton's output is meant to run; this tool's
+  cleaned copy is meant to be read, and the virtualized methods built back into
+  it are labelled as readings rather than offered as working code.
+
+## Stage by stage against NETReactorSlayer
+
+This matrix maps ReactorUnpack's passes onto the fifteen stages Slayer ships
+under `NETReactorSlayer.Core/Stages/`. It records what is implemented, where
+ReactorUnpack is stronger or weaker, and what remains a deliberate, fail-closed
+boundary. Every mutating pass rolls back unless structural verification passes.
 
 Slayer is GPL-3.0 throughout and bundles a de4dot-derived renamer
 (`NETReactorSlayer.De4dot.Renamer`). ReactorUnpack re-derives every equivalent
 capability from its own CFG, use-site dataflow, and naming primitives rather
 than porting any of it.
-
-The most important architectural difference is not in this table. Slayer loads
-the target with `Assembly.Load`/`UnsafeLoadFrom` and reflectively invokes the
-sample's own decrypter methods, defeating Reactor's caller check by patching
-`StackTrace.GetMethod`. That makes its string recovery correct for codec
-variants nobody has modeled, and it makes running the tool on malware an
-execution event. ReactorUnpack never loads or invokes protected code.
-
-## Stage-by-stage matrix
 
 | # | Slayer stage | ReactorUnpack pass | Status |
 |---|--------------|--------------------|--------|
@@ -38,18 +183,20 @@ execution event. ReactorUnpack never loads or invokes protected code.
 | 12 | `CosturaDumper` | `costura-extraction` | Parity. Extracts `costura.*.dll(.compressed)` assemblies into the payload writer. |
 | 13 | `ControlFlowDeobfuscator` | `dispatcher-deobfuscation` + `control-flow-completion` | Clean-room. Proves dispatcher edges, folds constant branches, and deletes all unreachable code with EH regions preserved and per-method verification. |
 | 14 | `Cleaner` | `runtime-cleanup` (on by default; `--keep-runtime` disables) | Weaker. Slayer also strips attributes and unused resources and fixes the entry point and metadata header. We delete any type or method that is unreachable, invisible outside the assembly, unexposed to reflection, unreferenced by survivors, and attributable to the protector, plus attributed type initializers whose bodies cannot do anything, for which reachability is beside the point. |
-| 15 | `SymbolRenamer` | `symbol-renaming` (opt-in `--rename`) | Much weaker. Slayer renames the full de4dot surface including public types and restores properties and events. We rename only non-public, non-virtual, structurally proven names to synthetic identifiers. |
+| 15 | `SymbolRenamer` | `symbol-renaming` (on by default; `--keep-names` and `--strict` disable) | Much weaker. Slayer renames the full de4dot surface including public types and restores properties and events. We rename only non-public, non-virtual, structurally proven names to synthetic identifiers. |
 | — | no equivalent | `loader-call-elision` | Beyond Slayer. Cuts the loader calls Reactor injects at the head of type initializers throughout the assembly, once the bounded interpretation accounts for everything a call does and nothing that survives can read what it wrote. Slayer removes the runtime by recognizing it; this reaches the same code by proving the calls inert, and is what leaves the runtime unreachable for cleanup. The initializers left empty by the cut are handed to cleanup by the same pass, on the grounds that it is what emptied them. |
 | — | anti-debug (folded into `AntiManipulationPatcher`) | `antitamper-neutralization` | Partial. Debugger-probe sites are neutralized only where the value provably feeds a Reactor termination path. |
 | — | `Helper/NativeUnpacker` + `QuickLZ` | `metadata-preflight` (`NativePackDetector`) | Deferred. Native-packed input is detected and reported unsupported with a specific diagnostic rather than mis-processed. Slayer unpacks it. |
-| — | `Helper/CodeVirtualizationUtils` | `reactor-detection`, `virtualization-disassembly` | Beyond Slayer, short of lifting. Slayer detects virtualization by looking for a known runtime; detection here is by the shape of the seam every virtualizer has to leave — pack the arguments, pass a program number, call once, return — which holds for engines neither tool has seen, and it names the affected methods rather than only reporting a flag. Beyond detection, the engine's own decoder is run under the machine and the decoded program is read back off the heap, so nothing about the bytecode's framing or encryption has to be known. What the operations mean is then derived per sample — which is what the per-build opcode numbering makes necessary and what no static table could survive — two ways: by having the engine perform them on chosen values, and by watching what they do while the program really runs, which reaches the ones that refuse to be performed out of context and, by matching what they took and left against what the engine held elsewhere, identifies the loads and stores that isolated trials never could. That accounts for 28 of the 29 operations in each sample and 27 by name, the calls and object constructions among them, those being recognized by having no fixed arity and an operand that names a method; the discard and the return come from the two sources together, an operation that takes a value and is seen putting it nowhere by either having discarded it, and one that writes the place the jumps write a number that is no place in the program having stopped rather than gone anywhere. What the engine computed on each operation's behalf is recorded as well, which corroborates those names against the engine's own code and supplies the comparison a conditional branch is made on — a reading of handlers that cannot be read statically, since they are flattened into one method and call through proxies resolved at run time. Where they go comes from the same run, by recording which operation followed which, so branches are named and their targets given — the ones the run took as fact, the rest by a rule the run confirmed. The last two readings come from looking through the engine's wrappers rather than at them: one holding nothing in any of its places is null however its tag reads, and a load from a table as long as the method's arguments, never indexed past, is a load of an argument rather than of a local — which needs the tables sown with values first, a cold engine's being empty. The program is then written out a second time as the IL it stands for, every operation of it, with nothing marked unknown; and walking the depth of the stack through the whole thing — which reading the dispatcher's jump table makes possible — reaches every operation any path arrives at, finds no place that two paths reach at different depths, and, never having been at a loss, establishes that what it does not arrive at is unreachable, which in turn pins the effect of the last operations nothing could measure, there being only one number that keeps the depths consistent — and an operation pinned that way whose operand names a static field is the write of that field, which is how the last operation no trial could perform came to be read. Neither tool rebuilds a method body, and neither should on this evidence; ReactorUnpack reports the reading instead. |
+| — | `Helper/CodeVirtualizationUtils` | `reactor-detection`, `virtualization-disassembly`, `virtualization-rebuild` | Beyond Slayer. Slayer detects virtualization by looking for a known runtime; detection here is by the shape of the seam every virtualizer has to leave — pack the arguments, pass a program number, call once, return — which holds for engines neither tool has seen, and it names the affected methods rather than only reporting a flag. The engine's own decoder is then run under the machine and the decoded program read back off the heap, so nothing about the bytecode's framing or encryption has to be known, and what each operation means is derived per sample rather than from a table no per-build numbering would survive. The result is written as an annotated listing and as the IL it stands for, and built back into the cleaned copy with an attribute on each method saying it is a reading. See [devirtualization.md](devirtualization.md) for how the readings are arrived at and checked. |
 
 ## Where ReactorUnpack is intentionally different
 
 - **Fail-closed everywhere.** Any pass that cannot prove its transform preserves
   behavior makes no edit. Partial or unsupported recovery blocks emit by default.
-- **Static only.** There is no dynamic execution, so protections that only reveal
-  themselves at runtime (native stubs, VM lifting) are boundaries, not features.
+- **Static only.** There is no dynamic execution, so a protection that only
+  yields to running it — a native stub, most obviously — is a boundary rather
+  than a feature, and a virtualized method is read and rebuilt from that reading
+  rather than recovered.
 - **Identity is policy-aware, not bypassed.** Cleanup and renaming declare the
   exact removals, additions, and renames they perform; the verification gate still
   fails on anything undeclared.
@@ -61,7 +208,15 @@ execution event. ReactorUnpack never loads or invokes protected code.
   parity against a tool that tree-shakes, and keeps the output an unobfuscated
   version of the input rather than a smaller program.
 
-## Corpus coverage gaps
+## The evidence behind the claims
+
+The rest of this page is the working underneath the table: which capabilities
+are proved on real samples rather than only unit tested, how close the output
+gets to a known-good copy of the same program, and what has to hold before
+anything is written at all. It is here so that "parity" is a measurement rather
+than an assertion.
+
+### Corpus coverage gaps
 
 The corpus proves method-body recovery, proxy fixing, string recovery,
 anti-tamper neutralization, control-flow completion, encrypted-resource
@@ -96,7 +251,7 @@ would be untestable code. The oracle gate now counts properties and events as
 preserved-name members in their own right, so a sample that does lose them
 fails rather than passing quietly.
 
-## Current corpus standing
+### Current corpus standing
 
 Last full run: 9 passed, 0 failed, 0 missing, against 189 passing unit tests.
 
@@ -186,15 +341,15 @@ were missing two of the oracle's, for a surplus of one. They now carry all three
 of the oracle's resources plus the three Reactor ones, which reads as a surplus
 of three and is strictly better.
 
-## Emission policy
+### Emission policy
 
 Emission is gated on the emitted module being trustworthy, so only passes that
 can affect the module withhold output. `payload-extraction`,
 `costura-extraction`, and `resource-restoration` recover side artifacts, so they
 report `Unsupported` without blocking an otherwise verified assembly; when
 restoration succeeds it does reattach, and that addition is declared to the
-identity gate like any other mutation. `--fail-on-partial` restores the strict policy in which any
-incomplete pass, artifacts included, withholds output.
+identity gate like any other mutation. `--fail-on-partial` restores the strict
+policy in which any incomplete pass, artifacts included, withholds output.
 
 Two separate questions are asked before output is kept. The module in memory is
 compared against the input, and may differ only by what the passes declared. The
@@ -203,3 +358,11 @@ metadata token: deleting a row forces the writer to renumber everything after it
 so tokens legitimately differ between memory and file while names do not. Token
 preservation is requested whenever nothing was deleted, and dropped exactly when
 it has become unachievable.
+
+## Clean room
+
+None of the three GPL projects above contributed source, binaries, or generated
+output to this one, and none of them is called at runtime. Every equivalent
+capability was re-derived from the samples and from independently authored
+tests. The full statement is in
+[compatibility.md](compatibility.md#clean-room-boundary).

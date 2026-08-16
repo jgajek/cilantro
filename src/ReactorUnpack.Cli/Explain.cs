@@ -1,5 +1,6 @@
 using System.Globalization;
 using ReactorUnpack.Core;
+using ReactorUnpack.Core.Recovery;
 
 namespace ReactorUnpack.Cli;
 
@@ -50,7 +51,7 @@ internal static class Explain
         ("clrjit",
             "The .NET compiler itself is hooked to intercept code as it is prepared"),
         ("virtualization",
-            "Some methods are bytecode for a custom interpreter (listed, not turned back into code)")
+            "Some methods are bytecode for a custom interpreter, not code a decompiler can show")
     ];
 
     public static void Summarize(PipelineResult result, string inputPath)
@@ -62,6 +63,8 @@ internal static class Explain
         Console.WriteLine($"  SHA-256  {report.InputSha256}");
         // Said at the top rather than buried, because it is the one thing that changes how the rest of
         // this page should be read: a triage run answers more and vouches for less.
+        // What the mode did to the assembly is not said here, because either half of it can be asked
+        // for or waved off by name and the sections below report what actually happened.
         Console.WriteLine(report.Strict
             ? "  Reading  strict: nothing assumed, stopping wherever the tool cannot follow"
             : "  Reading  triage: a plausible machine assumed, unreadable calls stepped over");
@@ -303,6 +306,36 @@ internal static class Explain
             var folder = Near(Path.GetDirectoryName(result.VirtualProgramPaths[0])!, home);
             Console.WriteLine(
                 $"    Hidden code     {result.VirtualProgramPaths.Count} listing(s) in {folder}");
+        }
+
+        if (result.RebuiltMethods > 0)
+        {
+            // What the built bodies are worth is exactly what running them established, so the one
+            // line an analyst reads says that and not how much work went into it.
+            var standing = result.DevirtualizationCheck switch
+            {
+                DevirtualizationCheck.Agreed => "they unpacked the same payload as the original",
+                DevirtualizationCheck.Disagreed => "THEY DID NOT MATCH THE ORIGINAL — see below",
+                _ => "a reading, unchecked"
+            };
+            Console.WriteLine(
+                $"    Built back      {result.RebuiltMethods} method(s) in the cleaned copy, " +
+                $"marked [RebuiltFromReading] ({standing})");
+
+            // Underneath it, what each body cost and what the run established, because a verdict
+            // an analyst cannot see the basis of is one they have to take on trust.
+            foreach (var note in result.DevirtualizationNotes)
+                Console.WriteLine($"                      {note}");
+        }
+        else if (result.DevirtualizationNotes.Count > 0 && result.VirtualProgramPaths.Count > 0)
+        {
+            // Not delivered where there was something to deliver is the case worth spelling out,
+            // since the alternative is an analyst looking for a file that was never written and not
+            // being told why. Where the sample had no virtualized method at all there is nothing to
+            // explain, and saying so on every ordinary file would be noise.
+            Console.WriteLine("    Built back      nothing, and here is why:");
+            foreach (var note in result.DevirtualizationNotes)
+                Console.WriteLine($"                      {note}");
         }
 
         Console.WriteLine($"    Full report     {Near(result.AnalysisReportPath, home)}");

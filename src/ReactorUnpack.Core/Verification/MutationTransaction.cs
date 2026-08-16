@@ -78,6 +78,11 @@ public static class RewritePolicy
 /// runtime type, renaming an obfuscated symbol) declares precisely what it touched; anything the
 /// module changed beyond the declaration still fails verification. Renames are keyed old to new so
 /// the gate can confirm the new name is present and the old one is gone.
+///
+/// Additions are declared the same way as removals and for the same reason. A run that builds a
+/// virtualized method back marks it with an attribute of its own, and the type carrying that
+/// attribute is a declaration the input did not have; saying so here is what keeps every other
+/// unexpected addition a failure.
 /// </remarks>
 public sealed record RewriteAllowance(
     IReadOnlySet<string>? AddedResources = null,
@@ -87,7 +92,9 @@ public sealed record RewriteAllowance(
     IReadOnlySet<uint>? RemovedMethodTokens = null,
     int RemovedTypeCount = 0,
     int RemovedFieldCount = 0,
-    IReadOnlySet<string>? AddedPublicApi = null)
+    IReadOnlySet<string>? AddedPublicApi = null,
+    IReadOnlySet<uint>? AddedMethodTokens = null,
+    int AddedTypeCount = 0)
 {
     public static RewriteAllowance None { get; } = new();
 
@@ -103,6 +110,8 @@ public sealed record RewriteAllowance(
         RenamedPublicApi ?? System.Collections.Immutable.ImmutableDictionary<string, string>.Empty;
     public IReadOnlySet<uint> RemovedMethodTokenSet =>
         RemovedMethodTokens ?? System.Collections.Immutable.ImmutableHashSet<uint>.Empty;
+    public IReadOnlySet<uint> AddedMethodTokenSet =>
+        AddedMethodTokens ?? System.Collections.Immutable.ImmutableHashSet<uint>.Empty;
 }
 
 public sealed record ArtifactIdentitySnapshot(

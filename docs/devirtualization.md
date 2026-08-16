@@ -365,20 +365,168 @@ handing the engine an operation made to carry them. They are in the header
 because the engine's other programs — the one that builds the string table, for
 instance — do use them.
 
+## Turning the reading back into code
+
+Everything above is a report. The reading also goes back into the assembly, which
+an ordinary run does for you:
+
+```bash
+ReactorUnpack suspicious.exe
+```
+
+The cleaned copy that lands beside your sample has the virtualized methods
+holding real IL instead of a stub. You open the same file you were going to open
+anyway, read the method as C#, follow its calls with the cross-reference view,
+and search it like any other code — with the strings already decrypted and the
+names already replaced, which a copy of the raw input could not give you.
+
+The lowering assumes nothing about types, because the reading establishes none.
+The engine holds every value as a boxed object and so does the emitted body:
+every slot is an `object` local, every constant is boxed where it is made, and a
+value is converted back only where the assembly itself says what it must be — the
+parameter of a call, the type of a field, the element of an array. Arithmetic
+goes through `System.Convert` rather than unboxing to a width nobody established.
+The result is verbose but faithful. This is what the `CryptoStream` block from the
+listing above looks like after the round trip, decompiled by ILSpy:
+
+```csharp
+case 237:
+{
+    CryptoStream cryptoStream = new CryptoStream((Stream)value3, (ICryptoTransform)value2, (CryptoStreamMode)obj112);
+    object obj116 = Convert.ToInt32((object)((Array)obj114).Length);
+    h5bTpuvG9giGM6rEuXl(cryptoStream, obj113, (int)obj112, (int)obj116);
+    AkiDCJvwSWy6yH7wA8K(cryptoStream);
+    wBHpICowg0 = px4E1VvpQREo8oO95Pa(obj109);
+    FHYABrvl1RBkXRoAdtY(obj109);
+    FHYABrvl1RBkXRoAdtY(cryptoStream);
+    value = 242;
+    ...
+}
+```
+
+The flattened shape survives — that is the dispatcher, now a C# `switch` inside a
+`while (true)` — and the boxing is everywhere. It is still a method you can read.
+
+Two things it refuses rather than guesses at. An operation whose meaning was
+never established stops the whole body, not just that instruction: a body that is
+right in 2,934 places out of 2,935 runs the wrong code, and nothing in the file
+tells a reader which place it was. And an operation the stack walk never arrives
+at is written as a `throw`, because there is no stack for it to work on and any
+lowering would be a story about one.
+
+### Try and catch, which live outside the operations
+
+The operations are not the whole program. Alongside them the engine parses a list
+of *guarded regions*: a range of operations, a range that handles what they throw,
+and the type of exception the handler catches. None of that appears in the
+operation stream, so a reading of the operations alone would miss it entirely and
+a body built from that reading would run the protected code with its safety net
+removed — a `try` that is not a `try` behaves differently the moment anything
+goes wrong, which in unpacking code is a path the sample takes on purpose.
+
+Reading a region means telling its two ranges apart, and for a long time the tool
+could not: it recovered the numbers a region covers without knowing which of them
+were the guarded code and which the handler. It refused to build such a method,
+because putting the handler in the wrong place runs the wrong code exactly when
+something has already gone wrong. That is now settled by following the objects the
+engine builds — the clause object knows its handler and the object that holds it
+knows what it guards — so a region comes out as four numbers and a type:
+
+```
+operations 36-1611 guarded, handled at 1612-1615, kind 0, catching System.Object
+```
+
+which becomes a real `catch` clause in the emitted body. One further thing has to
+be true for the runtime to accept it: a jump that leaves a guarded region must be
+written as `leave` rather than `br`, and it may not carry values on the stack.
+The emitter converts those jumps, and refuses the method where a conditional jump
+or a jump table tries to cross the boundary, since neither has a `leave` form and
+neither can be faked without changing what the code does. On the payload sample
+whose engine uses handlers, all four of its regions come out this way, and with
+them the whole method: 4,854 operations become 15,270 instructions over 44 slots,
+where before the regions were readable the method could not be built at all.
+
+**It is a reading, and it is marked where you will see it.** Everything else
+ReactorUnpack writes into the cleaned assembly is the protector's own output,
+provable byte for byte; a body built from a reading is the reading itself, and if
+the reading is wrong the body is wrong in a way no reader can see. For a while
+that argument kept these bodies out of the cleaned copy altogether, in a second
+assembly built from the raw input — which meant reading the one method you cared
+about in a file where nothing else had been recovered, while the file with
+everything else recovered showed that method as an empty stub. Nobody was served
+by that.
+
+So the bodies go into the cleaned copy, and each method that gets one carries an
+attribute saying where it came from:
+
+```csharp
+[RebuiltFromReading("ReactorUnpack built this body from its reading of the interpreter's program. It is not the original code and was not recovered from the file; see the run's report.")]
+private static void GNswBvhgmV(object P_0, int P_1)
+```
+
+dnSpyEx and ILSpy both show that line directly above the method, which is where
+the reader is looking. The attribute class is added to the assembly as an
+internal type — one type and one constructor, declared to the verification gate
+like any other change, so an addition nobody accounted for still fails the run.
+
+A `--strict` run builds nothing unless you ask by name with `--devirtualize`, so
+the cleaned copy of a strict run holds only what was proved. `--no-devirtualize`
+does the same for a triage run, and is also the faster one: building the bodies
+and running the check is most of the time an ordinary run spends.
+
+What can be said is that the emitted bodies pass ECMA-335 verification. Running
+Microsoft's `ilverify` over the samples here reports not one error in any method
+that was built, which means the types line up, the stack balances on every path,
+every branch lands somewhere legal, and the exception clauses nest the way the
+runtime requires. The files are not error-free — Reactor's own code accounts for
+between 14 and 77 complaints in each of them — but every cleaned copy reports
+exactly the same ones with the bodies in as without, so nothing written in added
+any.
+That is a real check and it caught several mistakes while this was being written.
+It is not a proof of equivalence, though: verifiable IL can still be the wrong IL.
+
+### Running it, which is the check that counts
+
+There is one more check, and it is the only one whose evidence does not come from
+the same reading it is testing. These samples unpack an assembly at startup, and
+in some of them the protected method is on the path that does it. So the tool
+prepares a second copy of the input, puts the built bodies in place of the stubs,
+and interprets the startup path again. Both runs begin from the same state in the
+same module, and the only difference between them is the code the protected
+method holds. If the second run arrives at the same hidden assembly — the same
+megabyte of decrypted bytes, SHA-256 for SHA-256 — the bodies did the work the
+engine did. Nothing produces a matching megabyte by accident, and none of the
+several thousand operations behind it can be misread without changing it.
+
+When that happens the summary says so on the line that reports the building:
+
+```
+    Built back      1 method(s) in the cleaned copy, marked [RebuiltFromReading] (they unpacked the same payload as the original)
+                      GNswBvhgmV: 2935 operation(s) became 8997 instruction(s) over 13 slot(s), every value carried as an object. 14 of them are places nothing reaches and throw instead.
+                      Checked by running it: with the built bodies in place of the stubs, the module unpacks SHA-256 1db4e9c40d83bb79 and SHA-256 e4e746f968a3ec89 — byte for byte what it unpacks as it shipped — and a built body was entered 1 time(s) doing it.
+```
+
+The run that produces that verdict is not the cleaned copy being executed. It is
+a second in-memory copy of the input, prepared the same way, interpreted twice:
+once as it shipped and once with the built bodies in place. Nothing is executed
+at any point, here or anywhere else in the tool.
+
+Two ways this could pass while testing nothing, and both are ruled out. If the
+run as it shipped unpacks nothing, there is no reference to compare against. If
+the second run never enters a built body, then the rest of the module unpacked
+the payload on its own and the bodies were never exercised. Either way the answer
+is *the check was not made*, which the tool prints in those words — it is a
+different thing from the check passing, and the two are never allowed to look
+alike. Of the four samples here, two are checked this way and pass; one has a
+virtualized method that is not on the unpacking path, and one is itself an
+already-unpacked payload with no startup path to run.
+
 ## What this does not do
 
-**It does not rewrite the method.** The stubs stay exactly as they are in the
-cleaned copy, and nothing from the listing is put back into the assembly. This
-is deliberate. Everything else ReactorUnpack changes, it can prove: the decrypted
-body is the protector's own output, byte for byte. A reading of a virtual
-program is not that kind of proof, and writing a plausible method body into a
-sample an analyst will then trust is a worse outcome than writing nothing. So the
-listing is a report, and the pass that produces it cannot block a cleaned copy
-from being written.
-
-**It is not a decompiler.** You get assembly-level operations, not C#. Local
-variables are numbered slots, there are no names, and the control flow is still
-the flattened dispatcher shape the protector emitted.
+**It is not a decompiler.** You get assembly-level operations, not C#, and where
+the bodies are written back you get C# in name only: local variables are numbered
+slots, there are no names, and the control flow is still the flattened dispatcher
+shape the protector emitted.
 
 **No public tool does better on this.** NETReactorSlayer, the closest comparison,
 detects virtualization by recognizing a known runtime and reports it as a flag; it
@@ -468,10 +616,14 @@ virtual machine, or one with instructions that do several things at once, would
 need different probes — the *method* of probing would be unchanged, but what
 counts as a result would not be.
 
-**No exception handling inside the virtual program.** These programs do not use
-handlers, and the tool notes as much per program. One of the payload samples runs
-on a different engine that does enter handlers by throwing, which the reading has
-to account for; a protector that leans on that would need more.
+**Where the exception handling is kept.** In this engine the guarded regions are
+a separate structure the interpreter walks, not instructions in the program, and
+they are recovered by following the objects the engine builds rather than by
+decoding anything. Most of the programs here use no handlers at all; the payload
+sample on the other engine uses four. A virtualizer that encoded regions in the
+instruction stream, or that implemented `try` by some means of its own, would
+need this part rewritten — though the shape of the problem, *the reading is not
+only in the operations*, is one to expect anywhere.
 
 ### What would need real work
 
@@ -498,19 +650,27 @@ If the sample has virtualized methods, the summary says so:
 ```
   PROTECTION   .NET Reactor
 
-    - Some methods are bytecode for a custom interpreter (listed, not turned back into code)
+    - Some methods are bytecode for a custom interpreter, not code a decompiler can show
 
   WROTE
 
     Hidden code     2 listing(s) in reactorunpack/suspicious.virtualized
+    Built back      1 method(s) in the cleaned copy, marked [RebuiltFromReading] (they unpacked the same payload as the original)
 ```
 
-The count is of files, and there are two per virtualized method, so that is one
-method: its lifted IL and the listing behind it.
+The listing count is of files, and there are two per virtualized method, so that
+is one method: its lifted IL and the listing behind it.
+
+The parenthesis is the verdict of the run described above, and it is the part to
+read. `a reading, unchecked` means the comparison could not be made and the lines
+under it say why; `IT DID NOT MATCH THE ORIGINAL` means the bodies were built and
+did something else, which is a reason not to trust them.
 
 Reading a virtual program is the slowest thing the tool does — a minute or so on
-top of the rest. If you are working through a directory of samples and do not
-need the listings, you can leave it out:
+top of the rest, and building the bodies back and running them to check adds most
+of another. `--no-devirtualize` keeps the listings and skips the building. If you
+are working through a directory of samples and do not need either, you can leave
+the whole thing out:
 
 ```bash
 ReactorUnpack suspicious.exe --declarations skip-vm.json

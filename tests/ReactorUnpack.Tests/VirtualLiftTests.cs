@@ -25,6 +25,7 @@ public sealed class VirtualLiftTests
     private const int Add = 6;
     private const int Mystery = 7;
     private const int Call = 8;
+    private const int Throw = 9;
 
     /// <summary>
     /// A jump carrying a table of places is the operation that turns a flattened program back into
@@ -349,6 +350,48 @@ public sealed class VirtualLiftTests
         Assert.DoesNotContain("walked as handlers", lifted, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// An operation that throws ends the path it is on. Reading it as one that merely takes a value
+    /// would walk the operations after it as though a throw had not happened.
+    /// </summary>
+    [Fact]
+    public void AThrowIsWrittenAsOneAndEndsThePathItIsOn()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Throw, new VirtualOperand.None()),
+            (Push, new VirtualOperand.Number(7))
+        ]);
+
+        var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
+
+        Assert.Contains("throw", lifted, StringComparison.Ordinal);
+        Assert.Contains(
+            "1 operation(s) nothing in the program reaches", lifted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Where a clause was found paired with what holds it, the listing says which range is the try
+    /// and which the handler rather than giving the numbers in the order the engine keeps them.
+    /// </summary>
+    [Fact]
+    public void APairedRegionIsSaidAsATryAndAHandler()
+    {
+        var told = new VirtualRegion([3, 4], 0, "System.Exception")
+        {
+            Guarded = (1, 2),
+            Handled = (3, 4)
+        };
+
+        Assert.Equal(
+            "operations 1-2 guarded, handled at 3-4, kind 0, catching System.Exception",
+            told.Describe());
+        Assert.Equal(
+            "over operations 3, 4, kind 0, catching System.Exception",
+            new VirtualRegion([3, 4], 0, "System.Exception").Describe());
+    }
+
     private static VirtualProgram Program(
         ArtifactContext context,
         IReadOnlyList<(int Opcode, VirtualOperand Operand)> operations)
@@ -369,7 +412,8 @@ public sealed class VirtualLiftTests
                 [Switch] = new(Switch, 1, 0, "branch if"),
                 [Jump] = new(Jump, 0, 0, "branch"),
                 [Add] = new(Add, 2, 1, "add"),
-                [Call] = new(Call, 0, 0, "calls the method it names") { Measured = false }
+                [Call] = new(Call, 0, 0, "calls the method it names") { Measured = false },
+                [Throw] = new(Throw, 1, 0, VirtualSemantics.Throwing)
             },
             TargetIsOperand = new HashSet<int> { Jump, Switch }
         };

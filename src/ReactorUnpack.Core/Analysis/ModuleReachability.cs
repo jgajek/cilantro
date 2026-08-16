@@ -55,14 +55,25 @@ public sealed class ModuleReachability
     /// <param name="typeInitializersAlwaysRun">
     /// Whether every type initializer counts as a root regardless of whether its type is used.
     /// </param>
+    /// <param name="alsoRoots">
+    /// Methods the caller knows to be entered for reasons the module does not show, which are
+    /// treated as roots along with the ones it does.
+    /// </param>
     /// <remarks>
     /// The runtime runs a type initializer before the first use of its type, so a type nothing
     /// touches never runs one. Modelling that turns a self-contained island of code into what it
     /// is, which is the difference between recognizing abandoned scaffolding and being unable to
     /// say anything about it. It is the less conservative reading, so callers ask for it
     /// explicitly, and only where the consequence of being wrong is bounded by other evidence.
+    ///
+    /// Roots the caller adds go the other way, toward keeping more. A method the tool put a body
+    /// into is one the run means to be read, and nothing in the module has to call it for that to
+    /// be true; naming it a root keeps it and everything its body reaches.
     /// </remarks>
-    public static ModuleReachability Compute(ModuleDef module, bool typeInitializersAlwaysRun)
+    public static ModuleReachability Compute(
+        ModuleDef module,
+        bool typeInitializersAlwaysRun,
+        IEnumerable<MethodDef>? alsoRoots = null)
     {
         var methods = module.GetTypes().SelectMany(type => type.Methods).ToArray();
         var candidatesBySignature = methods
@@ -74,7 +85,8 @@ public sealed class ModuleReachability
         var reflectivelyExposed = new HashSet<TypeDef>();
         var activated = new HashSet<TypeDef>();
         var pending = new Queue<MethodDef>();
-        foreach (var root in Roots(module, methods, typeInitializersAlwaysRun))
+        foreach (var root in Roots(module, methods, typeInitializersAlwaysRun)
+                     .Concat(alsoRoots ?? []))
         {
             if (reachable.Add(root))
                 pending.Enqueue(root);

@@ -242,6 +242,36 @@ public static class VirtualSemantics
     /// <summary>The one refusal that a differently arranged stack might answer.</summary>
     private const string WrongKind = "it wants a value of a kind we did not put on the stack";
 
+    /// <summary>What an operation that throws the value it is handed is called in a reading.</summary>
+    internal const string Throwing = "throws what it takes";
+
+    /// <summary>
+    /// The type a refusal says the operation insisted on, where one of them named a type by
+    /// refusing to treat what it was given as one.
+    /// </summary>
+    /// <remarks>
+    /// A handler that begins by casting reports, in failing, the only thing about itself that could
+    /// be learned while the wrong value was on the stack. Nothing is concluded from the name here;
+    /// it is used to ask the question again with a value the handler will accept, and the answer to
+    /// that question is what the reading rests on.
+    /// </remarks>
+    private static string? Insisted(List<string> reasons)
+    {
+        const string cast = "castclass ";
+        foreach (var reason in reasons)
+        {
+            var at = reason.IndexOf(cast, StringComparison.Ordinal);
+            if (at < 0)
+                continue;
+            var rest = reason[(at + cast.Length)..];
+            var end = rest.IndexOfAny([' ', ':', ')', '\t']);
+            var named = end < 0 ? rest : rest[..end];
+            if (named.Contains('.', StringComparison.Ordinal))
+                return named;
+        }
+        return null;
+    }
+
     /// <summary>
     /// How much work one operation is allowed before it is taken not to be one.
     /// </summary>
@@ -432,6 +462,18 @@ public static class VirtualSemantics
                     break;
             }
 
+            // An operation that throws is refused by every arrangement alike, and says so in the
+            // one way that is worth acting on: by naming the type it wanted. Asking again with one
+            // of those is the last thing tried, because it is the only reading whose evidence is a
+            // refusal rather than a stack.
+            if (found is null && Insisted(reasons) is { } insisted &&
+                Throws(
+                    machine, module, heap, dispatcher, engine, factory, stack, example, staging,
+                    insisted))
+            {
+                found = new VirtualOperation(opcode, 1, 0, Throwing) { Popped = insisted };
+            }
+
             if (found is not null)
             {
                 // A jump is asked once more, over values that make its condition answerable. This
@@ -439,7 +481,7 @@ public static class VirtualSemantics
                 // jump: a jump that none of the trials above happened to make fire is written down
                 // as an operation that consumes a value and does nothing, which is the reading that
                 // severs every block it reaches.
-                if (found is { Pushes: 0, Pops: 1 or 2 } && operand is not null)
+                if (found is { Pushes: 0, Pops: 1 or 2, Name: not Throwing } && operand is not null)
                 {
                     var condition = Decides(
                         machine, module, heap, dispatcher, engine, factory, slotType, stack, example,
@@ -560,6 +602,55 @@ public static class VirtualSemantics
             ? "when it went matches no condition, so what it decides on is not among them"
             : $"when it went matches {string.Join(" and ", fits)} alike";
         return null;
+    }
+
+    /// <summary>Whether the operation throws the very value it was handed.</summary>
+    /// <remarks>
+    /// An operation that throws cannot be measured the way the rest are. It never returns, so there
+    /// is no stack afterwards to read, and every arrangement of values is refused alike — which is
+    /// why one would otherwise be left unread however many times it is tried.
+    ///
+    /// What it does leave is the complaint. A handler that begins by casting what it took to an
+    /// exception says, in refusing, what it wanted; hand it one and the run ends the way a throw
+    /// ends. The reading is then in the identity of what came back rather than in its type: the
+    /// instance thrown has to be the instance we made, or the operation threw something of its own
+    /// and merely happened to want an exception to do it. Twice, with two instances, for the same
+    /// reason every other reading here is taken more than once.
+    /// </remarks>
+    private static bool Throws(
+        StaticMachine machine,
+        ModuleDef module,
+        StaticHeap heap,
+        MethodDef dispatcher,
+        StaticValue engine,
+        MethodDef factory,
+        List<StaticValue> stack,
+        StaticValue operation,
+        List<(FieldDef From, FieldDef To)> staging,
+        string wanted)
+    {
+        foreach (var seeds in Seeds.Take(2))
+        {
+            stack.Clear();
+            if (!TryMakeSlot(
+                    machine, module, heap, factory, seeds[0], false, wanted, out var slot, out var held))
+            {
+                return false;
+            }
+            stack.Add(slot);
+            var footprint = Footprint(heap, module, engine, stack);
+            Stage(heap, staging, engine, operation);
+            var outcome = machine.Execute(
+                dispatcher, [engine, operation], new StaticWorkBudget(TrialSteps));
+            Restore(heap, footprint);
+            if (outcome.Status != StaticExecutionStatus.Threw ||
+                outcome.Value.Kind != StaticValueKind.HeapReference ||
+                outcome.Value.Bits != held.Bits)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>One performance of an operation: what was on the stack, and what was left.</summary>
@@ -1110,7 +1201,7 @@ public static class VirtualSemantics
             ? Measuring(shape, pops, pushes, trials)
             : (pops, pushes) switch
             {
-                (0, 1) => Nullary(trials) ??
+                (0, 1) => Nullary(trials) ?? Carried(trials, operand) ??
                     (Fetching(trials) is not null ? "loads what its operand indexes" : null),
                 (1, 1) => Unary(trials),
                 (2, 1) => Binary(trials),
@@ -1463,6 +1554,25 @@ public static class VirtualSemantics
         }
         return null;
     }
+
+    /// <summary>An operation that leaves the very number it carries: a constant.</summary>
+    /// <remarks>
+    /// This has to be asked before the table reading, and the sowing is what makes it safe to. An
+    /// operation that fetches from a table at the place its operand names answers with the number
+    /// we put there, which is different in every trial and never the operand; one that pushes its
+    /// operand answers with the operand, every trial alike. The two cannot both hold.
+    ///
+    /// Asking the other way round is what read a constant as a fetch: a table with a zero at the
+    /// place a zero was expected matches by coincidence, and the coincidence repeats in every trial
+    /// because the operand does not change between them. Nothing downstream survives that. Every
+    /// constant in the program becomes a local nobody wrote, and the operations that use them read
+    /// as working on values that were never there.
+    /// </remarks>
+    private static string? Carried(List<Trial> trials, long? operand) =>
+        operand is { } number &&
+        trials.TrueForAll(trial => trial.After.Count == 1 && trial.After[0] == number)
+            ? "pushes its operand"
+            : null;
 
     /// <summary>An operation that takes nothing but reproduces what was already on top: a copy.</summary>
     private static string? Nullary(List<Trial> trials) =>

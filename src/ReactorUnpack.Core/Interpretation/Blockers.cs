@@ -62,9 +62,9 @@ public enum BlockerKind
 /// which is also what makes two occurrences the same occurrence.
 /// </param>
 /// <param name="Detail">The refusal in the words the interpretation used.</param>
-/// <param name="Declare">
-/// The declaration that would answer it, spelled as it goes in the file, or null where the answer is
-/// a change to the tool rather than a line in a file.
+/// <param name="Remedy">
+/// The declaration that would answer it, in the form a program can apply, or null where the answer
+/// is a change to the tool rather than a line in a file.
 /// </param>
 /// <param name="Where">The method the stop happened in, and the offset within it.</param>
 /// <param name="Pass">Which pass was interpreting at the time.</param>
@@ -73,10 +73,77 @@ public sealed record Blocker(
     BlockerKind Kind,
     string Key,
     string Detail,
-    string? Declare,
+    Remedy? Remedy,
     string? Where,
     string? Pass,
-    int Times);
+    int Times)
+{
+    /// <summary>
+    /// The same remedy written out as it goes in the file, for a person retyping it.
+    /// </summary>
+    /// <remarks>
+    /// Derived rather than stored so that the sentence a person reads and the value a program
+    /// applies cannot drift apart. Both are in the report because both are read: the summary prints
+    /// this, and an agent building its next declarations file uses the other.
+    /// </remarks>
+    public string? Declare => Remedy?.Describe();
+}
+
+/// <summary>
+/// What to write in a declarations file to get past a stop, said so that a program can apply it.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A stop that names its own cure is what makes the tool usable in a loop, and for a long time the
+/// cure was a sentence: <c>"budgets": { "steps": &lt;more than 750000&gt; }</c>. A person can act on
+/// that. A program has to notice the angle brackets, work out that the thing inside them is an
+/// instruction rather than a value, invent a number, and rebuild the surrounding object — which is
+/// four chances to get it wrong before the run is even retried.
+/// </para>
+/// <para>
+/// So the parts are kept apart: which section of the file it belongs in, what key within it, and
+/// what value. Applying one is <c>declarations[Section][Name] = Value</c> and nothing else.
+/// </para>
+/// <para>
+/// Where the tool knows the whole answer it says the whole answer and <see cref="Wants"/> is null.
+/// Where it does not — nobody but the caller can know what a registry key holds — the value carries
+/// exactly one <c>null</c> standing where the answer goes, and <see cref="Wants"/> says what sort of
+/// answer that is. The distinction is the useful one for an agent, because the first kind can be
+/// applied without a decision and the second kind cannot be applied without one.
+/// </para>
+/// </remarks>
+/// <param name="Section">
+/// Which part of the declarations file this goes in: <c>facts</c>, <c>budgets</c> or <c>calls</c>.
+/// </param>
+/// <param name="Name">The key within that section, spelled as the run asks for it.</param>
+/// <param name="Value">
+/// What to write there. Complete where <see cref="Wants"/> is null, and otherwise holding a single
+/// <c>null</c> where the caller's answer goes.
+/// </param>
+/// <param name="Wants">
+/// What the caller has to decide, or null where the tool filled the value in itself.
+/// </param>
+/// <param name="Flag">A switch the run needs as well as the declaration, or null.</param>
+public sealed record Remedy(
+    string Section,
+    string Name,
+    JsonText Value,
+    string? Wants = null,
+    string? Flag = null)
+{
+    /// <summary>The remedy as a line of the file, for a person to read or retype.</summary>
+    public string Describe() =>
+        $"\"{Section}\": {{ {JsonText.Of(Name)}: {Spelled()} }}" +
+        (Flag is null ? string.Empty : $", with {Flag}");
+
+    /// <summary>
+    /// The value as a person reads it, with what they have to supply shown as a gap rather than as
+    /// the null that stands for it in the machine-readable half.
+    /// </summary>
+    private string Spelled() => Wants is null
+        ? Value.Text
+        : Value.Text.Replace("null", $"<{Wants}>", StringComparison.Ordinal);
+}
 
 /// <summary>
 /// The account of everything that stopped a run, gathered once for the whole run.
@@ -135,7 +202,7 @@ public sealed class BlockerLedger
         BlockerKind kind,
         string key,
         string detail,
-        string? declare = null,
+        Remedy? declare = null,
         string? where = null) =>
         _stopped.Add(kind, key, detail, declare, where ?? Reached(), Pass);
 
@@ -153,7 +220,7 @@ public sealed class BlockerLedger
         BlockerKind kind,
         string key,
         string detail,
-        string? declare = null,
+        Remedy? declare = null,
         string? where = null) =>
         _continued.Add(kind, key, detail, declare, where ?? Reached(), Pass);
 
@@ -182,7 +249,7 @@ public sealed class BlockerLedger
             BlockerKind kind,
             string key,
             string detail,
-            string? declare,
+            Remedy? declare,
             string? where,
             string? pass)
         {
@@ -210,10 +277,10 @@ public sealed class BlockerLedger
             _entries[identity].Times))];
     }
 
-    private sealed class Entry(string detail, string? declare, string? where, string? pass)
+    private sealed class Entry(string detail, Remedy? declare, string? where, string? pass)
     {
         public string Detail { get; } = detail;
-        public string? Declare { get; } = declare;
+        public Remedy? Declare { get; } = declare;
         public string? Where { get; } = where;
         public string? Pass { get; } = pass;
         public int Times { get; set; } = 1;
@@ -222,36 +289,60 @@ public sealed class BlockerLedger
 
 /// <summary>How a stop names the declaration that would answer it.</summary>
 /// <remarks>
-/// The fragments are written out in full, braces and all, because the reader of them is as likely to
-/// be a program pasting them into a file as a person retyping them, and a program should not have to
-/// know the file's shape to use what it was told.
+/// One place spells every remedy, so that what the summary prints and what an agent applies are the
+/// same statement seen twice rather than two statements that have to be kept in step.
 /// </remarks>
 public static class Declaring
 {
-    /// <summary>The line that would state a host fact.</summary>
-    public static string Fact(string key) => $"\"facts\": {{ \"{Escaped(key)}\": <value> }}";
+    /// <summary>The switch a run needs before it will act on anything declared about a call.</summary>
+    public const string AllowingCalls = "--allow-declared-calls";
+
+    /// <summary>What would state a host fact. Only the caller can know the answer.</summary>
+    public static Remedy Fact(string key) => new("facts", key, new JsonText("null"), "value");
 
     /// <summary>
-    /// The line that would declare what a call does, in the form that call can be declared in.
+    /// What would declare a call, in the form that particular call can be declared in.
     /// </summary>
     /// <remarks>
-    /// A call that hands nothing back is declared inert and a call that returns something has to be
-    /// told what to return, and offering the wrong one of the two is how a reader ends up writing a
-    /// declaration the tool then refuses.
+    /// A call that hands nothing back is declared inert, which the tool can write out in full
+    /// because there is nothing left to decide. A call that returns something cannot be, and the
+    /// type it returns is named as the thing to supply: an agent inventing a value has to know what
+    /// kind of value would be believed, and a person reading it is being told the same thing.
     /// </remarks>
-    public static string Call(string signature, bool returnsSomething = true) =>
-        $"\"calls\": {{ \"{Escaped(signature)}\": " +
-        (returnsSomething ? "{ \"returns\": <value> }" : "{ \"inert\": true }") +
-        " }, with --allow-declared-calls";
+    public static Remedy Call(string signature, bool returnsSomething = true, string? returns = null)
+        => returnsSomething
+            ? new Remedy(
+                "calls",
+                signature,
+                new JsonText("{ \"returns\": null }"),
+                returns ?? "value",
+                AllowingCalls)
+            : new Remedy(
+                "calls",
+                signature,
+                new JsonText("{ \"inert\": true }"),
+                Flag: AllowingCalls);
 
-    /// <summary>The line that would raise a budget.</summary>
-    public static string Budget(string budget, long beyond) =>
-        $"\"budgets\": {{ \"{budget}\": <more than {beyond}> }}";
+    /// <summary>What would declare the call this method is, naming the type it hands back.</summary>
+    public static Remedy Call(IMethod target) =>
+        target.MethodSig?.RetType is { } returns && returns.ElementType != ElementType.Void
+            ? Call(target.FullName, returnsSomething: true, returns.FullName)
+            : Call(target.FullName, returnsSomething: false);
 
-    /// <summary>The line that would leave a pass out of the run.</summary>
-    public static string Skip(string pass) => $"\"passes\": {{ \"skip\": [\"{Escaped(pass)}\"] }}";
+    /// <summary>
+    /// What would raise a budget the run exhausted, with a figure already in it.
+    /// </summary>
+    /// <remarks>
+    /// Twice what was refused, which is a starting point rather than a promise: the tool has no way
+    /// of knowing how much further the sample had to go. It is worth naming a figure anyway, because
+    /// a remedy a caller can apply without arithmetic is the difference between a loop that runs and
+    /// a loop that has to be written. Retrying converges quickly if it converges at all, since each
+    /// refusal doubles what the last one asked for.
+    /// </remarks>
+    public static Remedy Budget(string budget, long beyond) =>
+        new("budgets", budget, JsonText.Of(Doubled(beyond)));
 
-    private static string Escaped(string text) =>
-        text.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\"", "\\\"", StringComparison.Ordinal);
+    /// <summary>Twice a budget, short of overflowing.</summary>
+    private static long Doubled(long budget) =>
+        budget >= long.MaxValue / 2 ? long.MaxValue : Math.Max(1, budget) * 2;
 }

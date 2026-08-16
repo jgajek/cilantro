@@ -55,9 +55,14 @@ public sealed class PipelineTests
 
         try
         {
+            // Renaming and building virtualized methods back are what a triage run does for the
+            // analyst reading the result. Neither is what this test measures, and the first would
+            // change the very names the survivor comparison below is made on, so both are pinned.
             var result = new ReactorPipeline().Run(sample, new PipelineOptions(
                 OutputPath: output,
                 ReportDirectory: reportDirectory,
+                RenameSymbols: false,
+                Devirtualize: false,
                 FailOnPartial: true));
 
             Assert.True(result.Success);

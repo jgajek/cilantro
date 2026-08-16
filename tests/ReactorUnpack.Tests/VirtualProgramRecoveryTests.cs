@@ -93,7 +93,7 @@ public sealed class VirtualProgramRecoveryTests
     /// express guarded regions and expressed none says something a listing should report, and it
     /// is not the same thing as an engine that cannot express them at all.
     /// </remarks>
-    private static void Guard(ModuleDefUser module, MethodDef entry, bool made)
+    private static void Guard(ModuleDefUser module, MethodDef entry, bool made, bool paired = false)
     {
         var clause = SyntheticContext.AddType(module, "Guard");
         var places = Places
@@ -134,8 +134,50 @@ public sealed class VirtualProgramRecoveryTests
                 new ValueTypeSig(module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle"))),
             module.CorLibTypes.GetTypeRef("System", "Type"))));
         written.Add(OpCodes.Stfld.ToInstruction(caught));
+        if (paired)
+            written.AddRange(Holding(module, entry, clause, held));
         for (var at = 0; at < written.Count; at++)
             entry.Body.Instructions.Insert(at, written[at]);
+    }
+
+    /// <summary>
+    /// Puts the clause inside something that says what it guards, which is where this engine — and
+    /// the real one — keeps the other half of a region.
+    /// </summary>
+    private static List<Instruction> Holding(
+        ModuleDefUser module,
+        MethodDef entry,
+        TypeDef clause,
+        Local made)
+    {
+        var region = SyntheticContext.AddType(module, "Region");
+        var from = new FieldDefUser(
+            "Begins", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Public);
+        var to = new FieldDefUser(
+            "Ends", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Public);
+        var inside = new FieldDefUser(
+            "Clause", new FieldSig(clause.ToTypeSig()), FieldAttributes.Public);
+        region.Fields.Add(from);
+        region.Fields.Add(to);
+        region.Fields.Add(inside);
+        region.Methods.Add(Constructor(module));
+
+        var holder = new Local(region.ToTypeSig());
+        entry.Body.Variables.Add(holder);
+        return
+        [
+            OpCodes.Newobj.ToInstruction(region.FindDefaultConstructor()),
+            OpCodes.Stloc.ToInstruction(holder),
+            OpCodes.Ldloc.ToInstruction(holder),
+            OpCodes.Ldc_I4.ToInstruction(2),
+            OpCodes.Stfld.ToInstruction(from),
+            OpCodes.Ldloc.ToInstruction(holder),
+            OpCodes.Ldc_I4.ToInstruction(3),
+            OpCodes.Stfld.ToInstruction(to),
+            OpCodes.Ldloc.ToInstruction(holder),
+            OpCodes.Ldloc.ToInstruction(made),
+            OpCodes.Stfld.ToInstruction(inside)
+        ];
     }
 
     private static void AddEngine(ModuleDefUser module) =>
@@ -146,6 +188,9 @@ public sealed class VirtualProgramRecoveryTests
 
     private static void AddGuardlessEngine(ModuleDefUser module) =>
         AddEngine(module, decode: true, guarded: false, shaped: true);
+
+    private static void AddPairedEngine(ModuleDefUser module) =>
+        AddEngine(module, decode: true, guarded: true, paired: true);
 
     /// <summary>
     /// A method's guarded regions are no part of its operations, so a reading that only reads the
@@ -165,6 +210,30 @@ public sealed class VirtualProgramRecoveryTests
         Assert.Equal([0, 1, 2, 3], region.Numbers);
         Assert.Contains(
             "over operations 0, 1, 2, 3",
+            string.Join("\n", recovered.Render(context.Module)),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The numbers in a clause are not labelled, so which of them is the handler is a question the
+    /// clause does not answer. What holds the clause does: it carries the range the handler is
+    /// there for. Read together they are a region that can be built back, and the listing says
+    /// which range is which rather than giving four numbers in the order the engine kept them.
+    /// </summary>
+    [Fact]
+    public void AClauseHeldBySomethingThatSaysWhatItGuardsIsReadAsBoth()
+    {
+        using var context = SyntheticContext.Build(AddPairedEngine);
+        var method = Assert.Single(VirtualizedMethodDetector.Detect(context.Module));
+
+        var recovered = VirtualProgramRecovery.Recover(context, method, out _);
+
+        Assert.NotNull(recovered);
+        var region = Assert.Single(recovered.Regions);
+        Assert.Equal((2, 3), region.Guarded);
+        Assert.Equal((0, 1), region.Handled);
+        Assert.Contains(
+            "operations 2-3 guarded, handled at 0-1",
             string.Join("\n", recovered.Render(context.Module)),
             StringComparison.Ordinal);
     }
@@ -196,7 +265,8 @@ public sealed class VirtualProgramRecoveryTests
         ModuleDefUser module,
         bool decode,
         bool guarded,
-        bool shaped = false)
+        bool shaped = false,
+        bool paired = false)
     {
         var operation = SyntheticContext.AddType(module, "Operation");
         var code = new FieldDefUser(
@@ -324,7 +394,7 @@ public sealed class VirtualProgramRecoveryTests
         engine.Methods.Add(entry);
 
         if (guarded || shaped)
-            Guard(module, entry, made: guarded);
+            Guard(module, entry, made: guarded, paired: paired);
 
         var stub = new MethodDefUser(
             "Hidden",

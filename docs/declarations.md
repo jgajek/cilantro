@@ -19,6 +19,9 @@ one file.
         └── you (or an agent) append the declaration to d.json and run it again
 ```
 
+Every stop carries its remedy twice: as a line to retype, and as parts a program
+can apply without reading English. [agents.md](agents.md) covers the second.
+
 Nothing in this file widens what the interpreter will do on its own. Every
 section answers a question the machine already knows how to ask, and a section
 nobody writes leaves the refusal exactly where it was.
@@ -134,6 +137,13 @@ can prove do nothing cannot prove it from a declaration that they do nothing.
       "Kind": "unstatedFact",
       "Key": "wmi:Win32_DiskDrive.SerialNumber",
       "Detail": "the host profile \"ptnifif\" does not say wmi:Win32_DiskDrive.SerialNumber; ...",
+      "Remedy": {
+        "Section": "facts",
+        "Name": "wmi:Win32_DiskDrive.SerialNumber",
+        "Value": null,
+        "Wants": "value",
+        "Flag": null
+      },
       "Declare": "\"facts\": { \"wmi:Win32_DiskDrive.SerialNumber\": <value> }",
       "Where": "System.String W8ysC31VAB3Rg7yojQi.bHOEmc16m1KHmOsR4gd::TJ51Wrvldq(...) IL_0030",
       "Pass": "constant-strings",
@@ -147,6 +157,15 @@ can prove do nothing cannot prove it from a declaration that they do nothing.
 `Declare` is the whole of what to do about a blocker: paste it into the file and
 run again. Where it is `null`, no declaration will help and the next step is a
 change to the tool.
+
+`Remedy` is the same statement with the parts kept apart, for whatever is doing
+the pasting when it is not a person. Applying one is
+`declarations[Section][Name] = Value`. Where `Wants` is null the tool knew the
+whole answer and wrote it — a budget arrives carrying twice the figure that was
+refused, and a call that returns nothing arrives as `{ "inert": true }`. Where
+`Wants` is not null, only you can know the answer: `Value` holds a single `null`
+standing where it goes, and `Wants` names the kind of value that would be
+believed. `Flag` is `--allow-declared-calls` or nothing.
 
 | `Kind` | What it means | What to do |
 | --- | --- | --- |
@@ -180,14 +199,19 @@ analysis report.
    declare — though under the default some of the reading may rest on the entries in
    `ContinuedPast`, which no declaration is needed for and any of which can be closed
    by declaring the call outright.
-3. For each blocker with a `Declare`, decide whether you actually know the
-   answer. Facts, libraries and budgets are cheap and safe. A `calls` entry is an
-   assertion about somebody else's code: make it only when you know, and expect
-   it to be named in the report.
+3. For each blocker with a `Remedy`, decide whether you actually know the
+   answer. One with `Wants` null needs no decision at all. Facts and budgets are
+   cheap and safe. A `calls` entry is an assertion about somebody else's code:
+   make it only when you know, and expect it to be named in the report.
 4. Merge into `d.json` and go back to 1. Check `UnconsultedDeclarations` each
    time, since a declaration that answered nothing is the commonest mistake.
-5. Stop when what remains has no `Declare`. Those are the tool's problem, and the
+5. Stop when what remains has no `Remedy`. Those are the tool's problem, and the
    `Detail` and `Where` are what a bug report needs.
+
+`--json` puts all of this in one object on standard output, including where the
+reports went, so that none of it has to be found first; and the MCP server does
+steps 2 to 4 as a single call. [agents.md](agents.md) is the guide for driving
+the tool this way.
 
 ## What stays true
 

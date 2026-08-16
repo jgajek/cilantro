@@ -34,20 +34,37 @@ public abstract record VirtualOperand
 /// <param name="Caught">The type it catches, where it names one.</param>
 public sealed record VirtualRegion(IReadOnlyList<int> Numbers, int? Kind, string? Caught)
 {
+    /// <summary>Where the guarded part begins and ends, where a clause was found held by one.</summary>
+    /// <remarks>
+    /// A clause on its own says where its handler is and not what the handler guards; the two
+    /// belong to different objects, and only the one holding the other says they go together. Both
+    /// are needed before anything can be built from a region, which is why they are kept apart from
+    /// the numbers: the numbers are what was read, and these are what was worked out from them.
+    /// </remarks>
+    public (int From, int To)? Guarded { get; init; }
+
+    /// <summary>Where the handler begins and ends, where the same pairing established it.</summary>
+    public (int From, int To)? Handled { get; init; }
+
     /// <summary>
     /// The region as a line of the listing, said in the engine's own terms.
     /// </summary>
     /// <remarks>
-    /// Which number is the start of the try and which the start of the handler is not something
-    /// the engine says, so they are given in the order it keeps them rather than under names that
-    /// would be a guess. A reader with the listing beside them can see which is which.
+    /// Which number is the start of the try and which the start of the handler is not something a
+    /// clause says on its own, so where the pairing did not settle it they are given in the order
+    /// the engine keeps them rather than under names that would be a guess. A reader with the
+    /// listing beside them can see which is which.
     /// </remarks>
     public string Describe()
     {
-        var places = string.Join(", ", Numbers);
         var kind = Kind is { } number ? $", kind {number}" : string.Empty;
         var caught = Caught is null ? string.Empty : $", catching {Caught}";
-        return $"over operations {places}{kind}{caught}";
+        if (Guarded is { } guarded && Handled is { } handled)
+        {
+            return $"operations {guarded.From}-{guarded.To} guarded, handled at " +
+                $"{handled.From}-{handled.To}{kind}{caught}";
+        }
+        return $"over operations {string.Join(", ", Numbers)}{kind}{caught}";
     }
 }
 
@@ -446,16 +463,78 @@ public static class VirtualProgramRecovery
         if (shaped.Count == 0)
             return [];
 
-        var found = new List<VirtualRegion>();
-        made = 0;
+        var clauses = new List<StaticValue>();
         foreach (var value in heap.Instances())
         {
-            if (!heap.TryGetRuntimeTypeName(value, out var typeName) || !shaped.Contains(typeName))
-                continue;
-            made++;
-            if (Region(heap, module, value, operations) is { } region)
+            if (heap.TryGetRuntimeTypeName(value, out var typeName) && shaped.Contains(typeName))
+                clauses.Add(value);
+        }
+        made = clauses.Count;
+
+        var guarding = Guarding(heap, module, shaped, clauses);
+        var found = new List<VirtualRegion>();
+        foreach (var value in clauses)
+        {
+            guarding.TryGetValue(value.Bits, out var guarded);
+            if (Region(heap, module, value, operations, guarded) is { } region)
                 found.Add(region);
         }
+        return found;
+    }
+
+    /// <summary>What each clause guards, where something holding it said so.</summary>
+    /// <remarks>
+    /// A clause names its handler and the exception it is for. What it does not name is the code
+    /// the handler is there for, and without that a region cannot be built back: a try whose start
+    /// is unknown is a handler attached to nothing. The engine keeps that pair of places on the
+    /// object that holds the clause, which is what makes the two readable together — an object with
+    /// two places of its own and a clause inside it is a guarded region, whatever it is called.
+    ///
+    /// A clause held by two such objects is left out rather than attributed to either. Two readings
+    /// of where a try begins are no reading at all, and a region built on the wrong one would catch
+    /// code that was never guarded.
+    /// </remarks>
+    private static Dictionary<long, (int From, int To)> Guarding(
+        StaticHeap heap,
+        ModuleDef module,
+        HashSet<string> shaped,
+        List<StaticValue> clauses)
+    {
+        var held = clauses.Select(clause => clause.Bits).ToHashSet();
+        var found = new Dictionary<long, (int From, int To)>();
+        var twice = new HashSet<long>();
+        foreach (var value in heap.Instances())
+        {
+            if (!heap.TryGetRuntimeTypeName(value, out var typeName) ||
+                shaped.Contains(typeName) ||
+                module.Find(typeName, isReflectionName: false) is not { } declared)
+            {
+                continue;
+            }
+
+            var numbers = new List<int>();
+            var inside = new List<long>();
+            foreach (var field in declared.Fields.Where(field => !field.IsStatic))
+            {
+                if (!heap.TryReadAssignedField(value, field, out var stored))
+                    continue;
+                if (field.FieldType?.FullName == "System.Int32" &&
+                    stored.Kind == StaticValueKind.Int32)
+                {
+                    numbers.Add((int)stored.Bits);
+                }
+                else if (stored.Kind == StaticValueKind.HeapReference && held.Contains(stored.Bits))
+                {
+                    inside.Add(stored.Bits);
+                }
+            }
+            if (numbers.Count < 2)
+                continue;
+            foreach (var clause in inside.Where(clause => !found.TryAdd(clause, (numbers[0], numbers[1]))))
+                twice.Add(clause);
+        }
+        foreach (var clause in twice)
+            found.Remove(clause);
         return found;
     }
 
@@ -464,7 +543,8 @@ public static class VirtualProgramRecovery
         StaticHeap heap,
         ModuleDef module,
         StaticValue value,
-        int operations)
+        int operations,
+        (int From, int To) guarded)
     {
         if (!heap.TryGetRuntimeTypeName(value, out var typeName) ||
             module.Find(typeName, isReflectionName: false) is not { } declared)
@@ -490,9 +570,11 @@ public static class VirtualProgramRecovery
                     break;
                 case "System.Type":
                     typed = true;
-                    caught ??= heap.TryGetModelValue<string>(stored, "Name", out var named)
-                        ? named
-                        : null;
+                    caught ??= heap.TryGetModelValue<string>(stored, "TypeName", out var identity)
+                        ? identity
+                        : heap.TryGetModelValue<string>(stored, "Name", out var named)
+                            ? named
+                            : null;
                     break;
                 default:
                     break;
@@ -501,10 +583,26 @@ public static class VirtualProgramRecovery
 
         // Four places and a type is a clause; anything less is some other object of the engine's
         // that happens to hold numbers, and the numbers have to be places in this program besides.
-        return typed && numbers.Count >= Places &&
-            numbers.TrueForAll(one => one >= 0 && one <= operations)
-                ? new VirtualRegion(numbers, kind, caught)
-                : null;
+        if (!typed || numbers.Count < Places ||
+            !numbers.TrueForAll(one => one >= 0 && one <= operations))
+        {
+            return null;
+        }
+
+        // The pair of ranges is taken only where both are ranges and neither runs into the other.
+        // A handler inside the code it handles, or a place after the end of the program, is the
+        // reading of which number is which being wrong, and a region built on it would put a try
+        // around the wrong operations rather than fail.
+        var handled = (From: numbers[0], To: numbers[1]);
+        var apart = guarded.To >= guarded.From && handled.To >= handled.From &&
+            guarded.From >= 0 && guarded.To < operations &&
+            handled.From >= 0 && handled.To < operations &&
+            (handled.From > guarded.To || handled.To < guarded.From);
+        return new VirtualRegion(numbers, kind, caught)
+        {
+            Guarded = apart ? guarded : null,
+            Handled = apart ? handled : null
+        };
     }
 
     /// <summary>How many places a clause has to name to be read as one.</summary>
@@ -1022,7 +1120,44 @@ public static class VirtualProgramRecovery
             if (operation is { Name: null, Leaving: { } kind })
                 merged[opcode] = operation with { Name = kind };
         }
+
+        Inert(merged, decoded);
         return merged;
+    }
+
+    /// <summary>Names the operations that carry nothing and were seen to do nothing.</summary>
+    /// <remarks>
+    /// This is the last reading of all, and it is only reached by an operation nothing else could
+    /// account for. Every other pass names an operation by what it did; this one names it by what
+    /// it cannot be. An operation that carries no operand is not a call, which needs a method to
+    /// call, nor a load or a store, which need a place, nor a jump, which needs somewhere to go —
+    /// there is no room in it for any of them. Performed on its own it took nothing, left nothing,
+    /// and moved nothing the engine holds. What is left is an operation that does nothing, and
+    /// saying so is worth more than leaving it unread: an unread operation severs the walk at it
+    /// and costs every operation after it in the block.
+    ///
+    /// Carrying nothing is what makes the reading safe, and it is checked over every instruction
+    /// with that number rather than the one the trials used. An operation whose operand is absent
+    /// in one place and a token in another is two operations sharing a number, and neither of them
+    /// is this one.
+    /// </remarks>
+    private static void Inert(
+        Dictionary<int, VirtualOperation> merged,
+        List<VirtualInstruction> decoded)
+    {
+        var bare = decoded
+            .GroupBy(instruction => instruction.Opcode)
+            .Where(group => group.All(one => one.Operand is VirtualOperand.None))
+            .Select(group => group.Key)
+            .ToHashSet();
+        foreach (var (opcode, operation) in merged)
+        {
+            if (operation is { Name: null, Measured: true, Pops: 0, Pushes: 0, TouchesState: false } &&
+                bare.Contains(opcode))
+            {
+                merged[opcode] = operation with { Name = "does nothing at all" };
+            }
+        }
     }
 
     /// <summary>

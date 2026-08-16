@@ -462,19 +462,44 @@ sample that carries four of them, the four handlers are found and twelve
 operations join the walk; the eight that remain are blocks the dispatch table
 never selects, which is a fact about the program.
 
-What remains in that sample is three operations of the forty-three that nothing
-asked and nothing watched. Each of them takes one more value than it leaves,
-because the program around it leaves it no other choice, so the walk carries on
-through them and the listing says of each that its effect was never established.
+Three of that sample's operations resisted everything for a while, and each
+needed a different question. One is refused by every arrangement alike, which
+looks like failure until you notice what the refusal says: it names the type it
+wanted. Handing it one of those and finding it throws exactly what it was given
+is what a throw looks like from outside. Another has no effect on anything the
+trials can see and carries no operand, which is a description of doing nothing —
+adopted only as a last resort, after every other way of naming an operation has
+declined, because "it does nothing" is also what an operation looks like when the
+trials failed to reach it. The third leaves one value and takes none, like a
+table load, and the value it leaves is its own operand every time: a constant
+push, and reading it as a load of a slot that happens to hold the same number
+would have produced a body that names slots the method does not have.
 
-The result is a listing rather than a method body. Nothing is rewritten on the
-strength of it, and nothing is emitted: a body that is nearly right is worse
-than none, since an analyst told a method does something it does not will act on
-it, where one told an operation is unknown will go and look.
+That leaves one operation of the forty-seven that nothing asked and nothing
+watched. It takes one value and leaves one, and at every site its operand names a
+method of the assembly whose signature accounts for that, so the listing reads it
+as a call and says on what grounds.
 
-**10. Remove the protector.** Covered in its own section below.
+A method the reading does not settle in full is left as the stub it shipped as,
+because a body that is nearly right is worse than none: an analyst told a method
+does something it does not will act on it, where one told an operation is unknown
+will go and look.
 
-**11. Verify, then emit.** Covered in the section after that.
+**10. Build the readings back into code.** Where the reading is complete, the
+listing is lowered to IL and written into the method it belongs to. It happens
+here, before cleanup, for two reasons: a virtualized method is one nothing calls
+by name, so the pass that removes what recovery orphaned would delete it, and the
+new bodies call helpers that have to survive with them. Declaring the built
+methods as roots settles both. Every method built this way is marked with an
+attribute naming it a reading, which is the difference between it and every other
+body in the cleaned copy, and a strict run does none of it. The step is described
+at length in [devirtualization.md](devirtualization.md), including the guarded
+regions it has to reconstruct and the run that checks the result against the
+original.
+
+**11. Remove the protector.** Covered in its own section below.
+
+**12. Verify, then emit.** Covered in the section after that.
 
 ## Deleting Reactor's code without deleting the program's
 
@@ -556,7 +581,8 @@ to be very sure about when it produces nothing.
 - [compatibility.md](compatibility.md) — the exact support contract, the
   structural detection signals, the verification gates, and the fail-closed
   boundaries, in reference form.
-- [parity.md](parity.md) — stage-by-stage comparison against NETReactorSlayer,
-  including where this tool is weaker.
+- [parity.md](parity.md) — how this tool compares to NETReactorSlayer, de4dotEx
+  and Krypton, stage by stage against the first of them, including where this
+  tool is weaker.
 - [corpus.md](corpus.md) — how correctness is measured against real samples.
 - [reading-the-output.md](reading-the-output.md) — what the reports contain.

@@ -117,8 +117,115 @@ public sealed class BlockerTests
         var blocker = Assert.Single(machine.State.Blockers.Blockers);
         Assert.Equal(BlockerKind.Budget, blocker.Kind);
         Assert.Equal("steps", blocker.Key);
+        Assert.Contains("16", blocker.Detail, StringComparison.Ordinal);
         Assert.Contains("\"steps\"", blocker.Declare, StringComparison.Ordinal);
-        Assert.Contains("16", blocker.Declare, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A budget is the one stop the tool can answer on its own, so it answers it: the remedy carries
+    /// a figure rather than an instruction to think of one.
+    /// </summary>
+    /// <remarks>
+    /// The figure being twice what was refused is worth pinning down, because it is what makes a
+    /// caller that keeps applying what it is told converge instead of creeping up by one.
+    /// </remarks>
+    [Fact]
+    public void ABudgetStopCarriesAFigureAnAgentCanApplyUnchanged()
+    {
+        using var module = NewModule();
+        var machine = new StaticMachine(new StaticMachineLimits(MaximumSteps: 16));
+
+        machine.Execute(Loops(module));
+
+        var remedy = Assert.Single(machine.State.Blockers.Blockers).Remedy;
+        Assert.NotNull(remedy);
+        Assert.Equal("budgets", remedy.Section);
+        Assert.Equal("steps", remedy.Name);
+        Assert.Equal("32", remedy.Value.Text);
+        Assert.Null(remedy.Wants);
+        Assert.Null(remedy.Flag);
+    }
+
+    /// <summary>
+    /// A fact is the opposite case: the tool knows where the answer goes and cannot know the answer,
+    /// and the two halves are told apart rather than run together in a sentence.
+    /// </summary>
+    [Fact]
+    public void AFactStopSaysWhereTheAnswerGoesAndThatOnlyTheCallerHasIt()
+    {
+        using var module = NewModule();
+        var machine = Sparse();
+
+        machine.Execute(Calls(module, "System", "Environment", "get_MachineName",
+            module.CorLibTypes.String));
+
+        var remedy = Assert.Single(machine.State.Blockers.Blockers).Remedy;
+        Assert.NotNull(remedy);
+        Assert.Equal("facts", remedy.Section);
+        Assert.Equal("env:MachineName", remedy.Name);
+        Assert.Equal("null", remedy.Value.Text);
+        Assert.NotNull(remedy.Wants);
+    }
+
+    /// <summary>
+    /// A call that hands something back names the type of it, because an agent inventing a value has
+    /// to know what kind of value the run will accept, and a wrong one is refused a run later.
+    /// </summary>
+    [Fact]
+    public void ACallStopNamesTheTypeTheCallerHasToInvent()
+    {
+        using var module = NewModule();
+        var (method, signature) = CallsUnmodeled(module, module.CorLibTypes.String);
+        var machine = new StaticMachine();
+
+        machine.Execute(method);
+
+        var remedy = Assert.Single(
+            machine.State.Blockers.Blockers,
+            entry => entry.Kind == BlockerKind.UnmodeledCall).Remedy;
+        Assert.NotNull(remedy);
+        Assert.Equal("calls", remedy.Section);
+        Assert.Equal(signature, remedy.Name);
+        Assert.Equal("{ \"returns\": null }", remedy.Value.Text);
+        Assert.Equal("System.String", remedy.Wants);
+        Assert.Equal("--allow-declared-calls", remedy.Flag);
+    }
+
+    /// <summary>
+    /// A call that hands nothing back can be answered outright, and is: there is no decision left in
+    /// declaring that a method returning void did nothing.
+    /// </summary>
+    [Fact]
+    public void ACallThatHandsNothingBackIsAnsweredInFull()
+    {
+        using var module = NewModule();
+        var (method, _) = CallsUnmodeled(module, module.CorLibTypes.Void);
+        var machine = new StaticMachine();
+
+        machine.Execute(method);
+
+        var remedy = Assert.Single(
+            machine.State.Blockers.Blockers,
+            entry => entry.Kind == BlockerKind.UnmodeledCall).Remedy;
+        Assert.NotNull(remedy);
+        Assert.Equal("{ \"inert\": true }", remedy.Value.Text);
+        Assert.Null(remedy.Wants);
+    }
+
+    /// <summary>
+    /// The sentence a person reads is the same statement as the value a program applies, so that
+    /// acting on one and acting on the other cannot come to different files.
+    /// </summary>
+    [Fact]
+    public void WhatIsPrintedAndWhatIsAppliedAreTheOneStatement()
+    {
+        var supplied = Declaring.Fact("registry:HKEY_CURRENT_USER\\Software\\X!blob");
+        var complete = Declaring.Budget("steps", 750_000);
+
+        Assert.Equal(
+            "\"facts\": { \"registry:HKEY_CURRENT_USER\\\\Software\\\\X!blob\": <value> }",
+            supplied.Describe());
+        Assert.Equal("\"budgets\": { \"steps\": 1500000 }", complete.Describe());
     }
 
     /// <summary>

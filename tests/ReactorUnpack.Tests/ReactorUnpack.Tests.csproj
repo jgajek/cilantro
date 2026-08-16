@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ReactorUnpack.Core\ReactorUnpack.Core.csproj" />
+    <ProjectReference Include="..\..\src\ReactorUnpack.Mcp\ReactorUnpack.Mcp.csproj" />
   </ItemGroup>
 
 </Project>

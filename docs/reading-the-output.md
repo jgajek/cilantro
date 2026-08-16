@@ -19,10 +19,15 @@ dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 | `suspicious.blockers.json` | Everything that stopped the run short, and what to declare to get past it |
 | `suspicious.payloads/` | Files that were hidden inside the sample |
 | `suspicious.virtualized/` | Per method turned into interpreter bytecode: the program read as IL, and the listing it was read from |
-| `suspicious.renames.json` | Old-to-new name map, only with `--rename` |
+| `suspicious.renames.json` | Old-to-new name map. Not written by a `--strict` run unless you add `--rename` |
 
 The folder is not named after the sample, so a directory of samples all report
 into one folder without colliding.
+
+If something other than a person is reading this, `--json` prints one object
+naming all of the above, along with what stopped the run and what to declare
+about it, so that none of it has to be found by convention first. See
+[agents.md](agents.md).
 
 ## The summary
 
@@ -69,7 +74,8 @@ put back where the program expects them.
 **Protector types deleted.** Reactor's own types, removed after recovery proved
 they had nothing left to do. See "Why is Reactor's code still there?" below.
 
-**Obfuscated names replaced.** Only with `--rename`.
+**Obfuscated names replaced.** Reactor's generated names given readable
+placeholders. A `--strict` run leaves them alone unless you add `--rename`.
 
 ## The ASSUMED section
 
@@ -172,8 +178,11 @@ to stop looking for something to declare.
 the hashes of the input and the declarations, and is the file to read when a
 program rather than a person is deciding whether to try again. `Blockers` there
 means what stopped the run; `ContinuedPast` is what it carried on past, and
-`Strict` says which mode produced the file. The kinds and the file's shape are in
-[declarations.md](declarations.md).
+`Strict` says which mode produced the file. Each entry carries its remedy twice:
+`Declare` is the line printed above, and `Remedy` is the same statement in parts
+a program can apply. The kinds and the file's shape are in
+[declarations.md](declarations.md), and the published schema is in
+[schema/](../schema/).
 
 ## The NOTES section
 
@@ -196,7 +205,7 @@ hand over a result it cannot stand behind.
 | `InputSha256`, `InputLength`, `ModuleName` | Identifies exactly what was analysed |
 | `TypeCount`, `MethodCount`, `ConcreteMethodCount` | Size of the cleaned module |
 | `Resources` | Every embedded resource with size, SHA-256, entropy, and inferred role |
-| `Payloads` | Hidden assemblies found, with hashes at every decoding stage |
+| `Payloads` | Hidden assemblies found, with hashes at every decoding stage and the file each was written to |
 | `Evidence` | Every observation, tagged by category, with a confidence |
 | `Passes` | Each stage with status, change count, and diagnostics |
 | `Recovery` | The counters shown in the summary |
@@ -266,8 +275,10 @@ reported separately when the file is still recognisably a .NET image.
 ### The cleaned copy still has meaningless names
 
 Expected. Reactor deletes the original names rather than encrypting them, so
-they are not in the file and cannot be recovered. `--rename` substitutes readable
-placeholders, which makes navigation easier but does not restore anything.
+they are not in the file and cannot be recovered. What a normal run substitutes is
+readable placeholders, which makes navigation easier but does not restore
+anything, and a `--strict` run does not substitute even those unless you add
+`--rename`.
 
 ### Why is Reactor's code still there?
 
@@ -357,6 +368,31 @@ the protector emitted it and never uses it. `operation(s) no path arrives at`
 is the weaker statement, made where the walk stopped somewhere: the code may
 only be past the place it stopped.
 
+Where the sample had methods turned into bytecode, one more line appears under
+`WROTE`, and the part in brackets is the part to read:
+
+```
+    Built back      1 method(s) in the cleaned copy, marked [RebuiltFromReading] (they unpacked the same payload as the original)
+```
+
+Those methods hold real IL in the cleaned copy, so the decompiler shows code
+where it used to show an empty stub. Each one carries a `[RebuiltFromReading]`
+attribute, which dnSpyEx and ILSpy print on the line above the method: under any
+verdict these bodies are the tool's reading of the interpreter's program, not
+code recovered from the file, and that is the difference between them and
+everything else in the assembly.
+
+The bracket is the verdict of an actual run. Where the protected method is on
+the sample's own unpacking path, the tool interprets that path twice — once as
+the sample shipped, once with the built bodies in place of the stubs — and
+compares what comes out. `they unpacked the same payload as the original` means
+both runs produced the same hidden assembly, byte for byte, with a built body
+entered on the way. `a reading, unchecked` means the comparison could not be made
+at all, and the lines under it say why: usually the module unpacks nothing to
+compare, or the built body was never entered. `THEY DID NOT MATCH THE ORIGINAL`
+means the bodies were built and did something else, which is a reason not to
+trust them.
+
 If it did not, and the control flow still looks flattened, the dispatcher stage
 declined on those methods. It only rewrites where it can prove the result is
 equivalent. `--verbose` reports how many it left alone.
@@ -365,6 +401,11 @@ equivalent. `--verbose` reports how many it left alone.
 
 Ten to thirty seconds for a normal sample. The time goes into interpreting the
 loader, which is the price of not running it. Very large assemblies take longer.
+
+A sample with methods turned into bytecode takes a minute or two instead, because
+reading the hidden program, building it back, and running the result to check it
+are all work the ordinary sample does not need. `--no-devirtualize` skips the
+building and the check and gets you the listings on their own.
 
 ### Can I run it on a whole folder?
 

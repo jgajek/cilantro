@@ -32,7 +32,13 @@ public sealed class VirtualSemanticsTests
     private const int StoreLocal = 122;
     private const int LoadArgument = 133;
     private const int Nothing = 144;
+    private const int Carry = 155;
+    private const int Idle = 166;
+    private const int Hurl = 177;
     private const int JumpTarget = 7;
+
+    /// <summary>The number an operation carries where it carries nothing at all.</summary>
+    private const int Bare = int.MinValue;
 
     [Fact]
     public void ArithmeticIsIdentifiedFromWhatTheEngineComputes()
@@ -276,6 +282,52 @@ public sealed class VirtualSemanticsTests
             working => working.StartsWith("List::", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// An operation that leaves one value and takes none looks like a fetch from one of the
+    /// engine's tables, and reading it as one would have the listing name slots the method does not
+    /// have. What tells them apart is that this one leaves the very number it carries.
+    /// </summary>
+    [Fact]
+    public void AnOperationThatLeavesTheNumberItCarriesIsReadAsPushingIt()
+    {
+        var operations = Derive();
+
+        Assert.Equal("pushes its operand", operations[Carry].Name);
+        Assert.Equal(0, operations[Carry].Pops);
+        Assert.Equal(1, operations[Carry].Pushes);
+    }
+
+    /// <summary>
+    /// Doing nothing is a reading of last resort, taken only where the operation carries nothing to
+    /// do it to and every other way of naming it has declined — since an operation nothing could
+    /// reach looks exactly the same from outside.
+    /// </summary>
+    [Fact]
+    public void AnOperationWithNothingToDoAndNothingToDoItToIsReadAsDoingNothing()
+    {
+        var operations = Derive();
+
+        Assert.Equal("does nothing at all", operations[Idle].Name);
+        Assert.Equal(0, operations[Idle].Pops);
+        Assert.Equal(0, operations[Idle].Pushes);
+    }
+
+    /// <summary>
+    /// An operation that throws is refused by every arrangement of values alike, which looks like
+    /// failure until you read what the refusal says: it names the type it wanted. Asked again with
+    /// one of those, it throws exactly what it was handed, and that is what a throw is.
+    /// </summary>
+    [Fact]
+    public void AnOperationThatThrowsWhatItIsHandedIsNamedFromWhatItRefused()
+    {
+        var operations = Derive();
+
+        Assert.Equal(VirtualSemantics.Throwing, operations[Hurl].Name);
+        Assert.Equal(1, operations[Hurl].Pops);
+        Assert.Equal(0, operations[Hurl].Pushes);
+        Assert.Equal("System.Exception", operations[Hurl].Popped);
+    }
+
     private static VirtualProgram Recover()
     {
         using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
@@ -389,7 +441,10 @@ public sealed class VirtualSemanticsTests
         (Opaque, 0),
         (Nothing, 0),
         (LoadArgument, 0),
-        (LoadArgument, 1)
+        (LoadArgument, 1),
+        (Carry, 41),
+        (Idle, Bare),
+        (Hurl, 0)
     ];
 
     /// <summary>What the engine's stack is given to work on before the program starts.</summary>
@@ -440,8 +495,8 @@ public sealed class VirtualSemanticsTests
         body.Add(OpCodes.Ldarg_1.ToInstruction());
         body.Add(OpCodes.Stfld.ToInstruction(raw));
         body.Add(OpCodes.Ldarg_1.ToInstruction());
-        body.Add(OpCodes.Isinst.ToInstruction(Numbers(module).ToTypeDefOrRef()));
-        body.Add(OpCodes.Brtrue.ToInstruction(done));
+        body.Add(OpCodes.Isinst.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+        body.Add(OpCodes.Brfalse.ToInstruction(done));
         body.Add(OpCodes.Newobj.ToInstruction(cell.FindDefaultConstructor()));
         body.Add(OpCodes.Stloc.ToInstruction(inner));
         foreach (var target in new[] { low, high })
@@ -515,6 +570,8 @@ public sealed class VirtualSemanticsTests
         var tryStoreLocal = OpCodes.Nop.ToInstruction();
         var tryLoadArgument = OpCodes.Nop.ToInstruction();
         var tryNothing = OpCodes.Nop.ToInstruction();
+        var tryCarry = OpCodes.Nop.ToInstruction();
+        var tryHurl = OpCodes.Nop.ToInstruction();
 
         // add: take the top two apart, put their sum back.
         body.Add(OpCodes.Ldarg_1.ToInstruction());
@@ -729,11 +786,48 @@ public sealed class VirtualSemanticsTests
         body.Add(OpCodes.Ldarg_1.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(code));
         body.Add(OpCodes.Ldc_I4.ToInstruction(Nothing));
-        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryCarry));
         body.Add(OpCodes.Ldarg_0.ToInstruction());
         body.Add(OpCodes.Ldfld.ToInstruction(stack));
         body.Add(OpCodes.Newobj.ToInstruction(slot.FindDefaultConstructor()));
         body.Add(OpCodes.Callvirt.ToInstruction(add));
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // carry: leaves the number it carries, which looks like a fetch from a table until the
+        // value it leaves is compared with the operand it was given.
+        body.Add(tryCarry);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(Carry));
+        body.Add(OpCodes.Bne_Un.ToInstruction(tryHurl));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(stack));
+        body.Add(OpCodes.Ldnull.ToInstruction());
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(operand));
+        body.Add(OpCodes.Call.ToInstruction(make));
+        body.Add(OpCodes.Callvirt.ToInstruction(add));
+        body.Add(OpCodes.Br.ToInstruction(ret));
+
+        // hurl: throws what it is handed, which is refused by every arrangement of numbers alike
+        // and says, in refusing, the one thing about itself worth knowing.
+        body.Add(tryHurl);
+        body.Add(OpCodes.Ldarg_1.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(code));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(Hurl));
+        body.Add(OpCodes.Bne_Un.ToInstruction(ret));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(stack));
+        body.Add(OpCodes.Ldarg_0.ToInstruction());
+        body.Add(OpCodes.Ldfld.ToInstruction(stack));
+        body.Add(OpCodes.Callvirt.ToInstruction(count));
+        body.Add(OpCodes.Ldc_I4_1.ToInstruction());
+        body.Add(OpCodes.Sub.ToInstruction());
+        body.Add(OpCodes.Callvirt.ToInstruction(item));
+        body.Add(OpCodes.Ldfld.ToInstruction(raw));
+        body.Add(OpCodes.Castclass.ToInstruction(
+            module.CorLibTypes.GetTypeRef("System", "Exception")));
+        body.Add(OpCodes.Throw.ToInstruction());
         body.Add(ret);
         return execute;
     }
@@ -916,8 +1010,15 @@ public sealed class VirtualSemanticsTests
             body.Add(OpCodes.Ldc_I4.ToInstruction(opcode));
             body.Add(OpCodes.Stfld.ToInstruction(code));
             body.Add(OpCodes.Ldloc.ToInstruction(step));
-            body.Add(OpCodes.Ldc_I4.ToInstruction(value));
-            body.Add(OpCodes.Box.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+            if (value == Bare)
+            {
+                body.Add(OpCodes.Ldnull.ToInstruction());
+            }
+            else
+            {
+                body.Add(OpCodes.Ldc_I4.ToInstruction(value));
+                body.Add(OpCodes.Box.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+            }
             body.Add(OpCodes.Stfld.ToInstruction(operand));
             body.Add(OpCodes.Ldloc.ToInstruction(self));
             body.Add(OpCodes.Ldfld.ToInstruction(program));
