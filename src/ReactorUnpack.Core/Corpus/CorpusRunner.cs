@@ -259,7 +259,9 @@ public static class CorpusRunner
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();
-        var detected = capabilities.Length > 0 ? "reactor6" : "none";
+        // What the run settled on, rather than "it found capabilities, so it must be Reactor" —
+        // which was true while there was one protector and silently wrong once there were two.
+        var detected = result.Report.Protector;
         var diagnostics = new List<string>();
         if (detected != sample.ExpectedDetection)
             diagnostics.Add($"Expected detection {sample.ExpectedDetection}, observed {detected}.");

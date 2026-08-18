@@ -6150,6 +6150,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 : string.IsNullOrWhiteSpace(subject);
             return IntrinsicResult.Completed(StaticValue.FromInt32(empty ? 1 : 0));
         }
+        // Interning answers with a string equal to the one it was given, and the value is all an
+        // interpretation reads. What it does not reproduce is the pooling: two equal strings built
+        // separately stay two objects here, where the runtime would hand back one. Code that
+        // interns to save memory, which is why a decryptor does it, cannot tell the difference.
+        if (name == "Intern" && arguments.Count == 1 &&
+            context.State.Heap.TryGetString(arguments[0], out _))
+        {
+            return IntrinsicResult.Completed(arguments[0]);
+        }
         return IntrinsicResult.Invalid($"Unsupported String operation {name}.");
     }
 
@@ -7854,9 +7863,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
+        // One assembly is modelled, so both of these name the same object rather than two objects
+        // that describe the same thing. Only one assembly is visible to an interpretation, so a
+        // caller is always in it, which is the case the runtime answers identically too. The
+        // identity matters on its own: protected code compares the two to check it is being called
+        // from where it was built, and it compares them with the reference comparison the operators
+        // below never see, so two equal models would read as a stranger on the stack and send the
+        // code down the arm it keeps for one.
         if (name is "GetExecutingAssembly" or "GetCallingAssembly")
         {
-            if (!context.State.Heap.TryAllocateObject("System.Reflection.Assembly", out var assembly))
+            if (!context.State.TryGetOrAllocateRuntimeSingleton(
+                    "System.Reflection.Assembly", out var assembly))
                 return AllocationFailure("assembly model");
             context.State.Heap.TrySetModelValue(assembly, HomeModuleMark, true);
             return IntrinsicResult.Completed(assembly);

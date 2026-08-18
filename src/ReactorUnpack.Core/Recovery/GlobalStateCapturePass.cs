@@ -1,3 +1,4 @@
+using ReactorUnpack.Core.Analysis;
 using ReactorUnpack.Core.Interpretation;
 
 namespace ReactorUnpack.Core.Recovery;
@@ -43,6 +44,17 @@ public sealed class GlobalStateCapturePass : DeobfuscationPass
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
         ArtifactContext context)
     {
+        // The state this looks for is a Reactor loader's, so running the initializers of a module
+        // under some other protector spends a budget on work that cannot find anything, and reports
+        // whatever it ran out of steps on as though the run had been held up by it.
+        if (!context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts) ||
+            facts is null ||
+            !facts.IsReactor6)
+        {
+            return (PassStatus.Success, 0,
+                ["No Reactor structure was detected, so no loader state was interpreted."]);
+        }
+
         if (!BootstrapMachine.TryRunInitializers(context, MaximumSteps, out var first, out var why) ||
             first is null ||
             !BootstrapMachine.TryRunInitializers(context, MaximumSteps, out var second, out _) ||

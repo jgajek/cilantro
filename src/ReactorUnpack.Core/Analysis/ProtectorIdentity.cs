@@ -22,6 +22,21 @@ public sealed record ProtectorIdentity(
         new(ProtectorFamily.None, "unrecognized", "unknown", 0, []);
 
     public bool Recognized => Family != ProtectorFamily.None;
+
+    /// <summary>
+    /// What a program calls this protector, as against what is shown to a person.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from <see cref="Name"/> because the two answer to different readers. A corpus
+    /// manifest naming the protector it expects has to keep meaning the same thing after the
+    /// summary learns to spell it differently.
+    /// </remarks>
+    public string Token => Family switch
+    {
+        ProtectorFamily.Reactor => "reactor6",
+        ProtectorFamily.Confuser => "confuserex",
+        _ => "none"
+    };
 }
 
 /// <summary>

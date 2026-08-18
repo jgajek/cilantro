@@ -84,6 +84,7 @@ public static class PipelinePlanner
         "antitamper-neutralization" or
         "constant-predicates" or
         "constant-strings" or
+        "confuserex-constants" or
         "global-predicate-folding" or
         "dispatcher-deobfuscation" or
         "cfg-dead-code" or

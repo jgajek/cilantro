@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jgajek/reactor-unpack/schema/config.schema.json",
+  "title": "ReactorUnpack recovered constants",
+  "description": "`reactorunpack/NAME.config.json`: the values a protector kept out of the metadata, recovered by running the module's own decrypters. Written only where a run found some, so its absence from the run manifest means the sample kept none there. Strings that could be put back are also literals in the cleaned assembly; the rest exist only here.",
+  "type": "object",
+  "required": [
+    "ToolVersion",
+    "InputPath",
+    "InputSha256",
+    "Protector",
+    "Constants"
+  ],
+  "properties": {
+    "ToolVersion": { "type": "string" },
+    "InputPath": { "type": "string" },
+    "InputSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "Protector": {
+      "description": "Which protector kept these, by the tool's name for it.",
+      "type": "string"
+    },
+    "Constants": {
+      "description": "One entry per distinct value, ordered by the decrypter that held it and then by its number.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/constant" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "constant": {
+      "title": "One value recovered from a protector's own decrypter",
+      "type": "object",
+      "required": ["Kind", "Decrypter", "Id", "Length", "Text", "Base64", "Sites"],
+      "properties": {
+        "Kind": {
+          "description": "Which of the two fields below carries the value.",
+          "enum": ["string", "byte[]"]
+        },
+        "Decrypter": {
+          "description": "The metadata token of the method that was asked, so that two values held by different decrypters are not confused for one.",
+          "type": "integer"
+        },
+        "Id": {
+          "description": "The number the call site handed the decrypter, which is what makes this value that value.",
+          "type": "integer"
+        },
+        "Length": {
+          "description": "Characters for a string, bytes for an array.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "Text": {
+          "description": "The string, where this is one. Null otherwise.",
+          "type": ["string", "null"]
+        },
+        "Base64": {
+          "description": "The bytes, where this is an array. Null otherwise. Base64 rather than hex because these run to hundreds of bytes and some are whole records.",
+          "type": ["string", "null"]
+        },
+        "Sites": {
+          "description": "Where the program asked for it, as a method token and an IL offset. A value asked for in several places is one entry naming all of them.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

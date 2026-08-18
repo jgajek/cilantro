@@ -132,8 +132,19 @@ internal static class Explain
             Console.WriteLine(
                 $"    {blocker.Kind}  {blocker.Key}" +
                 (blocker.Times > 1 ? $"  (x{blocker.Times})" : string.Empty));
-            if (blocker.Where is { } where)
-                Console.WriteLine($"      in {where}");
+
+            // The reason, which for several kinds is the only part that says anything the heading
+            // did not. Where it opens by naming what the heading already named — a method, a fact
+            // key — that much is dropped so the line reads on from the heading instead of repeating
+            // it, which matters when the name is forty invisible characters long.
+            if (Beyond(blocker.Detail, blocker.Key) is { Length: > 0 } detail)
+                Console.WriteLine($"      {detail}");
+            if (blocker.Where is { } where && !string.Equals(where, blocker.Key, StringComparison.Ordinal))
+            {
+                Console.WriteLine(Beyond(where, blocker.Key) is { Length: > 0 } within
+                    ? $"      at {within}"
+                    : $"      in {where}");
+            }
             Console.WriteLine(blocker.Declare is { } declare
                 ? $"      declare: {declare}"
                 : "      no declaration fixes this; it needs a change to the tool");
@@ -148,6 +159,18 @@ internal static class Explain
         }
 
         Console.WriteLine();
+    }
+
+    /// <summary>
+    /// What is left of <paramref name="text"/> once it stops restating <paramref name="prefix"/>,
+    /// or null where the two say the same thing.
+    /// </summary>
+    private static string? Beyond(string text, string prefix)
+    {
+        if (!text.StartsWith(prefix, StringComparison.Ordinal))
+            return text;
+        var rest = text[prefix.Length..].TrimStart();
+        return rest.Length == 0 ? null : rest;
     }
 
     /// <summary>
@@ -352,6 +375,10 @@ internal static class Explain
                 Console.WriteLine($"                      {note}");
         }
 
+        // Named separately from the analysis report because it holds what the cleaned copy cannot:
+        // the constants that could not be put back into the code as literals.
+        if (result.ConfigReportPath is { } config)
+            Console.WriteLine($"    Constants       {Near(config, home)}");
         Console.WriteLine($"    Full report     {Near(result.AnalysisReportPath, home)}");
         Console.WriteLine();
     }

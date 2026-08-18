@@ -99,6 +99,7 @@ public sealed record RunManifest(
                 result.ChangesReportPath,
                 result.BlockerReportPath,
                 result.RenameMapPath,
+                result.ConfigReportPath,
                 result.VirtualProgramPaths),
             report.Payloads,
             report.Recovery,
@@ -117,6 +118,9 @@ public sealed record RunManifest(
 /// <param name="Cleaned">
 /// The readable copy of the assembly, or null where the run had nothing it could stand behind.
 /// </param>
+/// <param name="Config">
+/// The constants the protector kept out of the metadata, or null where it kept none there.
+/// </param>
 /// <param name="Listings">
 /// The programs behind virtualized methods, as text: two files per method, the operations as read
 /// and the same thing as IL.
@@ -127,6 +131,7 @@ public sealed record RunOutputs(
     string Changes,
     string? Blockers,
     string? Renames,
+    string? Config,
     IReadOnlyList<string> Listings);
 
 /// <summary>Why a run could not be attempted, in the same channel as the run itself.</summary>

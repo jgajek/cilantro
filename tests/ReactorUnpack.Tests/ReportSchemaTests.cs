@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using ReactorUnpack.Core;
 using ReactorUnpack.Core.Interpretation;
+using ReactorUnpack.Core.Recovery;
 
 namespace ReactorUnpack.Tests;
 
@@ -40,7 +41,9 @@ public sealed class ReportSchemaTests
         { "analysis.schema.json", "declarations", typeof(DeclarationReport) },
         { "blockers.schema.json", string.Empty, typeof(BlockerReport) },
         { "blockers.schema.json", "blocker", typeof(Blocker) },
-        { "blockers.schema.json", "remedy", typeof(Remedy) }
+        { "blockers.schema.json", "remedy", typeof(Remedy) },
+        { "config.schema.json", string.Empty, typeof(ConfigReport) },
+        { "config.schema.json", "constant", typeof(RecoveredConstant) }
     };
 
     [Theory]

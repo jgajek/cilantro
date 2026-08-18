@@ -108,7 +108,16 @@ public sealed record ArtifactReport(
     /// Part of the report because everything else in it is conditional on the answer. Two reports of
     /// the same assembly that disagree are not a contradiction if one of them was assuming.
     /// </remarks>
-    bool Strict = true);
+    bool Strict = true,
+
+    /// <summary>
+    /// Which protector the run settled on, by the name a program uses, or "none".
+    /// </summary>
+    /// <remarks>
+    /// Said outright because there is more than one protector now, and a reader that inferred it
+    /// from the capability list was reading a set of names that two protectors can both produce.
+    /// </remarks>
+    string Protector = "none");
 
 /// <summary>
 /// What the run was told, and what came of it.
@@ -159,6 +168,29 @@ public sealed record BlockerReport(
     /// worth doing when the output looks wrong, and not otherwise.
     /// </remarks>
     IReadOnlyList<Blocker>? ContinuedPast = null);
+
+/// <summary>
+/// The values a protector kept out of the metadata, recovered and written down as values.
+/// </summary>
+/// <remarks>
+/// The cleaned assembly is where recovered strings belong for reading code, and for most of them
+/// that is enough. It is not enough for the rest. A protector that packs its constants into one
+/// buffer keeps more there than text — keys, encrypted blobs, whole configuration records — and
+/// those cannot be put back into IL as literals without re-emitting field data, which is a larger
+/// change to the module than reading them justifies. They would then be recovered and unreadable,
+/// which is the same as not recovered.
+///
+/// So they are written here instead, beside the assembly rather than inside it: every constant the
+/// run proved, what asked for it, and where. It is a separate file for the reason the blocker
+/// report is one — this is a question about the sample's contents rather than about the run, and a
+/// caller after indicators should not have to read an analysis report to find them.
+/// </remarks>
+public sealed record ConfigReport(
+    string ToolVersion,
+    string InputPath,
+    string InputSha256,
+    string Protector,
+    IReadOnlyList<RecoveredConstant> Constants);
 
 /// <summary>One thing the run was told about the host, and whether it was told it.</summary>
 /// <param name="Stated">
@@ -517,6 +549,11 @@ public sealed record PipelineResult(
     /// <summary>Where the account of what stopped the run was written.</summary>
     public string? BlockerReportPath { get; init; }
 
+    /// <summary>
+    /// Where the constants the protector hid were written, or null where it hid none.
+    /// </summary>
+    public string? ConfigReportPath { get; init; }
+
     /// <summary>Where the old name of everything renamed was written, if anything was.</summary>
     public string? RenameMapPath { get; init; }
 
@@ -589,6 +626,10 @@ public sealed class ReactorPipeline
         // Strings the protector left to per-string decoders rather than to its table are folded
         // after the table, because a decoder can read a table entry but never the other way round.
         new ConstantStringPass(),
+        // ConfuserEx keeps its literals in one buffer that its own getters read, which is neither a
+        // table a reading can index nor a decoder per string. It runs beside the other two because
+        // what it produces is the same thing: an ldstr where a call used to be.
+        new ConfuserExConstantsPass(),
         // Forwarder redirection runs after the rewrites, not before: replacing a resolver call with
         // its string or a proxy dispatch with a direct call is what leaves many of Reactor's
         // wrappers as the bare pass-throughs this pass can prove and skip.
@@ -813,6 +854,25 @@ public sealed class ReactorPipeline
             options.Strict,
             environment.Blockers.Continuations));
 
+        // Written only where there is something to write, so that its presence in the manifest is
+        // itself the answer to whether the sample kept its constants out of the metadata.
+        string? configPath = null;
+        if (context.TryGetFact<IReadOnlyList<RecoveredConstant>>(
+                "confuserex.constants", out var constants) &&
+            constants is { Count: > 0 })
+        {
+            configPath = Path.Combine(reportDirectory, $"{stem}.config.json");
+            WriteJson(configPath, new ConfigReport(
+                Version,
+                context.InputPath,
+                context.OriginalSha256,
+                context.TryGetFact<ProtectorIdentity>("protector.identity", out var identity) &&
+                    identity is not null
+                    ? identity.Name
+                    : "unknown",
+                constants));
+        }
+
         // What the rebuild did is read back rather than done here: the bodies went into the module
         // during the run, before cleanup could delete the methods they belong to.
         context.TryGetFact<IReadOnlyList<string>>(
@@ -832,6 +892,7 @@ public sealed class ReactorPipeline
         {
             VirtualProgramPaths = virtualProgramPaths,
             BlockerReportPath = blockersPath,
+            ConfigReportPath = configPath,
             RenameMapPath = renameMapPath,
             DevirtualizationNotes = devirtualizationNotes ?? [],
             DevirtualizationCheck = devirtualizationCheck,
@@ -856,6 +917,11 @@ public sealed class ReactorPipeline
         var methods = types.SelectMany(type => type.Methods).ToArray();
         context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var payloads);
         context.TryGetFact<int>("method-protection.restored", out var restoredBodies);
+        // Both protectors put bodies back into the same module by the same mechanism, so they are
+        // counted together: a reader wants to know how much of the code arrived, not which layer
+        // was holding it.
+        context.TryGetFact<int>("confuserex.antitamper.restored", out var decryptedBodies);
+        restoredBodies += decryptedBodies;
         context.TryGetFact<IReadOnlyList<ProtectedMethodStub>>(
             "method-protection.stubs",
             out var protectedStubs);
@@ -920,7 +986,11 @@ public sealed class ReactorPipeline
             environment?.Blockers.Blockers,
             Told(environment?.Declarations),
             environment?.Blockers.Continuations,
-            environment?.Strict ?? true);
+            environment?.Strict ?? true,
+            context.TryGetFact<ProtectorIdentity>(ProtectorIdentityPass.Fact, out var protector) &&
+                protector is not null
+                ? protector.Token
+                : "none");
     }
 
     /// <summary>What the run was told, as the report says it.</summary>

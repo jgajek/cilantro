@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 1,
+  "profile": "confuserex-1-static",
+  "description": "Curated ConfuserEx 1.0.0 corpus. Both samples move every method body into an encrypted section and every literal into one encrypted buffer, so each gate here is a gate on interpreting the sample's own decrypters. Binary samples remain outside git.",
+  "samples": [
+    {
+      "id": "confuserex-06b9d08b",
+      "tier": "detected",
+      "sha256": "06b9d08b33f2e22bfea6196867d35bb3cef7f11eb745d43017c7cb75183a8e3f",
+      "localName": "confuser_06b9d08b33f2.dll",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "invisible-names",
+        "encrypted-section",
+        "anti-tamper",
+        "anti-debug",
+        "constants-table"
+      ],
+      "oracleSha256": null,
+      "expectedRestoredBodyCount": 242,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "maximumMutationCount": 20000
+    },
+    {
+      "id": "confuserex-61e31544",
+      "tier": "detected",
+      "sha256": "61e3154419b3fe12955b22487b22a56dccaf416a5c184c9a8b8de133b9aa8e40",
+      "localName": "confuser_61e3154419b3.dll",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "invisible-names",
+        "encrypted-section",
+        "anti-tamper",
+        "anti-debug",
+        "constants-table"
+      ],
+      "oracleSha256": null,
+      "expectedRestoredBodyCount": 279,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "maximumMutationCount": 20000
+    }
+  ]
+}

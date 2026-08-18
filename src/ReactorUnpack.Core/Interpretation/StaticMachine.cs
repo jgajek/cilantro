@@ -225,7 +225,15 @@ public sealed class StaticMachine
         }
         if (!method.HasBody || method.Body.Instructions.Count == 0)
         {
-            var bodiless = $"{method.FullName} has no CIL body.";
+            // A method that declares no code at all and one whose code could not be read are
+            // different facts about the module, and saying the first when the second is true sends
+            // a reader looking for a P/Invoke that is not there. The distinction matters most where
+            // a protector encrypts its own bodies: until its decryptor has run, every method it
+            // covers reads as bodiless, and the run may be interpreting that decryptor.
+            var bodiless = (uint)method.RVA == 0
+                ? $"{method.FullName} has no CIL body."
+                : $"{method.FullName} declares a body at RVA 0x{(uint)method.RVA:X8} that could " +
+                  "not be read as CIL.";
             Stopped(BlockerKind.UnsupportedBody, method.FullName, bodiless);
             return FrameResult.Fail(StaticExecutionStatus.Unsupported, bodiless);
         }

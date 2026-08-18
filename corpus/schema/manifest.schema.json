@@ -27,7 +27,7 @@
           },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "localName": { "type": "string", "minLength": 1 },
-          "expectedDetection": { "enum": ["reactor6", "none"] },
+          "expectedDetection": { "enum": ["reactor6", "confuserex", "none"] },
           "expectedCapabilities": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },

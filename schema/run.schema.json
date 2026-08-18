@@ -94,7 +94,7 @@
     "outputs": {
       "title": "Every file the run wrote",
       "type": "object",
-      "required": ["Cleaned", "Analysis", "Changes", "Blockers", "Renames", "Listings"],
+      "required": ["Cleaned", "Analysis", "Changes", "Blockers", "Renames", "Config", "Listings"],
       "properties": {
         "Cleaned": {
           "description": "The readable copy of the assembly, or null where the run had nothing it could stand behind.",
@@ -104,6 +104,10 @@
         "Changes": { "type": "string" },
         "Blockers": { "type": ["string", "null"] },
         "Renames": { "type": ["string", "null"] },
+        "Config": {
+          "description": "The constants a protector kept out of the metadata, written beside the assembly because they cannot all be put back into it. Null where the sample kept none there.",
+          "type": ["string", "null"]
+        },
         "Listings": {
           "description": "The programs behind virtualized methods, as text: two files per method, the operations as read and the same thing as IL.",
           "type": "array",

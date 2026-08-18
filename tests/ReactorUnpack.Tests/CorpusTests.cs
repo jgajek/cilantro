@@ -7,6 +7,44 @@ namespace ReactorUnpack.Tests;
 
 public sealed class CorpusTests
 {
+    /// <summary>
+    /// Every manifest in the corpus directory, found rather than listed, so that adding one puts it
+    /// under the checks below without anybody having to remember to.
+    /// </summary>
+    public static TheoryData<string> Manifests
+    {
+        get
+        {
+            var found = new TheoryData<string>();
+            foreach (var path in Directory
+                         .EnumerateFiles(Path.Combine(Checkout.Root, "corpus"), "*.manifest.json")
+                         .Order(StringComparer.Ordinal))
+            {
+                found.Add(Path.GetFileName(path));
+            }
+
+            return found;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Manifests))]
+    public void EveryManifestNamesEachSampleOnceAndByHash(string file)
+    {
+        var manifest = CorpusRunner.LoadManifest(Path.Combine(Checkout.Root, "corpus", file));
+
+        Assert.Equal(1, manifest.ManifestVersion);
+        Assert.NotEmpty(manifest.Samples);
+        Assert.Equal(manifest.Samples.Count,
+            manifest.Samples.Select(sample => sample.Sha256).Distinct().Count());
+        Assert.All(manifest.Samples,
+            sample => Assert.Matches("^[a-f0-9]{64}$", sample.Sha256));
+        // A gate that names no capability is a gate that would pass on an unprotected file.
+        Assert.All(manifest.Samples, sample => Assert.True(
+            sample.ExpectedDetection == "none" || sample.ExpectedCapabilities.Count > 0,
+            $"{sample.Id} expects a protector but names no capability."));
+    }
+
     [Fact]
     public void ManifestDefinesUniqueHashVerifiedTiers()
     {
@@ -127,4 +165,37 @@ public sealed class CorpusTests
         }
     }
 
+    /// <summary>
+    /// The second protector's corpus, held to the same gates as the first.
+    /// </summary>
+    /// <remarks>
+    /// Both samples encrypt every method body and every literal, so nothing about them can be read
+    /// without interpreting their own decrypters. That makes these two the check on the claim the
+    /// tool makes about ConfuserEx: the bodies came back, the literals came back, and the run said
+    /// which protector it was dealing with rather than being asked to assume.
+    /// </remarks>
+    [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
+    public void ConfuserExSamplesAreDecryptedAndRead()
+    {
+        var output = Path.Combine(Path.GetTempPath(), $"confuserex-corpus-{Guid.NewGuid():N}");
+        try
+        {
+            var report = CorpusRunner.Run(
+                Path.Combine(Checkout.Root, "corpus", "confuserex-1-static.manifest.json"),
+                Checkout.Samples,
+                output);
+
+            Assert.Equal(0, report.Missing);
+            Assert.All(report.Samples, outcome => Assert.Equal("passed", outcome.Status));
+            Assert.Equal(2, report.Passed);
+            Assert.Equal(0, report.Failed);
+            Assert.All(report.Samples,
+                outcome => Assert.Equal("confuserex", outcome.Detection));
+        }
+        finally
+        {
+            Directory.Delete(output, true);
+        }
+    }
 }

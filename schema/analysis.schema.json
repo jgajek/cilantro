@@ -27,7 +27,8 @@
     "Blockers",
     "Declarations",
     "ContinuedPast",
-    "Strict"
+    "Strict",
+    "Protector"
   ],
   "properties": {
     "ToolVersion": { "type": "string" },
@@ -70,6 +71,10 @@
     "Strict": {
       "description": "Whether the run refused wherever it would otherwise have assumed its way past something. Everything else here is conditional on the answer.",
       "type": "boolean"
+    },
+    "Protector": {
+      "description": "Which protector the run settled on, by the name a program uses, or \"none\". Said outright because more than one protector is recognized and the capability list alone does not tell two of them apart.",
+      "type": "string"
     }
   },
   "additionalProperties": false,

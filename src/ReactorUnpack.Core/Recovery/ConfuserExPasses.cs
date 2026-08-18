@@ -178,7 +178,21 @@ public sealed class ConfuserExAntiTamperPass : DeobfuscationPass
             $"Replayed {rewrite.ImageWrites.Count} deterministic writes, all inside that section.",
             "Every reinstated body begins with a well-formed CIL header at the address the " +
             "metadata declares.",
-            .. applyDiagnostics
+            .. applyDiagnostics,
+            // The initializer runs the decryptor first and its other stages after, and those stages
+            // are themselves inside the section being decrypted, so interpretation of them stops
+            // against bodies this pass has only just recovered. Left unsaid, the stop appears in the
+            // run's ledger as an unexplained refusal by a pass that reported success.
+            .. rewrite.Result.Succeeded
+                ? []
+                : new[]
+                {
+                    $"Interpretation stopped after {rewrite.Result.Steps} steps " +
+                    $"({rewrite.Result.Status}) in a later stage of the initializer, past the " +
+                    "point where the decryptor had written the section. The bodies above come " +
+                    "from those writes, so the stop does not qualify them; the stages after it " +
+                    "were not interpreted and nothing is claimed about them."
+                }
         ]);
     }
 }
