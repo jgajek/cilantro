@@ -1119,6 +1119,9 @@ public sealed record ImageRegionWrite(
     byte[] Bytes,
     string RegionKind);
 
+/// <summary>The page protection covering a range of the mapped image, in PAGE_* terms.</summary>
+public readonly record struct MappedImageProtection(uint Rva, uint Size, uint Protection);
+
 public sealed class StaticMachineState
 {
     private readonly Dictionary<string, StaticValue> _staticFields = new(StringComparer.Ordinal);
@@ -1234,6 +1237,7 @@ public sealed class StaticMachineState
     public IReadOnlyList<byte[]> CapturedAssemblyLoads => _capturedAssemblyLoads;
 
     private readonly List<byte[]> _capturedAssemblyLoads = [];
+    private readonly List<MappedImageProtection> _imageProtections = [];
 
     public void CaptureAssemblyLoad(byte[] image) => _capturedAssemblyLoads.Add(image);
 
@@ -1342,7 +1346,10 @@ public sealed class StaticMachineState
         return true;
     }
 
-    public bool TryRegisterImage(ReadOnlySpan<byte> mappedImage, ulong imageBase = 0)
+    public bool TryRegisterImage(
+        ReadOnlySpan<byte> mappedImage,
+        ulong imageBase = 0,
+        IReadOnlyList<MappedImageProtection>? protections = null)
     {
         if (imageBase > long.MaxValue ||
             !Heap.TryAllocateRegion(
@@ -1352,7 +1359,42 @@ public sealed class StaticMachineState
                 out var region))
             return false;
         ImageRegion = region;
+        _imageProtections.Clear();
+        if (protections is not null)
+            _imageProtections.AddRange(protections);
         return true;
+    }
+
+    /// <summary>
+    /// The protection currently covering an offset into the mapped image, if the section table
+    /// that would answer the question was registered with the image.
+    /// </summary>
+    public bool TryQueryImageProtection(int offset, out uint protection)
+    {
+        protection = 0;
+        // Later entries are protection changes made during the run, so the last match wins.
+        for (var i = _imageProtections.Count - 1; i >= 0; i--)
+        {
+            var range = _imageProtections[i];
+            if ((uint)offset >= range.Rva && (uint)offset - range.Rva < range.Size)
+            {
+                protection = range.Protection;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Records a protection change over a range of the mapped image.</summary>
+    public void ApplyImageProtection(int offset, int size, uint protection)
+    {
+        if (offset < 0 || size <= 0 || _imageProtections.Count == 0)
+            return;
+        const int mostWorthKeeping = 256;
+        if (_imageProtections.Count >= mostWorthKeeping)
+            return;
+        _imageProtections.Add(
+            new MappedImageProtection((uint)offset, (uint)size, protection));
     }
 
     public void RegisterAssemblyIdentity(string name, ReadOnlySpan<byte> publicKeyToken)

@@ -22,7 +22,7 @@ namespace ReactorUnpack.Cli;
 internal static class Explain
 {
     /// <summary>
-    /// What each protection Reactor applies means for the person reading the code.
+    /// What each protection means for the person reading the code, whichever protector applied it.
     /// </summary>
     /// <remarks>
     /// The names on the left are the tool's internal vocabulary and appear in the JSON report, so
@@ -51,7 +51,17 @@ internal static class Explain
         ("clrjit",
             "The .NET compiler itself is hooked to intercept code as it is prepared"),
         ("virtualization",
-            "Some methods are bytecode for a custom interpreter, not code a decompiler can show")
+            "Some methods are bytecode for a custom interpreter, not code a decompiler can show"),
+        ("encrypted-section",
+            "The method bodies were moved into an encrypted section and are decrypted on startup"),
+        ("invisible-names",
+            "Types and methods are named with invisible characters, so names cannot be told apart"),
+        ("constants-table",
+            "Numbers and text come from one encrypted table rather than appearing in the code"),
+        ("switch-dispatch-control-flow",
+            "Each method was turned into a state machine, so its steps appear in no useful order"),
+        ("anti-debug",
+            "The file checks for a debugger and behaves differently when it finds one")
     ];
 
     public static void Summarize(PipelineResult result, string inputPath)
@@ -74,12 +84,16 @@ internal static class Explain
             .Where(evidence => evidence.Category == "capability")
             .Select(evidence => evidence.Message)
             .ToHashSet(StringComparer.Ordinal);
+        var protector = report.Evidence
+            .FirstOrDefault(evidence => evidence.Category == "protector-name")?.Message
+            ?? "an unrecognized protector";
         if (capabilities.Count == 0)
         {
             // Finding nothing is a real answer and the commonest one on a file somebody guessed
             // about, so it gets said outright. Reporting it as a string of incomplete stages would
             // read as a malfunction, when in fact every stage declined for the same good reason.
-            Console.WriteLine("  PROTECTION   None. This file is not protected by .NET Reactor.");
+            Console.WriteLine(
+                "  PROTECTION   None. This file is not protected by anything this tool knows.");
             Console.WriteLine();
             Console.WriteLine("    There is nothing to undo, so no cleaned copy was written.");
             Console.WriteLine("    If you expected protection here, the report lists what was");
@@ -88,7 +102,7 @@ internal static class Explain
             return;
         }
 
-        Protection(capabilities);
+        Protection(capabilities, protector);
         Recovered(report);
         Assumed(report);
         Blocked(result, home);
@@ -231,9 +245,9 @@ internal static class Explain
         return relative.StartsWith("..", StringComparison.Ordinal) ? path : relative;
     }
 
-    private static void Protection(HashSet<string> capabilities)
+    private static void Protection(HashSet<string> capabilities, string protector)
     {
-        Console.WriteLine("  PROTECTION   .NET Reactor");
+        Console.WriteLine($"  PROTECTION   {protector}");
         Console.WriteLine();
         foreach (var (capability, meaning) in Protections)
         {
@@ -349,6 +363,7 @@ internal static class Explain
     {
         var unsupported = result.Report.Passes
             .Where(pass => pass.Status is PassStatus.Unsupported or PassStatus.Partial)
+            .Where(pass => !DeclinedAnotherProtector(pass))
             .ToArray();
         var failed = result.Report.Passes
             .Where(pass => pass.Status == PassStatus.Failed)
@@ -377,6 +392,13 @@ internal static class Explain
 
         Console.WriteLine();
     }
+
+    /// <summary>
+    /// Whether a pass declined because the module is under a different protector, which is an
+    /// answer rather than a gap and would read as a malfunction if listed as one.
+    /// </summary>
+    private static bool DeclinedAnotherProtector(PassResult pass) =>
+        pass.Pass is "reactor-detection" or "confuserex-detection";
 
     private static string First(PassResult pass) =>
         pass.Diagnostics.Count > 0 ? pass.Diagnostics[0] : "no detail recorded";

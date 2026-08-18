@@ -23,6 +23,18 @@ namespace ReactorUnpack.Core.Recovery;
 /// </remarks>
 public static class BootstrapMachine
 {
+    /// <summary>
+    /// The section protections of a mapped image, so that a module asking what protection covers
+    /// its own sections is answered from its own section table rather than from a convention.
+    /// </summary>
+    public static IReadOnlyList<MappedImageProtection> MappedProtections(PeImageView image) =>
+        image.Sections
+            .Select(section => new MappedImageProtection(
+                section.VirtualAddress,
+                section.MappedSize,
+                section.PageProtection))
+            .ToArray();
+
     public static StaticMachineLimits Limits(int maximumSteps, DeclaredBudgets? budgets = null) =>
         (budgets ?? DeclaredBudgets.None).Over(new StaticMachineLimits(
             MaximumSteps: maximumSteps,
@@ -192,7 +204,9 @@ public static class BootstrapMachine
             candidate.State.RegisterModuleFile(
                 Path.GetFullPath(context.InputPath), context.OriginalBytes);
         if (!candidate.State.TryRegisterImage(
-                context.OriginalImage.CreateMappedImage(), context.OriginalImage.ImageBase))
+                context.OriginalImage.CreateMappedImage(),
+                context.OriginalImage.ImageBase,
+                MappedProtections(context.OriginalImage)))
         {
             diagnostic = "the mapped image exceeded the interpreter allocation budget";
             return false;

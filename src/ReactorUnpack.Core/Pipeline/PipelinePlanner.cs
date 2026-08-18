@@ -69,11 +69,14 @@ public static class PipelinePlanner
     {
         "metadata-preflight" => PipelinePhase.Preflight,
         "reactor-detection" or
+        "confuserex-detection" or
+        "protector-identity" or
         "method-protection" or
         "field-rva-recovery" or
         "resource-analysis" or
         "resource-roles" or
         "control-flow-analysis" => PipelinePhase.Analysis,
+        "confuserex-antitamper" or
         "method-body-recovery" or
         "string-table-recovery" or
         "global-state-capture" or

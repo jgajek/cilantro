@@ -30,6 +30,60 @@ public sealed record IntrinsicResult(
 }
 
 /// <summary>
+/// VirtualProtect as the module can observe it: the call succeeds, and the protection it replaced
+/// is reported back.
+/// </summary>
+/// <remarks>
+/// The old protection is not a detail a caller can be assumed to ignore. A protector that has just
+/// asked for write access to its own section reads the answer to learn whether the section was
+/// already writable, which under a real mapping it is not — an image is mapped copy-on-write — and
+/// which it would be had something already unpacked the module. Answering carelessly tells the
+/// module it is being unpacked.
+/// </remarks>
+internal static class ProtectionModel
+{
+    private const uint ReadWrite = 0x04;
+
+    public static void ReportOldProtection(
+        StaticMachineState state,
+        StaticValue address,
+        StaticValue size,
+        StaticValue newProtection,
+        StaticValue oldProtectionCell)
+    {
+        if (oldProtectionCell.Kind != StaticValueKind.ManagedReference)
+            return;
+        var protection = Query(state, address, out var imageOffset);
+        state.Heap.TryWriteManaged(oldProtectionCell, StaticValue.FromInt32((int)protection));
+        if (imageOffset >= 0 && newProtection.IsInteger)
+            state.ApplyImageProtection(imageOffset, size.AsInt32(), (uint)newProtection.AsInt32());
+    }
+
+    private static uint Query(StaticMachineState state, StaticValue address, out int imageOffset)
+    {
+        imageOffset = -1;
+        var imageId = RegionId(state.ImageRegion);
+        if (imageId != 0 && RegionId(address) == imageId &&
+            address.Kind == StaticValueKind.NativePointer)
+        {
+            imageOffset = address.NativeOffset;
+            if (state.TryQueryImageProtection(imageOffset, out var mapped))
+                return mapped;
+        }
+        // Not the mapped image, so not a copy-on-write mapping either: a region this
+        // interpretation allocated is plainly writable, and says so.
+        return ReadWrite;
+    }
+
+    private static int RegionId(StaticValue value) => value.Kind switch
+    {
+        StaticValueKind.HeapReference => value.HeapId,
+        StaticValueKind.NativePointer => value.NativeRegionId,
+        _ => 0
+    };
+}
+
+/// <summary>
 /// Calls a delegate the machine built, so a modeled API can run a callback it was handed.
 /// </summary>
 /// <remarks>
@@ -145,9 +199,17 @@ public sealed class NativeDelegateIntrinsic : IStaticIntrinsic
             return IntrinsicResult.Invalid("Native delegate target is not modeled.");
         if (nativeName is "VirtualProtect" or "VirtualProtectEx")
         {
-            if (arguments.Count >= 5 &&
-                arguments[^1].Kind == StaticValueKind.ManagedReference)
-                context.State.Heap.TryWriteManaged(arguments[^1], StaticValue.FromInt32(4));
+            // Argument 0 is the delegate itself, so the Win32 arguments start at 1.
+            var first = nativeName == "VirtualProtectEx" ? 2 : 1;
+            if (arguments.Count >= first + 4)
+            {
+                ProtectionModel.ReportOldProtection(
+                    context.State,
+                    arguments[first],
+                    arguments[first + 1],
+                    arguments[first + 2],
+                    arguments[first + 3]);
+            }
             return IntrinsicResult.Completed(StaticValue.FromInt32(1));
         }
         if (nativeName == "OpenProcess" && arguments.Count == 4)
@@ -3473,6 +3535,22 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     {
         if (name == "get_Size" && arguments.Count == 0)
             return IntrinsicResult.Completed(StaticValue.FromInt32(context.State.PointerSize));
+        // An IntPtr and the raw pointer it converts to are the same address, and this machine holds
+        // an address as one value either way, so the conversion is what it denotes rather than a
+        // reinterpretation. Both directions are the same identity for the same reason.
+        if (name == "op_Explicit" && arguments.Count == 1)
+        {
+            var address = NormalizePointerValue(context.State.Heap, arguments[0]);
+            if (address.Kind is StaticValueKind.NativePointer or StaticValueKind.ManagedReference)
+                return IntrinsicResult.Completed(address);
+            if (address.IsInteger)
+            {
+                return context.State.Heap.TryResolveNativeAddress(address.AsInt64(), out var resolved)
+                    ? IntrinsicResult.Completed(resolved)
+                    : IntrinsicResult.Completed(address);
+            }
+            return IntrinsicResult.Unknown("Pointer conversion source is not an address.");
+        }
         if (name is "op_Equality" or "op_Inequality" && arguments.Count == 2)
         {
             var left = NormalizePointerValue(context.State.Heap, arguments[0]);
@@ -8341,7 +8419,7 @@ public sealed class VirtualRegionIntrinsic : IStaticIntrinsic
             "ReadByte" or "ReadInt16" or "ReadInt32" or "ReadInt64" or "ReadIntPtr" or
             "WriteByte" or "WriteInt16" or "WriteInt32" or "WriteInt64" or "WriteIntPtr") ||
         (NativeName(method) ?? method.Name.String) is
-            "VirtualAlloc" or "VirtualAllocEx" or "VirtualProtect" or
+            "VirtualAlloc" or "VirtualAllocEx" or "VirtualProtect" or "VirtualProtectEx" or
             "WriteProcessMemory" or "LoadLibrary" or "LoadLibraryA" or "LoadLibraryW" or
             "GetModuleHandle" or "GetModuleHandleA" or "GetModuleHandleW" or "GetProcAddress";
 
@@ -8411,8 +8489,20 @@ public sealed class VirtualRegionIntrinsic : IStaticIntrinsic
                     StaticValue.Unknown,
                     "VirtualAlloc region exceeded the allocation budget.");
         }
-        if (name == "VirtualProtect" && arguments.Count >= 3)
+        if (name is "VirtualProtect" or "VirtualProtectEx" && arguments.Count >= 3)
+        {
+            var first = name == "VirtualProtectEx" ? 1 : 0;
+            if (arguments.Count >= first + 4)
+            {
+                ProtectionModel.ReportOldProtection(
+                    context.State,
+                    NormalizeAddress(context, arguments[first]),
+                    arguments[first + 1],
+                    arguments[first + 2],
+                    arguments[first + 3]);
+            }
             return IntrinsicResult.Completed(StaticValue.FromInt32(1));
+        }
         if (name == "WriteProcessMemory" && arguments.Count >= 4)
         {
             var destination = arguments[1];

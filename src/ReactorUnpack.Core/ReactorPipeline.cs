@@ -560,11 +560,16 @@ public sealed class ReactorPipeline
     [
         new MetadataPreflightPass(),
         new ReactorDetectionPass(),
+        new ConfuserExDetectionPass(),
+        new ProtectorIdentityPass(),
         new MethodProtectionAnalysisPass(),
         new FieldRvaRecoveryPass(),
         new ResourceAnalysisPass(),
         new ResourceRolePass(),
         new ControlFlowAnalysisPass(),
+        // ConfuserEx encrypts the bodies themselves, so nothing that reads a body can run before
+        // this: it is the pass that makes the module readable at all.
+        new ConfuserExAntiTamperPass(),
         new MethodBodyRecoveryPass(),
         new StringTableRecoveryPass(),
         new BooleanRecoveryPass(),
@@ -1244,6 +1249,10 @@ public sealed class ReactorDetectionPass : DeobfuscationPass
 {
     public override string Name => "reactor-detection";
     public override IReadOnlyCollection<string> Dependencies => ["metadata-preflight"];
+
+    // A detector that finds its protector absent has answered, not failed. Whether the run
+    // recognized anything at all is settled once, by protector-identity.
+    public override bool GatesEmission => false;
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {

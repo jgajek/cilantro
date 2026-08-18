@@ -12,7 +12,34 @@ public sealed record PeSection(
     uint SizeOfRawData,
     uint Characteristics)
 {
+    private const uint MemoryExecute = 0x2000_0000;
+    private const uint MemoryRead = 0x4000_0000;
+    private const uint MemoryWrite = 0x8000_0000;
+
     public uint MappedSize => Math.Max(VirtualSize, SizeOfRawData);
+
+    /// <summary>
+    /// The page protection the loader gives this section once the image is mapped.
+    /// </summary>
+    /// <remarks>
+    /// A writable section of a mapped image is not plain writable: the loader maps the image
+    /// copy-on-write, so a section asking for write comes back as one of the WRITECOPY
+    /// protections until something writes to it. The distinction is invisible to code that only
+    /// reads and writes, and it is exactly what a protector asks about when it wants to know
+    /// whether someone else has already made its section writable.
+    /// </remarks>
+    public uint PageProtection => (Characteristics & (MemoryExecute | MemoryRead | MemoryWrite))
+        switch
+        {
+            MemoryExecute | MemoryRead | MemoryWrite => 0x80, // PAGE_EXECUTE_WRITECOPY
+            MemoryExecute | MemoryRead => 0x20,               // PAGE_EXECUTE_READ
+            MemoryExecute | MemoryWrite => 0x80,              // PAGE_EXECUTE_WRITECOPY
+            MemoryExecute => 0x10,                            // PAGE_EXECUTE
+            MemoryRead | MemoryWrite => 0x08,                 // PAGE_WRITECOPY
+            MemoryRead => 0x02,                               // PAGE_READONLY
+            MemoryWrite => 0x08,                              // PAGE_WRITECOPY
+            _ => 0x01                                         // PAGE_NOACCESS
+        };
 }
 
 /// <summary>
