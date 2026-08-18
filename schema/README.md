@@ -1,12 +1,13 @@
-# The JSON ReactorUnpack writes
+# The JSON CILantro writes
 
-Four shapes, three files and one thing printed on standard output:
+Five shapes, four files and one thing printed on standard output:
 
 | Schema | What it describes |
 | --- | --- |
 | [`run.schema.json`](run.schema.json) | What `--json` prints: one run in one object, naming every file it wrote |
-| [`analysis.schema.json`](analysis.schema.json) | `reactorunpack/NAME.analysis.json`, everything the run learned |
-| [`blockers.schema.json`](blockers.schema.json) | `reactorunpack/NAME.blockers.json`, what stopped it and what to declare |
+| [`analysis.schema.json`](analysis.schema.json) | `cilantro/NAME.analysis.json`, everything the run learned |
+| [`blockers.schema.json`](blockers.schema.json) | `cilantro/NAME.blockers.json`, what stopped it and what to declare |
+| [`config.schema.json`](config.schema.json) | `cilantro/NAME.config.json`, constants a protector kept out of the metadata that could not all go back into it |
 | [`error.schema.json`](error.schema.json) | What `--json` prints instead when the run could not be attempted |
 
 `corpus/schema/manifest.schema.json` is a different thing: an input the tool
@@ -31,9 +32,23 @@ them:
   conservative case rather than as a parse failure.
 
 The version lives in the document. `run.schema.json` documents carry
-`"Schema": "reactorunpack.run/1"`; the two report files carry `ToolVersion`, and
+`"Schema": "cilantro.run/1"`; the report files carry `ToolVersion`, and
 the shape follows the tool's own version. Check it before anything else, and
 refuse a major version you were not written for rather than guessing.
+
+### The one break, in 0.4.0
+
+The tool was called ReactorUnpack up to 0.3.0, and these tokens were spelled
+`reactorunpack.run/1` and `reactorunpack.error/1`. Renaming the tool renamed them,
+which breaks a reader that matched the old string exactly. The version stayed at
+`/1` deliberately: nothing about either shape changed, and moving to `/2` would
+have told you to expect a change that is not there. If you pinned the old token,
+this is the one place to look.
+
+The output directory moved with it, from `reactorunpack/` to `cilantro/`, and
+`run.schema.json` names every path a run wrote — so a caller that reads the
+manifest rather than rebuilding paths from the convention needed no change for
+that part.
 
 ## The one to read first
 

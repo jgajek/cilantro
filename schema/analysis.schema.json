@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jgajek/reactor-unpack/schema/analysis.schema.json",
-  "title": "ReactorUnpack analysis report",
-  "description": "`reactorunpack/NAME.analysis.json`: everything one run learned about one file. The manifest that `--json` prints is the short answer; this is the long one, and it is where the evidence lives.",
+  "$id": "https://github.com/jgajek/cilantro/schema/analysis.schema.json",
+  "title": "CILantro analysis report",
+  "description": "`cilantro/NAME.analysis.json`: everything one run learned about one file. The manifest that `--json` prints is the short answer; this is the long one, and it is where the evidence lives.",
   "type": "object",
   "required": [
     "ToolVersion",

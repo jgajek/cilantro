@@ -2,13 +2,24 @@
 
 ## Corpus and support contract
 
-The manifest at `corpus/reactor-6-nonvirt.manifest.json` contains nine
-SHA-256-pinned entries:
+Two protectors are supported, with a manifest each. Every entry in both is
+SHA-256-pinned and names the protector it must be identified as, so a detector
+that claimed the other's samples would fail the manifest rather than pass it.
 
-- two `profiled` full-recovery fixtures;
+`corpus/reactor-6-nonvirt.manifest.json` contains eleven entries:
+
+- three `profiled` full-recovery fixtures;
 - three `detected` JIT-hook/method-stub samples;
-- one `exploratory` control-flow/proxy sample; and
+- two `exploratory` control-flow/proxy samples; and
 - three deobfuscated validation oracles used as negative controls.
+
+`corpus/confuserex-1-static.manifest.json` contains two entries, both `detected`,
+both whole-section anti-tamper builds with a constants table, and neither with an
+oracle — no unprotected counterpart of either program exists. What substitutes for
+one is the internal agreement described under
+[Verification gates](#verification-gates): the section is replayed only if two
+interpretations produced identical write logs, and a string is put back only if two
+separately built machines agreed on it.
 
 The three oracle assemblies are never implementation inputs. After recovery,
 they are compared by assembly identity, entry-point kind, normalized method
@@ -25,7 +36,7 @@ remaining switch dispatchers, maximum unreachable instructions, and an expected
 unsupported diagnostic for native-packed inputs.
 
 ```bash
-dotnet run --project src/ReactorUnpack.Cli -- corpus run
+dotnet run --project src/Cilantro.Cli -- corpus run
 ```
 
 The full-recovery profile was derived independently from:
@@ -315,7 +326,7 @@ as regression fallbacks.
 
 The protected host's `ResourceResolve` path consumes the large, high-entropy
 resource and eventually passes decompressed bytes to `Assembly.Load(byte[])`.
-ReactorUnpack models that load as a capture sink and never invokes it.
+CILantro models that load as a capture sink and never invokes it.
 
 The general route is to interpret the module's own unpacker and take the bytes
 as they reach that sink, which needs to know nothing about the cipher or the
@@ -753,7 +764,7 @@ strength of it.
 ### Building the program back into IL
 
 A triage run writes the virtualized methods into the cleaned copy as IL instead
-of a stub, each marked with an internal `ReactorUnpack.RebuiltFromReading`
+of a stub, each marked with an internal `Cilantro.RebuiltFromReading`
 attribute that decompilers show above the method; a strict run builds nothing
 unless asked with `--devirtualize`. The attribute type and its constructor are
 the only declarations the tool adds to an assembly, and both are declared to the
@@ -870,6 +881,59 @@ reported and not counted, because no rewrite of call sites could ever bring that
 number down; uses that are calls and were not read are counted, so a run cannot
 report every string a file has as recovered when a layer of them was untouched.
 
+### ConfuserEx 1.0.0
+
+Detection is structural and scored independently of Reactor's: a PE section that
+is high-entropy and marked writable and executable with method bodies declared
+inside it, a module initializer reaching into that section, member names composed
+wholly of characters in the Unicode format, control, unassigned or private-use
+categories, and a generic getter in the global type. `protector-identity` then
+settles which of the two answers the run acts on, and reports it as
+`Protector` — `reactor6`, `confuserex`, or `none` — so a capability list is never
+the thing that has to distinguish them. Passes that depend on Reactor structure
+decline explicitly on a ConfuserEx module rather than interpreting it to no
+purpose.
+
+Anti-tamper recovery shares `ImageRewriteRecovery` with the JIT-hook path, and so
+shares its gates: two interpretations of the module initializer must agree on
+status, step count, write log, loader-initialized integer fields and observed
+loader effects; the write log is replayed into a copy of the file; the copy is
+reparsed; and bodies are grafted by unchanged MethodDef token inside a transaction
+that verifies or restores every body and every field's initial value together.
+
+What differs is the replay policy. `ConfuserExSectionRewritePolicy` bounds the
+replay by section rather than by stub window, and establishes that section twice:
+the span the write log covers must lie wholly inside one section, and that section
+must be the one detection identified as encrypted, by name and virtual address.
+It then requires a well-formed method header at every RVA the metadata declares a
+body at within that section, which is the check that separates a section decrypted
+with the correct key from one decrypted with an incorrect one. Unlike the Reactor
+policy it covers field data, because the constants buffer shares the section with
+the code; a recovery that reinstated bodies without it would emit a module with
+readable code and ciphertext literals.
+
+Constants recovery interprets the constants initializer and then calls the
+sample's own generic getters with the identifiers the program passes. Identifiers
+come only from a literal push traced backwards through sole predecessors; a call
+reachable by more than one path, or fed by a push shared with another call site,
+is counted unproven and left alone. Two separately seeded machines are asked for
+every value, in opposite orders, and only agreeing answers are used. A getter
+invocation whose frame wrote a static field, wrote the mapped image, or registered
+anything is refused, since removing the call would remove that effect too. String
+sites are rewritten to `ldstr` in one transaction across every affected body,
+verified, and rolled back whole on failure. Byte arrays are reported to
+`cilantro/NAME.config.json` rather than re-emitted, because re-emitting field data
+and an initializer call would change more of the module than reading the contents
+does.
+
+Two ConfuserEx layers are outside this contract. Its reference proxies are not
+recognised: the delegate-proxy pass matches Reactor's shape and does not match
+this one, so a sample using them emits with them intact and with nothing in the
+report drawing attention to them. Its switch dispatchers are within reach of the
+protector-neutral dispatcher pass, which runs and reported no qualified method on
+either corpus sample; that is an untested position rather than a refusal, and
+`RemainingSwitchDispatchers` is where it shows up.
+
 ## Verification gates
 
 Before emission, the tool checks:
@@ -888,6 +952,10 @@ hashes, pass counts, and independent dnlib reload.
 ## Fail-closed capability boundaries
 
 - JIT-hook writes that do not deterministically target every catalogued stub;
+- ConfuserEx section writes that fall outside the section detection identified, or
+  that leave any declared body without a well-formed header;
+- ConfuserEx constant identifiers that are not a literal push reachable by one
+  path, values two machines disagreed on, and getters that left state behind;
 - Reactor VM instructions or exception paths outside the bounded model;
 - non-unique or incompletely referenced VM-backed string tables;
 - code-virtualization recovery that could be called proof: what goes into the

@@ -1,8 +1,21 @@
-# Reactor 6 corpus
+# Corpus
 
-The committed manifest contains metadata only. Malware and oracle binaries are
-stored in the authorized Malware Vault and downloaded into the ignored
-`samples/` directory. Every local file is SHA-256 verified before analysis.
+There is one manifest per protector, and both contain metadata only. Malware and
+oracle binaries are stored in the authorized Malware Vault and downloaded into
+the ignored `samples/` directory. Every local file is SHA-256 verified before
+analysis.
+
+| Manifest | Covers |
+| --- | --- |
+| `corpus/reactor-6-nonvirt.manifest.json` | .NET Reactor 6, both generations, eleven samples |
+| `corpus/confuserex-1-static.manifest.json` | ConfuserEx 1.0.0, whole-section anti-tamper, two samples |
+
+Each sample names the protector it is expected to be identified as, so a change
+that made one detector claim the other's samples would fail rather than pass
+quietly. Detection is compared against the protector the run settled on, not
+against whether any protector was found.
+
+## Reactor 6
 
 Protected and exploratory samples:
 
@@ -67,7 +80,7 @@ used to derive algorithms, constants, keys, names, or output bytes.
 Reproduce the normalized corpus result:
 
 ```bash
-dotnet run --project src/ReactorUnpack.Cli -- corpus run \
+dotnet run --project src/Cilantro.Cli -- corpus run \
   --manifest corpus/reactor-6-nonvirt.manifest.json \
   --samples samples \
   --output artifacts/corpus
@@ -78,6 +91,38 @@ detection/capability result, a failed pass, or a required sample that cannot
 emit verified output. Manifest gates can additionally require exact restored
 body counts, zero remaining stubs, complete string-site coverage, bounded
 mutation counts, a regression-locked output hash, and normalized oracle parity.
+
+## ConfuserEx 1.0.0
+
+Two samples, both `detected`, and both using the same set of layers: invisible
+names, an encrypted section, anti-tamper, anti-debug, and a constants table.
+
+- `06b9d08b33f2e22bfea6196867d35bb3cef7f11eb745d43017c7cb75183a8e3f`
+  (`detected`, `confuser_06b9d08b33f2.dll`) — 242 bodies
+- `61e3154419b3fe12955b22487b22a56dccaf416a5c184c9a8b8de133b9aa8e40`
+  (`detected`, `confuser_61e3154419b3.dll`) — 279 bodies
+
+Every gate here is a gate on interpreting the sample's own decrypters, because
+nothing about either sample's encryption is implemented in the tool. Each is
+required to be identified as `confuserex` with all five capabilities, to have
+every body come back with no stub left behind, and to reach complete coverage of
+its string call sites — where complete means every site whose constant the tool
+found literally at the call, which is what it claims rather than every site in
+the module.
+
+There are no oracles on this side. The counterparts that make the Reactor gates
+sharp are unprotected builds of the same programs, and none exist for these two,
+so what holds them is the internal agreement instead: the two interpretation runs
+must produce identical write logs before the section is replayed, and the two
+constants machines must agree on every value read in both directions before a
+string is put back.
+
+```bash
+dotnet run --project src/Cilantro.Cli -- corpus run \
+  --manifest corpus/confuserex-1-static.manifest.json \
+  --samples samples \
+  --output artifacts/corpus
+```
 
 ## The suite where there are no samples
 
@@ -94,14 +139,16 @@ where a wholly absent corpus is a choice the repository made.
 
 ## What the suite costs
 
-Where the samples are present the suite takes about nine minutes, and five tests
-account for all but twenty seconds of it:
+Where the samples are present the suite takes about twelve minutes, and eight
+tests account for all but five seconds of it:
 
 | Test | Share of the work |
 | --- | --- |
-| `CorpusTests.CorpusOutcomesAreDeterministic` | the corpus, twice over |
+| `CorpusTests.CorpusOutcomesAreDeterministic` | the Reactor corpus, twice over |
+| `CorpusTests.ConfuserExSamplesAreDecryptedAndRead` | the ConfuserEx corpus |
 | `PipelineTests.PipelineRecoversProfiledSamples` | two samples, fully emitted |
 | `VmStringRecoveryTests.Qbjuef...` | one sample, string tables read |
+| `StringLookupRecoveryTests.TheLayerUnderneathReactors...` | one sample, both string layers |
 | `AntiTamperNeutralizationTests.RemovesProvenIntegrityCheck...` | one sample, analysed |
 | `CorpusTests.MethodProtectedGenerationIsDetectedAndFullyRecovered` | one sample, analysed |
 
@@ -109,21 +156,26 @@ They are described by work rather than by seconds because the seconds are not a
 property of the test: the same sample recovery has been measured at 108 seconds
 in one run and 418 in the next, unchanged, because a dozen interpretations running
 at once contend for memory bandwidth far more than for cores. What is stable is
-that these five are minutes and the other 318 are twenty seconds together.
+that these eight are minutes and the other 405 are five seconds together.
 
-Each of the five is marked `Cost=High` and can be left out with
+Each of the eight is marked `Cost=High` and can be left out with
 `--filter "Cost!=High"`, which is the loop to work in. None of them can run in
 continuous integration, since the samples are not in the repository, so a person
 running the full suite is the only thing that closes those gates.
 
-Determinism is proven once, here, rather than per sample elsewhere.
-`CorpusOutcomesAreDeterministic` runs the whole corpus twice at once and requires
-the two outcome files to be byte-for-byte identical; because each outcome carries
-the SHA-256 of the assembly emitted for that sample, that one comparison covers
-emission for every sample in the corpus. Pinned hashes do the rest: a payload or
-an output that changed for any reason fails the expectations in `PipelineTests`
-and the manifest's own output locks, which is a stricter test than comparing two
-runs of one build against each other.
+Determinism is proven once, on the Reactor side, rather than per sample elsewhere.
+`CorpusOutcomesAreDeterministic` runs that corpus twice at once and requires the
+two outcome files to be byte-for-byte identical; because each outcome carries the
+SHA-256 of the assembly emitted for that sample, that one comparison covers
+emission for every sample in it. Pinned hashes do the rest: a payload or an output
+that changed for any reason fails the expectations in `PipelineTests` and the
+manifest's own output locks, which is a stricter test than comparing two runs of
+one build against each other.
+
+The ConfuserEx side is not run twice, because the determinism that matters there
+is already inside a single run: neither the section nor a single string is accepted
+unless two independently built machines agreed, so a nondeterministic result fails
+the run rather than passing it and differing from a second one.
 
 `detected` ReasonLabs entries are release candidates rather than
 analysis-only fixtures. They pass only when all protected application bodies

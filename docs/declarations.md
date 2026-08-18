@@ -12,9 +12,9 @@ down what stopped it and what to say to get further, and takes what you say back
 one file.
 
 ```
-  ReactorUnpack sample.exe --declarations d.json
+  cilantro sample.exe --declarations d.json
         │
-        ├── reactorunpack/sample.blockers.json   what stopped it, and what to declare
+        ├── cilantro/sample.blockers.json   what stopped it, and what to declare
         │
         └── you (or an agent) append the declaration to d.json and run it again
 ```
@@ -123,7 +123,7 @@ can prove do nothing cannot prove it from a declaration that they do nothing.
 
 ## What comes back
 
-`reactorunpack/NAME.blockers.json` is written on every run:
+`cilantro/NAME.blockers.json` is written on every run:
 
 ```json
 {

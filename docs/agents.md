@@ -11,7 +11,7 @@ what it means, and `--json` is how you ask for the answer in a form you can
 parse.
 
 ```
-ReactorUnpack suspicious.exe --json
+cilantro suspicious.exe --json
 ```
 
 One JSON object on standard output, nothing else, and the exit code says how it
@@ -23,24 +23,26 @@ even that last case answers in JSON.
 
 ```jsonc
 {
-  "Schema": "reactorunpack.run/1",
+  "Schema": "cilantro.run/1",
   "Success": true,
   "Strict": false,
+  "Protector": "reactor6",
   "Protections": ["protected-strings", "resource-container", "virtualization"],
   "Wrote": {
     "Cleaned":  "/samples/suspicious.cleaned.exe",
-    "Analysis": "/samples/reactorunpack/suspicious.analysis.json",
-    "Changes":  "/samples/reactorunpack/suspicious.changes.json",
-    "Blockers": "/samples/reactorunpack/suspicious.blockers.json",
-    "Renames":  "/samples/reactorunpack/suspicious.renames.json",
-    "Listings": ["/samples/reactorunpack/suspicious.virtualized/N66S3rciU7.lifted.il"]
+    "Analysis": "/samples/cilantro/suspicious.analysis.json",
+    "Changes":  "/samples/cilantro/suspicious.changes.json",
+    "Blockers": "/samples/cilantro/suspicious.blockers.json",
+    "Renames":  "/samples/cilantro/suspicious.renames.json",
+    "Config":   null,
+    "Listings": ["/samples/cilantro/suspicious.virtualized/N66S3rciU7.lifted.il"]
   },
   "Payloads": [
     {
       "PayloadSha256": "417032e5...",
       "PayloadLength": 92672,
       "AssemblyName":  "Zebekeadu",
-      "WrittenTo":     "/samples/reactorunpack/suspicious.payloads/Zebekeadu.dll"
+      "WrittenTo":     "/samples/cilantro/suspicious.payloads/Zebekeadu.dll"
     }
   ],
   "Blockers": [],
@@ -48,10 +50,18 @@ even that last case answers in JSON.
 }
 ```
 
-Three fields carry most of the weight.
+Four fields carry most of the weight.
+
+**`Protector`** is which of the recognised protectors the run acted on —
+`reactor6`, `confuserex`, or `none`. Branch on this rather than on the contents of
+`Protections`: both protectors have a capability called anti-tamper and mean
+different mechanisms by it, and how much of a cleaned copy you should expect
+differs by protector.
 
 **`Wrote`** names every file the run produced. Nothing has to be rebuilt from
-the naming convention, and nothing moves if the convention does.
+the naming convention, and nothing moves if the convention does. `Config` is
+`null` on most runs; it is a path when a protector kept constants out of the
+metadata that could not all be put back into it.
 
 **`Payloads`** is the deliverable for most pipelines: what was hidden inside,
 each with its SHA-256 and the path it was written to. Payload entries are
@@ -131,7 +141,7 @@ pointed at the same way as any other:
 ```jsonc
 {
   "mcpServers": {
-    "reactorunpack": { "command": "/opt/reactorunpack/ReactorUnpackMcp" }
+    "cilantro": { "command": "/opt/cilantro/cilantro-mcp" }
   }
 }
 ```

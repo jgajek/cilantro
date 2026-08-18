@@ -1,10 +1,14 @@
-# How ReactorUnpack compares to the other Reactor tools
+# How CILantro compares to the other Reactor tools
 
-Four open-source tools deal with .NET Reactor, and they are not competitors so
-much as different jobs. This page says which one to reach for, what each of
-them handles, and where ReactorUnpack is weaker than the alternatives — because
-the fastest way to waste an afternoon is to use a tool for the thing it does not
-do.
+This page is about the Reactor side only. That is where the comparison is worth
+making: four open-source tools deal with .NET Reactor and they are not competitors
+so much as different jobs, whereas on the ConfuserEx side this tool is the newcomer
+against a field that has had a decade to work on it, and the honest summary of that
+comparison is the two rows in the README's matrix that say no.
+
+So: which one to reach for, what each of them handles, and where CILantro is
+weaker than the alternatives — because the fastest way to waste an afternoon is to
+use a tool for the thing it does not do.
 
 - **[NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer)** — the
   general-purpose Reactor unpacker most people start with. Fifteen stages, a
@@ -16,8 +20,8 @@ do.
 - **[Krypton](https://github.com/dawwinci/krypton-devirtualizer)** — a
   purpose-built devirtualizer whose goal is a devirtualized binary that still
   runs. Continuation of PeterG75's Krypton, GPLv3.
-- **ReactorUnpack** — this tool. Reactor 6 only, never executes the sample, and
-  refuses to write anything it cannot prove. MIT.
+- **CILantro** — this tool. Reactor 6 and ConfuserEx 1.0.0, never executes the
+  sample, and refuses to write anything it cannot prove. MIT.
 
 Everything below was checked against each project's source and release notes in
 August 2026. All three of the others are moving targets, and which Reactor
@@ -27,22 +31,22 @@ version each handles best changes with them.
 
 | If you want to | Reach for | Because |
 | --- | --- | --- |
-| Know what an unfamiliar sample is, and get the next stage out, without running it | ReactorUnpack | Nothing in the sample executes, and the payload comes out of a static reading of the unpacker |
+| Know what an unfamiliar sample is, and get the next stage out, without running it | CILantro | Nothing in the sample executes, and the payload comes out of a static reading of the unpacker |
 | The most thoroughly cleaned assembly a Reactor tool will give you | NETReactorSlayer | Widest stage coverage of the four, and it invokes the sample's own decrypters, so codecs nobody has modeled still come out |
-| Handle a Reactor 7+ sample, or a sample that turns out not to be Reactor | de4dotEx | It is the one that states support for Reactor 7.0 and later, and the only one that covers other obfuscators at all |
+| Handle a Reactor 7+ sample, or one under a protector neither of these two covers | de4dotEx | It is the one that states support for Reactor 7.0 and later, and it covers about twenty-five families where this tool covers two |
 | A devirtualized binary you can run and debug | Krypton | That is its stated goal; it rebuilds VM methods in place and patches the output until it starts |
-| Read a virtualized method without running anything | ReactorUnpack | It builds the method back into the cleaned copy, reports the recovered program as a listing beside it, and says how each reading was arrived at |
-| Rename everything, including public types, the way de4dot does | Slayer or de4dotEx | Both carry the full de4dot renamer; ReactorUnpack renames only what it can prove is generated |
+| Read a virtualized method without running anything | CILantro | It builds the method back into the cleaned copy, reports the recovered program as a listing beside it, and says how each reading was arrived at |
+| Rename everything, including public types, the way de4dot does | Slayer or de4dotEx | Both carry the full de4dot renamer; CILantro renames only what it can prove is generated |
 
 If you have a Reactor 6 crypter and no idea what is inside it, a reasonable
-order is: ReactorUnpack first, because it costs you nothing to run it on a live
+order is: CILantro first, because it costs you nothing to run it on a live
 sample and it hands you the payload; then Slayer or de4dotEx on that payload if
 you want a more aggressively cleaned assembly; then Krypton if what you are left
 with is virtualized and you would rather debug it than read it.
 
 ## What each one handles
 
-| Protection | ReactorUnpack | NETReactorSlayer | de4dotEx | Krypton |
+| Protection | CILantro | NETReactorSlayer | de4dotEx | Krypton |
 | --- | --- | --- | --- | --- |
 | Method bodies encrypted (NecroBit) | Yes, statically | Yes | Yes | — |
 | Strings encrypted | Yes, statically | Yes | Yes | Opt-in |
@@ -69,7 +73,7 @@ it. Four cells deserve their footnote:
 - **de4dotEx's Reactor devirtualizer** is on by default, but the release that
   introduced it notes it has mainly been tested on protection-specific methods
   such as string decryption, rather than on arbitrary program code.
-- **ReactorUnpack's rebuilt virtualized methods** go into the cleaned copy, each
+- **CILantro's rebuilt virtualized methods** go into the cleaned copy, each
   marked with a `[RebuiltFromReading]` attribute that a decompiler shows above the
   method, because a body built from a reading is not the same kind of result as a
   decrypted one. Where the sample's own unpacking path runs through the method,
@@ -105,7 +109,7 @@ The input has 36 distinct string literals, 673 types and 3,708 methods.
 
 ### What came out
 
-| | ReactorUnpack | NETReactorSlayer | de4dotEx | Krypton |
+| | CILantro | NETReactorSlayer | de4dotEx | Krypton |
 | --- | --- | --- | --- | --- |
 | Produced an output file | yes | only with its string stage switched off | only when told which obfuscator | yes |
 | Wall time | 6m 55s | 2.9s | 2.3s | 18s |
@@ -118,7 +122,7 @@ The input has 36 distinct string literals, 673 types and 3,708 methods.
 | Ran the sample | **no** | yes — and died there | no | attempted, could not on Linux |
 
 The row that decides an analyst's afternoon is the configuration. Only
-ReactorUnpack's output contains this, and it is the answer to "what is this
+CILantro's output contains this, and it is the answer to "what is this
 thing":
 
 ```
@@ -191,7 +195,7 @@ Read the table as one hard sample, not a ranking.
   Interpreting a loader instead of running it costs two to three orders of
   magnitude more time, every time.
 - **One sample cannot rank renaming, Reactor 7, or native stubs**, all of which
-  the others do better or at all. See [Where ReactorUnpack loses](#where-reactorunpack-loses).
+  the others do better or at all. See [Where CILantro loses](#where-cilantro-loses).
 
 ### Reproducing it
 
@@ -199,7 +203,7 @@ Tools built from source at their August 2026 tips, on Linux with .NET 10:
 
 ```bash
 # ours
-ReactorUnpack Lqcuzgc.dll
+cilantro Lqcuzgc.dll
 
 # NETReactorSlayer — omit the flag to reproduce the segfault
 dotnet NETReactorSlayer.CLI.dll Lqcuzgc.dll --dec-strings false --no-pause true
@@ -216,7 +220,7 @@ lookups are `call`/`callvirt` sites targeting a static `(int) -> string` method.
 
 ## How each one behaves
 
-| | ReactorUnpack | NETReactorSlayer | de4dotEx | Krypton |
+| | CILantro | NETReactorSlayer | de4dotEx | Krypton |
 | --- | --- | --- | --- | --- |
 | Executes the protected sample | Never | Yes | Not on the Reactor path | Yes, by default |
 | Reactor versions | 6 only, refuses the rest | Not stated | 3.x through 7.0+ | Where the handler patterns are known |
@@ -256,23 +260,27 @@ Note that de4dot's *generic* string-decryption modes do run the target's code �
 the `--strtyp emulate` mode, despite the name, executes IL rather than emulating
 it — but the Reactor deobfuscator does not use them.
 
-**ReactorUnpack** never loads or invokes protected code. It reads the file as
+**CILantro** never loads or invokes protected code. It reads the file as
 data and interprets the IL under a bounded machine with no real filesystem,
 registry, network, or process behind it, working out what the decryption *would*
-produce. That is the whole design constraint, and everything ReactorUnpack is
+produce. That is the whole design constraint, and everything CILantro is
 worse at follows from it: no unmodeled codec can be run to see what it does, a
 native stub cannot be unpacked by letting it unpack itself, and a value the
 machine cannot establish stops the run instead of being guessed.
 
-## Where ReactorUnpack loses
+## Where CILantro loses
 
 Worth knowing before you pick it up, and none of it is going to be fixed by
 trying harder — each item is the same design constraint seen from a different
 side.
 
-- **Anything but Reactor 6.** A 7.x sample, or a sample that turns out to be
-  ConfuserEx, is reported as unsupported and nothing is written. de4dotEx covers
-  both.
+- **Anything but Reactor 6 and ConfuserEx 1.0.0.** A 7.x sample, or a ConfuserEx
+  fork whose structure has moved, is reported as unsupported and nothing is
+  written. de4dotEx covers considerably more families than either.
+- **ConfuserEx's control flow and proxies, where the others handle them.** The
+  ConfuserEx support here gets the bodies and the strings back and stops. de4dotEx
+  has had years on that protector and its forks; if a readable ConfuserEx assembly
+  is what you want rather than its literals and its payload, start there.
 - **Native-packed files.** The .NET part is inside a native stub, and the way
   the other tools get it out is by unpacking that stub. This one detects the
   case and stops. Slayer and de4dotEx unpack it.
@@ -294,17 +302,17 @@ side.
 
 ## Stage by stage against NETReactorSlayer
 
-This matrix maps ReactorUnpack's passes onto the fifteen stages Slayer ships
+This matrix maps CILantro's passes onto the fifteen stages Slayer ships
 under `NETReactorSlayer.Core/Stages/`. It records what is implemented, where
-ReactorUnpack is stronger or weaker, and what remains a deliberate, fail-closed
+CILantro is stronger or weaker, and what remains a deliberate, fail-closed
 boundary. Every mutating pass rolls back unless structural verification passes.
 
 Slayer is GPL-3.0 throughout and bundles a de4dot-derived renamer
-(`NETReactorSlayer.De4dot.Renamer`). ReactorUnpack re-derives every equivalent
+(`NETReactorSlayer.De4dot.Renamer`). CILantro re-derives every equivalent
 capability from its own CFG, use-site dataflow, and naming primitives rather
 than porting any of it.
 
-| # | Slayer stage | ReactorUnpack pass | Status |
+| # | Slayer stage | CILantro pass | Status |
 |---|--------------|--------------------|--------|
 | 1 | `MethodDecrypter` | `method-body-recovery` | Parity. Static JIT-hook body recovery with write-log identity checks and per-body verification. |
 | 2 | `AntiManipulationPatcher` | `antitamper-neutralization` | Parity. Removes only the proven integrity/verification subtree and guarded failure paths, using the static machine's RSA and hashing models. |
@@ -328,7 +336,7 @@ than porting any of it.
 | — | `Helper/NativeUnpacker` + `QuickLZ` | `metadata-preflight` (`NativePackDetector`) | Deferred. Native-packed input is detected and reported unsupported with a specific diagnostic rather than mis-processed. Slayer unpacks it. |
 | — | `Helper/CodeVirtualizationUtils` | `reactor-detection`, `virtualization-disassembly`, `virtualization-rebuild` | Beyond Slayer. Slayer detects virtualization by looking for a known runtime; detection here is by the shape of the seam every virtualizer has to leave — pack the arguments, pass a program number, call once, return — which holds for engines neither tool has seen, and it names the affected methods rather than only reporting a flag. The engine's own decoder is then run under the machine and the decoded program read back off the heap, so nothing about the bytecode's framing or encryption has to be known, and what each operation means is derived per sample rather than from a table no per-build numbering would survive. The result is written as an annotated listing and as the IL it stands for, and built back into the cleaned copy with an attribute on each method saying it is a reading. See [devirtualization.md](devirtualization.md) for how the readings are arrived at and checked. |
 
-## Where ReactorUnpack is intentionally different
+## Where CILantro is intentionally different
 
 - **Fail-closed everywhere.** Any pass that cannot prove its transform preserves
   behavior makes no edit. Partial or unsupported recovery blocks emit by default.

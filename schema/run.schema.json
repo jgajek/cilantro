@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jgajek/reactor-unpack/schema/run.schema.json",
-  "title": "ReactorUnpack run manifest",
-  "description": "What `ReactorUnpack --json` prints on standard output: one run, said in one object. Everything the run wrote is named here, so a caller never has to rebuild a path from the naming convention.",
+  "$id": "https://github.com/jgajek/cilantro/schema/run.schema.json",
+  "title": "CILantro run manifest",
+  "description": "What `cilantro --json` prints on standard output: one run, said in one object. Everything the run wrote is named here, so a caller never has to rebuild a path from the naming convention.",
   "type": "object",
   "required": [
     "Schema",
@@ -12,6 +12,7 @@
     "InputSha256",
     "InputLength",
     "Strict",
+    "Protector",
     "Protections",
     "Wrote",
     "Payloads",
@@ -29,7 +30,7 @@
     "Schema": {
       "description": "Which version of this shape the object is. Read it first and refuse a major version you were not written for.",
       "type": "string",
-      "pattern": "^reactorunpack\\.run/[0-9]+$"
+      "pattern": "^cilantro\\.run/[0-9]+$"
     },
     "ToolVersion": { "type": "string" },
     "Success": {
@@ -42,6 +43,10 @@
     "Strict": {
       "description": "Whether the run refused rather than assuming anything about the machine the sample expects.",
       "type": "boolean"
+    },
+    "Protector": {
+      "description": "Which protector the run settled on, by the name a program uses, or \"none\". Said outright because more than one is recognized and the capability list alone does not tell two of them apart: both name a capability anti-tamper and mean different mechanisms by it.",
+      "type": "string"
     },
     "Protections": {
       "description": "What the file was found to be protected with, by the tool's own names for them.",

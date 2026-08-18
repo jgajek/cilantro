@@ -1,15 +1,16 @@
-# ReactorUnpack
+# CILantro
 
 **Recovers readable code and the hidden next stage from .NET malware protected
-with .NET Reactor — by reading the file, never by running it.**
+with .NET Reactor or ConfuserEx — by reading the file, never by running it.**
 
-Open a Reactor-protected sample in dnSpyEx and you get empty methods, no strings,
-and class names like `H1lrRRwH0tOVtn61XvY`. Reactor is a commercial protector
-that malware authors buy to stop exactly what you are about to do, and it works:
-there is nothing to read, nothing to grep for, and no obvious way in. Worse, the
-part you actually want is usually not in the file at all. It is encrypted inside
-it — the stealer, the loader, the thing that names the family — waiting to be
-unpacked by code you cannot read either.
+Open a protected sample in dnSpyEx and you get empty methods, no strings, and
+class names like `H1lrRRwH0tOVtn61XvY` — or, under ConfuserEx, names made
+entirely of invisible characters, so that two different types look like the same
+empty space. Protectors are what malware authors buy to stop exactly what you
+are about to do, and they work: there is nothing to read, nothing to grep for,
+and no obvious way in. Worse, the part you actually want is usually not in the
+file at all. It is encrypted inside it — the stealer, the loader, the thing that
+names the family — waiting to be unpacked by code you cannot read either.
 
 This hands that back. One command gives you a copy of the assembly you can open
 in a decompiler and read, the payload hidden inside it written out as a file where
@@ -22,7 +23,7 @@ someone trying to name a family before the sandbox report lands, and pipelines
 with nobody in them to read a summary at all.
 
 ```
-ReactorUnpack suspicious.exe
+cilantro suspicious.exe
 ```
 
 No options to get right, no runtime to install, no VM, and nothing executed:
@@ -52,20 +53,21 @@ No options to get right, no runtime to install, no VM, and nothing executed:
   WROTE
 
     Cleaned copy    rsServiceController.cleaned.dll
-    Hidden files    1 in reactorunpack/rsServiceController.payloads
-    Full report     reactorunpack/rsServiceController.analysis.json
+    Hidden files    1 in cilantro/rsServiceController.payloads
+    Full report     cilantro/rsServiceController.analysis.json
 
   Open the cleaned copy in dnSpyEx or ILSpy to read the code.
 ```
 
 ## Why this one
 
-Four open-source tools deal with .NET Reactor. Here are all four on the same
-sample — a Reactor crypter payload that is protected twice, with a second
-obfuscator hiding strings underneath Reactor
+Reactor is the harder of the two protectors and the one with competition, so it
+is the fair place to measure. Four open-source tools deal with .NET Reactor, and
+here are all four on the same sample — a Reactor crypter payload that is
+protected twice, with a second obfuscator hiding strings underneath Reactor
 ([`81cf796c…`](docs/parity.md#all-four-on-one-hard-sample)):
 
-| | ReactorUnpack | [Slayer](https://github.com/SychicBoy/NETReactorSlayer) | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) | [Krypton](https://github.com/dawwinci/krypton-devirtualizer) |
+| | CILantro | [Slayer](https://github.com/SychicBoy/NETReactorSlayer) | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) | [Krypton](https://github.com/dawwinci/krypton-devirtualizer) |
 | --- | --- | --- | --- | --- |
 | Readable strings in the output | **192** | 31 | 8 | 0 |
 | Of the 172 encrypted string sites | **all 172** | none | 17 | none |
@@ -91,7 +93,7 @@ The reasons behind that result:
 
 **Nothing is executed. Not once, not in a helper process.** Most .NET
 deobfuscators load the malware and call its own decryption routines — that is
-why they carry warnings about only being used in a VM. ReactorUnpack works out
+why they carry warnings about only being used in a VM. CILantro works out
 what the decryption *would* produce. Analysing a sample is as safe as running
 `strings` on it, which makes it usable on a laptop, a build agent, or a queue.
 
@@ -100,13 +102,19 @@ does not make it, and it says so. It will write no cleaned copy at all rather
 than hand you a subtly broken file that costs you an afternoon. Anything it had
 to assume is labelled as assumed, in the summary and in the report.
 
-**It gets the next stage out.** Reactor is most often a wrapper around something
-else, and that something else is what you actually want. It comes out to a file,
-whatever crypter put it there — not just Reactor's own.
+**It gets the next stage out.** A protector is most often a wrapper around
+something else, and that something else is what you actually want. It comes out
+to a file, whatever crypter put it there — not just Reactor's own.
+
+**It runs the sample's own decrypter rather than reimplementing it.** Both
+protectors decide their key, their cipher and their table format per build, so a
+reimplementation is a race against the next version. Interpreting the decrypter
+the sample carries is not: it is right for that build by construction, which is
+how a second protector was added without a second engine.
 
 **It reads the methods no decompiler can show — and checks that it read them
 right.** Reactor's strongest option replaces a method with bytecode for an
-interpreter it generates per sample. ReactorUnpack recovers that program, works
+interpreter it generates per sample. CILantro recovers that program, works
 out what it means, and builds it back into real code in the cleaned copy. Where
 the sample's own unpacking path goes through such a method, it then interprets
 that path twice — once as shipped, once with the rebuilt bodies in place — and
@@ -119,32 +127,32 @@ have no one to read a summary.
 
 | If you want to | Reach for |
 | --- | --- |
-| Know what an unfamiliar sample is and get the next stage out, without running it | **ReactorUnpack** |
-| Read a virtualized method without running anything | **ReactorUnpack** |
+| Know what an unfamiliar sample is and get the next stage out, without running it | **CILantro** |
+| Read a virtualized method without running anything | **CILantro** |
 | The most thoroughly cleaned assembly a Reactor tool will give you | [NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer) |
-| Handle Reactor 7+, or a sample that turns out not to be Reactor at all | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) |
+| Handle Reactor 7+, or a protector neither of the two this handles | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) |
 | A devirtualized binary you can run and debug | [Krypton](https://github.com/dawwinci/krypton-devirtualizer) |
 | Rename everything, including public types, the way de4dot does | Slayer or de4dotEx |
 
 ## Install
 
 Download from the
-[Releases page](https://github.com/jgajek/reactor-unpack/releases) and unpack.
+[Releases page](https://github.com/jgajek/cilantro/releases) and unpack.
 There is nothing to install: it is a single file with everything it needs inside,
 so it works on a fresh analysis VM that has never had .NET on it.
 
 | Platform | Download |
 | --- | --- |
-| Windows 64-bit | `ReactorUnpack-win-x64.zip` |
-| Linux 64-bit | `ReactorUnpack-linux-x64.tar.gz` |
+| Windows 64-bit | `cilantro-win-x64.zip` |
+| Linux 64-bit | `cilantro-linux-x64.tar.gz` |
 
-Check it against `SHA256SUMS.txt`, which you should. `ReactorUnpackMcp` is in the
+Check it against `SHA256SUMS.txt`, which you should. `cilantro-mcp` is in the
 same archive — the same tool, spoken to over the Model Context Protocol.
 
 ## Use it
 
 ```
-ReactorUnpack suspicious.exe
+cilantro suspicious.exe
 ```
 
 That is the whole thing. It leaves two things beside your sample:
@@ -152,7 +160,7 @@ That is the whole thing. It leaves two things beside your sample:
 - **`suspicious.cleaned.exe`** — the readable copy. Open it in
   [dnSpyEx](https://github.com/dnSpyEx/dnSpy) or
   [ILSpy](https://github.com/icsharpcode/ILSpy).
-- **`reactorunpack/`** — the full JSON report, every change made, whatever was
+- **`cilantro/`** — the full JSON report, every change made, whatever was
   hidden inside the sample, and the operation-by-operation reading of any method
   that shipped as interpreter bytecode.
 
@@ -165,7 +173,7 @@ Your input file is never touched.
 | `--json` | Print the run as one object instead of a summary |
 | `--verbose` | Show every step, which is what a bug report wants |
 
-`ReactorUnpack --help` has the rest; there are only a handful.
+`cilantro --help` has the rest; there are only a handful.
 
 ### Two modes, and why the default is the loose one
 
@@ -190,7 +198,7 @@ would have to become a branch, an index, or a length, the run stops.
 
 ### When a run stops short
 
-Every run writes `reactorunpack/suspicious.blockers.json`, naming each thing that
+Every run writes `cilantro/suspicious.blockers.json`, naming each thing that
 stopped it, where, how often, and the exact line that would get past it:
 
 ```json
@@ -208,7 +216,7 @@ does not carry, how much work the run may do, and, with `--allow-declared-calls`
 what a call the tool cannot read does:
 
 ```
-ReactorUnpack suspicious.exe --declarations ptnifif.json
+cilantro suspicious.exe --declarations ptnifif.json
 ```
 
 So the way through a stubborn sample is a loop: run it, read what stopped it,
@@ -223,7 +231,7 @@ for it: what a program needs is the same decisions with a machine-readable
 answer, not different decisions.
 
 ```
-ReactorUnpack suspicious.exe --json
+cilantro suspicious.exe --json
 ```
 
 One object on stdout, naming every file written, every payload with its hash and
@@ -236,7 +244,7 @@ The same tool is also an MCP server, with `unpack`, `next_declarations` — whic
 turns what stopped a run into the file to run with next — and `read_output`:
 
 ```jsonc
-{ "mcpServers": { "reactorunpack": { "command": "/opt/reactorunpack/ReactorUnpackMcp" } } }
+{ "mcpServers": { "cilantro": { "command": "/opt/cilantro/cilantro-mcp" } } }
 ```
 
 Nothing escalates on its own. A budget stop comes back with the figure to raise
@@ -249,14 +257,15 @@ output promises and for how long.
 
 ## The two hard parts
 
-Most of what Reactor does has a standard answer. Two things are harder, and they
-are usually the reason to reach for this tool rather than another.
+Most of what a protector does has a standard answer. Two things are harder, and
+they are usually the reason to reach for this tool rather than another. Both are
+Reactor's, which is why the Reactor side of the tool is the deeper one.
 
 ### Getting the hidden file out
 
 The sample you have is often a shell whose real job is to decrypt something else
-and run it. ReactorUnpack works out what that unpacker would have produced and
-writes it to `reactorunpack/suspicious.payloads/`, ready to analyse on its own —
+and run it. CILantro works out what that unpacker would have produced and
+writes it to `cilantro/suspicious.payloads/`, ready to analyse on its own —
 or to put through the tool again, if it turns out to be Reactor-protected in its
 turn. Three cases come up, and all three end with you knowing something:
 
@@ -318,11 +327,35 @@ for someone who does not work in .NET.
 
 ## What it handles
 
-.NET Reactor 6, which covers the large majority of Reactor-protected samples in
-circulation: encrypted method bodies (NecroBit), encrypted strings, scrambled
-control flow, junk-call insertion, proxied calls, hidden metadata references,
-anti-tamper and anti-debug checks, encrypted embedded resources, embedded payload
-assemblies, and code virtualization.
+Two protectors, to different depths. Reactor is the older and more complete side;
+ConfuserEx covers the layers that hide the code and the text, which is what a
+triage answer needs, and stops short of its proxies.
+
+| | .NET Reactor 6 | ConfuserEx 1.0.0 |
+| --- | --- | --- |
+| Recognising it | Structural, and it says which generation | Structural, and it says which layers are on |
+| Encrypted method bodies | Yes — NecroBit, per method, decrypted and put back | Yes — a whole encrypted section, decrypted and put back |
+| Encrypted text | Yes — back into the code as literals | Yes — back into the code as literals |
+| Other encrypted constants | Yes, where they are strings | Byte arrays are read and reported, not put back |
+| Anti-tamper | Neutralised | Interpreted, which is what decrypts the section |
+| Anti-debug | Neutralised | Detected and reported |
+| Obfuscated names | Readable placeholders | Readable placeholders, which is the only way to tell invisible names apart |
+| Junk and dead code | Yes | Yes |
+| Scrambled control flow | Yes — dispatchers unflattened | Attempted by the same pass, and on these samples it unflattened none |
+| Proxied calls | Yes | No — its reference proxies are not recognised |
+| Hidden metadata references | Yes | Not applicable to these builds |
+| Encrypted resources | Yes — restored in place | Not implemented |
+| Embedded payloads | Yes — written out as files | Not implemented |
+| Virtualized methods | Read, and rebuilt as a reading | Not applicable to these builds |
+
+Reactor 6 covers the large majority of Reactor-protected samples in circulation.
+On the ConfuserEx side, the last two rows are why its cleaned copy reads less
+naturally than Reactor's: the code and the strings are back, but the shape is
+still the protector's. The unflattening pass is protector-neutral and does run,
+and it qualified none of the dispatchers in either sample — so the honest summary
+is that ConfuserEx's control flow is untested rather than refused.
+[docs/how-confuserex-works.md](docs/how-confuserex-works.md) says what each of
+those layers does.
 
 ## What it does not handle
 
@@ -334,14 +367,21 @@ Being straight about this matters more than the feature list.
   cannot, the reading stands unchecked.
 - **Native-packed files.** A sample wrapped in a native stub rather than being
   pure .NET is detected and reported as unsupported, not mangled.
-- **Reactor 7 and later, and other protectors.** ConfuserEx, Eazfuscator, Babel
-  and friends are out of scope — try
+- **Reactor 7 and later, ConfuserEx forks, and other protectors.** The
+  ConfuserEx support is written against 1.0.0; the many forks that followed it
+  are not tested. Eazfuscator, Babel and friends are out of scope — try
   [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx).
-- **Getting original names back.** Reactor destroys them; they are not in the
-  file. The cleaned copy substitutes readable placeholders, which helps
+- **ConfuserEx's control flow and reference proxies.** Its cleaned copy has the
+  code and the strings back, but its dispatchers and proxies are still there, so
+  it reads less naturally than a cleaned Reactor sample does. The unflattening
+  pass is protector-neutral and does run on it; it simply qualified nothing in
+  the samples available, and the proxies are not recognised at all.
+- **Getting original names back.** Both protectors destroy them; they are not in
+  the file. The cleaned copy substitutes readable placeholders, which helps
   navigation but is not the same thing.
 
-If a sample is not Reactor-protected, it says so and stops.
+If a sample is under neither protector, it says so and stops. It does not guess
+at a third.
 
 ## Is the cleaned file safe to run?
 
@@ -354,7 +394,10 @@ sanitised or defanged in any way. Treat it exactly as you would the original.
 - **[How .NET Reactor works](docs/how-net-reactor-works.md)** — what each
   protection does to the file, for someone who does not know .NET internals.
   Start here if the output mentioned something you did not recognise.
-- **[How ReactorUnpack undoes it](docs/how-recovery-works.md)** — the technique
+- **[How ConfuserEx works](docs/how-confuserex-works.md)** — the same, for the
+  other protector: one encrypted section, one constants table, and names made of
+  characters that do not print.
+- **[How CILantro undoes it](docs/how-recovery-works.md)** — the technique
   used against each protection, and why it is safe to do statically.
 - **[Virtualized methods](docs/devirtualization.md)** — what virtualization does
   to a method, how the hidden program is recovered and read, and how much of that
@@ -376,23 +419,23 @@ sanitised or defanged in any way. Treat it exactly as you would the original.
 Requires the .NET 10 SDK.
 
 ```bash
-dotnet restore ReactorUnpack.slnx
-dotnet build ReactorUnpack.slnx -c Release
-dotnet test ReactorUnpack.slnx -c Release
+dotnet restore Cilantro.slnx
+dotnet build Cilantro.slnx -c Release
+dotnet test Cilantro.slnx -c Release
 ```
 
 Use `-c Release` for the tests. Most of the suite is the analysis engine working
 through real samples, which an unoptimised build runs about five times slower.
 
-While you work, run the suite without the six tests that put whole samples
+While you work, run the suite without the eight tests that put whole samples
 through the machine:
 
 ```bash
-dotnet test ReactorUnpack.slnx -c Release --filter "Cost!=High"
+dotnet test Cilantro.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 396 of the 402 tests in about five seconds, against the eight minutes
-those six cost between them. They still run on a plain `dotnet test`, which is
+That is 405 of the 413 tests in about five seconds, against the twelve minutes
+those eight cost between them. They still run on a plain `dotnet test`, which is
 what to do before pushing, because they are the ones that prove the tool recovers
 real malware.
 
@@ -405,7 +448,7 @@ minutes of a run on their own, and nothing before them depends on either:
 cat > /tmp/fast.json <<'JSON'
 { "passes": { "skip": ["payload-extraction", "virtualization-disassembly"] } }
 JSON
-dotnet run --project src/ReactorUnpack.Cli -c Release --no-build -- \
+dotnet run --project src/Cilantro.Cli -c Release --no-build -- \
     samples/NAME.exe --analyze-only --declarations /tmp/fast.json --report-dir /tmp/loop
 ```
 
@@ -424,8 +467,8 @@ without samples was checked, and the skip count says what was not. Put samples i
 
 ## Contributing
 
-Samples are the bottleneck, not ideas. If you have a Reactor-protected sample
-that ReactorUnpack handles badly, that is the most valuable thing you can
+Samples are the bottleneck, not ideas. If you have a sample under either
+protector that CILantro handles badly, that is the most valuable thing you can
 contribute — particularly native-packed ones, which are unimplemented purely
 because no sample has been available to develop against.
 
@@ -435,7 +478,11 @@ Bug reports should include the `--verbose` output and the SHA-256 of the sample.
 
 MIT. See [LICENSE](LICENSE).
 
-ReactorUnpack is independent of
+The name is CIL, which is what .NET compiles to and what this reads, inside the
+herb that a good share of people are genetically predisposed to find inedible.
+The tool takes the same view of what a protector adds to an assembly.
+
+CILantro is independent of
 [NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer) and contains no
 de4dot-derived or other GPL code; it was built clean-room from behaviour observed
 in samples, which is what allows it to be MIT rather than GPL. It depends on

@@ -17,22 +17,22 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore ReactorUnpack.slnx
+        run: dotnet restore Cilantro.slnx
 
       # Release, not Debug. Most of the suite is the bounded interpreter working through real
       # samples, and an unoptimized build runs it about five times slower.
       - name: Build
-        run: dotnet build ReactorUnpack.slnx -c Release --no-restore
+        run: dotnet build Cilantro.slnx -c Release --no-restore
 
       # A public checkout has no samples, so the tests that read one are skipped here rather than
       # failed, and the run reports how many and why. Where the samples are present the same command
       # runs every one of them.
       - name: Test
-        run: dotnet test ReactorUnpack.slnx -c Release --no-restore --no-build
+        run: dotnet test Cilantro.slnx -c Release --no-restore --no-build
 
       # The corpus needs samples that are not in the repository, so it runs only where they are
       # available. Skipping is correct rather than a gap: the unit suite already runs the corpus
       # determinism check against whatever samples are present.
       - name: Corpus
         if: hashFiles('samples/*.dll', 'samples/*.exe') != ''
-        run: dotnet run --project src/ReactorUnpack.Cli -c Release --no-build -- corpus run
+        run: dotnet run --project src/Cilantro.Cli -c Release --no-build -- corpus run

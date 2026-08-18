@@ -2,7 +2,7 @@
 
 Some Reactor-protected samples contain methods that no decompiler will ever show
 you, because the code you are looking for was never compiled into the file. This
-explains what happened to those methods, what ReactorUnpack recovers from them,
+explains what happened to those methods, what CILantro recovers from them,
 and how much of the technique would still work against a protector that is not
 Reactor.
 
@@ -102,13 +102,13 @@ back exactly. Same for encrypted strings and hidden references.
 
 Virtualization is the one protection where there is no original to get back. The
 best anyone can do is read the numbered list and work out what it means, which is
-a *reading* rather than a recovery — and that distinction is why ReactorUnpack
+a *reading* rather than a recovery — and that distinction is why CILantro
 writes what it learns into a report and never puts it back into the assembly.
 More on that below.
 
 ## What the hidden program looks like
 
-Here is the start of program 0 from the sample above, as ReactorUnpack writes it
+Here is the start of program 0 from the sample above, as CILantro writes it
 out:
 
 ```
@@ -139,7 +139,7 @@ Four steps, each of which produces something checkable.
 
 ### 1. Find the methods
 
-ReactorUnpack does not look for a known interpreter, because the interpreter is
+CILantro does not look for a known interpreter, because the interpreter is
 renamed in every sample. It looks for the **seam** — the join between compiled
 code and the interpreter, which no virtualizer can avoid.
 
@@ -147,7 +147,7 @@ Something has to take the arguments the runtime passes and hand them to an
 interpreter that knows nothing about this particular method's signature. Every
 tool of this kind solves it the same way: pack the arguments into an array, pass
 a number saying which program to run, call once, return. That shape is what
-ReactorUnpack matches, and it holds whatever the interpreter is called and
+CILantro matches, and it holds whatever the interpreter is called and
 however its instructions are encoded.
 
 The match has to be exact. A stub that does any work of its own is not reported,
@@ -156,7 +156,7 @@ overstate what was found.
 
 ### 2. Get the program out — by running the protector's own decoder
 
-The obvious approach is to find the bytes and parse them. ReactorUnpack does not
+The obvious approach is to find the bytes and parse them. CILantro does not
 do that, for a practical reason: the encoding is the protector's business and
 changes between builds, so a parser is a guess that fails silently when it is
 wrong.
@@ -164,7 +164,7 @@ wrong.
 Instead the tool runs the engine's own decoder. Interpreters do not decode an
 instruction each time they need one — that would be slow — so they unpack the
 whole program into a list of objects first, and only then start executing it.
-ReactorUnpack interprets the sample's decoder statically, without running the
+CILantro interprets the sample's decoder statically, without running the
 sample, lets it build that list, and reads the list out of the interpretation's
 memory before the first operation is carried out. The report says as much, naming
 the engine's own list:
@@ -191,7 +191,7 @@ This is the part that makes the listing worth reading. Three independent sources
 of evidence, none of which requires understanding the interpreter's source.
 
 **Ask the engine directly.** The interpreter has one piece of code per
-operation. ReactorUnpack sets up a stack with values chosen for the purpose,
+operation. CILantro sets up a stack with values chosen for the purpose,
 makes the engine carry out a single operation, and looks at what came back —
 then repeats with different values, because one answer rarely settles anything.
 Operation 57 turns 7 and 3 into 4, which exclusive-or does and subtraction also
@@ -221,7 +221,7 @@ own slot 3, so it reads slot 3. No amount of poking at it from outside would hav
 found that.
 
 **Listen to what the engine works out.** While it carries out an operation, the
-interpreter computes things of its own, and ReactorUnpack records them, with the
+interpreter computes things of its own, and CILantro records them, with the
 housekeeping that every operation does subtracted. What is left is the
 operation's own working. A `branch if` that computes `clt` is a branch made on
 "less than". An operation that computes `Module::ResolveType` and
@@ -287,7 +287,7 @@ are code the protector emitted and never uses.
 
 ## What you get
 
-For each virtualized method, `reactorunpack/suspicious.virtualized/` gets two
+For each virtualized method, `cilantro/suspicious.virtualized/` gets two
 files.
 
 **`NAME.lifted.il`** is the program written in ordinary assembly terms. Read
@@ -371,7 +371,7 @@ Everything above is a report. The reading also goes back into the assembly, whic
 an ordinary run does for you:
 
 ```bash
-ReactorUnpack suspicious.exe
+cilantro suspicious.exe
 ```
 
 The cleaned copy that lands beside your sample has the virtualized methods
@@ -447,7 +447,7 @@ them the whole method: 4,854 operations become 15,270 instructions over 44 slots
 where before the regions were readable the method could not be built at all.
 
 **It is a reading, and it is marked where you will see it.** Everything else
-ReactorUnpack writes into the cleaned assembly is the protector's own output,
+CILantro writes into the cleaned assembly is the protector's own output,
 provable byte for byte; a body built from a reading is the reading itself, and if
 the reading is wrong the body is wrong in a way no reader can see. For a while
 that argument kept these bodies out of the cleaned copy altogether, in a second
@@ -460,7 +460,7 @@ So the bodies go into the cleaned copy, and each method that gets one carries an
 attribute saying where it came from:
 
 ```csharp
-[RebuiltFromReading("ReactorUnpack built this body from its reading of the interpreter's program. It is not the original code and was not recovered from the file; see the run's report.")]
+[RebuiltFromReading("CILantro built this body from its reading of the interpreter's program. It is not the original code and was not recovered from the file; see the run's report.")]
 private static void GNswBvhgmV(object P_0, int P_1)
 ```
 
@@ -540,7 +540,7 @@ Two things fall out of it that matter more than the listing.
 
 **Payloads still come out.** When a sample's unpacker is virtualized, the usual
 approach of following the unpacker's code hits a wall. But the *interpreter* is
-ordinary compiled code, so ReactorUnpack can simply run it — statically, the same
+ordinary compiled code, so CILantro can simply run it — statically, the same
 way it runs everything else — and let it unpack the payload itself. It costs
 about a minute instead of a few seconds, and you get the hidden file. Running the
 protector's machine is easier than undoing it.
@@ -600,7 +600,7 @@ constant, one call, discard the result. Another protector might pass arguments i
 fields, or through a closure, or push them individually. The idea transfers; this
 particular matcher does not.
 
-**Decode-everything-up-front.** ReactorUnpack reads the program list out of
+**Decode-everything-up-front.** CILantro reads the program list out of
 memory before execution begins, which works because this engine builds the whole
 list first. An engine that decodes each instruction as it reaches it — or
 decrypts the next one using the last one as a key, which is a known trick —
@@ -642,7 +642,7 @@ today's builds, not a general solution to virtualization.
 ## Try it yourself
 
 ```bash
-ReactorUnpack suspicious.exe
+cilantro suspicious.exe
 ```
 
 If the sample has virtualized methods, the summary says so:
@@ -654,7 +654,7 @@ If the sample has virtualized methods, the summary says so:
 
   WROTE
 
-    Hidden code     2 listing(s) in reactorunpack/suspicious.virtualized
+    Hidden code     2 listing(s) in cilantro/suspicious.virtualized
     Built back      1 method(s) in the cleaned copy, marked [RebuiltFromReading] (they unpacked the same payload as the original)
 ```
 
@@ -673,7 +673,7 @@ are working through a directory of samples and do not need either, you can leave
 the whole thing out:
 
 ```bash
-ReactorUnpack suspicious.exe --declarations skip-vm.json
+cilantro suspicious.exe --declarations skip-vm.json
 ```
 
 where `skip-vm.json` is:
@@ -692,7 +692,7 @@ which passes were left out, so you will not mistake one result for the other.
 
 - **[How .NET Reactor works](how-net-reactor-works.md)** — the other protections,
   and how virtualization sits among them.
-- **[How ReactorUnpack undoes it](how-recovery-works.md)** — the pipeline this is
+- **[How CILantro undoes it](how-recovery-works.md)** — the pipeline this is
   one step of, and the bounded machine that makes running the engine safe.
 - **[Reading the output](reading-the-output.md#the-methods-are-decrypted-but-still-unreadable)**
   — the field guide to every line of the two files.

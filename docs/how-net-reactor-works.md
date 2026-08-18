@@ -5,7 +5,10 @@ in .NET day to day. You do not need to know C#. Where a .NET term is
 unavoidable it is explained the first time it appears.
 
 The companion document, [how-recovery-works.md](how-recovery-works.md), explains
-what ReactorUnpack does about each of these.
+what CILantro does about each of these.
+[how-confuserex-works.md](how-confuserex-works.md) is the same thing for the other
+protector this tool handles, and its second section is the short version of how the
+two differ.
 
 ## Why .NET is different
 
@@ -195,7 +198,7 @@ to machine code rather than IL.
 **What you see:** the file does not open in a .NET decompiler at all, or opens
 with almost nothing in it.
 
-ReactorUnpack detects this and reports it as unsupported rather than producing a
+CILantro detects this and reports it as unsupported rather than producing a
 damaged result. It is not implemented, for the reason given in the README: no
 sample has been available to develop against.
 
@@ -210,7 +213,7 @@ and it really is per sample: across the samples examined here, the same engine
 numbers the same operations differently in every build, so a table of opcode
 meanings learned from one is worthless on the next.
 
-No other public tool lifts it at all. What ReactorUnpack does is recover the
+No other public tool lifts it at all. What CILantro does is recover the
 hidden program and read it: the affected methods are
 named, the program behind each one is taken by running the engine's own decoder
 rather than by parsing its bytecode, and what each operation means is established
@@ -249,7 +252,7 @@ current samples are:
 - **Delegate-runtime generation** — an older design leaning more heavily on proxy
   call tables and less on body encryption.
 
-ReactorUnpack identifies which one it is looking at from structural evidence —
+CILantro identifies which one it is looking at from structural evidence —
 the shape of the metadata and the code — rather than from version strings or file
 hashes, which is what lets it work on samples it has never seen.
 

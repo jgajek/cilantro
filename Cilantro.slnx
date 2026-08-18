@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Cilantro.Cli/Cilantro.Cli.csproj" />
+    <Project Path="src/Cilantro.Core/Cilantro.Core.csproj" />
+    <Project Path="src/Cilantro.Mcp/Cilantro.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Cilantro.Tests/Cilantro.Tests.csproj" />
+  </Folder>
+</Solution>

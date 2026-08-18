@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jgajek/reactor-unpack/schema/error.schema.json",
-  "title": "ReactorUnpack refusal",
+  "$id": "https://github.com/jgajek/cilantro/schema/error.schema.json",
+  "title": "CILantro refusal",
   "description": "What `--json` prints instead of a manifest when the run could not be attempted at all: an unreadable file, a bad option, a declarations file that does not parse. The exit code is 2, as it is without --json.",
   "type": "object",
   "required": ["Error", "Schema"],
@@ -12,7 +12,7 @@
     },
     "Schema": {
       "type": "string",
-      "pattern": "^reactorunpack\\.error/[0-9]+$"
+      "pattern": "^cilantro\\.error/[0-9]+$"
     }
   },
   "additionalProperties": false

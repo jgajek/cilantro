@@ -18,9 +18,9 @@ jobs:
       matrix:
         include:
           - runtime: win-x64
-            artifact: ReactorUnpack-win-x64.zip
+            artifact: cilantro-win-x64.zip
           - runtime: linux-x64
-            artifact: ReactorUnpack-linux-x64.tar.gz
+            artifact: cilantro-linux-x64.tar.gz
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -34,18 +34,18 @@ jobs:
       # before they can look at a sample.
       - name: Publish ${{ matrix.runtime }}
         run: >
-          dotnet publish src/ReactorUnpack.Cli
+          dotnet publish src/Cilantro.Cli
           -c Release
           -r ${{ matrix.runtime }}
           -p:PublishSingleFile=true
           -o publish/${{ matrix.runtime }}
 
       # The MCP server ships in the same archive rather than one of its own. It is the same tool
-      # reached a different way, and somebody who has downloaded ReactorUnpack and then wants to
+      # reached a different way, and somebody who has downloaded CILantro and then wants to
       # point an agent at it should not have to work out that there is a second download.
       - name: Publish the MCP server for ${{ matrix.runtime }}
         run: >
-          dotnet publish src/ReactorUnpack.Mcp
+          dotnet publish src/Cilantro.Mcp
           -c Release
           -r ${{ matrix.runtime }}
           -p:PublishSingleFile=true
@@ -59,7 +59,7 @@ jobs:
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          reported="$(publish/linux-x64/ReactorUnpack --version)"
+          reported="$(publish/linux-x64/cilantro --version)"
           if [ "${TAG#v}" != "$reported" ]; then
             echo "Tag $TAG does not match the version the tool reports, $reported." >&2
             exit 1
@@ -93,13 +93,13 @@ jobs:
           merge-multiple: true
 
       - name: Checksums
-        run: sha256sum ReactorUnpack-* > SHA256SUMS.txt
+        run: sha256sum cilantro-* > SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           files: |
-            ReactorUnpack-*
+            cilantro-*
             SHA256SUMS.txt
           # A release missing the thing people came to download is worse than no release, and by
           # default an asset pattern that matches nothing is passed over in silence.

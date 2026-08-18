@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jgajek/reactor-unpack/schema/config.schema.json",
-  "title": "ReactorUnpack recovered constants",
-  "description": "`reactorunpack/NAME.config.json`: the values a protector kept out of the metadata, recovered by running the module's own decrypters. Written only where a run found some, so its absence from the run manifest means the sample kept none there. Strings that could be put back are also literals in the cleaned assembly; the rest exist only here.",
+  "$id": "https://github.com/jgajek/cilantro/schema/config.schema.json",
+  "title": "CILantro recovered constants",
+  "description": "`cilantro/NAME.config.json`: the values a protector kept out of the metadata, recovered by running the module's own decrypters. Written only where a run found some, so its absence from the run manifest means the sample kept none there. Strings that could be put back are also literals in the cleaned assembly; the rest exist only here.",
   "type": "object",
   "required": [
     "ToolVersion",

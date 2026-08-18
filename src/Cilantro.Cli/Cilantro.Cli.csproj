@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cilantro.Core\Cilantro.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>cilantro</AssemblyName>
+    <RootNamespace>Cilantro.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Product>CILantro</Product>
+    <Description>Recovers readable code from protected .NET assemblies, without running them.</Description>
+    <Authors>Jacob Gajek</Authors>
+    <Copyright>Copyright (c) 2026 Jacob Gajek</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/jgajek/cilantro</RepositoryUrl>
+  </PropertyGroup>
+
+  <!--
+    The published artifact has to run on an analysis VM that has never had .NET installed, because
+    asking someone to install a runtime before they can look at a sample is where most people stop.
+    Self-contained puts the runtime in the file; single-file makes it one download rather than a
+    folder to keep together.
+
+    Trimming and AOT are deliberately off. dnlib reaches for metadata reflectively, which is exactly
+    what a trimmer cannot see, and a tool that silently mis-analyses a sample because a type was
+    trimmed away would defeat the point of the whole verification discipline. The cost is size.
+  -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+</Project>

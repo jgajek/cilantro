@@ -1,13 +1,18 @@
-# How ReactorUnpack undoes it
+# How CILantro undoes it
 
-This is the counterpart to [how-net-reactor-works.md](how-net-reactor-works.md).
-It assumes you have read that, or already know what Reactor does.
+This is the counterpart to [how-net-reactor-works.md](how-net-reactor-works.md)
+and [how-confuserex-works.md](how-confuserex-works.md). It assumes you have read
+one of them, or already know what the protector does.
+
+Most of what follows is protector-neutral, because the technique is. The ordered
+pipeline in the middle is Reactor's, and the shorter one after it is ConfuserEx's;
+everything before and after applies to both.
 
 ## The central idea
 
-Reactor's protections all share one weakness: **the decryption routine ships with
-the file**. It has to. The program must be able to decrypt itself on the machine
-it runs on, with no network and no key server, so everything needed to undo the
+The protections all share one weakness: **the decryption routine ships with the
+file**. It has to. The program must be able to decrypt itself on the machine it
+runs on, with no network and no key server, so everything needed to undo the
 protection is present in the sample.
 
 There are two ways to use that.
@@ -21,7 +26,7 @@ caller checks mean the tool must actively defeat the sample's own defences to ge
 an answer. Tools that work this way tell you to only use them in a VM, and they
 are right to.
 
-ReactorUnpack takes the other way. It **interprets** the decryption routine in a
+CILantro takes the other way. It **interprets** the decryption routine in a
 simulator it controls, instead of executing it on the CPU. The protector's own
 code drives the recovery, so no cipher or key layout has to be hardcoded, but the
 code never runs — it is data being traced through a model. Nothing the sample
@@ -175,10 +180,12 @@ independent interpretations that agree, instruction for instruction and write fo
 write, rule out the tool having been steered by uninitialised state or its own
 ordering. A disagreement means the recovery is abandoned.
 
-## The order things happen in
+## The order things happen in, under Reactor
 
 The protections are layered, so they have to come off in a specific order. Some
-of the ordering is obvious, some of it is not.
+of the ordering is obvious, some of it is not. What follows is the Reactor
+pipeline, which is the longer of the two;
+[the ConfuserEx one](#the-order-things-happen-in-under-confuserex) is below it.
 
 **1. Look before touching.** The raw metadata is parsed by hand first — before
 handing the file to a library that would normalise it — to record duplicate
@@ -501,6 +508,93 @@ original.
 
 **12. Verify, then emit.** Covered in the section after that.
 
+## The order things happen in, under ConfuserEx
+
+The same machine, the same gates, and a much shorter list — because ConfuserEx
+does its decryption in one stage rather than lazily, and because two of its layers
+are not undone at all.
+
+**1. Look before touching, and identify the protection.** Both as above, and
+neither is Reactor-specific. Recognition asks a separate question per protector
+and then settles which answer the run is acting on, so a detector saying "not
+mine" is not mistaken for the run having failed to recognise anything. What
+identifies ConfuserEx is structural: a section that is encrypted, writable and
+executable with method bodies inside it, a module initializer reaching into it,
+and names built from characters with no visible width.
+
+**2. Decrypt the section by interpreting the initializer.** The module
+initializer is interpreted from its first instruction. Its first call is the
+anti-tamper decryptor, which hashes the rest of the image, derives its key, and
+writes the plaintext back over the ciphertext — into the simulated image, where
+the writes are recorded rather than performed. That log is then replayed into a
+copy of the file, the copy is reparsed, and the bodies are grafted back into the
+assembly under their original tokens.
+
+The gates are the ones step 3 of the Reactor pipeline uses, because it is the same
+code: the two interpretation runs must agree on status, on step count, on the
+write log, on the loader-initialized integer fields and on what the loader was
+observed doing before anything is replayed; every restored body must reparse and
+begin with a well-formed method header at the address its metadata declares — the
+check that separates a section decrypted with the right key from one decrypted
+with the wrong one; and the whole graft verifies or rolls back.
+
+What differs is only the bound on which writes may be replayed. Reactor patches
+individual body slots and must not touch a byte outside them; ConfuserEx decrypts
+a whole section it owns, and would fail a slot-shaped bound for doing exactly what
+it is supposed to do. So the bound is a section, established twice over: the span
+the write log itself covers must fall inside one section, and that section must be
+the encrypted one recognition independently identified. Neither alone would do —
+the first would let a decryptor nominate its own target, and the second would not
+notice writes scattered outside it.
+
+Unlike Reactor's, this bound has to cover field data as well as code, because the
+constants table lives in the same section. A recovery that reinstated only the
+bodies would hand back a module whose code was readable and whose literals were
+still ciphertext, and nothing downstream could tell.
+
+If any of that fails, no cleaned copy is written. A half-decrypted section is
+worse than none.
+
+**3. Read the constants table by asking the sample's own lookup methods.** The
+literals are now back, compressed and encrypted, in field data. Rather than
+decompress the buffer, the tool runs the initializer stage that fills it and then
+calls the lookup methods the program calls, with the numbers the program passes —
+only the numbers that appear literally at a call site, so a buffer of unknown size
+is never enumerated.
+
+Finding those numbers takes some care, because a flattened body does not keep the
+number next to the call that consumes it. The tool follows control flow backwards
+from the call while there is exactly one way in; a call reachable from two places
+was reached with two different numbers, and picking either would mean reporting
+one of the program's paths as the program.
+
+Two machines, built separately and asked in opposite orders, must return the same
+value before it is used, and a lookup whose frame leaves state behind is refused
+rather than removed, since removing that call would remove the effect with it.
+Strings then go back into the code as literals, in one transaction that verifies
+or rolls back. Byte arrays are reported instead of rebuilt: re-emitting one as
+field data and an initializer call changes more of the module than reading its
+contents does, and the contents are what an analyst is after. They go to a
+constants report beside the assembly.
+
+**4. Junk, then cleanup, then verify and emit.** The protector-neutral stages
+apply unchanged: unreachable code that recovery accounts for is removed, generated
+names get readable placeholders — which matters more here than anywhere else,
+since invisible names are otherwise indistinguishable from one another rather than
+merely ugly — and the same verification gate decides whether anything is written
+at all.
+
+**What is not in this list.** ConfuserEx's control flow flattening and its
+reference proxies survive into the cleaned copy, for two different reasons worth
+keeping apart. Unflattening is protector-neutral and does run: it looks for a
+dispatcher whose ordering it can prove, and on these samples it proved none, so
+the position is untested rather than refused. The proxies are not recognised at
+all — the pass that finds Reactor's is written to Reactor's shape and does not
+match this one, so a sample using them comes out with them intact and nothing in
+the report pointing at them. Either way the cleaned copy reads less naturally than
+a cleaned Reactor sample: the bodies and the strings are back, and the shape is
+still the protector's.
+
 ## Deleting Reactor's code without deleting the program's
 
 Once recovery is done, Reactor's runtime is still sitting in the assembly. The
@@ -509,7 +603,7 @@ delete those. That is what recognition-based tools do, and it works until the
 protector changes shape, at which point the tool deletes the wrong thing or
 nothing at all.
 
-ReactorUnpack uses a different rule, and it is the most distinctive thing about
+CILantro uses a different rule, and it is the most distinctive thing about
 the tool: **a declaration is deleted only when recovery can say why it has no use
 left.**
 
@@ -563,10 +657,16 @@ handing over a file that looks fine and is not.
 Being honest about the trade-off, since the whole design turns on it.
 
 An execution-based tool calls the sample's real decryption routine, so it handles
-ciphers and encodings nobody has modelled. ReactorUnpack has to model what it
-interprets, so an unmodelled framework call stops recovery. When Reactor ships a
-scheme that reaches outside the modelled surface, the execution-based tool will
+ciphers and encodings nobody has modelled. CILantro has to model what it
+interprets, so an unmodelled framework call stops recovery. When a protector ships
+a scheme that reaches outside the modelled surface, the execution-based tool will
 keep working and this one will refuse until the model is extended.
+
+The other side of that trade is what made a second protector cheap. Adding
+ConfuserEx meant a detector, a replay bound, a way of reading its constants table,
+and nothing else: no cipher, no key schedule, no table format. The machine that
+interprets Reactor's decryptor interprets ConfuserEx's too, because it was never
+told anything about either.
 
 That refusal is the design working as intended rather than a bug, but it is a
 real capability gap and it is the reason the corpus and the fail-closed gates
@@ -575,6 +675,9 @@ to be very sure about when it produces nothing.
 
 ## Further reading
 
+- [how-net-reactor-works.md](how-net-reactor-works.md) and
+  [how-confuserex-works.md](how-confuserex-works.md) — what the two protectors
+  do to a file, which is what the pipelines above are answers to.
 - [devirtualization.md](devirtualization.md) — step 9 above at length: what code
   virtualization does, how the hidden program is recovered and read, and what of
   the approach transfers to other protectors.

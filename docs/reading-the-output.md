@@ -1,16 +1,16 @@
 # Reading the output
 
-What ReactorUnpack writes, what the numbers mean, and what to do when something
+What CILantro writes, what the numbers mean, and what to do when something
 does not work.
 
 ## The files
 
-Running `ReactorUnpack suspicious.exe` leaves two things next to the sample.
+Running `cilantro suspicious.exe` leaves two things next to the sample.
 
 **`suspicious.cleaned.exe`** — the readable copy. This is what you open in
 dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 
-**`reactorunpack/`** — a folder containing:
+**`cilantro/`** — a folder containing:
 
 | File | What it is |
 | --- | --- |
@@ -20,6 +20,7 @@ dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 | `suspicious.payloads/` | Files that were hidden inside the sample |
 | `suspicious.virtualized/` | Per method turned into interpreter bytecode: the program read as IL, and the listing it was read from |
 | `suspicious.renames.json` | Old-to-new name map. Not written by a `--strict` run unless you add `--rename` |
+| `suspicious.config.json` | Constants recovered from a protector's table that could not all go back into the code — byte arrays, mostly. Written only where the sample had some |
 
 The folder is not named after the sample, so a directory of samples all report
 into one folder without colliding.
@@ -165,7 +166,7 @@ nothing asked about, which is what a mistyped key looks like.
       in System.String W8ysC31VAB3Rg7yojQi.bHOEmc16m1KHmOsR4gd::TJ51Wrvldq(...) IL_0030
       declare: "facts": { "wmi:Win32_DiskDrive.SerialNumber": <value> }
 
-    All of them, in full: reactorunpack/sample.blockers.json
+    All of them, in full: cilantro/sample.blockers.json
 ```
 
 Each entry is one thing that stopped the interpretation, what it is about, where
@@ -174,7 +175,7 @@ it. An entry reading **no declaration fixes this** is one that needs a change to
 the tool rather than a line in a file, and saying so is the point: it tells you
 to stop looking for something to declare.
 
-`reactorunpack/NAME.blockers.json` carries all of them, with the tool version and
+`cilantro/NAME.blockers.json` carries all of them, with the tool version and
 the hashes of the input and the declarations, and is the file to read when a
 program rather than a person is deciding whether to try again. `Blockers` there
 means what stopped the run; `ContinuedPast` is what it carried on past, and
@@ -203,6 +204,7 @@ hand over a result it cannot stand behind.
 | Key | Contents |
 | --- | --- |
 | `InputSha256`, `InputLength`, `ModuleName` | Identifies exactly what was analysed |
+| `Protector` | Which protector the run settled on, by the name a program uses — `reactor6`, `confuserex`, or `none`. Said outright because the capability list alone does not tell two protectors apart |
 | `TypeCount`, `MethodCount`, `ConcreteMethodCount` | Size of the cleaned module |
 | `Resources` | Every embedded resource with size, SHA-256, entropy, and inferred role |
 | `Payloads` | Hidden assemblies found, with hashes at every decoding stage and the file each was written to |
@@ -217,9 +219,11 @@ hand over a result it cannot stand behind.
 | `Declarations` | What the run was told, its hash, and which declared calls were used and which were not |
 
 Three categories in `Evidence` are worth knowing. `capability` entries are the
-protections that were detected, and they are what the summary turns into English.
-`metadata-anomaly` entries are the deliberate metadata damage Reactor introduces
-to break tools — useful for detection rules. `trusted-library` entries name each
+protections that were detected, and they are what the summary turns into English;
+which protector they belong to is `Protector`, since both have a capability called
+anti-tamper and they mean different mechanisms by it. `metadata-anomaly` entries
+are the deliberate metadata damage a protector introduces to break tools — useful
+for detection rules. `trusted-library` entries name each
 assembly supplied with `--library`, with the version and SHA-256 of the exact file
 whose code was read.
 
@@ -250,20 +254,24 @@ suspicious of a result, and necessary if you are reporting a bug.
 The tool writes one only when it can show the result still matches the original
 in every respect it promised to preserve. Read the NOTES section for which stage
 was incomplete. The most common causes are an unmodelled encryption scheme, code
-virtualization in the sample, or a Reactor version whose loader reaches outside
+virtualization in the sample, or a protector version whose loader reaches outside
 what the interpreter models.
 
 The analysis report is still complete and still useful. You will often have the
 strings, the payloads, and the resource inventory even when no assembly could be
 emitted.
 
-### "This file is not protected by .NET Reactor"
+### "This file is not protected by a recognised protector"
 
-Either it is not Reactor, or it is a version whose structure is not recognised.
-Check whether it is another protector — ConfuserEx and Eazfuscator are the usual
-alternatives, and [de4dot](https://github.com/de4dot/de4dot) handles those.
+Both detectors were asked and neither claimed it. Either it is under a protector
+this tool does not handle, or it is a version or fork of one of the two whose
+structure is not recognised — Reactor 7 and later, and the ConfuserEx forks, are
+the common cases. Eazfuscator and Babel are the usual other answers, and
+[de4dot](https://github.com/de4dot/de4dot) handles those.
 
-If you are confident it is Reactor, that is worth reporting, with the sample.
+The report names which protector the run settled on, or `none`, so a sample you
+believe is one of the two and that comes back `none` is worth reporting, with the
+sample.
 
 ### "is not a .NET assembly"
 
@@ -412,10 +420,10 @@ building and the check and gets you the listings on their own.
 Not yet, one file at a time. A shell loop works:
 
 ```bash
-for f in *.exe; do ReactorUnpack "$f"; done
+for f in *.exe; do cilantro "$f"; done
 ```
 
-All the reports land in one `reactorunpack` folder, named per sample.
+All the reports land in one `cilantro` folder, named per sample.
 
 ## Exit codes
 

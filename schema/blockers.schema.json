@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/jgajek/reactor-unpack/schema/blockers.schema.json",
-  "title": "ReactorUnpack blocker report",
-  "description": "`reactorunpack/NAME.blockers.json`: what stopped a run, and what to declare to get past it. This is the file a caller reads between one run and the next.",
+  "$id": "https://github.com/jgajek/cilantro/schema/blockers.schema.json",
+  "title": "CILantro blocker report",
+  "description": "`cilantro/NAME.blockers.json`: what stopped a run, and what to declare to get past it. This is the file a caller reads between one run and the next.",
   "type": "object",
   "required": [
     "ToolVersion",
