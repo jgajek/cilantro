@@ -31,6 +31,7 @@ public sealed record CorpusSample(
     int? MinimumTokensRestored = null,
     int? MinimumResourcesRestored = null,
     int? MaximumRemainingSwitchDispatchers = null,
+    int? MinimumRedirectedDispatcherEdges = null,
     int? MaximumUnreachableInstructions = null,
     string? ExpectUnsupportedReason = null,
     double? MinimumVirtualOperationsRead = null,
@@ -557,11 +558,24 @@ public static class CorpusRunner
         if (sample.MaximumRemainingStubs is int remaining &&
             recovery.RemainingMethodStubs > remaining)
             diagnostics.Add($"Remaining method stubs exceed {remaining}.");
-        var coverage = recovery.StringCallSites == 0
-            ? 1.0
-            : (double)recovery.ReplacedStringSites / recovery.StringCallSites;
-        if (sample.MinimumStringSiteCoverage is double minimum && coverage < minimum)
-            diagnostics.Add($"String-site coverage {coverage:P2} is below {minimum:P2}.");
+        // Demanding coverage of no sites at all is not a demand met, it is a demand that never got
+        // asked: a sample whose string recovery collapses to finding nothing reports no sites, and
+        // scoring that as full coverage turns the strictest gate in the manifest into no gate.
+        if (sample.MinimumStringSiteCoverage is double minimum)
+        {
+            if (recovery.StringCallSites == 0)
+            {
+                diagnostics.Add(
+                    $"String-site coverage of at least {minimum:P2} was required, but no string " +
+                    "call site was found at all, so there was nothing to cover.");
+            }
+            else
+            {
+                var coverage = (double)recovery.ReplacedStringSites / recovery.StringCallSites;
+                if (coverage < minimum)
+                    diagnostics.Add($"String-site coverage {coverage:P2} is below {minimum:P2}.");
+            }
+        }
         if (sample.MaximumMutationCount is int mutations &&
             recovery.MutationCount > mutations)
             diagnostics.Add($"Mutation count {recovery.MutationCount} exceeds {mutations}.");
@@ -578,6 +592,13 @@ public static class CorpusRunner
             recovery.RemainingSwitchDispatchers > maxDispatchers)
             diagnostics.Add(
                 $"Remaining switch dispatchers {recovery.RemainingSwitchDispatchers} exceed {maxDispatchers}.");
+        // A method keeps its dispatcher until every one of its edges is proven, so counting methods
+        // says almost nothing about how much of the flattening came undone. Counting the edges that
+        // no longer go through a dispatcher is what would notice that collapsing.
+        if (sample.MinimumRedirectedDispatcherEdges is int minEdges &&
+            recovery.RedirectedDispatcherEdges < minEdges)
+            diagnostics.Add(
+                $"Redirected dispatcher edges {recovery.RedirectedDispatcherEdges} is below {minEdges}.");
         if (sample.MaximumUnreachableInstructions is int maxUnreachable &&
             recovery.RemainingUnreachableInstructions > maxUnreachable)
             diagnostics.Add(

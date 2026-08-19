@@ -55,6 +55,7 @@
           "minimumTokensRestored": { "type": ["integer", "null"], "minimum": 0 },
           "minimumResourcesRestored": { "type": ["integer", "null"], "minimum": 0 },
           "maximumRemainingSwitchDispatchers": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumRedirectedDispatcherEdges": { "type": ["integer", "null"], "minimum": 0 },
           "maximumUnreachableInstructions": { "type": ["integer", "null"], "minimum": 0 },
           "maximumSurplusMethods": { "type": ["integer", "null"] },
           "maximumProgramMethodSurplus": { "type": ["integer", "null"], "minimum": 0 },

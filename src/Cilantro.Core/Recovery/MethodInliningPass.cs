@@ -39,6 +39,13 @@ namespace Cilantro.Core.Recovery;
 /// is what holds the line in the other direction, by requiring no preserved name and no per-type
 /// method count to go missing against a known-clean build.
 ///
+/// A forwarder over a constructor is the same alias written with <c>newobj</c>: ConfuserEx's mild
+/// reference proxies are mostly this shape, since a call it wants to hide is as often a construction
+/// as a call. The substitution is stack-neutral for the same reason — <c>newobj</c> consumes the
+/// constructor's arguments and leaves the new object where the forwarder left its return value — but
+/// the two signatures line up differently, because <c>newobj</c> is handed no instance and the value
+/// it produces is the type being constructed rather than the void the constructor declares.
+///
 /// The transform is a single operand rewrite at each site and never removes the forwarder, so the
 /// public-API and structural identity gates hold unchanged. It is deliberately narrow: only static
 /// forwarders whose body is an in-order argument load followed by one call and a return qualify.
@@ -147,8 +154,8 @@ public sealed class MethodInliningPass : DeobfuscationPass
             while (final.Target.ResolveMethodDef() is { } next &&
                    seen.Add(next) &&
                    forwarders.TryGetValue(next, out var onward) &&
-                   ArgumentsPassStraightThrough(forwarder, onward.Target) &&
-                   ReturnTypeSurvives(forwarder, onward.Target))
+                   ArgumentsPassStraightThrough(forwarder, onward.Target, onward.InnerOpCode) &&
+                   ReturnTypeSurvives(forwarder, onward.Target, onward.InnerOpCode))
             {
                 chain.Add(next);
                 final = onward;
@@ -185,15 +192,18 @@ public sealed class MethodInliningPass : DeobfuscationPass
         // A target outside this assembly cannot resolve to a MethodDef and cannot be this method
         // either, so failing to resolve it is not a reason to decline: Reactor's laundering wrappers
         // are precisely the ones that call straight into the framework.
-        if (call.OpCode.Code is not (Code.Call or Code.Callvirt) ||
+        if (call.OpCode.Code is not (Code.Call or Code.Callvirt or Code.Newobj) ||
             call.Operand is not IMethod target ||
             target.ResolveMethodDef() == method ||
             body[^1].OpCode.Code != Code.Ret)
         {
             return null;
         }
-        if (!ArgumentsPassStraightThrough(method, target) || !ReturnTypeSurvives(method, target))
+        if (!ArgumentsPassStraightThrough(method, target, call.OpCode) ||
+            !ReturnTypeSurvives(method, target, call.OpCode))
+        {
             return null;
+        }
         return new ForwardTarget(target, call.OpCode, []);
     }
 
@@ -209,11 +219,13 @@ public sealed class MethodInliningPass : DeobfuscationPass
     /// represented, since an object reference and a value are not interchangeable on the stack and
     /// substituting one signature for the other would misread the value rather than retype it.
     /// </remarks>
-    private static bool ArgumentsPassStraightThrough(MethodDef forwarder, IMethod target)
+    private static bool ArgumentsPassStraightThrough(MethodDef forwarder, IMethod target, OpCode inner)
     {
         var forwarded = forwarder.MethodSig!.Params;
         var expected = new List<TypeSig?>();
-        if (target.MethodSig?.HasThis == true)
+        // A constructor declares an instance it is never handed here: newobj makes the object it
+        // then initializes, so the forwarder's parameters line up with the constructor's alone.
+        if (target.MethodSig?.HasThis == true && inner.Code != Code.Newobj)
             expected.Add(target.DeclaringType?.ToTypeSig());
         foreach (var parameter in target.MethodSig?.Params ?? (IList<TypeSig>)[])
             expected.Add(parameter);
@@ -243,10 +255,14 @@ public sealed class MethodInliningPass : DeobfuscationPass
     /// back an <c>object</c> where a caller was told to expect a <c>string</c> would push the
     /// obfuscator's type confusion outwards into code that did not have it.
     /// </remarks>
-    private static bool ReturnTypeSurvives(MethodDef forwarder, IMethod target)
+    private static bool ReturnTypeSurvives(MethodDef forwarder, IMethod target, OpCode inner)
     {
         var promised = forwarder.MethodSig?.RetType;
-        var actual = target.MethodSig?.RetType;
+        // What newobj leaves on the stack is the constructed object, not the void its constructor
+        // declares, so that is what the forwarder's callers have to be able to accept.
+        var actual = inner.Code == Code.Newobj
+            ? target.DeclaringType?.ToTypeSig()
+            : target.MethodSig?.RetType;
         if (promised is null || actual is null)
             return false;
         return string.Equals(promised.FullName, actual.FullName, StringComparison.Ordinal) ||

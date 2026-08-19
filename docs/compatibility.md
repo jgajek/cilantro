@@ -926,13 +926,59 @@ verified, and rolled back whole on failure. Byte arrays are reported to
 and an initializer call would change more of the module than reading the contents
 does.
 
-Two ConfuserEx layers are outside this contract. Its reference proxies are not
-recognised: the delegate-proxy pass matches Reactor's shape and does not match
-this one, so a sample using them emits with them intact and with nothing in the
-report drawing attention to them. Its switch dispatchers are within reach of the
-protector-neutral dispatcher pass, which runs and reported no qualified method on
-either corpus sample; that is an untested position rather than a refusal, and
-`RemainingSwitchDispatchers` is where it shows up.
+Switch dispatchers are recognised by their own analyzer, since ConfuserEx passes
+the next state on the evaluation stack and indexes its cases by the remainder of
+that value rather than by a state local. The reachable combinations of instruction,
+modelled stack and state are enumerated, and an instruction that hands control to a
+dispatcher is redirected to the case it selected only where every reachable visit
+selects the same one; the arithmetic that produced the state is erased only where it
+is a contiguous run of side-effect-free integer instructions with nothing branching
+into it, and only where the direct jump stays inside the same exception regions.
+Exhausting the analysis budget abandons the method rather than committing the part
+already proven, because the guarantee is over all reachable states.
+
+A redirected edge also carries the assignment the bypassed dispatcher would have
+made. The dispatcher is what writes the state local, so a fragment entered by a
+direct jump no longer has that write performed for it, and anything still reading
+the local would see whatever it last held rather than the state its own path
+established. Where a read survives outside the erased arithmetic, each redirected
+edge is emitted as `ldc.i4 <state>; stloc <local>; br <case>`, which makes it an
+exact substitution for the path it replaces. Edges are therefore independent, and a
+method with unprovable edges still has its provable ones redirected. An edge is also
+left alone where two states select the same case, since no single state can then be
+assigned, and where something jumps to the edge itself, since what jumped there did
+not run the arithmetic that would be erased.
+
+Because the state arrives on the evaluation stack, every jump into a dispatcher is
+taken with the stack non-empty, which ECMA-335 III.1.7.5 permits for a backward jump
+only where a forward path establishes the stack at the target. That forward path is
+the fragment falling into the dispatcher, so redirecting it alone would leave the
+method unverifiable however sound each edge was. A dispatcher that loses an edge is
+therefore given a fresh int32 local to take its state from — its key load becomes
+`ldloc <entry>` with the key moved behind it — and each surviving jump into it becomes
+`stloc <entry>; br <head>`. This is inside the contract rather than a convenience: it
+is what makes the edges independent of one another, and it is what allows a path
+merging with another before the dispatcher to be resolved at the point it computed its
+own state rather than at the merge. Whatever the redirects leave unreachable is
+replaced with `nop`, since unreachable code is still checked against an empty stack and
+the dispatcher's arithmetic expects a state nothing pushes any more.
+
+That comes to 4,645 of 4,844 edges redirected in one corpus sample and 5,933 of
+6,200 in the other, across 126 of 127 and 153 of 155 flattened methods. Every edge left
+standing is one where two states meet before either has finished being computed.
+`RedirectedDispatcherEdges` reports the edge count and is pinned by the corpus
+manifest at 4,600 and 5,850. `RemainingSwitchDispatchers` counts methods still
+holding a dispatcher of either protector's shape and is pinned at 77 and 91; it moves
+less than the edge count under this contract, because a dispatcher survives if any one
+of its method's edges does, and 51 and 66 methods have every edge proven.
+
+Mild reference proxies are inside this contract by way of the forwarder redirection
+written for Reactor, which substitutes a pass-through method's target at its call
+sites whoever generated it; ConfuserEx's `newobj` forwarders are recognised there
+too. Strong reference proxies are outside it: the target is bound at run time from
+the proxy field's own signature blob through a `DynamicMethod` the `<Module>` bridge
+emits, so resolving it statically would mean modelling `Reflection.Emit`. A sample
+using them emits with them intact.
 
 ## Verification gates
 

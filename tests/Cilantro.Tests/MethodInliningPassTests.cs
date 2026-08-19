@@ -120,6 +120,76 @@ public sealed class MethodInliningPassTests
         Assert.Equal(0, result.Changes);
     }
 
+    [Fact]
+    public void RedirectsAConstructorForwarderToTheConstructionItself()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            // ConfuserEx's mild reference proxies over a constructor: StringBuilder Make(int) whose
+            // body is ldarg.0; newobj StringBuilder::.ctor(int); ret.
+            var constructor = new Importer(module).Import(
+                typeof(System.Text.StringBuilder).GetConstructor([typeof(int)])!);
+            var forwarder = new MethodDefUser(
+                "Make",
+                MethodSig.CreateStatic(
+                    new Importer(module).ImportAsTypeSig(typeof(System.Text.StringBuilder)),
+                    module.CorLibTypes.Int32))
+            {
+                Attributes = MethodAttributes.Public | MethodAttributes.Static,
+                Body = new CilBody()
+            };
+            forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+            forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Newobj, constructor));
+            forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            host.Methods.Add(forwarder);
+            host.Methods.Add(NewCaller(module, "Caller", forwarder));
+        });
+
+        var result = new MethodInliningPass().Run(context);
+        var caller = context.Module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Single(method => method.Name == "Caller");
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(1, result.Changes);
+        var rewritten = Assert.Single(caller.Body.Instructions,
+            instruction => instruction.OpCode == OpCodes.Newobj);
+        Assert.Equal(".ctor", ((IMethod)rewritten.Operand).Name);
+        Assert.DoesNotContain(caller.Body.Instructions,
+            instruction => instruction.Operand is IMethod called && called.Name == "Make");
+    }
+
+    [Fact]
+    public void LeavesAConstructorWrapperAloneWhenItPromisesAnotherType()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            // Declaring string while constructing a StringBuilder is not an alias for it, so the
+            // call site cannot be handed the construction.
+            var constructor = new Importer(module).Import(
+                typeof(System.Text.StringBuilder).GetConstructor([typeof(int)])!);
+            var forwarder = new MethodDefUser(
+                "Mislabelled",
+                MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32))
+            {
+                Attributes = MethodAttributes.Public | MethodAttributes.Static,
+                Body = new CilBody()
+            };
+            forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+            forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Newobj, constructor));
+            forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            host.Methods.Add(forwarder);
+            host.Methods.Add(NewCaller(module, "Caller", forwarder));
+        });
+
+        var result = new MethodInliningPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(0, result.Changes);
+    }
+
     /// <summary>
     /// Builds <c>&lt;returns&gt; name(object)</c> whose body loads the argument and calls
     /// <paramref name="target"/> with no conversion between.

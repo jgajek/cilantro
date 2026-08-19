@@ -400,13 +400,15 @@ public sealed class ConfuserExConstantsPass : DeobfuscationPass
         List<string> refused)
     {
         var agreed = new Dictionary<(uint, uint), Answer>();
-        var unreadable = new Dictionary<uint, int>();
+        var unreadable = new Dictionary<uint, List<string>>();
         foreach (var (asked, first) in ahead)
         {
             var second = behind[asked];
             if (first.Text is null && first.Bytes is null)
             {
-                unreadable[asked.Getter] = unreadable.GetValueOrDefault(asked.Getter) + 1;
+                if (!unreadable.TryGetValue(asked.Getter, out var why))
+                    unreadable[asked.Getter] = why = [];
+                why.Add(first.Why);
             }
             else if (!Same(first, second))
             {
@@ -425,9 +427,46 @@ public sealed class ConfuserExConstantsPass : DeobfuscationPass
             }
         }
 
-        foreach (var (getter, count) in unreadable.OrderBy(entry => entry.Key))
-            refused.Add($"{getter:X8}: {count} of its number(s) yielded nothing readable");
+        // Naming the reason matters more here than counting: every number a getter is asked stops
+        // for the same cause, and a bare count leaves the one thing that would explain the run out
+        // of the report.
+        foreach (var (getter, why) in unreadable.OrderBy(entry => entry.Key))
+        {
+            var distinct = why.Select(Summarize).Where(reason => reason.Length != 0).Distinct().ToArray();
+            refused.Add(distinct.Length == 0
+                ? $"{getter:X8}: {why.Count} of its number(s) yielded nothing readable"
+                : $"{getter:X8}: {why.Count} of its number(s) yielded nothing readable " +
+                  $"({string.Join("; ", distinct.Take(2))})");
+        }
+
         return agreed;
+    }
+
+    /// <summary>
+    /// Reduces a machine diagnostic to the sentence that names the cause.
+    /// </summary>
+    /// <remarks>
+    /// The interpreter's diagnostic carries the full provenance of every argument, which is what the
+    /// blocker ledger wants and what a pass summary cannot carry: one of them runs to thousands of
+    /// characters. The part worth repeating here is the failure itself, so the provenance is dropped
+    /// and the remainder bounded.
+    /// </remarks>
+    private static string Summarize(string why)
+    {
+        if (string.IsNullOrEmpty(why))
+            return string.Empty;
+        var end = why.IndexOf(" | provenance:", StringComparison.Ordinal);
+        var head = end < 0 ? why : why[..end];
+        // The interpreter prefixes the failing member and offset; the sentence after the last "-> "
+        // is the cause, and repeating the member here would only repeat what the ledger already has.
+        var arrow = head.LastIndexOf("-> ", StringComparison.Ordinal);
+        if (arrow >= 0)
+            head = head[(arrow + 3)..];
+        var colon = head.LastIndexOf(": ", StringComparison.Ordinal);
+        if (colon >= 0)
+            head = head[(colon + 2)..];
+        head = head.Trim();
+        return head.Length <= 120 ? head : head[..117] + "...";
     }
 
     private static bool Same(Answer first, Answer second) =>

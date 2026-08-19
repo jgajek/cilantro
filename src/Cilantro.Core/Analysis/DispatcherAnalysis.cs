@@ -23,6 +23,70 @@ public sealed record DispatcherEdgeRewrite(
     int State,
     IReadOnlyList<Instruction> RemovedInstructions);
 
+/// <summary>
+/// The shape a dispatcher rewrite reduces to, whichever analyzer proved it: erase the
+/// instructions that computed the state, then send one instruction straight to the case the
+/// state selected.
+/// </summary>
+/// <param name="RestoredStateLocal">
+/// The state variable this edge has to assign on its way out, or <c>null</c> when nothing reads it.
+/// Storing the state is what makes the redirect a local change: the dispatcher being bypassed is
+/// what would have written that variable, so an edge that skips it and leaves the write undone is
+/// only safe while no surviving instruction reads it. Naming the variable here lets the edge carry
+/// the write itself instead, which is what allows edges to be redirected one at a time.
+/// </param>
+public sealed record DispatcherEdgeRedirect(
+    Instruction Branch,
+    Instruction Target,
+    int State,
+    IReadOnlyList<Instruction> RemovedInstructions,
+    Local? RestoredStateLocal = null)
+{
+    public static DispatcherEdgeRedirect From(DispatcherEdgeRewrite rewrite)
+    {
+        ArgumentNullException.ThrowIfNull(rewrite);
+        return new DispatcherEdgeRedirect(
+            rewrite.Branch,
+            rewrite.Target,
+            rewrite.State,
+            rewrite.RemovedInstructions);
+    }
+}
+
+/// <summary>
+/// How to move a dispatcher's incoming state off the evaluation stack and into a variable, so that
+/// the dispatcher is entered with an empty stack from everywhere.
+/// </summary>
+/// <remarks>
+/// ConfuserEx's dispatcher is entered with the next state pushed, so every jump into it is a branch
+/// taken with something on the stack. CIL only permits that for a backward branch when a forward
+/// path has already established the stack at the target (ECMA-335 III.1.7.5), and the forward path
+/// is the single fragment that falls into the dispatcher rather than jumping to it. Redirecting that
+/// fragment is what makes the remaining backward jumps illegal, so a method could stop verifying
+/// after a partial rewrite even though each redirect was individually correct.
+///
+/// Passing the state in a variable removes the constraint instead of avoiding it: the dispatcher is
+/// then entered empty from every edge, so no edge into it depends on another edge surviving.
+/// </remarks>
+/// <param name="Head">
+/// The instruction the dispatcher is entered at, which loads its key. It becomes the load of the
+/// variable, and the key moves behind it, so that everything already branching here still arrives
+/// at the first instruction of the dispatcher.
+/// </param>
+/// <param name="Branches">
+/// The unconditional branches into <paramref name="Head"/> that survive, each of which has to store
+/// the state it computed before jumping.
+/// </param>
+/// <param name="FallsThrough">
+/// Whether the fragment ahead of <paramref name="Head"/> still falls into it, and so needs the same
+/// store placed between them.
+/// </param>
+public sealed record DispatcherEntryRelocation(
+    Instruction Head,
+    int Key,
+    IReadOnlyList<Instruction> Branches,
+    bool FallsThrough);
+
 public sealed record DispatcherRewritePlan(
     MethodDef Method,
     Local StateLocal,

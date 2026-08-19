@@ -29,7 +29,7 @@ cilantro suspicious.exe
 No options to get right, no runtime to install, no VM, and nothing executed:
 
 ```
-  File     rsServiceController.dll  (191.3 KB)
+  File     suspicious.dll  (191.3 KB)
   SHA-256  15931d5e8c20547c24c851dcb2e29b747699e8b81b925c46c2245269c93d1c91
 
   PROTECTION   .NET Reactor
@@ -52,9 +52,9 @@ No options to get right, no runtime to install, no VM, and nothing executed:
 
   WROTE
 
-    Cleaned copy    rsServiceController.cleaned.dll
-    Hidden files    1 in cilantro/rsServiceController.payloads
-    Full report     cilantro/rsServiceController.analysis.json
+    Cleaned copy    suspicious.cleaned.dll
+    Hidden files    1 in cilantro/suspicious.payloads
+    Full report     cilantro/suspicious.analysis.json
 
   Open the cleaned copy in dnSpyEx or ILSpy to read the code.
 ```
@@ -329,7 +329,7 @@ for someone who does not work in .NET.
 
 Two protectors, to different depths. Reactor is the older and more complete side;
 ConfuserEx covers the layers that hide the code and the text, which is what a
-triage answer needs, and stops short of its proxies.
+triage answer needs, and stops short of its runtime-bound proxies.
 
 | | .NET Reactor 6 | ConfuserEx 1.0.0 |
 | --- | --- | --- |
@@ -341,19 +341,20 @@ triage answer needs, and stops short of its proxies.
 | Anti-debug | Neutralised | Detected and reported |
 | Obfuscated names | Readable placeholders | Readable placeholders, which is the only way to tell invisible names apart |
 | Junk and dead code | Yes | Yes |
-| Scrambled control flow | Yes — dispatchers unflattened | Attempted by the same pass, and on these samples it unflattened none |
-| Proxied calls | Yes | No — its reference proxies are not recognised |
+| Scrambled control flow | Yes — dispatchers unflattened | Mostly — about 19 dispatcher edges in 20 jump straight to their case, and flattened `if`s come back as branches; states that merge mid-computation keep a switch |
+| Proxied calls | Yes | Mild ones followed to their targets; strong ones bind at run time and stay |
 | Hidden metadata references | Yes | Not applicable to these builds |
 | Encrypted resources | Yes — restored in place | Not implemented |
 | Embedded payloads | Yes — written out as files | Not implemented |
 | Virtualized methods | Read, and rebuilt as a reading | Not applicable to these builds |
 
 Reactor 6 covers the large majority of Reactor-protected samples in circulation.
-On the ConfuserEx side, the last two rows are why its cleaned copy reads less
-naturally than Reactor's: the code and the strings are back, but the shape is
-still the protector's. The unflattening pass is protector-neutral and does run,
-and it qualified none of the dispatchers in either sample — so the honest summary
-is that ConfuserEx's control flow is untested rather than refused.
+On the ConfuserEx side, resources and payloads are the gap: the code, the strings
+and the shape come back, but anything the sample hid in a resource does not.
+Unflattening does not reach every edge — where two dispatcher states meet before
+either has finished being computed, nothing on that path stands for one of them —
+so a cleaned ConfuserEx sample keeps a residue of its dispatchers, reached by the
+few edges that reasoning cannot settle.
 [docs/how-confuserex-works.md](docs/how-confuserex-works.md) says what each of
 those layers does.
 
@@ -371,11 +372,21 @@ Being straight about this matters more than the feature list.
   ConfuserEx support is written against 1.0.0; the many forks that followed it
   are not tested. Eazfuscator, Babel and friends are out of scope — try
   [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx).
-- **ConfuserEx's control flow and reference proxies.** Its cleaned copy has the
-  code and the strings back, but its dispatchers and proxies are still there, so
-  it reads less naturally than a cleaned Reactor sample does. The unflattening
-  pass is protector-neutral and does run on it; it simply qualified nothing in
-  the samples available, and the proxies are not recognised at all.
+- **Every ConfuserEx dispatcher edge.** An edge is only redirected where the state
+  reaching it is the same on every path. Where two states meet before either has
+  finished being computed, neither the meeting point nor the last instruction to push
+  the state belongs to one path, so that edge keeps the switch. That is about one edge
+  in twenty, and it is the only thing edges are now lost to. Because a dispatcher
+  survives if even one of its method's edges does, a minority of methods keep a switch
+  that little still reaches: 51 of 127 and 66 of 155 flattened methods in the two
+  samples on hand lose theirs outright.
+- **ConfuserEx strong reference proxies.** Its mild proxies are plain forwarders
+  and come out through the same pass that handles Reactor's. Its strong ones bind
+  a delegate at run time from the proxy field's own signature blob, through a
+  `DynamicMethod` the bridge emits, and no static reading resolves that short of
+  emulating `Reflection.Emit`.
+- **ConfuserEx resources and embedded payloads.** Not implemented, so a sample
+  that hid its next stage in a ConfuserEx-protected resource will not give it up.
 - **Getting original names back.** Both protectors destroy them; they are not in
   the file. The cleaned copy substitutes readable placeholders, which helps
   navigation but is not the same thing.
@@ -434,7 +445,7 @@ through the machine:
 dotnet test Cilantro.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 405 of the 413 tests in about five seconds, against the twelve minutes
+That is 409 of the 417 tests in about five seconds, against the twelve minutes
 those eight cost between them. They still run on a plain `dotnet test`, which is
 what to do before pushing, because they are the ones that prove the tool recovers
 real malware.

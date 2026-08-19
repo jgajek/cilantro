@@ -102,13 +102,32 @@ names, an encrypted section, anti-tamper, anti-debug, and a constants table.
 - `61e3154419b3fe12955b22487b22a56dccaf416a5c184c9a8b8de133b9aa8e40`
   (`detected`, `confuser_61e3154419b3.dll`) — 279 bodies
 
-Every gate here is a gate on interpreting the sample's own decrypters, because
+Most gates here are gates on interpreting the sample's own decrypters, because
 nothing about either sample's encryption is implemented in the tool. Each is
 required to be identified as `confuserex` with all five capabilities, to have
 every body come back with no stub left behind, and to reach complete coverage of
 its string call sites — where complete means every site whose constant the tool
 found literally at the call, which is what it claims rather than every site in
 the module.
+
+The flattening gates are the exception, since unflattening does not run the sample,
+and there are two of them because one of them alone would be misleading. Each sample
+pins a ceiling on how many methods may still hold a dispatcher — 77 of 127 flattened
+methods for the first, 91 of 155 for the second — and a floor on how many dispatcher
+edges must jump straight to their case: 4,600 and 5,850.
+
+The pair is deliberate. A dispatcher survives if even one of its method's edges
+does, so the method ceiling responds only weakly to the thing most worth protecting:
+when edge redirection went from 144 edges to 4,451 on the first sample, the method
+count moved by one. A regression that undid nearly all of that would sail through a
+method ceiling and be caught immediately by the edge floor.
+
+The string gate earns its keep here for a reason worth recording. Unflattening
+these samples once broke the constants initializer, so the tool found no string
+call sites at all rather than failing to replace the ones it found; because
+coverage of nothing had been scored as full coverage, the gate stayed green through
+a regression that cost every recovered string. Requiring a coverage minimum now
+also requires that there was something to cover.
 
 There are no oracles on this side. The counterparts that make the Reactor gates
 sharp are unprotected builds of the same programs, and none exist for these two,
@@ -156,7 +175,7 @@ They are described by work rather than by seconds because the seconds are not a
 property of the test: the same sample recovery has been measured at 108 seconds
 in one run and 418 in the next, unchanged, because a dozen interpretations running
 at once contend for memory bandwidth far more than for cores. What is stable is
-that these eight are minutes and the other 405 are five seconds together.
+that these eight are minutes and the other 409 are five seconds together.
 
 Each of the eight is marked `Cost=High` and can be left out with
 `--filter "Cost!=High"`, which is the loop to work in. None of them can run in

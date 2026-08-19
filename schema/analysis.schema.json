@@ -165,6 +165,7 @@
         "ResourcesRestored",
         "UnreachableInstructionsRemoved",
         "RemainingSwitchDispatchers",
+        "RedirectedDispatcherEdges",
         "RuntimeTypesRemoved",
         "SymbolsRenamed",
         "RemainingUnreachableInstructions",
@@ -185,6 +186,11 @@
         "ResourcesRestored": { "type": "integer", "minimum": 0 },
         "UnreachableInstructionsRemoved": { "type": "integer", "minimum": 0 },
         "RemainingSwitchDispatchers": { "type": "integer", "minimum": 0 },
+        "RedirectedDispatcherEdges": {
+          "description": "How many dispatcher edges now jump straight to the case they selected. A method keeps its dispatcher until every one of its edges is proven, so this moves where the count of remaining dispatchers cannot.",
+          "type": "integer",
+          "minimum": 0
+        },
         "RuntimeTypesRemoved": { "type": "integer", "minimum": 0 },
         "SymbolsRenamed": { "type": "integer", "minimum": 0 },
         "RemainingUnreachableInstructions": { "type": "integer", "minimum": 0 },

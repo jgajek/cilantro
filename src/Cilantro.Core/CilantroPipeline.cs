@@ -229,6 +229,7 @@ public sealed record RecoveryReportMetrics(
     int ResourcesRestored = 0,
     int UnreachableInstructionsRemoved = 0,
     int RemainingSwitchDispatchers = 0,
+    int RedirectedDispatcherEdges = 0,
     int RuntimeTypesRemoved = 0,
     int SymbolsRenamed = 0,
     int RemainingUnreachableInstructions = 0,
@@ -603,10 +604,13 @@ public sealed class CilantroPipeline
         new FieldRvaRecoveryPass(),
         new ResourceAnalysisPass(),
         new ResourceRolePass(),
-        new ControlFlowAnalysisPass(),
         // ConfuserEx encrypts the bodies themselves, so nothing that reads a body can run before
         // this: it is the pass that makes the module readable at all.
         new ConfuserExAntiTamperPass(),
+        // The control-flow census has to follow decryption. Run ahead of it, a ConfuserEx module
+        // presents almost no readable bodies, so the pass reports a nearly flat-free module when
+        // most of it is flattened.
+        new ControlFlowAnalysisPass(),
         new MethodBodyRecoveryPass(),
         new StringTableRecoveryPass(),
         new BooleanRecoveryPass(),
@@ -931,6 +935,7 @@ public sealed class CilantroPipeline
         context.TryGetFact<int>("tokens.restored", out var tokensRestored);
         context.TryGetFact<int>("resources.restoredBundles", out var resourcesRestored);
         context.TryGetFact<int>("cfg.unreachableInstructionsRemoved", out var unreachableRemoved);
+        context.TryGetFact<int>("cfg.dispatcherEdgesRedirected", out var redirectedEdges);
         context.TryGetFact<int>("cleanup.removedTypeCount", out var runtimeTypesRemoved);
         context.TryGetFact<IReadOnlyDictionary<string, string>>("rename.map", out var renameMap);
         context.TryGetFact<int>("virtualization.operations", out var virtualOperations);
@@ -972,6 +977,7 @@ public sealed class CilantroPipeline
                 resourcesRestored,
                 unreachableRemoved,
                 CountRemainingSwitchDispatchers(context.Module),
+                redirectedEdges,
                 runtimeTypesRemoved,
                 renameMap?.Count ?? 0,
                 CountRemainingUnreachableInstructions(context.Module),
@@ -1100,8 +1106,13 @@ public sealed class CilantroPipeline
             {
                 continue;
             }
-            if (analyzer.Analyze(method).Qualification != DispatcherQualification.NotCandidate)
+            // Either shape counts: the metric is how much flattening a reader still faces, not
+            // which protector put it there.
+            if (analyzer.Analyze(method).Qualification != DispatcherQualification.NotCandidate ||
+                ConfuserExDispatcherAnalyzer.HasDispatcherShape(method))
+            {
                 count++;
+            }
         }
 
         return count;

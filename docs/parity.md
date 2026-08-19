@@ -277,10 +277,12 @@ side.
 - **Anything but Reactor 6 and ConfuserEx 1.0.0.** A 7.x sample, or a ConfuserEx
   fork whose structure has moved, is reported as unsupported and nothing is
   written. de4dotEx covers considerably more families than either.
-- **ConfuserEx's control flow and proxies, where the others handle them.** The
-  ConfuserEx support here gets the bodies and the strings back and stops. de4dotEx
-  has had years on that protector and its forks; if a readable ConfuserEx assembly
-  is what you want rather than its literals and its payload, start there.
+- **ConfuserEx's strong proxies, resources and payloads, where the others handle
+  them.** The ConfuserEx support here gets the bodies, the strings, the mild
+  reference proxies and about nineteen dispatcher edges in twenty back, and stops
+  there. de4dotEx has had years on that protector and its forks; if what you want
+  is everything a ConfuserEx sample was hiding rather than its literals and most of
+  its shape, start there.
 - **Native-packed files.** The .NET part is inside a native stub, and the way
   the other tools get it out is by unpacking that stub. This one detects the
   case and stops. Slayer and de4dotEx unpack it.
@@ -375,8 +377,8 @@ its unpacker behind a virtualized initializer that the machine runs rather than
 lifts; the recovered stages are pinned by hash. The manifest schema and runner
 already carry the gates (`minimumBooleansRecovered`, `minimumTokensRestored`,
 `minimumResourcesRestored`, `maximumRemainingSwitchDispatchers`,
-`maximumUnreachableInstructions`, `expectUnsupportedReason`) so those samples can
-be added without code changes.
+`minimumRedirectedDispatcherEdges`, `maximumUnreachableInstructions`,
+`expectUnsupportedReason`) so those samples can be added without code changes.
 
 "Parity by construction" on a stage no corpus sample exercises is weaker than
 it sounds, and `resource-restoration` was the cautionary case. It was present,

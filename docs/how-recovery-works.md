@@ -511,7 +511,7 @@ original.
 ## The order things happen in, under ConfuserEx
 
 The same machine, the same gates, and a much shorter list — because ConfuserEx
-does its decryption in one stage rather than lazily, and because two of its layers
+does its decryption in one stage rather than lazily, and because some of its layers
 are not undone at all.
 
 **1. Look before touching, and identify the protection.** Both as above, and
@@ -577,23 +577,103 @@ field data and an initializer call changes more of the module than reading its
 contents does, and the contents are what an analyst is after. They go to a
 constants report beside the assembly.
 
-**4. Junk, then cleanup, then verify and emit.** The protector-neutral stages
-apply unchanged: unreachable code that recovery accounts for is removed, generated
-names get readable placeholders — which matters more here than anywhere else,
-since invisible names are otherwise indistinguishable from one another rather than
-merely ugly — and the same verification gate decides whether anything is written
-at all.
+**4. Unflatten the dispatchers.** ConfuserEx's flattener does not keep its state
+in the state variable the way Reactor's does. It pushes the next state on the
+evaluation stack and leaves it there across the jump, and the dispatcher picks its
+case from the remainder of that value rather than from the value itself. That is a
+different shape, so it gets its own analyzer — but the same rewrite, the same body
+transaction, the same stack and whole-assembly validation, and the same cleanup
+passes behind it.
 
-**What is not in this list.** ConfuserEx's control flow flattening and its
-reference proxies survive into the cleaned copy, for two different reasons worth
-keeping apart. Unflattening is protector-neutral and does run: it looks for a
-dispatcher whose ordering it can prove, and on these samples it proved none, so
-the position is untested rather than refused. The proxies are not recognised at
-all — the pass that finds Reactor's is written to Reactor's shape and does not
-match this one, so a sample using them comes out with them intact and nothing in
-the report pointing at them. Either way the cleaned copy reads less naturally than
-a cleaned Reactor sample: the bodies and the strings are back, and the shape is
-still the protector's.
+Because the state is never anything but integer arithmetic over constants and the
+previous state, it can be settled without running the program. The analyzer
+enumerates the reachable combinations of instruction, modelled stack and state, and
+records which case each instruction that hands control to a dispatcher selects.
+Where every path through that instruction selects the same case, the instruction
+becomes a direct jump to it and the arithmetic that computed the state is erased.
+
+Four things make that safe rather than merely plausible. The claim being proven is
+about an instruction, not a path, so an edge is only rewritten when every visit
+agrees — which is why running out of budget abandons the whole method instead of
+keeping the part already proven. The arithmetic erased has to be a contiguous
+run of side-effect-free integer instructions with nothing jumping into the middle
+of it, so erasing it cannot remove anything but the state, and nothing may jump to
+the edge itself either, since what jumped there would not have run the arithmetic.
+The direct jump has to stay inside the same exception regions.
+
+The fourth is the one that cost the most to learn, and it is what makes the other
+three enough. Jumping straight to a case skips the dispatcher, and the dispatcher
+does one thing besides jumping: it writes the state into its variable. A fragment
+reached directly never has that write performed for it, so anything reading the
+variable afterwards sees whatever was there before — which is not a hypothetical. An
+earlier version of this pass erased the arithmetic and left the write undone, and
+that broke the constants initializer on both corpus samples, taking every recovered
+string with it.
+
+The fix is for the edge to carry the write. Where an instruction outside the erased
+arithmetic still reads the state, each redirected edge assigns it, so the edge is an
+exact substitution for the path it replaces. That is worth more than correctness
+alone: because a redirect no longer depends on what happened to the other edges, they
+stop having to be proven together. A method with one edge nobody can settle now gets
+the rest of its edges straightened and keeps its switch only for that one. Where two
+states select the same case the edge is given up rather than guessed at, since there
+is no single value to assign.
+
+Two further things follow from the state travelling on the stack rather than in a
+variable, and both are about the result being a method a runtime will accept rather
+than about which edges can be proven. Neither showed up in the stack-depth checks the
+pass already ran, and both were found by running an unflattened program.
+
+The first is that a dispatcher is entered with its state pushed, so every jump into it
+carries something on the stack. CIL allows that for a backward jump only when a
+forward path has already established what the stack looks like there, and the forward
+path is the single fragment that falls into the dispatcher instead of jumping to it.
+Redirecting that one fragment is therefore what makes all the remaining jumps back to
+the dispatcher illegal — a partly unflattened method could be correct edge by edge and
+still be rejected wholesale. Rather than protect the fall-through, the pass takes the
+state off the stack: the dispatcher is given a variable to read its state from, and the
+edges still going through it store into that variable before jumping. The constraint
+then does not apply to any of them, which is also what makes the edges genuinely
+independent rather than nearly so.
+
+The second is that scaffolding nothing reaches any more cannot simply be left. A
+fragment that only consumed what an edge used to push still consumes it where it
+stands, and unreachable code is checked against an empty stack, so the dispatcher's
+own arithmetic becomes an error the moment nothing pushes a state for it. Whatever the
+redirects strand is therefore neutered.
+
+With the state in a variable, a path that merges with another before reaching the
+dispatcher can be resolved where it computed its own state instead of at the merge.
+This is worth doing because the merge is exactly what a branch in the original program
+turns into: the two arms each settle on a state, and only their meeting point has two.
+Attributing the state to the arm sends each arm straight to its case and recovers the
+original conditional, leaving the merge in place for anything else that reaches it.
+
+What that comes to on the two samples is 4,645 of 4,844 edges and 5,933 of 6,200 —
+about nineteen in twenty — with 51 of 127 and 66 of 155 flattened methods losing their
+dispatcher entirely. Every edge left standing is left for one reason: two states that
+meet before either has finished being computed, so neither the merge nor the last
+instruction to push names a single path. Nothing is lost to unremovable arithmetic or
+to exception regions.
+
+Going further would mean duplicating each shared fragment per state, or turning its
+exit into a test against the state. Both would end the property that the cleaned copy's
+blocks are the sample's own.
+
+**5. Junk, then cleanup, then verify and emit.** The protector-neutral stages
+apply unchanged: unreachable code that recovery accounts for is removed — which
+now includes the dispatchers every edge was redirected away from — generated names
+get readable placeholders, which matters more here than anywhere else, since
+invisible names are otherwise indistinguishable from one another rather than merely
+ugly, and the same verification gate decides whether anything is written at all.
+
+**What is not in this list.** ConfuserEx's strong reference proxies, its encrypted
+resources and its embedded payloads. Its mild proxies need no entry of their own:
+they are plain static forwarders, and the forwarder redirection written for
+Reactor's wrappers substitutes their targets without knowing whose they are. Its
+strong ones bind a delegate at run time from the proxy field's own signature blob
+through a `DynamicMethod` the bridge emits, and reading that statically would mean
+modelling `Reflection.Emit`, so a sample using them comes out with them intact.
 
 ## Deleting Reactor's code without deleting the program's
 

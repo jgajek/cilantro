@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "profile": "confuserex-1-static",
-  "description": "Curated ConfuserEx 1.0.0 corpus. Both samples move every method body into an encrypted section and every literal into one encrypted buffer, so each gate here is a gate on interpreting the sample's own decrypters. Binary samples remain outside git.",
+  "description": "Curated ConfuserEx 1.0.0 corpus. Both samples move every method body into an encrypted section and every literal into one encrypted buffer, so most gates here are gates on interpreting the sample's own decrypters. The flattening gates are the exception, and there are two of them because they measure different things: a method keeps its dispatcher until every one of its edges is proven, so counting methods moves in tens while counting redirected edges moves in thousands. About one edge in twenty is left, and what bounds it is two states meeting before either has finished being computed, rather than anything a decrypter does. Binary samples remain outside git.",
   "samples": [
     {
       "id": "confuserex-06b9d08b",
@@ -19,6 +19,8 @@
       "oracleSha256": null,
       "expectedRestoredBodyCount": 242,
       "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 77,
+      "minimumRedirectedDispatcherEdges": 4600,
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000
     },
@@ -38,6 +40,8 @@
       "oracleSha256": null,
       "expectedRestoredBodyCount": 279,
       "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 91,
+      "minimumRedirectedDispatcherEdges": 5850,
       "minimumStringSiteCoverage": 1.0,
       "maximumMutationCount": 20000
     }

@@ -160,36 +160,144 @@ driven by a `switch` on a state variable, so that the order the code is written
 in has nothing to do with the order it runs in. This is the same idea as
 Reactor's flattening, and it is often called a **dispatcher**.
 
-ConfuserEx has a distinctive touch here: the state variable can be updated by
-arithmetic rather than assignment, so working out which fragment follows which
-means evaluating an expression rather than reading a number.
+ConfuserEx's version differs from Reactor's in two ways that matter, and both are
+visible in the IL. The next state does not travel in the state variable; it is
+pushed on the evaluation stack and left there across the jump, so the dispatcher
+begins by consuming a value its predecessor pushed. And the case is chosen by a
+remainder rather than by the state itself:
+
+```
+        ldc.i4  -1975916653   // the dispatcher's key
+        xor                   //   state = pushed ^ key
+        dup
+        stloc.2               //   keep the state for whichever fragment runs
+        ldc.i4.s 9
+        rem.un                //   case = state % 9
+        switch  [9 targets]
+```
+
+Each fragment then ends by deriving the next state from that one and jumping back:
+
+```
+        ldloc.2               // the state the dispatcher stored
+        ldc.i4  -1188749259
+        mul
+        ldc.i4  -991232850
+        xor                   //   next = state * M ^ K
+        br      IL_0006       //   ... left on the stack for the dispatcher
+```
+
+This shape is heavily used: 155 of the 200 readable methods in one sample and 127
+of 170 in the other, with single dispatchers reaching 765 cases. ConfuserEx can
+also compute the state with a native x86 predicate, which no amount of reading IL
+would resolve, but neither sample here does — the arithmetic is all managed.
 
 **What you see:** a decompiled method that is one large `while` loop around a
 `switch` with many cases, each ending by computing the next state.
 
-**Why it matters to you:** this is the layer that survives into the cleaned copy.
-The unflattening pass is not written per protector — it looks for a dispatcher
-shape it can prove an ordering for, whoever built it — so it does run here, and
-in both of these samples it found two dispatchers and unflattened neither. The
-right way to read that is untested rather than refused: nothing about ConfuserEx
-excludes it, and no sample has yet shown it working. Either way the methods you
-open will still be in this shape.
+**Why it matters to you:** because the state is only ever arithmetic over
+constants and the previous state, it can be worked out without running anything.
+The tool enumerates every reachable combination of instruction, stack and state,
+and wherever the instruction that hands control to a dispatcher does so with the
+same state on every path, it sends that instruction straight to the case the state
+selected and erases the arithmetic.
+
+One detail in that dispatcher decides how far this goes, and it is worth following,
+because getting it wrong is the difference between a partial result and a wrong one.
+Look again at what the dispatcher does before the remainder picks the case: `dup`
+then `stloc`. Writing the state into its local is the dispatcher's other job, and a
+fragment reached by a direct jump never has that write performed for it. An earlier
+version of this tool erased the arithmetic, redirected the jump, and left the write
+undone — so anything still reading that local saw whatever was there last instead of
+the state its own path established. That did not stay theoretical: it broke the
+constants initializer in both samples and took every recovered string with it.
+
+The fix is for the redirected edge to do the write itself. Where something outside
+the erased arithmetic still reads the state, the edge becomes `ldc.i4 <state>;
+stloc; br <case>` — the assignment the dispatcher would have made, then the jump. Now
+the rewrite of one edge says nothing about any other, which is what lets the tool
+take a method's provable edges without needing all of them.
+
+The second detail worth following is that the state travels on the evaluation stack,
+which turns out to constrain the result more than it constrains the analysis. A
+dispatcher is entered with the state pushed, so every jump into it is taken with
+something on the stack, and CIL only permits that for a backward jump if a forward path
+has already established the stack at that point. The forward path is the one fragment
+that falls into the dispatcher rather than jumping to it — so redirecting that single
+fragment makes every remaining jump back to the dispatcher illegal. The method is then
+rejected as a whole, however correct each edge is. It is a failure mode that no
+stack-depth check finds, because the depths all agree; it took running an unflattened
+program to see it.
+
+Rather than protect that fall-through, the tool takes the state off the stack. A
+dispatcher that loses an edge is given a variable to read its state from — its `ldc.i4
+<key>` becomes `ldloc <entry>` with the key moved behind it — and the edges still going
+through it store into that variable before jumping. Two things follow. The constraint no
+longer applies to any edge, so the edges really are independent. And a path that merges
+with another before reaching the dispatcher can now be resolved where it computed its
+own state rather than at the merge, which matters because the merge is exactly what an
+`if` in the original program became: each arm settles on one state and only their
+meeting point has two. Attributing the state to the arm sends each arm straight to its
+case, which is the original conditional back.
+
+About nineteen edges in twenty come out straight: 4,645 of 4,844 in one sample and 5,933
+of 6,200 in the other, with 51 of 127 and 66 of 155 flattened methods losing their
+dispatcher completely. Since the redirects leave the dispatcher's own housekeeping
+unreachable — and unreachable code is still checked, against an empty stack — whatever
+they strand is neutered too.
+
+The limit that remains is a real one: two states that meet before either has finished
+being computed. Then neither the merge nor the last instruction to push the state names
+a single path, and no jump can stand for either. Those edges keep their switch, and they
+are the only ones that do — nothing is lost to arithmetic that cannot be erased or to
+exception regions. A related case is given up rather than guessed at, since the case
+comes from a remainder and two different states can leave the same one: the destination
+is settled but the state to assign is not.
+
+A dispatcher survives if even one of its method's edges does, so where a method still
+has a switch, what you will read is a method whose fragments run into each other
+directly with a switch off to one side that only those joins still reach. Removing them
+too would mean duplicating each shared fragment per state, or rewriting its exit as a
+test against the state; both make the cleaned copy a rearrangement of the sample rather
+than a subset of it, so the tool stops short.
 
 ## Reference proxies
 
-Instead of one method calling another directly, the call can be routed through a
-field holding a delegate — a .NET value that stands for a method — which the
-runtime fills in at startup. The call site invokes whatever the field holds.
+Instead of one method calling another directly, the call is routed through
+something that stands in for it, so the call site names the stand-in rather than
+the target.
 
 **What you see:** a call graph with holes in it. Cross-references fail, so you
 cannot ask what calls the process-creation API and get an answer.
 
-**Why it matters to you:** this is the other layer left in place, and here the
-position is weaker than for control flow: there is no recognition of it at all
-for this protector. Reactor's proxies are found and followed by a pass written
-against Reactor's shape, and that pass does not recognise this one. So a
-ConfuserEx sample using reference proxies will come out with the proxies intact
-and nothing in the report drawing attention to them.
+Neither vault sample enables this, so it was studied on ConfuserEx 1.0.0 builds
+made for the purpose. It has two modes and they are not equally hard.
+
+**Mild** compiles each hidden call into a small static method that does nothing but
+forward: load the arguments in order, make the one call, return. A construction is
+wrapped the same way with `newobj`. Nothing is deferred to run time, so the target
+is sitting in the forwarder's body as an operand.
+
+**Why it matters to you:** almost nothing, as it happens. A pure forwarder is an
+alias for what it forwards to, and substituting the target at each call site is
+stack-neutral by construction, so the pass that already did this for Reactor's
+wrappers handles ConfuserEx's without knowing whose they are. On the mild build
+here it redirects 57 call sites.
+
+**Strong** is a different proposition. Each call signature gets a delegate type,
+each hidden call a static field of that type, and the call site becomes a load of
+the field followed by `Invoke`. What fills the field is the interesting part: a
+`<Module>` bridge takes the field's own handle, asks the runtime for the field's
+signature bytes with `Module.ResolveSignature`, decodes the target out of the
+custom modifiers written into that signature, then builds a method at run time
+through `DynamicMethod` and `DynamicILInfo` and binds the delegate to it.
+
+**Why it matters to you:** that one stays. The target is genuinely in the file, but
+recovering it means reproducing a decode whose input is the metadata's own
+signature encoding and whose output is fed to a runtime IL emitter. Reading it
+statically would mean modelling `Reflection.Emit`, which is a larger undertaking
+than the protection is worth. A sample using strong proxies comes out with them
+intact.
 
 ## Compression, which is a different program
 
