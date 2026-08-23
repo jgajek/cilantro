@@ -10,6 +10,18 @@ public sealed class StaticMachine
     private readonly IStaticIntrinsicRegistry _intrinsics;
     private readonly bool _modelTypeInitialization;
 
+    // Answers about the shape of the metadata, which does not change while an interpretation runs.
+    // Each was a scan of every type, or every method of every type, performed per instruction that
+    // asked; on a module with thousands of types that is the same cost per step as the whole module,
+    // and dnlib takes a lock for each step of a lazy list, so the scans showed up as lock contention
+    // rather than as work. A machine reads metadata and never adds to it, so caching for the life of
+    // the machine is caching for exactly as long as the answers hold.
+    private readonly Dictionary<ModuleDef, Dictionary<string, TypeDef>> _typesByName = [];
+    private readonly Dictionary<ModuleDef, Dictionary<string, TypeDef>> _classesByName = [];
+    private readonly Dictionary<MethodDef, MethodDef?> _soleImplementations = [];
+    private readonly Dictionary<TypeDef, MethodDef?> _staticConstructors = [];
+    private readonly Dictionary<Instruction, string> _locations = [];
+
     public StaticMachine(
         StaticMachineLimits? limits = null,
         IStaticIntrinsicRegistry? intrinsics = null,
@@ -1092,9 +1104,9 @@ public sealed class StaticMachine
                             }
                             else if (target.MethodSig is
                                      { Params.Count: 0 } factorySignature &&
-                                method.Module.GetTypes().FirstOrDefault(type =>
-                                    type.FullName == factorySignature.RetType.FullName &&
-                                    !type.IsValueType) is { } unresolvedFactoryType &&
+                                ClassNamed(
+                                    method.Module,
+                                    factorySignature.RetType.FullName) is { } unresolvedFactoryType &&
                                 State.Heap.TryAllocateObject(
                                     unresolvedFactoryType.FullName,
                                     out var unresolvedFactoryResult))
@@ -2345,9 +2357,7 @@ public sealed class StaticMachine
         var expected = target.ResolveMethodDef();
         var comparer = new SigComparer();
         if (State.Heap.TryGetRuntimeTypeName(instance, out var runtimeTypeName) &&
-            Searchable(module)
-                .SelectMany(searched => searched.GetTypes())
-                .FirstOrDefault(type => type.FullName == runtimeTypeName) is { } runtimeType)
+            TypeNamed(module, runtimeTypeName) is { } runtimeType)
         {
             for (var type = runtimeType; type is not null; type = type.BaseType?.ResolveTypeDef())
             {
@@ -2364,16 +2374,75 @@ public sealed class StaticMachine
                 }
             }
         }
-        var uniqueOverrides = Searchable(module)
+        // Nothing overrides a target that did not resolve, so there is nothing for the search below
+        // to find. It used to be asked anyway, and answering it costs a pass over every method in
+        // every searchable module.
+        return expected is null ? null : SoleImplementationOf(expected, module);
+    }
+
+    /// <summary>The one method overriding this one, where the searchable modules hold exactly one.</summary>
+    /// <remarks>
+    /// Only the target is asked about, so the answer holds for every call site that shares one, and a
+    /// dispatcher calls the same handful of targets over and over.
+    /// </remarks>
+    private MethodDef? SoleImplementationOf(MethodDef expected, ModuleDef module)
+    {
+        if (_soleImplementations.TryGetValue(expected, out var known))
+            return known;
+        var overriding = Searchable(module)
             .SelectMany(searched => searched.GetTypes())
             .SelectMany(type => type.Methods)
-            .Where(candidate => expected is not null &&
+            .Where(candidate =>
                 candidate.HasBody && !candidate.IsAbstract &&
                 candidate.Overrides.Any(implementation =>
                     implementation.MethodDeclaration.ResolveMethodDef() == expected))
             .Take(2)
             .ToArray();
-        return uniqueOverrides.Length == 1 ? uniqueOverrides[0] : null;
+        return _soleImplementations[expected] =
+            overriding.Length == 1 ? overriding[0] : null;
+    }
+
+    /// <summary>The type of this name in the searchable modules, the first one where names repeat.</summary>
+    private TypeDef? TypeNamed(ModuleDef module, string name) =>
+        Index(_typesByName, module, Searchable(module), static _ => true)
+            .GetValueOrDefault(name);
+
+    /// <summary>
+    /// The type of this name that an object could be made of, so not a value type. The sample's own
+    /// module only, since a factory returning a type from somebody else's is not what this reads.
+    /// </summary>
+    private TypeDef? ClassNamed(ModuleDef module, string name) =>
+        Index(_classesByName, module, [module], static type => !type.IsValueType)
+            .GetValueOrDefault(name);
+
+    private static Dictionary<string, TypeDef> Index(
+        Dictionary<ModuleDef, Dictionary<string, TypeDef>> cache,
+        ModuleDef module,
+        IEnumerable<ModuleDef> searched,
+        Func<TypeDef, bool> wanted)
+    {
+        if (cache.TryGetValue(module, out var known))
+            return known;
+        var index = new Dictionary<string, TypeDef>(StringComparer.Ordinal);
+        foreach (var type in searched.SelectMany(searchedModule => searchedModule.GetTypes()))
+        {
+            // First one wins, which is what searching in order and taking the first found did.
+            if (wanted(type))
+                index.TryAdd(type.FullName, type);
+        }
+        return cache[module] = index;
+    }
+
+    /// <summary>The type's static constructor, which dnlib finds by walking its methods.</summary>
+    /// <remarks>
+    /// Asked before every call and every field access that could trigger initialization, and the same
+    /// few types are asked about throughout.
+    /// </remarks>
+    private MethodDef? StaticConstructorOf(TypeDef type)
+    {
+        if (_staticConstructors.TryGetValue(type, out var known))
+            return known;
+        return _staticConstructors[type] = type.FindStaticConstructor();
     }
 
     private StaticValue LoadSlot(
@@ -2923,7 +2992,7 @@ public sealed class StaticMachine
         State.Provenance.Origin(
             value,
             ProvenanceKind.Literal,
-            $"{method.MDToken}/IL_{instruction.Offset:X4}",
+            Located(method, instruction),
             detail);
 
     private StaticValue TrackOperation(
@@ -2931,13 +3000,27 @@ public sealed class StaticMachine
         Instruction instruction,
         StaticValue value,
         ProvenanceKind kind,
-        params StaticValue[] inputs) =>
+        params ReadOnlySpan<StaticValue> inputs) =>
         State.Provenance.Operation(
             value,
             kind,
-            $"{method.MDToken}/IL_{instruction.Offset:X4}",
+            Located(method, instruction),
             instruction.OpCode.Name,
             inputs);
+
+    /// <summary>Where an instruction is, spelled the way provenance records it.</summary>
+    /// <remarks>
+    /// One instruction is at one place, so this is the same text every time that instruction runs, and
+    /// a loop runs one instruction a great many times. Composing it per execution meant formatting two
+    /// numbers and allocating a string on every step of the machine; here it is composed once. An
+    /// <see cref="Instruction"/> belongs to the one method body, so it identifies the place on its own.
+    /// </remarks>
+    private string Located(MethodDef method, Instruction instruction)
+    {
+        if (_locations.TryGetValue(instruction, out var known))
+            return known;
+        return _locations[instruction] = $"{method.MDToken}/IL_{instruction.Offset:X4}";
+    }
 
     private string RenderArgumentProvenance(IReadOnlyList<StaticValue> arguments)
     {
@@ -2957,7 +3040,7 @@ public sealed class StaticMachine
         StaticWorkBudget budget,
         int depth)
     {
-        var initializer = type?.FindStaticConstructor();
+        var initializer = type is null ? null : StaticConstructorOf(type);
         if (type is null ||
             initializer?.HasBody != true ||
             (trigger == TypeInitializationTrigger.MethodCall && type.IsBeforeFieldInit))

@@ -269,7 +269,7 @@ public sealed class DeclarationTests
     public void ADeclaredBudgetReplacesTheFigureThePassWouldHaveUsed()
     {
         var declarations = RunDeclarations.Parse(
-            """{ "budgets": { "steps": 9000, "allocatedBytes": 1073741824 } }""",
+            """{ "budgets": { "steps": 9000000, "allocatedBytes": 1073741824, "depth": 8 } }""",
             "test");
 
         var limits = declarations.Budgets.Over(new StaticMachineLimits(
@@ -278,11 +278,39 @@ public sealed class DeclarationTests
             MaximumAllocatedBytes: 256 * 1024 * 1024,
             MaximumArrayLength: 8 * 1024 * 1024));
 
-        Assert.Equal(9_000, limits.MaximumSteps);
+        Assert.Equal(9_000_000, limits.MaximumSteps);
         Assert.Equal(1024L * 1024 * 1024, limits.MaximumAllocatedBytes);
         // A budget raised for the sake of one large read has to carry the largest single read with it.
         Assert.Equal(1024 * 1024 * 1024, limits.MaximumArrayLength);
-        Assert.Equal(64, limits.MaximumRecursionDepth);
+        // Every budget but steps still takes the declared figure even where it is the smaller one.
+        Assert.Equal(8, limits.MaximumRecursionDepth);
+    }
+
+    /// <summary>
+    /// Steps only ever raise. A pass that works its ceiling out from the sample knows something a
+    /// single figure written for the whole run does not, and someone applying the remedy the tool
+    /// itself printed must not come away with less recovery than they started with.
+    /// </summary>
+    /// <remarks>
+    /// The figures are the ones this actually happened with: a 5,367-stub module whose bootstrap
+    /// needs 12,482,286 steps, so method-body recovery allows 53,670,000, against the 10,000,000 a
+    /// budget stop elsewhere in the same run asks for. Replacing rather than raising took that run
+    /// from every body recovered to none.
+    /// </remarks>
+    [Fact]
+    public void ADeclaredStepBudgetBelowAPassesOwnLeavesItAlone()
+    {
+        var declarations = RunDeclarations.Parse(
+            """{ "budgets": { "steps": 10000000 } }""",
+            "test");
+
+        var limits = declarations.Budgets.Over(new StaticMachineLimits(
+            MaximumSteps: 53_670_000,
+            MaximumRecursionDepth: 64,
+            MaximumAllocatedBytes: 256 * 1024 * 1024,
+            MaximumArrayLength: 8 * 1024 * 1024));
+
+        Assert.Equal(53_670_000, limits.MaximumSteps);
     }
 
     /// <summary>Told nothing, a run behaves exactly as it did before any of this existed.</summary>
@@ -333,6 +361,11 @@ public sealed class DeclarationTests
     /// cheapest way to prove the environment now arrives: only a machine that read the declarations can
     /// stop for a budget nothing else set.
     /// </summary>
+    /// <remarks>
+    /// The budget has to be depth rather than steps, since steps only raise and a miserly figure for
+    /// them is by design ignored by the pass that works its own out from the sample. Depth still
+    /// takes the declared figure whichever way it goes, so it remains a probe nothing else would set.
+    /// </remarks>
     [SampleFact]
     public void WhatTheRunWasToldReachesTheMachineThatRecoversMethodBodies()
     {
@@ -340,7 +373,7 @@ public sealed class DeclarationTests
         try
         {
             var declared = Path.Combine(directory, "d.json");
-            File.WriteAllText(declared, """{ "name": "miserly", "budgets": { "steps": 8 } }""");
+            File.WriteAllText(declared, """{ "name": "miserly", "budgets": { "depth": 1 } }""");
 
             var result = new CilantroPipeline().Run(
                 Sample("Qafcakg.payload.Ptnifif.dll"),
@@ -352,7 +385,7 @@ public sealed class DeclarationTests
             var blocker = Assert.Single(
                 result.Report.Blockers!,
                 item => item.Kind == BlockerKind.Budget && item.Pass == "method-body-recovery");
-            Assert.Contains("steps", blocker.Declare!, StringComparison.Ordinal);
+            Assert.Contains("depth", blocker.Declare!, StringComparison.Ordinal);
             Assert.Equal("miserly", result.Report.Declarations!.Name);
         }
         finally

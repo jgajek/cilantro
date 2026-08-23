@@ -112,7 +112,7 @@ The input has 36 distinct string literals, 673 types and 3,708 methods.
 | | CILantro | NETReactorSlayer | de4dotEx | Krypton |
 | --- | --- | --- | --- | --- |
 | Produced an output file | yes | only with its string stage switched off | only when told which obfuscator | yes |
-| Wall time | 6m 55s | 2.9s | 2.3s | 18s |
+| Wall time | 59s | 2.9s | 2.3s | 18s |
 | **Distinct string literals in the output** | **192** | 31 | 8 | **0** |
 | Reactor's own 17 string sites | **all 17** (11 distinct literals) | none | **all 17** (7 of those 11) | none |
 | The inner layer's 155 string sites | **all 155** | none, all 155 left as calls | none, all 155 left as calls | not reached |
@@ -189,11 +189,13 @@ Read the table as one hard sample, not a ranking.
   came out byte-identical to one with that stage disabled. **On Windows both
   would do better than this**, and Slayer's string stage might well succeed
   outright — that is the whole point of invoking the real decrypter.
-- **We are much slower.** 6m 55s against 2.3s. Three minutes of that is reading
-  the virtual machine; `--no-devirtualize` finishes in 3m 15s with all 172
-  strings still recovered, so the string result does not depend on the rebuild.
-  Interpreting a loader instead of running it costs two to three orders of
-  magnitude more time, every time.
+- **We are much slower.** 59s against 2.3s. Most of that is reading the virtual
+  machine, and `--no-devirtualize` cuts it further with all 172 strings still
+  recovered, so the string result does not depend on the rebuild. Interpreting a
+  loader instead of running it costs more than an order of magnitude, every time.
+  It used to cost nearly seven minutes here; the interpreter was doing work
+  quadratic in the size of the buffers a protector decrypts into, and in the
+  number of types in the module, and neither had to be.
 - **One sample cannot rank renaming, Reactor 7, or native stubs**, all of which
   the others do better or at all. See [Where CILantro loses](#where-cilantro-loses).
 
@@ -293,11 +295,11 @@ side.
 - **Names.** Slayer and de4dotEx rename the whole de4dot surface, public types
   included. This tool renames only non-public members whose names it can prove
   are generated, so the result is less uniformly readable.
-- **Speed.** Ten to thirty seconds on a normal sample, and minutes on a
-  virtualized one — seven of them on the sample measured
+- **Speed.** A second or two on a normal sample, and up to a minute on a
+  virtualized one — as on the sample measured
   [above](#all-four-on-one-hard-sample) — against two or three seconds for the
-  others. Interpreting the loader is the price of not running it, and it is a
-  factor of a hundred or more.
+  others. Interpreting the loader is the price of not running it, and it is still
+  a factor of ten or more.
 - **A binary you can execute.** Krypton's output is meant to run; this tool's
   cleaned copy is meant to be read, and the virtualized methods built back into
   it are labelled as readings rather than offered as working code.

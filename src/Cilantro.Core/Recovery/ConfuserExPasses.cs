@@ -144,9 +144,9 @@ public sealed class ConfuserExAntiTamperPass : DeobfuscationPass
             context,
             policy,
             rewrite.ImageWrites,
-            out var restored,
+            out var applied,
             out var applyDiagnostics);
-        if (application != RewriteApplication.Applied)
+        if (application != RewriteApplication.Applied || applied is null)
         {
             // The interpretation stopping is the usual reason nothing was written, and it is worth
             // reporting as the cause rather than leaving the empty write log to speak for it.
@@ -161,7 +161,7 @@ public sealed class ConfuserExAntiTamperPass : DeobfuscationPass
             return (PassStatus.Unsupported, 0, [.. cause, .. applyDiagnostics]);
         }
 
-        foreach (var target in policy.Targets)
+        foreach (var target in applied.Recovered)
         {
             context.AddChange(new ChangeRecord(
                 Name,
@@ -169,6 +169,7 @@ public sealed class ConfuserExAntiTamperPass : DeobfuscationPass
                 $"0x{target.Token:X8} RVA 0x{target.Rva:X8}",
                 "Reinstated the body the interpreted anti-tamper decryptor wrote into the image."));
         }
+        var restored = applied.Recovered.Count;
         context.SetFact("confuserex.antitamper.complete", true);
         context.SetFact("confuserex.antitamper.restored", restored);
         return (PassStatus.Success, restored,

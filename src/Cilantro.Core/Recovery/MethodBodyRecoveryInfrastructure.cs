@@ -100,6 +100,21 @@ public static class MethodBodyRecoveryInfrastructure
                 pair.First.Bytes.AsSpan().SequenceEqual(pair.Second.Bytes));
     }
 
+    /// <summary>
+    /// Applies the write log to a copy of the file, refusing anything the protector had no business
+    /// writing, and naming which catalogued windows the writes account for.
+    /// </summary>
+    /// <remarks>
+    /// What is required is that every write land inside exactly one catalogued window and that no
+    /// byte outside one change. What is deliberately not required is that every window be written.
+    /// The catalog is a structural guess: a stub is recognised by returning the default of its type
+    /// under <c>NoInlining</c>, and a hand-written <c>return 0;</c> compiles to the same bytes, so a
+    /// module large enough will always contain a method that looks protected and is not. Reactor
+    /// keeps no ciphertext for such a method, its loader never writes one, and a window left
+    /// untouched here is that fact observed rather than assumed. Requiring full coverage would
+    /// discard an entire module's recovery over one method that was never encrypted, so coverage is
+    /// reported to the caller instead of being made a condition.
+    /// </remarks>
     public static bool TryValidateAndReplayWrites(
         PeImageView image,
         IReadOnlyList<StubPrefixWindow> windows,
@@ -163,12 +178,6 @@ public static class MethodBodyRecoveryInfrastructure
             touched.Add(containing[0].Token);
         }
 
-        if (touched.Count != windows.Count)
-            return ReplayFailure(
-                out restoredFile,
-                out touchedTokens,
-                out diagnostic,
-                $"Writes touched {touched.Count} of {windows.Count} protected stub prefixes.");
         if (!TailsArePreserved(original, restoredFile, windows))
             return ReplayFailure(
                 out restoredFile,

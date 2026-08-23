@@ -65,6 +65,19 @@ public sealed record InterpretedRewrite(
     IReadOnlyDictionary<uint, int> IntegerFields,
     LoaderInterpretationEvidence Evidence);
 
+/// <summary>
+/// What a replayed rewrite restored, and which of its candidates it turned out not to cover.
+/// </summary>
+/// <remarks>
+/// The two are reported separately because they mean different things to a reader. A recovered
+/// target is a method whose body the protector was holding and which is now back. An untouched one
+/// is a method the catalog guessed at and the protector never encrypted, so it was already what it
+/// appears to be. Counting them together would claim recovery of a body that was never taken away.
+/// </remarks>
+public sealed record AppliedRewrite(
+    IReadOnlyList<RewriteTarget> Recovered,
+    IReadOnlyList<RewriteTarget> Untouched);
+
 public enum RewriteApplication
 {
     /// <summary>The rewrite was replayed, grafted, and verified.</summary>
@@ -147,13 +160,13 @@ public static class ImageRewriteRecovery
         ArtifactContext context,
         IImageRewritePolicy policy,
         IReadOnlyList<MappedImageWrite> imageWrites,
-        out int grafted,
+        out AppliedRewrite? applied,
         out IReadOnlyList<string> diagnostics)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(imageWrites);
-        grafted = 0;
+        applied = null;
         if (imageWrites.Count == 0)
         {
             diagnostics =
@@ -179,6 +192,9 @@ public static class ImageRewriteRecovery
         // genuinely what it appears to be and must be left alone.
         var recovered = policy.Targets
             .Where(target => restoredTokens.Contains(target.Token))
+            .ToArray();
+        var untouched = policy.Targets
+            .Where(target => !restoredTokens.Contains(target.Token))
             .ToArray();
         if (recovered.Length == 0)
         {
@@ -266,10 +282,13 @@ public static class ImageRewriteRecovery
                 return RewriteApplication.Refused;
             }
 
-            grafted = replacements.Count;
-            diagnostics = fieldData.Count == 0
-                ? []
-                : [$"Reinstated decrypted field data for {fieldData.Count} field(s)."];
+            applied = new AppliedRewrite(recovered, untouched);
+            var notes = new List<string>();
+            if (fieldData.Count != 0)
+                notes.Add($"Reinstated decrypted field data for {fieldData.Count} field(s).");
+            if (untouched.Length != 0)
+                notes.Add(DescribeUntouched(context, policy, untouched));
+            diagnostics = notes;
             return RewriteApplication.Applied;
         }
         catch (Exception exception) when (
@@ -287,6 +306,35 @@ public static class ImageRewriteRecovery
         {
             restoredModule?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Says which catalogued targets the rewrite never wrote, by name.
+    /// </summary>
+    /// <remarks>
+    /// A count on its own cannot be acted on. Whoever reads "one of 5,367 was not written" has to
+    /// go and find out which before they can tell a method that was never encrypted from a recovery
+    /// that quietly fell short, and that is the whole question. Naming them answers it in the
+    /// report, and the names are bounded because a run where thousands went untouched is telling a
+    /// reader something the list would only bury.
+    /// </remarks>
+    private static string DescribeUntouched(
+        ArtifactContext context,
+        IImageRewritePolicy policy,
+        RewriteTarget[] untouched)
+    {
+        const int mostWorthNaming = 8;
+        var named = untouched
+            .Take(mostWorthNaming)
+            .Select(target => context.Module.ResolveToken(target.Token) is MethodDef method
+                ? $"0x{target.Token:X8} {method.FullName}"
+                : $"0x{target.Token:X8}");
+        var listed = string.Join("; ", named);
+        if (untouched.Length > mostWorthNaming)
+            listed += $"; and {untouched.Length - mostWorthNaming} more";
+        return $"{untouched.Length} of {policy.Targets.Count} catalogued target(s) were never " +
+            $"written, so {policy.Protector} was holding no body for them and they were left as " +
+            $"they stand: {listed}.";
     }
 
     /// <summary>

@@ -44,6 +44,14 @@ public sealed record DeclaredBudgets(int? Steps = null, long? AllocatedBytes = n
     /// rather than becoming a figure of its own. A raised allocation budget carries the largest single
     /// array up with it, since a budget that allows a hundred megabytes and an array limit that
     /// allows ten would refuse the very read the budget was raised for.
+    ///
+    /// Steps are the exception, and only raise: a declared figure that is lower than a pass's own is
+    /// ignored by it. That is because one pass now works its ceiling out from the sample — the loader
+    /// bootstrap costs what it costs per protected method — so it can want more than a caller writing
+    /// a single number for the whole run would think to ask for. Replacing it there would let a
+    /// caller applying the remedy the tool itself printed come away with less recovery than they
+    /// started with, which is the one thing a loop built on those remedies cannot afford. Doing less
+    /// work is asked for by leaving passes out, not by shrinking what the ones that run may spend.
     /// </remarks>
     public StaticMachineLimits Over(StaticMachineLimits given)
     {
@@ -52,7 +60,9 @@ public sealed record DeclaredBudgets(int? Steps = null, long? AllocatedBytes = n
             ? given
             : given with
             {
-                MaximumSteps = Steps ?? given.MaximumSteps,
+                MaximumSteps = Steps is { } steps
+                    ? Math.Max(steps, given.MaximumSteps)
+                    : given.MaximumSteps,
                 MaximumRecursionDepth = Depth ?? given.MaximumRecursionDepth,
                 MaximumAllocatedBytes = AllocatedBytes ?? given.MaximumAllocatedBytes,
                 MaximumArrayLength = AllocatedBytes is { } bytes

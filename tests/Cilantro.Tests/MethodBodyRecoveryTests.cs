@@ -69,6 +69,43 @@ public sealed class MethodBodyRecoveryTests
         }
     }
 
+    /// <summary>
+    /// A module large enough contains a method that returns the default of its type under
+    /// NoInlining and was never encrypted, which the stub catalog cannot tell from a real stub.
+    /// Reactor writes no body for it, and the replay has to hand back the ones it did write rather
+    /// than discarding a whole module's recovery over the one it did not.
+    /// </summary>
+    [Fact]
+    public void ReplaysTheWrittenWindowsWhenACataloguedStubWasNeverProtected()
+    {
+        var file = CreateImage();
+        var image = new PeImageView(file);
+        var windows = new[]
+        {
+            new StubPrefixWindow(0x06000001, 0x1000, 0x200, 4),
+            new StubPrefixWindow(0x06000002, 0x1010, 0x210, 3),
+        };
+        var writes = new[]
+        {
+            new MappedImageWrite(0x1000, [1, 2, 3, 4], "MappedImage"),
+        };
+
+        var accepted = MethodBodyRecoveryInfrastructure.TryValidateAndReplayWrites(
+            image,
+            windows,
+            writes,
+            out var restored,
+            out var touched,
+            out var diagnostic);
+
+        Assert.True(accepted, diagnostic);
+        Assert.Equal([0x06000001u], touched);
+        Assert.Equal([1, 2, 3, 4], restored[0x200..0x204]);
+        // The window nothing was written into keeps the bytes it shipped with, so the method it
+        // stands for is left exactly as it was rather than being reported as recovered.
+        Assert.Equal(file[0x210..0x213], restored[0x210..0x213]);
+    }
+
     [Theory]
     [InlineData(0x0FFF, 1)]
     [InlineData(0x1003, 2)]
@@ -92,6 +129,60 @@ public sealed class MethodBodyRecoveryTests
         Assert.False(accepted);
         Assert.Contains("outside one stub prefix", diagnostic);
     }
+
+    /// <summary>
+    /// The bootstrap costs between 2,050 and 2,550 steps per protected stub across every Reactor
+    /// sample measured, so its ceiling has to grow with the stub count. The figures below are the
+    /// two ends of that range in practice: a 197-stub module, which the old flat ceiling suited,
+    /// and a 5,367-stub one, which needed 12,482,286 steps and was refused by it.
+    /// </summary>
+    [Theory]
+    [InlineData(197, 2_000_000)]
+    [InlineData(313, 3_130_000)]
+    [InlineData(5_367, 53_670_000)]
+    public void ScalesTheStepCeilingWithTheNumberOfProtectedStubs(int stubs, int expected) =>
+        Assert.Equal(expected, MethodBodyRecoveryPass.StepBudgetFor(stubs));
+
+    [Fact]
+    public void KeepsTheSmallestModulesOnTheCeilingTheyAlreadyHad() =>
+        Assert.Equal(2_000_000, MethodBodyRecoveryPass.StepBudgetFor(1));
+
+    [Fact]
+    public void AllowsTheStepCeilingObservedToBeNeededByTheLargestSampleOnHand() =>
+        Assert.True(MethodBodyRecoveryPass.StepBudgetFor(5_367) > 12_482_286);
+
+    /// <summary>
+    /// The pass raises its own ceiling rather than reporting a budget and asking to be run again, so
+    /// what matters is how far raising it reaches: far enough that anything still unfinished is a loop
+    /// that does not terminate rather than a module that is merely large.
+    /// </summary>
+    /// <remarks>
+    /// Pinned against the dearest bootstrap measured, 2,550 steps for each protected method. The claim
+    /// the code makes for itself is thirty times that, and a claim in a comment is worth only as much
+    /// as something that fails when it stops being true.
+    /// </remarks>
+    [Fact]
+    public void RaisingTheCeilingReachesWellPastWhatABootstrapCosts()
+    {
+        const int stubs = 5_367;
+        const int dearestMeasured = stubs * 2_550;
+
+        var reached = MethodBodyRecoveryPass.StepBudgetFor(stubs);
+        for (var raising = 0; raising < MethodBodyRecoveryPass.MostRaisings; raising++)
+            reached *= 2;
+
+        Assert.True(
+            reached >= 30 * dearestMeasured,
+            $"Raising reaches {reached}, only {(double)reached / dearestMeasured:F1} times the cost.");
+    }
+
+    /// <summary>
+    /// Raising it stays bounded. A ceiling exists to stop code that never finishes, and one that is
+    /// raised without limit is no ceiling at all.
+    /// </summary>
+    [Fact]
+    public void RaisingTheCeilingStopsRatherThanGoingOnForever() =>
+        Assert.InRange(MethodBodyRecoveryPass.MostRaisings, 1, 5);
 
     [Fact]
     public void RequiresDeterministicOrderedWriteLogs()

@@ -111,12 +111,32 @@ else's code is ignored unless the run is given that switch, which is deliberate:
 declaring what a call does is the one thing that puts a value into the reading
 that no code produced.
 
-A budget carries **twice what was refused**. That is a starting point rather
-than a promise — the tool has no way of knowing how much further the sample had
-to go — but it converges quickly if it converges at all, since each refusal
-doubles what the last one asked for. Nothing escalates on its own: the tool
-names the figure and stops, because whether another run is worth the minutes is
-a judgement about your pipeline and not about the sample.
+A budget carries a figure already. That is a starting point rather than a
+promise — the tool has no way of knowing how much further the sample had to go —
+but it converges quickly if it converges at all. A step budget starts at
+**10,000,000** and doubles from there; every other budget is simply **twice what
+was refused**.
+
+Steps get a floor because the ceilings they are refused at are often low, and
+doubling out of a low one spends three or four whole runs arriving at a figure
+that was predictable from the start. Naming a larger one costs nothing when it is
+not reached, since steps are only spent as they are taken. Ten million covers a
+module of roughly 4,000 protected methods, so one retry usually settles it.
+
+Method-body recovery is the exception, and escalates on its own. It decides
+whether any method body comes back at all, so a run that recovered nothing and
+then asked to be run again with a larger number would be asking you to do
+arithmetic the tool could do itself. It raises its own ceiling up to three times,
+doubling each time, and says in its diagnostics that it did. You will not see a
+budget stop from it unless the bootstrap is not merely large but non-terminating.
+
+Every other budget stop is reported rather than acted on, and that is worth
+knowing before you act on one. Measured on the largest sample on hand, every pass
+that hit a step ceiling went on to succeed anyway, and raising all of them to the
+figure that cleared the stops recovered **not one additional byte** while taking
+roughly ten times as long. A budget stop from a pass whose `Status` is `success`
+is a note about where an optional line of enquiry ran out, not a result being
+withheld. Check the pass status before spending a run on one.
 
 So the loop is:
 

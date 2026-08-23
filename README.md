@@ -84,8 +84,8 @@ the outer layer before the inner one is even legible — and Reactor's own table
 here is built by a method that is no longer CIL. That is the case this tool is
 built for.
 
-It is also slower than every alternative by two orders of magnitude, and on
-Windows the two tools that run the sample would do better than they did here.
+It is also slower than every alternative by more than an order of magnitude, and
+on Windows the two tools that run the sample would do better than they did here.
 [docs/parity.md](docs/parity.md) has the full measurement, the reproduction
 commands, and where this tool loses.
 
@@ -247,10 +247,14 @@ turns what stopped a run into the file to run with next — and `read_output`:
 { "mcpServers": { "cilantro": { "command": "/opt/cilantro/cilantro-mcp" } } }
 ```
 
-Nothing escalates on its own. A budget stop comes back with the figure to raise
-it to; whether the extra minutes are worth spending stays with the caller. And
-`read_output` will not hand an extracted payload back to a model — that is
-malware, and the manifest names the path so a sandbox can be pointed at it.
+Method-body recovery raises its own step ceiling when it has to, since it decides
+whether any body comes back and nobody should have to drive that by hand. Other
+budget stops come back with the figure to raise them to and are left there, which
+is not laziness: on the largest sample to hand every pass that hit a ceiling
+succeeded anyway, and raising all of them recovered nothing further for ten times
+the runtime. And `read_output` will not hand an extracted payload back to a model
+— that is malware, and the manifest names the path so a sandbox can be pointed at
+it.
 
 [docs/agents.md](docs/agents.md) is the guide, [schema/](schema/) is what the
 output promises and for how long.
@@ -445,15 +449,15 @@ through the machine:
 dotnet test Cilantro.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 409 of the 417 tests in about five seconds, against the twelve minutes
-those eight cost between them. They still run on a plain `dotnet test`, which is
-what to do before pushing, because they are the ones that prove the tool recovers
-real malware.
+That is 426 of the 434 tests in about three seconds, against the three and a half
+minutes those eight cost between them. They still run on a plain `dotnet test`,
+which is what to do before pushing, because they are the ones that prove the tool
+recovers real malware.
 
 When the change is to one pass and you need a real sample to see it, skip the
 passes that come after the one you are working on rather than waiting for the
-whole pipeline. Payload extraction and virtualization disassembly account for two
-minutes of a run on their own, and nothing before them depends on either:
+whole pipeline. Payload extraction and virtualization disassembly account for most
+of a minute on their own, and nothing before them depends on either:
 
 ```bash
 cat > /tmp/fast.json <<'JSON'
@@ -463,7 +467,7 @@ dotnet run --project src/Cilantro.Cli -c Release --no-build -- \
     samples/NAME.exe --analyze-only --declarations /tmp/fast.json --report-dir /tmp/loop
 ```
 
-Eleven seconds instead of two and a half minutes, and the report still carries
+Sixteen seconds instead of a minute, and the report still carries
 the passes you kept, with their diagnostics and blockers. The output is not a
 recovery — skipping a pass that gates emission means no cleaned copy is written,
 which is the point: this is for reading a report, and the full run is what says

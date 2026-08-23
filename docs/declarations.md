@@ -91,6 +91,13 @@ it is set, since it is a statement about the run rather than about one pass.
 Raising `allocatedBytes` carries the largest single array up with it, because a
 budget raised for the sake of one large read would otherwise refuse that read.
 
+`steps` only ever raises: a figure lower than a pass's own is ignored by that
+pass. Method-body recovery works its ceiling out from the sample, because the
+loader bootstrap costs what it costs per protected method, so on a large module it
+wants more than a single number written for the whole run is likely to say. To
+make a run do less work, leave passes out with `passes.skip` rather than
+shrinking what the ones that run may spend.
+
 ### passes
 
 `{ "skip": ["pass-name"] }`, spelled as the pass names itself in the summary. A
@@ -161,8 +168,9 @@ change to the tool.
 `Remedy` is the same statement with the parts kept apart, for whatever is doing
 the pasting when it is not a person. Applying one is
 `declarations[Section][Name] = Value`. Where `Wants` is null the tool knew the
-whole answer and wrote it — a budget arrives carrying twice the figure that was
-refused, and a call that returns nothing arrives as `{ "inert": true }`. Where
+whole answer and wrote it — a step budget arrives carrying at least 10,000,000
+and otherwise twice the figure that was refused, and a call that returns nothing
+arrives as `{ "inert": true }`. Where
 `Wants` is not null, only you can know the answer: `Value` holds a single `null`
 standing where it goes, and `Wants` names the kind of value that would be
 believed. `Flag` is `--allow-declared-calls` or nothing.

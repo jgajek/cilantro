@@ -329,18 +329,47 @@ public static class Declaring
             ? Call(target.FullName, returnsSomething: true, returns.FullName)
             : Call(target.FullName, returnsSomething: false);
 
+    /// <summary>The budget whose figure is worth starting somewhere other than the bottom.</summary>
+    private const string StepBudget = "steps";
+
+    /// <summary>
+    /// The step figure a first retry is worth making, rather than merely twice what was refused.
+    /// </summary>
+    /// <remarks>
+    /// Doubling alone converges, but it converges from wherever the refused ceiling happened to sit,
+    /// and several of them sit low: the last-resort string interpreter stops at 750,000 and the
+    /// loader passes at 4,000,000. Reaching the figure a large module needs from there takes three or
+    /// four rounds, and a round is a whole run of the tool rather than an arithmetic step, so the
+    /// doubling costs far more than the budget it is negotiating.
+    ///
+    /// Naming a larger figure up front costs nothing when it is not reached, because steps are only
+    /// spent as they are taken; naming too small a one costs another run. At the 2,050 to 2,550 steps
+    /// per protected method the loader bootstrap is measured to take, this covers a module of some
+    /// 4,000 of them, which is larger than every sample on hand bar one, so a single retry usually
+    /// settles it. Above this the doubling takes over again, so a module that needs more still gets
+    /// there.
+    /// </remarks>
+    private const long StepsWorthRetrying = 10_000_000;
+
     /// <summary>
     /// What would raise a budget the run exhausted, with a figure already in it.
     /// </summary>
     /// <remarks>
-    /// Twice what was refused, which is a starting point rather than a promise: the tool has no way
-    /// of knowing how much further the sample had to go. It is worth naming a figure anyway, because
-    /// a remedy a caller can apply without arithmetic is the difference between a loop that runs and
-    /// a loop that has to be written. Retrying converges quickly if it converges at all, since each
-    /// refusal doubles what the last one asked for.
+    /// A starting point rather than a promise: the tool has no way of knowing how much further the
+    /// sample had to go. It is worth naming a figure anyway, because a remedy a caller can apply
+    /// without arithmetic is the difference between a loop that runs and a loop that has to be
+    /// written. The figure only leaves the bottom for steps, since the other budgets are counted in
+    /// units where ten million is either meaningless or already exceeded: a recursion depth is 64.
     /// </remarks>
     public static Remedy Budget(string budget, long beyond) =>
-        new("budgets", budget, JsonText.Of(Doubled(beyond)));
+        new("budgets", budget, JsonText.Of(Raised(budget, beyond)));
+
+    /// <summary>Twice a budget, or the figure a step budget is worth retrying at if that is more.
+    /// </summary>
+    private static long Raised(string budget, long beyond) =>
+        string.Equals(budget, StepBudget, StringComparison.Ordinal)
+            ? Math.Max(StepsWorthRetrying, Doubled(beyond))
+            : Doubled(beyond);
 
     /// <summary>Twice a budget, short of overflowing.</summary>
     private static long Doubled(long budget) =>

@@ -126,8 +126,11 @@ public sealed class BlockerTests
     /// a figure rather than an instruction to think of one.
     /// </summary>
     /// <remarks>
-    /// The figure being twice what was refused is worth pinning down, because it is what makes a
-    /// caller that keeps applying what it is told converge instead of creeping up by one.
+    /// The figure is worth pinning down, because it is what makes a caller that keeps applying what
+    /// it is told converge instead of creeping up by one. A step budget does not merely double from
+    /// whatever it was refused at: doubling out of a small ceiling spends several whole runs of the
+    /// tool reaching a figure that was predictable from the start, so the first retry goes straight
+    /// to one worth making.
     /// </remarks>
     [Fact]
     public void ABudgetStopCarriesAFigureAnAgentCanApplyUnchanged()
@@ -141,9 +144,28 @@ public sealed class BlockerTests
         Assert.NotNull(remedy);
         Assert.Equal("budgets", remedy.Section);
         Assert.Equal("steps", remedy.Name);
-        Assert.Equal("32", remedy.Value.Text);
+        Assert.Equal("10000000", remedy.Value.Text);
         Assert.Null(remedy.Wants);
         Assert.Null(remedy.Flag);
+    }
+
+    /// <summary>
+    /// Past the figure a first retry is worth making, doubling takes over again, so a module that
+    /// needs more than it still converges rather than being told the same number twice.
+    /// </summary>
+    [Fact]
+    public void AStepBudgetAlreadyWorthRetryingDoublesInstead() =>
+        Assert.Equal("24000000", Declaring.Budget("steps", 12_000_000).Value.Text);
+
+    /// <summary>
+    /// Only steps start off the bottom. The other budgets are counted in units where ten million
+    /// would be a nonsense: a recursion depth of ten million is not a depth anyone meant to ask for.
+    /// </summary>
+    [Fact]
+    public void TheOtherBudgetsStillOnlyDouble()
+    {
+        Assert.Equal("128", Declaring.Budget("depth", 64).Value.Text);
+        Assert.Equal("536870912", Declaring.Budget("allocatedBytes", 268_435_456).Value.Text);
     }
 
     /// <summary>
@@ -225,7 +247,7 @@ public sealed class BlockerTests
         Assert.Equal(
             "\"facts\": { \"registry:HKEY_CURRENT_USER\\\\Software\\\\X!blob\": <value> }",
             supplied.Describe());
-        Assert.Equal("\"budgets\": { \"steps\": 1500000 }", complete.Describe());
+        Assert.Equal("\"budgets\": { \"steps\": 10000000 }", complete.Describe());
     }
 
     /// <summary>

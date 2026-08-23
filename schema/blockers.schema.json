@@ -100,7 +100,7 @@
           "type": "string"
         },
         "Value": {
-          "description": "What to write there. A budget carries a figure already — twice what was refused, as a starting point rather than a promise."
+          "description": "What to write there. A budget carries a figure already, as a starting point rather than a promise: a step budget starts at 10000000 and doubles from there, and every other budget is twice what was refused."
         },
         "Wants": {
           "description": "What the caller has to decide, named as a type where the tool knows one. Null where the tool filled the value in itself.",

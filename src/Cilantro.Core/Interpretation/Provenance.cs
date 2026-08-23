@@ -92,20 +92,36 @@ public sealed class ProvenanceGraph
         string detail) =>
         value.WithProvenance(Intern(kind, location, detail, value, []));
 
+    /// <summary>Records a value as having been computed from the values it came from.</summary>
+    /// <remarks>
+    /// On the hot path of the machine, so it accounts for its inputs without allocating: the inputs
+    /// arrive in a span the caller does not have to put on the heap, and the parents are collected
+    /// into one small enough to stand on the stack. Distinctness is checked by looking down the few
+    /// found so far, an instruction having only ever a handful of operands.
+    /// </remarks>
     public StaticValue Operation(
         StaticValue value,
         ProvenanceKind kind,
         string location,
         string detail,
-        params StaticValue[] inputs)
+        params ReadOnlySpan<StaticValue> inputs)
     {
-        var parents = inputs
-            .Select(input => input.ProvenanceId)
-            .Where(id => id != 0)
-            .Distinct()
-            .ToArray();
-        return value.WithProvenance(Intern(kind, location, detail, value, parents));
+        Span<int> parents = inputs.Length <= MostOperandsOnTheStack
+            ? stackalloc int[MostOperandsOnTheStack]
+            : new int[inputs.Length];
+        var found = 0;
+        foreach (var input in inputs)
+        {
+            var id = input.ProvenanceId;
+            if (id == 0 || parents[..found].Contains(id))
+                continue;
+            parents[found++] = id;
+        }
+        return value.WithProvenance(Intern(kind, location, detail, value, parents[..found]));
     }
+
+    /// <summary>Enough for the operands of any instruction, past which the heap is used instead.</summary>
+    private const int MostOperandsOnTheStack = 8;
 
     public string Render(int id)
     {
@@ -137,11 +153,15 @@ public sealed class ProvenanceGraph
         string location,
         string detail,
         StaticValue value,
-        int[] parents)
+        ReadOnlySpan<int> parents)
     {
-        var depth = parents.Length == 0
-            ? 1
-            : parents.Max(id => id > 0 && id <= _nodes.Count ? _nodes[id - 1].Depth : 0) + 1;
+        var deepest = 0;
+        foreach (var parent in parents)
+        {
+            if (parent > 0 && parent <= _nodes.Count)
+                deepest = Math.Max(deepest, _nodes[parent - 1].Depth);
+        }
+        var depth = parents.Length == 0 ? 1 : deepest + 1;
         if (_nodes.Count >= _maximumNodes - 1 || depth > _maximumDepth)
             return BudgetNode();
         var key = new ProvenanceKey(
@@ -150,12 +170,16 @@ public sealed class ProvenanceGraph
             detail,
             value.Kind,
             value.Bits,
-            string.Join(",", parents));
+            parents.Length > 0 ? parents[0] : 0,
+            parents.Length > 1 ? parents[1] : 0,
+            // Only an operation with more parents than an instruction has operands pays for a string,
+            // and no parent is ever node zero, so the first two stand apart from having none.
+            parents.Length > 2 ? string.Join(",", parents[2..].ToArray()) : string.Empty);
         if (_ids.TryGetValue(key, out var existing))
             return existing;
         var id = _nodes.Count + 1;
         _nodes.Add(new ProvenanceNode(
-            id, kind, location, detail, value.Kind, value.Bits, parents, depth));
+            id, kind, location, detail, value.Kind, value.Bits, parents.ToArray(), depth));
         _ids.Add(key, id);
         return id;
     }
@@ -184,5 +208,7 @@ public sealed class ProvenanceGraph
         string Detail,
         StaticValueKind ValueKind,
         long ValueBits,
-        string Parents);
+        int FirstParent,
+        int SecondParent,
+        string FurtherParents);
 }

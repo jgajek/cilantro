@@ -769,6 +769,20 @@ public sealed class StaticHeap
         return true;
     }
 
+    /// <summary>The bytes a read of a primitive array sees, from the elements the range covers.</summary>
+    /// <remarks>
+    /// Only the elements the range actually overlaps are converted. Converting the whole array on
+    /// every access is what this used to do, and on the buffers a protector decrypts into it was the
+    /// single largest cost in the tool: a mapped image is megabytes, so each four-byte read walked
+    /// millions of elements and allocated a copy of the array, which for anything that size is the
+    /// large object heap and a gen2 collection behind it.
+    ///
+    /// An element width need not divide the range, so the first and last element the run touches may
+    /// each be only partly wanted, and the byte arithmetic is in whole elements for that reason. One
+    /// consequence of narrowing the work is worth stating: an element outside the range that holds
+    /// nothing concrete no longer refuses the read. That is the better answer rather than a tolerated
+    /// one, since what a read of these bytes sees cannot depend on bytes it does not address.
+    /// </remarks>
     private static bool TryReadArrayBytes(
         HeapArray array,
         int offset,
@@ -778,21 +792,32 @@ public sealed class StaticHeap
         var byteLength = checked(array.Values.Length * width);
         if (width == 0 || offset < 0 || offset > byteLength - destination.Length)
             return false;
-        var bytes = new byte[byteLength];
-        for (var index = 0; index < array.Values.Length; index++)
+        if (destination.Length == 0)
+            return true;
+
+        Span<byte> element = stackalloc byte[MaximumPrimitiveWidth];
+        var wanted = element[..width];
+        var last = (offset + destination.Length - 1) / width;
+        for (var index = offset / width; index <= last; index++)
         {
-            if (!TryWriteElementBytes(
-                    array.ElementType,
-                    array.Values[index],
-                    bytes.AsSpan(index * width, width)))
-            {
+            if (!TryWriteElementBytes(array.ElementType, array.Values[index], wanted))
                 return false;
-            }
+            var start = index * width;
+            var from = Math.Max(start, offset);
+            var to = Math.Min(start + width, offset + destination.Length);
+            wanted[(from - start)..(to - start)].CopyTo(destination[(from - offset)..]);
         }
-        bytes.AsSpan(offset, destination.Length).CopyTo(destination);
         return true;
     }
 
+    /// <summary>Puts bytes into a primitive array, disturbing only the elements they land in.</summary>
+    /// <remarks>
+    /// The counterpart to reading, and narrow for the same reason. An element the range covers whole
+    /// is rebuilt from the incoming bytes alone; one covered in part has to keep the bytes of its old
+    /// value underneath the ones replacing them, so that element alone is read first. Every element
+    /// outside the range keeps the value and the provenance it already had, rather than being taken
+    /// apart and put back together as it once was.
+    /// </remarks>
     private static bool TryWriteArrayBytes(
         HeapArray array,
         int offset,
@@ -802,21 +827,27 @@ public sealed class StaticHeap
         var byteLength = checked(array.Values.Length * width);
         if (width == 0 || offset < 0 || offset > byteLength - source.Length)
             return false;
-        var bytes = new byte[byteLength];
-        if (!TryReadArrayBytes(array, 0, bytes))
-            return false;
-        source.CopyTo(bytes.AsSpan(offset, source.Length));
-        for (var index = 0; index < array.Values.Length; index++)
+        if (source.Length == 0)
+            return true;
+
+        Span<byte> element = stackalloc byte[MaximumPrimitiveWidth];
+        var replaced = element[..width];
+        var last = (offset + source.Length - 1) / width;
+        for (var index = offset / width; index <= last; index++)
         {
-            var provenanceId = array.Values[index].ProvenanceId;
-            if (!TryReadElementBytes(
-                    array.ElementType,
-                    bytes.AsSpan(index * width, width),
-                    out var value))
+            var start = index * width;
+            var from = Math.Max(start, offset);
+            var to = Math.Min(start + width, offset + source.Length);
+            var existing = array.Values[index];
+            if ((from != start || to != start + width) &&
+                !TryWriteElementBytes(array.ElementType, existing, replaced))
             {
                 return false;
             }
-            array.Values[index] = value.WithProvenance(provenanceId);
+            source[(from - offset)..(to - offset)].CopyTo(replaced[(from - start)..]);
+            if (!TryReadElementBytes(array.ElementType, replaced, out var value))
+                return false;
+            array.Values[index] = value.WithProvenance(existing.ProvenanceId);
         }
         return true;
     }
@@ -927,6 +958,9 @@ public sealed class StaticHeap
         normalized = normalized.WithProvenance(provenanceId);
         return true;
     }
+
+    /// <summary>The widest primitive element, which is what a single element buffer has to hold.</summary>
+    private const int MaximumPrimitiveWidth = 8;
 
     private static int PrimitiveWidth(string type) => type switch
     {

@@ -26,7 +26,7 @@ public sealed class NextDeclarationsTests
         Assert.Empty(draft.Wanted);
         Assert.Empty(draft.Flags);
         var declared = RunDeclarations.Parse(draft.Json, "next");
-        Assert.Equal(1_500_000, declared.Budgets.Steps);
+        Assert.Equal(10_000_000, declared.Budgets.Steps);
     }
 
     /// <summary>
@@ -102,7 +102,7 @@ public sealed class NextDeclarationsTests
 
         var declared = RunDeclarations.Parse(second.Json, "next");
         Assert.Equal("ptnifif", declared.Name);
-        Assert.Equal(1_500_000, declared.Budgets.Steps);
+        Assert.Equal(10_000_000, declared.Budgets.Steps);
         Assert.True(declared.Facts.TryAnswer("env:MachineName", out var answer));
         Assert.Equal("DESKTOP-7QK2", answer.Text);
     }
