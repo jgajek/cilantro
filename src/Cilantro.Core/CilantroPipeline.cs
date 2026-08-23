@@ -570,7 +570,7 @@ public sealed record PipelineResult(
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.4.0";
+    public const string Version = "0.5.0";
 
     /// <summary>
     /// How everything the tool writes as JSON is written, so that all of it reads the same way.
