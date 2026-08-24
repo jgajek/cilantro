@@ -112,7 +112,7 @@ The input has 36 distinct string literals, 673 types and 3,708 methods.
 | | CILantro | NETReactorSlayer | de4dotEx | Krypton |
 | --- | --- | --- | --- | --- |
 | Produced an output file | yes | only with its string stage switched off | only when told which obfuscator | yes |
-| Wall time | 59s | 2.9s | 2.3s | 18s |
+| Wall time | 45s | 2.9s | 2.3s | 18s |
 | **Distinct string literals in the output** | **192** | 31 | 8 | **0** |
 | Reactor's own 17 string sites | **all 17** (11 distinct literals) | none | **all 17** (7 of those 11) | none |
 | The inner layer's 155 string sites | **all 155** | none, all 155 left as calls | none, all 155 left as calls | not reached |
@@ -189,8 +189,8 @@ Read the table as one hard sample, not a ranking.
   came out byte-identical to one with that stage disabled. **On Windows both
   would do better than this**, and Slayer's string stage might well succeed
   outright — that is the whole point of invoking the real decrypter.
-- **We are much slower.** 59s against 2.3s. Most of that is reading the virtual
-  machine, and `--no-devirtualize` cuts it further with all 172 strings still
+- **We are much slower.** 45s against 2.3s. A third of that is reading the virtual
+  machine: `--no-devirtualize` brings it to 29s with all 172 strings still
   recovered, so the string result does not depend on the rebuild. Interpreting a
   loader instead of running it costs more than an order of magnitude, every time.
   It used to cost nearly seven minutes here; the interpreter was doing work

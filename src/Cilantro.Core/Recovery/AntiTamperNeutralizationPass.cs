@@ -26,8 +26,15 @@ namespace Cilantro.Core.Recovery;
 /// reads any field the subtree wrote. The strong-name probe, when it is entangled with method
 /// patching, is deliberately left to the opt-in runtime-cleanup pass.
 ///
-/// When the evidence does not single out one such frame the pass declines instead of choosing, and
-/// it never edits a body outside the module initializer.
+/// When the evidence does not single out one such frame the pass declines instead of choosing.
+///
+/// Where the calls to that frame live is a separate question from whether removing it is sound.
+/// Reactor injects the gate at the head of every type initializer, so an edit confined to the global
+/// initializer would leave the other callers still running the check that the removal was for. What
+/// the proof above establishes — an argument-free void frame whose one remaining channel is static
+/// fields nothing outside it reads — is that executing the frame is unobservable to surviving code,
+/// and that holds wherever it is called from. So every reachable call goes at once, or none does,
+/// and a reference that names the frame without calling it outright is one this pass declines.
 /// </remarks>
 public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
 {
@@ -120,27 +127,26 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
             ]);
         }
 
-        var calls = FindInitializerCalls(context.Module, initializer, entryPoint);
-        if (calls.Length == 0)
+        if (!TryFindCalls(context.Module, entryPoint, out var calls, out var callDiagnostic))
         {
             return (PassStatus.Partial, 0,
             [
-                $"Integrity frame {entryPoint.MDToken} has no reachable call in the initializer.",
+                $"Integrity frame {entryPoint.MDToken} was left in place: {callDiagnostic}.",
                 "No instruction was modified."
             ]);
         }
 
-        using var transaction = new BodyMutationTransaction(initializer);
+        var callers = calls.Select(item => item.Method).Distinct().ToArray();
+        var transactions = callers.ToDictionary(
+            method => method, method => new BodyMutationTransaction(method));
         try
         {
-            foreach (var call in calls)
+            foreach (var (_, call) in calls)
             {
                 call.OpCode = OpCodes.Nop;
                 call.Operand = null;
             }
-            var remaining = CfgDeadCodePass.ComputeReachable(initializer)
-                .Count(instruction => instruction.Operand is IMethod called &&
-                    called.ResolveMethodDef() == entryPoint);
+            var remaining = References(context.Module, entryPoint).Length;
             if (remaining != 0)
                 throw new InvalidOperationException(
                     $"{remaining} reachable integrity call(s) survived neutralization.");
@@ -150,29 +156,36 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
                 context.OriginalStructure);
             if (!verification.Passed)
                 throw new InvalidOperationException(string.Join("; ", verification.Diagnostics));
-            transaction.Commit();
+            foreach (var transaction in transactions.Values)
+                transaction.Commit();
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException)
         {
-            transaction.Rollback();
+            foreach (var transaction in transactions.Values)
+                transaction.Rollback();
             return (PassStatus.Failed, 0,
             [
                 $"Integrity neutralization was rolled back: {exception.Message}"
             ]);
         }
+        finally
+        {
+            foreach (var transaction in transactions.Values)
+                transaction.Dispose();
+        }
 
-        foreach (var call in calls)
+        foreach (var (caller, call) in calls)
         {
             context.AddChange(new ChangeRecord(
                 Name,
                 "neutralize-integrity-check",
-                $"{initializer.MDToken} IL_{call.Offset:X4}",
+                $"{caller.MDToken} IL_{call.Offset:X4}",
                 $"Removed the proven integrity-verification frame {entryPoint.MDToken}."));
         }
         context.SetFact("antitamper.neutralized", true);
         context.SetFact("antitamper.entryPoint", entryPoint.MDToken.Raw);
-        // The subtree ran only to serve the initializer call that is now gone.
+        // The subtree ran only to serve the calls that are now gone.
         var byToken = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
             .ToDictionary(method => method.MDToken.Raw);
@@ -181,14 +194,16 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
             subtree!.Where(byToken.ContainsKey).Select(token => byToken[token]));
         context.AddEvidence(new Evidence(
             "antitamper-neutralized",
-            $"Removed {calls.Length} initializer call(s) to {entryPoint.MDToken}, whose subtree " +
-            $"verified a signature (verdict true), read no other memory channel, and wrote only " +
-            $"{effects.StaticFieldsWritten.Count} static field(s) no surviving method reads.",
+            $"Removed {calls.Length} call(s) to {entryPoint.MDToken} across {callers.Length} " +
+            $"method(s), whose subtree verified a signature (verdict true), read no other memory " +
+            $"channel, and wrote only {effects.StaticFieldsWritten.Count} static field(s) no " +
+            $"surviving method reads.",
             $"{entryPoint.MDToken} {entryPoint.FullName}",
             0.95));
         return (PassStatus.Success, calls.Length,
         [
-            $"Removed {calls.Length} initializer call(s) to integrity frame {entryPoint.MDToken}.",
+            $"Removed {calls.Length} call(s) to integrity frame {entryPoint.MDToken} across " +
+            $"{callers.Length} method(s).",
             $"Its subtree performed {integrityFrames.Length} integrity observation(s) including " +
             $"{verificationFrames.Length} passing signature verification(s).",
             effects.StaticFieldsWritten.Count == 0
@@ -342,14 +357,52 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
         return left.Take(length).ToArray();
     }
 
-    private static Instruction[] FindInitializerCalls(
+    /// <summary>
+    /// Collects every reachable direct call to the integrity frame, wherever in the module it sits.
+    /// </summary>
+    /// <remarks>
+    /// The two ways this comes back empty are worth telling apart, because they send whoever reads
+    /// the diagnostic looking in opposite directions: a frame nothing reaches any more needs no
+    /// removing at all, while a frame reached by something other than a plain call is one whose
+    /// route this pass cannot follow to its end and so will not cut.
+    /// </remarks>
+    internal static bool TryFindCalls(
         ModuleDef module,
-        MethodDef initializer,
-        MethodDef entryPoint)
+        MethodDef entryPoint,
+        out (MethodDef Method, Instruction Instruction)[] calls,
+        out string diagnostic)
     {
-        // A call anywhere but the initializer means the entry point is shared, so removing it
-        // there would be a change this pass has not proven.
-        var reachable = module.GetTypes()
+        calls = [];
+        var references = References(module, entryPoint);
+        if (references.Length == 0)
+        {
+            diagnostic = "no reachable call to it survives anywhere in the module";
+            return false;
+        }
+
+        // A function pointer taken for a delegate names the frame without calling it, and nopping
+        // the calls around it would leave that route open while reporting the gate as removed.
+        var indirect = references
+            .Where(item => item.Instruction.OpCode.Code != Code.Call)
+            .ToArray();
+        if (indirect.Length != 0)
+        {
+            diagnostic =
+                $"{indirect.Length} of {references.Length} reference(s) reach it other than by a " +
+                $"direct call, the first a {indirect[0].Instruction.OpCode.Name} in " +
+                $"{indirect[0].Method.MDToken}";
+            return false;
+        }
+
+        calls = references;
+        diagnostic = string.Empty;
+        return true;
+    }
+
+    private static (MethodDef Method, Instruction Instruction)[] References(
+        ModuleDef module,
+        MethodDef entryPoint) =>
+        module.GetTypes()
             .SelectMany(type => type.Methods)
             .Where(method => method.HasBody)
             .SelectMany(method => CfgDeadCodePass.ComputeReachable(method)
@@ -357,10 +410,4 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
                     called.ResolveMethodDef() == entryPoint)
                 .Select(instruction => (Method: method, Instruction: instruction)))
             .ToArray();
-        if (reachable.Length == 0 ||
-            reachable.Any(item => item.Method != initializer ||
-                item.Instruction.OpCode.FlowControl != FlowControl.Call))
-            return [];
-        return reachable.Select(item => item.Instruction).ToArray();
-    }
 }

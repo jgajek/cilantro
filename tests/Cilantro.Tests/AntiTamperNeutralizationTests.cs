@@ -83,6 +83,120 @@ public sealed class AntiTamperNeutralizationTests
         Assert.Contains(reader.MDToken.Raw, subtree);
     }
 
+    /// <summary>
+    /// Reactor puts the gate at the head of every type initializer, so a frame with one caller is
+    /// the exception. Confining the edit to the global initializer left the rest of them running the
+    /// check the removal was for, which is what withheld the cleaned copy on such a sample.
+    /// </summary>
+    [Fact]
+    public void EveryCallerOfTheGateIsCollected()
+    {
+        using var module = BuildGateModule(GateReference.TwoDirectCalls);
+        var gate = Gate(module);
+
+        var found = AntiTamperNeutralizationPass.TryFindCalls(
+            module, gate, out var calls, out var diagnostic);
+
+        Assert.True(found);
+        Assert.Equal(2, calls.Length);
+        Assert.Equal(2, calls.Select(item => item.Method).Distinct().Count());
+        Assert.Empty(diagnostic);
+    }
+
+    /// <summary>
+    /// The two ways the search comes back empty send a reader in opposite directions, so they are
+    /// held apart here: this one means the gate is already unreachable.
+    /// </summary>
+    [Fact]
+    public void AGateNothingCallsIsDeclinedAsUnreached()
+    {
+        using var module = BuildGateModule(GateReference.None);
+        var gate = Gate(module);
+
+        var found = AntiTamperNeutralizationPass.TryFindCalls(
+            module, gate, out var calls, out var diagnostic);
+
+        Assert.False(found);
+        Assert.Empty(calls);
+        Assert.Contains("no reachable call", diagnostic);
+    }
+
+    /// <summary>
+    /// And this one means there is a route to the gate whose end the pass cannot see, where nopping
+    /// the calls it can account for would report a gate removed that is still reachable.
+    /// </summary>
+    [Fact]
+    public void AGateNamedWithoutBeingCalledIsDeclined()
+    {
+        using var module = BuildGateModule(GateReference.FunctionPointer);
+        var gate = Gate(module);
+
+        var found = AntiTamperNeutralizationPass.TryFindCalls(
+            module, gate, out var calls, out var diagnostic);
+
+        Assert.False(found);
+        Assert.Empty(calls);
+        Assert.Contains("other than by a direct call", diagnostic);
+    }
+
+    private enum GateReference
+    {
+        None,
+        TwoDirectCalls,
+        FunctionPointer
+    }
+
+    private static MethodDef Gate(ModuleDefMD module) => module.Types
+        .Single(type => type.Name == "Runtime")
+        .Methods.Single(method => method.Name == "Gate");
+
+    private static ModuleDefMD BuildGateModule(GateReference reference)
+    {
+        var module = new ModuleDefUser("gate.dll") { Kind = ModuleKind.Dll };
+        var assembly = new AssemblyDefUser("gate", new Version(1, 0));
+        assembly.Modules.Add(module);
+        var type = new TypeDefUser("Tests", "Runtime", module.CorLibTypes.Object.TypeDefOrRef);
+        module.Types.Add(type);
+
+        var gate = NewStaticVoid("Gate");
+        gate.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(gate);
+
+        switch (reference)
+        {
+            case GateReference.TwoDirectCalls:
+                foreach (var name in (string[])["First", "Second"])
+                {
+                    var caller = NewStaticVoid(name);
+                    caller.Body.Instructions.Add(Instruction.Create(OpCodes.Call, gate));
+                    caller.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+                    type.Methods.Add(caller);
+                }
+                break;
+            case GateReference.FunctionPointer:
+                var taker = NewStaticVoid("Taker");
+                taker.Body.Instructions.Add(Instruction.Create(OpCodes.Ldftn, gate));
+                taker.Body.Instructions.Add(Instruction.Create(OpCodes.Pop));
+                taker.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+                type.Methods.Add(taker);
+                break;
+            default:
+                break;
+        }
+
+        using var stream = new MemoryStream();
+        module.Write(stream);
+        return ModuleDefMD.Load(stream.ToArray());
+
+        MethodDefUser NewStaticVoid(string name) => new(
+            name,
+            MethodSig.CreateStatic(module.CorLibTypes.Void))
+        {
+            Attributes = MethodAttributes.Public | MethodAttributes.Static,
+            Body = new CilBody()
+        };
+    }
+
     private static PipelineResult RunAnalyze(string filename)
     {
         var sample = Checkout.Sample(filename);

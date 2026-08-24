@@ -73,7 +73,7 @@ protected twice, with a second obfuscator hiding strings underneath Reactor
 | Of the 172 encrypted string sites | **all 172** | none | 17 | none |
 | C2 address, port, campaign ID | **recovered** | no | no | no |
 | Ran the sample | **no** | yes — and crashed there | no | tried to |
-| Time | 6m 55s | 2.9s | 2.3s | 18s |
+| Time | 45s | 2.9s | 2.3s | 18s |
 
 Only this tool's output names the thing: `https://logs.uvexio.com` on port 8443,
 campaign `36f871795ba82`, and the sample's full anti-analysis blacklist from
@@ -84,7 +84,7 @@ the outer layer before the inner one is even legible — and Reactor's own table
 here is built by a method that is no longer CIL. That is the case this tool is
 built for.
 
-It is also slower than every alternative by more than an order of magnitude, and
+It is also the slowest of the four, twenty times slower than the quickest, and
 on Windows the two tools that run the sample would do better than they did here.
 [docs/parity.md](docs/parity.md) has the full measurement, the reproduction
 commands, and where this tool loses.
@@ -449,15 +449,15 @@ through the machine:
 dotnet test Cilantro.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 426 of the 434 tests in about three seconds, against the three and a half
-minutes those eight cost between them. They still run on a plain `dotnet test`,
+That is 429 of the 437 tests in about four seconds, against the three minutes
+those eight cost between them. They still run on a plain `dotnet test`,
 which is what to do before pushing, because they are the ones that prove the tool
 recovers real malware.
 
 When the change is to one pass and you need a real sample to see it, skip the
 passes that come after the one you are working on rather than waiting for the
-whole pipeline. Payload extraction and virtualization disassembly account for most
-of a minute on their own, and nothing before them depends on either:
+whole pipeline. Payload extraction and virtualization disassembly account for about
+half the run on their own, and nothing before them depends on either:
 
 ```bash
 cat > /tmp/fast.json <<'JSON'
@@ -467,7 +467,7 @@ dotnet run --project src/Cilantro.Cli -c Release --no-build -- \
     samples/NAME.exe --analyze-only --declarations /tmp/fast.json --report-dir /tmp/loop
 ```
 
-Sixteen seconds instead of a minute, and the report still carries
+Fifteen seconds instead of twenty-nine, and the report still carries
 the passes you kept, with their diagnostics and blockers. The output is not a
 recovery — skipping a pass that gates emission means no cleaned copy is written,
 which is the point: this is for reading a report, and the full run is what says
