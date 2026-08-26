@@ -1256,6 +1256,91 @@ public sealed class StaticMachineTests
         Assert.Equal(StaticExecutionStatus.InvalidProgram, denied.Status);
     }
 
+    /// <summary>
+    /// A loader can reach its own image either by walking <c>Process.Modules</c> or by asking for
+    /// <c>MainModule</c>. Both have to describe the analysed image, and the path it names has to be
+    /// the one file this machine will open, or a loader that reads its own bytes is refused.
+    /// </summary>
+    [Fact]
+    public void MainModuleDescribesTheAnalysedImageAndItsRegisteredPath()
+    {
+        using var module = NewModule();
+        var process = new TypeRefUser(
+            module,
+            "System.Diagnostics",
+            "Process",
+            module.CorLibTypes.AssemblyRef);
+        var processModule = new TypeRefUser(
+            module,
+            "System.Diagnostics",
+            "ProcessModule",
+            module.CorLibTypes.AssemblyRef);
+        var mainModule = new MemberRefUser(
+            module,
+            "get_MainModule",
+            MethodSig.CreateInstance(processModule.ToTypeSig()),
+            process);
+        var baseAddress = new MemberRefUser(
+            module,
+            "get_BaseAddress",
+            MethodSig.CreateInstance(module.CorLibTypes.IntPtr),
+            processModule);
+        var fileName = new MemberRefUser(
+            module,
+            "get_FileName",
+            MethodSig.CreateInstance(module.CorLibTypes.String),
+            processModule);
+        var state = new StaticMachineState(new StaticMachineLimits());
+        state.RegisterAssemblyIdentity("subject", []);
+        state.RegisterModuleFile("/samples/subject.exe", new byte[64]);
+        Assert.True(state.TryRegisterImage(new byte[4096], 0x0040_0000));
+        Assert.True(state.Heap.TryAllocateObject("System.Diagnostics.Process", out var receiver));
+        var intrinsic = new LoaderFrameworkIntrinsic();
+        var context = new IntrinsicContext(state);
+
+        var main = intrinsic.Invoke(context, mainModule, [receiver]);
+        Assert.Equal(StaticExecutionStatus.Completed, main.Status);
+        var located = intrinsic.Invoke(context, baseAddress, [main.Value]);
+        var named = intrinsic.Invoke(context, fileName, [main.Value]);
+
+        Assert.True(state.Heap.TryGetNativeAddress(located.Value, out var address));
+        Assert.Equal(0x0040_0000, address);
+        Assert.True(state.Heap.TryGetString(named.Value, out var path));
+        Assert.Equal("/samples/subject.exe", path);
+    }
+
+    /// <summary>
+    /// Without a registered image there is no main module to describe, and saying so is the honest
+    /// answer rather than handing back the runtime's own module.
+    /// </summary>
+    [Fact]
+    public void MainModuleIsRefusedBeforeTheImageIsRegistered()
+    {
+        using var module = NewModule();
+        var process = new TypeRefUser(
+            module,
+            "System.Diagnostics",
+            "Process",
+            module.CorLibTypes.AssemblyRef);
+        var processModule = new TypeRefUser(
+            module,
+            "System.Diagnostics",
+            "ProcessModule",
+            module.CorLibTypes.AssemblyRef);
+        var mainModule = new MemberRefUser(
+            module,
+            "get_MainModule",
+            MethodSig.CreateInstance(processModule.ToTypeSig()),
+            process);
+        var state = new StaticMachineState(new StaticMachineLimits());
+        Assert.True(state.Heap.TryAllocateObject("System.Diagnostics.Process", out var receiver));
+
+        var refused = new LoaderFrameworkIntrinsic()
+            .Invoke(new IntrinsicContext(state), mainModule, [receiver]);
+
+        Assert.Equal(StaticExecutionStatus.InvalidProgram, refused.Status);
+    }
+
     [Fact]
     public void ProcessModuleBaseAddressHasStableSyntheticIdentity()
     {

@@ -49,15 +49,26 @@ public sealed class PeImageView
 {
     public const int DefaultMaximumMappedImageSize = 256 * 1024 * 1024;
 
+    /// <summary>The data-directory slot holding the CLI header of a managed image.</summary>
+    public const int CliHeaderDirectoryIndex = 14;
+
     private const int DosHeaderSize = 64;
     private const int CoffHeaderSize = 20;
     private const int SectionHeaderSize = 40;
+    private const int DataDirectorySize = 8;
+    private const int MaximumDataDirectories = 16;
+    private const int CliHeaderMetadataOffset = 8;
+    private const int CliHeaderMetadataFieldEnd = 16;
+    private const int Pe32DirectoriesOffset = 96;
+    private const int Pe32PlusDirectoriesOffset = 112;
     private const ushort Pe32Magic = 0x10B;
     private const ushort Pe32PlusMagic = 0x20B;
 
     private readonly byte[] _fileBytes;
     private readonly byte[] _mappedBytes;
     private readonly ReadOnlyCollection<PeSection> _sections;
+    private readonly int _dataDirectoryOffset;
+    private readonly int _dataDirectoryCount;
 
     public PeImageView(
         ReadOnlySpan<byte> bytes,
@@ -126,6 +137,21 @@ public sealed class PeImageView
         }
         if (AddressOfEntryPoint >= SizeOfImage && AddressOfEntryPoint != 0)
             throw Invalid("The entry point is outside the mapped image.");
+
+        // An optional header too short to reach its data directories is not rejected: plenty of
+        // images this tool only reads are shaped that way, and a caller asking for a directory it
+        // does not have is told so rather than being refused the whole file.
+        var directoriesRelative = IsPe32Plus ? Pe32PlusDirectoriesOffset : Pe32DirectoriesOffset;
+        if (optionalHeaderSize >= directoriesRelative)
+        {
+            var declaredDirectories = ReadUInt32(bytes, optionalOffset + directoriesRelative - 4);
+            var roomForDirectories =
+                (uint)((optionalHeaderSize - directoriesRelative) / DataDirectorySize);
+            _dataDirectoryCount = (int)Math.Min(
+                Math.Min(declaredDirectories, roomForDirectories),
+                MaximumDataDirectories);
+            _dataDirectoryOffset = optionalOffset + directoriesRelative;
+        }
 
         var sectionTableOffset = checked(optionalOffset + optionalHeaderSize);
         var sectionTableSize = checked((int)numberOfSections * SectionHeaderSize);
@@ -203,6 +229,60 @@ public sealed class PeImageView
             image = null;
             return false;
         }
+    }
+
+    /// <summary>Reads one PE data directory, if the optional header actually carries it.</summary>
+    public bool TryGetDataDirectory(int index, out uint rva, out uint size)
+    {
+        rva = 0;
+        size = 0;
+        if (index < 0 || index >= _dataDirectoryCount)
+            return false;
+        var offset = _dataDirectoryOffset + index * DataDirectorySize;
+        if (offset < 0 || offset > _fileBytes.Length - DataDirectorySize)
+            return false;
+        rva = BinaryPrimitives.ReadUInt32LittleEndian(_fileBytes.AsSpan(offset));
+        size = BinaryPrimitives.ReadUInt32LittleEndian(_fileBytes.AsSpan(offset + 4));
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves where the CLI metadata root begins in the file, the way the runtime resolves it:
+    /// through the CLI header named by the data directory.
+    /// </summary>
+    /// <remarks>
+    /// This is the answer to prefer over searching the file for the <c>BSJB</c> signature. A
+    /// protected assembly carries that signature as an ordinary <c>ldc.i4</c> operand wherever its
+    /// own anti-tamper code checks its header, and those method bodies can sit at lower file
+    /// offsets than the metadata they describe, so a first-match search lands on IL rather than on
+    /// the metadata root.
+    /// </remarks>
+    public bool TryGetCliMetadataFileRange(out int fileOffset, out int size)
+    {
+        fileOffset = 0;
+        size = 0;
+        if (!TryGetDataDirectory(CliHeaderDirectoryIndex, out var headerRva, out var headerSize) ||
+            headerRva == 0 ||
+            headerSize < CliHeaderMetadataFieldEnd ||
+            !TryRvaToFileOffset(headerRva, out var headerOffset) ||
+            !TryReadFile(headerOffset + CliHeaderMetadataOffset, 8, out var range))
+        {
+            return false;
+        }
+
+        var metadataRva = BinaryPrimitives.ReadUInt32LittleEndian(range.Span);
+        var metadataSize = BinaryPrimitives.ReadUInt32LittleEndian(range.Span[4..]);
+        if (metadataRva == 0 ||
+            metadataSize == 0 ||
+            metadataSize > int.MaxValue ||
+            !TryRvaToFileOffset(metadataRva, out fileOffset))
+        {
+            fileOffset = 0;
+            return false;
+        }
+
+        size = (int)metadataSize;
+        return true;
     }
 
     public bool TryRvaToFileOffset(uint rva, out int fileOffset)

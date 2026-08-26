@@ -8220,6 +8220,16 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         }
         if (name == "get_Handle" && arguments.Count == 1)
             return IntrinsicResult.Completed(StaticValue.FromInt64(0));
+        if (name == "get_MainModule" && arguments.Count == 1)
+        {
+            // The other way a loader reaches its own image. Walking Modules and asking for
+            // MainModule have to agree, or a protector that takes the short path is refused an
+            // answer the long path would have given it.
+            return TryCreateMappedImageModule(context, out var mainModule)
+                ? IntrinsicResult.Completed(mainModule)
+                : IntrinsicResult.Invalid(
+                    "Process.MainModule was asked for before the analysed image was registered.");
+        }
         if (name == "get_Modules" && arguments.Count == 1)
         {
             var heap = context.State.Heap;
@@ -8278,6 +8288,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             string.IsNullOrEmpty(context.State.AssemblyName)
                 ? "module.dll"
                 : context.State.AssemblyName + ".dll");
+        // FileName is a full path where ModuleName is only a leaf, and the distinction is load
+        // bearing: a loader that reads its own bytes opens what FileName gave it, and only the
+        // registered path is a file this machine will open.
+        if (context.State.ModulePath.Length != 0)
+            heap.TrySetModelValue(module, "FileName", context.State.ModulePath);
         return true;
     }
 
@@ -8312,6 +8327,14 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             arguments.Count == 1 &&
             name is "get_ModuleName" or "get_FileName")
         {
+            if (name == "get_FileName" &&
+                heap.TryGetModelValue(arguments[0], "FileName", out string? path) &&
+                !string.IsNullOrEmpty(path))
+            {
+                return heap.TryAllocateString(path, out var fileName)
+                    ? IntrinsicResult.Completed(fileName)
+                    : AllocationFailure("module file name");
+            }
             if (heap.TryGetModelValue(arguments[0], "ModuleName", out string? stored) &&
                 !string.IsNullOrEmpty(stored))
             {

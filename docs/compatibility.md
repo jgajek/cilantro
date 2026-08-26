@@ -1032,6 +1032,14 @@ verification. Any unmet condition preserves every body and refuses output.
 
 - Raw `BSJB`/tables-stream preflight records duplicate Module/Assembly rows,
   invalid stream bounds, and zero sorted masks before mutation.
+- The metadata root is taken from the CLI header the data directory names, which
+  is where the runtime reads it, rather than from the first `BSJB` in the file.
+  The signature is not unique to the root: a protector that verifies its own
+  header carries the same four bytes as an `ldc.i4` operand in every method that
+  performs the check, and those bodies routinely sit at lower file offsets than
+  the metadata they describe. Searching is kept for images whose header cannot be
+  believed, prefers aligned candidates, and requires a candidate to parse as a
+  root before accepting it; falling back to it is recorded as an anomaly.
 - Resource roles are inferred from consumers such as `ResolveMethod`,
   `GetManifestResourceStream`, `Assembly.Load`, and `string(int32)` resolvers.
 - Encrypted resource bundles are recovered by running the module's own bundle
