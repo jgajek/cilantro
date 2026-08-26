@@ -52,41 +52,104 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
 
         var budgets = BootstrapMachine.Environment(context).Declarations.Budgets;
         var executionRoot = context.Module.GlobalType.FindStaticConstructor() ?? bootstrap;
-        var ceiling = StepBudgetFor(stubs.Count);
         var raisings = new List<string>();
-        InterpretedRewrite? rewrite;
-        while (true)
+        var rounds = new List<string>();
+        var grafted = new HashSet<uint>();
+        InterpretedRewrite? rewrite = null;
+        InterpretedRewrite? appliedFrom = null;
+        AppliedRewrite? applied = null;
+        IReadOnlyList<string> applyDiagnostics = [];
+        var application = RewriteApplication.NothingToApply;
+
+        // A ceiling once raised stays raised across rounds. Raisings are capped for the pass rather
+        // than for a round, so starting each round back at the base would let a later round be
+        // stopped by a budget an earlier one had already been given.
+        var ceiling = StepBudgetFor(stubs.Count);
+
+        // One interpretation, raising the step ceiling for as long as that is all that stopped it.
+        bool Interpret(out InterpretedRewrite? interpreted, out string? failure)
         {
-            var limits = budgets.Over(new StaticMachineLimits(
-                MaximumSteps: ceiling,
-                MaximumRecursionDepth: 64,
-                MaximumAllocatedBytes: 256 * 1024 * 1024,
-                MaximumArrayLength: 256 * 1024 * 1024,
-                MaximumProvenanceNodes: 1_000_000,
-                MaximumProvenanceDepth: 8_192,
-                MaximumRenderedProvenanceNodes: 96));
-            if (!ImageRewriteRecovery.TryInterpret(
-                    context,
-                    executionRoot,
-                    limits,
-                    out rewrite,
-                    out var interpretDiagnostic) ||
-                rewrite is null)
+            while (true)
+            {
+                var limits = budgets.Over(new StaticMachineLimits(
+                    MaximumSteps: ceiling,
+                    MaximumRecursionDepth: 64,
+                    MaximumAllocatedBytes: 256 * 1024 * 1024,
+                    MaximumArrayLength: 256 * 1024 * 1024,
+                    MaximumProvenanceNodes: 1_000_000,
+                    MaximumProvenanceDepth: 8_192,
+                    MaximumRenderedProvenanceNodes: 96));
+                if (!ImageRewriteRecovery.TryInterpret(
+                        context,
+                        executionRoot,
+                        limits,
+                        out interpreted,
+                        out failure) ||
+                    interpreted is null)
+                {
+                    return false;
+                }
+                if (interpreted.Result.Status != StaticExecutionStatus.StepLimitExceeded ||
+                    raisings.Count == MostRaisings)
+                {
+                    return true;
+                }
+                // The ceiling actually in force, which a declared budget can have raised above ours.
+                ceiling = checked(limits.MaximumSteps * 2);
+                raisings.Add(
+                    $"The bootstrap reached its {limits.MaximumSteps}-step ceiling with nothing to show, " +
+                    $"so it was run again with {ceiling}.");
+            }
+        }
+
+        for (var round = 1; round <= MostRounds; round++)
+        {
+            if (!Interpret(out rewrite, out var interpretDiagnostic) || rewrite is null)
             {
                 return (PassStatus.Failed, 0,
                     [interpretDiagnostic!, "No method body or initializer was modified."]);
             }
-            if (rewrite.Result.Status != StaticExecutionStatus.StepLimitExceeded ||
-                raisings.Count == MostRaisings)
+
+            application = ImageRewriteRecovery.TryApply(
+                context,
+                policy,
+                rewrite.ImageWrites,
+                out var roundApplied,
+                out var roundDiagnostics);
+            if (application != RewriteApplication.Applied || roundApplied is null)
             {
+                // A later round being refused rolls back only its own graft, so whatever an earlier
+                // round proved is still in place. Its account of the module has to survive too, or
+                // the pass would report bodies it grafted as bodies it never touched.
+                if (applied is null)
+                {
+                    applyDiagnostics = roundDiagnostics;
+                }
+                else
+                {
+                    rounds.Add(
+                        $"Round {round} was refused and left the earlier rounds as they were" +
+                        (roundDiagnostics.Count == 0 ? "." : $": {roundDiagnostics[0]}"));
+                }
                 break;
             }
-            // The ceiling actually in force, which a declared budget can have raised above ours.
-            ceiling = checked(limits.MaximumSteps * 2);
-            raisings.Add(
-                $"The bootstrap reached its {limits.MaximumSteps}-step ceiling with nothing to show, " +
-                $"so it was run again with {ceiling}.");
+
+            applied = roundApplied;
+            appliedFrom = rewrite;
+            applyDiagnostics = roundDiagnostics;
+            var fresh = roundApplied.Recovered.Count(target => grafted.Add(target.Token));
+            if (rewrite.Result.Succeeded || fresh == 0 || round == MostRounds)
+                break;
+            rounds.Add(
+                $"Round {round} grafted {fresh} body(ies) the loader had already written when it " +
+                $"stopped at {rewrite.Result.Status}, then interpreted it again against them.");
         }
+
+        if (rewrite is null)
+            return (PassStatus.Failed, 0, ["The bootstrap was never interpreted."]);
+        // Everything reported below describes the module as it now stands, so it has to come from the
+        // round whose graft is in place rather than from a later round that was rolled back.
+        rewrite = appliedFrom ?? rewrite;
 
         var attempt = new MethodRecoveryAttempt(
             bootstrap.MDToken.Raw,
@@ -103,18 +166,6 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
             $"{rewrite.Result.Steps} steps, {rewrite.ImageWrites.Count} mapped-image writes.",
             $"{bootstrap.MDToken} {bootstrap.FullName}",
             rewrite.Result.Succeeded ? 0.95 : 0.75));
-
-        if (!rewrite.Result.Succeeded)
-        {
-            return (PassStatus.Unsupported, 0,
-            [
-                .. raisings,
-                $"Both bounded bootstrap interpretations stopped after {rewrite.Result.Steps} steps: " +
-                $"{rewrite.Result.Status}.",
-                rewrite.Result.Diagnostic ?? "No diagnostic was provided.",
-                "No method body or initializer was modified."
-            ]);
-        }
 
         // The loader seeds per-site resolver keys into instance fields of a singleton it roots
         // in a static field. Downstream string and boolean recovery cannot prove any call-site
@@ -143,17 +194,25 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 0.95));
         }
 
-        var application = ImageRewriteRecovery.TryApply(
-            context,
-            policy,
-            rewrite.ImageWrites,
-            out var applied,
-            out var applyDiagnostics);
-        if (application != RewriteApplication.Applied || applied is null)
+        if (applied is null)
         {
-            return (application == RewriteApplication.NothingToApply
-                ? PassStatus.Unsupported
-                : PassStatus.Failed, 0, applyDiagnostics);
+            // A run that finished and still wrote nothing usable is the old "nothing to apply". A run
+            // that stopped is reported as the stop it was, which is the more useful of the two.
+            if (rewrite.Result.Succeeded)
+            {
+                return (application == RewriteApplication.NothingToApply
+                    ? PassStatus.Unsupported
+                    : PassStatus.Failed, 0, applyDiagnostics);
+            }
+            return (PassStatus.Unsupported, 0,
+            [
+                .. raisings,
+                $"Both bounded bootstrap interpretations stopped after {rewrite.Result.Steps} steps: " +
+                $"{rewrite.Result.Status}.",
+                rewrite.Result.Diagnostic ?? "No diagnostic was provided.",
+                .. applyDiagnostics,
+                "No method body or initializer was modified."
+            ]);
         }
 
         // Only the bodies that came back are recorded as changed. A catalogued stub the loader never
@@ -169,18 +228,39 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 "Grafted deterministic statically restored CIL by unchanged MethodDef token."));
         }
         var restored = applied.Recovered.Count;
-        context.SetFact("method-protection.complete", true);
+        // Completeness is a claim about the loader having run to the end, not about how many bodies
+        // came back. A loader that stopped may have had more to write, so the passes that gate on
+        // this stay gated even though every body being reported here is individually proven.
+        var complete = rewrite.Result.Succeeded;
+        context.SetFact("method-protection.complete", complete);
         context.SetFact("method-protection.restored", restored);
-        return (PassStatus.Success, restored,
-        [
-            .. raisings,
-            restored == stubs.Count
+
+        var notes = new List<string>();
+        notes.AddRange(raisings);
+        notes.AddRange(rounds);
+        if (complete)
+        {
+            notes.Add(restored == stubs.Count
                 ? $"Restored and verified all {restored} protected method bodies."
-                : $"Restored and verified {restored} of {stubs.Count} catalogued method bodies.",
-            $"Replayed {rewrite.ImageWrites.Count} deterministic writes while preserving all bytes outside stub prefixes.",
-            .. applyDiagnostics,
-            "Removing the loader bootstrap itself is left to anti-tamper neutralization."
-        ]);
+                : $"Restored and verified {restored} of {stubs.Count} catalogued method bodies.");
+        }
+        else
+        {
+            notes.Add(
+                $"The bootstrap stopped at {rewrite.Result.Status} after {rewrite.Result.Steps} steps, " +
+                $"having already written {restored} of {stubs.Count} catalogued method bodies. Each was " +
+                "replayed, reparsed and verified before being grafted.");
+            notes.Add(rewrite.Result.Diagnostic ?? "No diagnostic was provided.");
+        }
+        notes.Add(
+            $"Replayed {rewrite.ImageWrites.Count} deterministic writes while preserving all bytes " +
+            "outside stub prefixes.");
+        notes.AddRange(applyDiagnostics);
+        notes.Add(complete
+            ? "Removing the loader bootstrap itself is left to anti-tamper neutralization."
+            : "Restoration is reported partial because the loader did not finish, so the passes that " +
+                "mutate a JIT-hook artifact stay gated.");
+        return (complete ? PassStatus.Success : PassStatus.Partial, restored, notes);
     }
 
     /// <summary>
@@ -216,6 +296,24 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
     /// that is the useful answer rather than spending longer to say the same thing.
     /// </remarks>
     internal const int MostRaisings = 3;
+
+    /// <summary>
+    /// How many times the bootstrap is interpreted again after grafting the bodies it had written.
+    /// </summary>
+    /// <remarks>
+    /// Reactor's own runtime is among the bodies its loader decrypts: on the samples measured here the
+    /// virtualization engine's methods are protected stubs like any other. Interpreting a stub reads
+    /// the placeholder rather than the engine, so a bootstrap that calls into its own virtualized code
+    /// stops on state that the engine would have built. Grafting what the loader has already written
+    /// and interpreting it again gives the second run the real engine to call, which is the state a
+    /// process is in once the JIT hook has fired.
+    ///
+    /// The loop stops as soon as a round recovers no body the previous rounds had not, so a module
+    /// whose loader runs to completion the first time pays nothing for this. Rounds are capped because
+    /// each one costs a full interpretation, and a bootstrap still finding new bodies on the fourth
+    /// pass is not converging on anything.
+    /// </remarks>
+    internal const int MostRounds = 3;
 
     private static MethodDef? FindBootstrap(ModuleDef module)
     {

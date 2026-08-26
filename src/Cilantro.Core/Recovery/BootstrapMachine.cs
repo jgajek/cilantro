@@ -188,31 +188,52 @@ public static class BootstrapMachine
         var candidate = new StaticMachine(
             Limits(maximumSteps, environment.Declarations.Budgets),
             modelTypeInitialization: true);
-        candidate.State.RegisterRunEnvironment(environment);
+        if (!TryTell(context, candidate, out diagnostic))
+            return false;
+
+        machine = candidate;
+        return true;
+    }
+
+    /// <summary>
+    /// Tells a machine everything known about the module it is about to interpret.
+    /// </summary>
+    /// <remarks>
+    /// There is more than one reason to run the loader — seeding a machine for a single method and
+    /// interpreting the whole bootstrap for method-body recovery — and they must be told the same
+    /// things. When they were not, the difference did not read as a missing registration; it read as
+    /// the loader refusing an operation, which is indistinguishable from an operation the tool has
+    /// genuinely not modeled. Keeping the telling in one place is what makes the two agree.
+    /// </remarks>
+    public static bool TryTell(ArtifactContext context, StaticMachine machine, out string diagnostic)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(machine);
+        diagnostic = string.Empty;
+        machine.State.RegisterRunEnvironment(Environment(context));
         foreach (var library in context.TrustedModules)
-            candidate.State.RegisterTrustedModule(library);
+            machine.State.RegisterTrustedModule(library);
         foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>())
-            candidate.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
-        candidate.State.RegisterAssemblyIdentity(
+            machine.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
+        machine.State.RegisterAssemblyIdentity(
             context.Module.Assembly?.Name ?? context.Module.Name,
             context.Module.Assembly?.PublicKeyToken?.Data ?? []);
-        candidate.State.RegisterPointerSize(context.OriginalImage.IsPe32Plus ? 8 : 4);
-        candidate.State.RegisterModuleMetadata(context.Module);
+        machine.State.RegisterPointerSize(context.OriginalImage.IsPe32Plus ? 8 : 4);
+        machine.State.RegisterModuleMetadata(context.Module);
         if (context.TryGetFact<bool>(FileRefusedFact, out _))
-            candidate.State.RegisterModuleBytes(context.OriginalBytes);
+            machine.State.RegisterModuleBytes(context.OriginalBytes);
         else
-            candidate.State.RegisterModuleFile(
+            machine.State.RegisterModuleFile(
                 Path.GetFullPath(context.InputPath), context.OriginalBytes);
-        if (!candidate.State.TryRegisterImage(
+        if (machine.State.TryRegisterImage(
                 context.OriginalImage.CreateMappedImage(),
                 context.OriginalImage.ImageBase,
                 MappedProtections(context.OriginalImage)))
         {
-            diagnostic = "the mapped image exceeded the interpreter allocation budget";
-            return false;
+            return true;
         }
 
-        machine = candidate;
-        return true;
+        diagnostic = "the mapped image exceeded the interpreter allocation budget";
+        return false;
     }
 }

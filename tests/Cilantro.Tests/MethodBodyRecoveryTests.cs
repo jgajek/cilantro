@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Cilantro.Core.Analysis;
+using Cilantro.Core.Interpretation;
 using Cilantro.Core.Passes;
 using Cilantro.Core.Recovery;
 
@@ -183,6 +184,39 @@ public sealed class MethodBodyRecoveryTests
     [Fact]
     public void RaisingTheCeilingStopsRatherThanGoingOnForever() =>
         Assert.InRange(MethodBodyRecoveryPass.MostRaisings, 1, 5);
+
+    [Fact]
+    public void ReinterpretingAfterAGraftStopsRatherThanGoingOnForever() =>
+        Assert.InRange(MethodBodyRecoveryPass.MostRounds, 2, 5);
+
+    [Fact]
+    public void SeedingTheBootstrapNamesTheModuleWhoseTokensTheLoaderResolves()
+    {
+        var context = SyntheticContext.Build(module => SyntheticContext.AddType(module, "Holder"));
+        var machine = new StaticMachine(new StaticMachineLimits(), modelTypeInitialization: true);
+
+        Assert.True(BootstrapMachine.TryTell(context, machine, out var diagnostic));
+        Assert.Empty(diagnostic);
+        Assert.Same(context.Module, machine.State.ModuleMetadata);
+    }
+
+    /// <summary>
+    /// A loader that reaches its own members by token is only interpretable if the machine has been
+    /// told which module those tokens belong to, and there is more than one place that runs the
+    /// loader. When one of them omitted this, the loader read as refusing an operation rather than as
+    /// having been told too little, so the two are pinned to the same account of the module here.
+    /// </summary>
+    [Fact]
+    public void EveryWayOfRunningTheLoaderIsToldTheSameModule()
+    {
+        var context = SyntheticContext.Build(module => SyntheticContext.AddType(module, "Holder"));
+        Assert.True(BootstrapMachine.TrySeed(context, 1_000, out var seeded, out _));
+        var told = new StaticMachine(new StaticMachineLimits(), modelTypeInitialization: true);
+        Assert.True(BootstrapMachine.TryTell(context, told, out _));
+
+        Assert.Same(seeded!.State.ModuleMetadata, told.State.ModuleMetadata);
+        Assert.Equal(seeded.State.AssemblyName, told.State.AssemblyName);
+    }
 
     [Fact]
     public void RequiresDeterministicOrderedWriteLogs()

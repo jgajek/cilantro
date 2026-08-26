@@ -352,20 +352,9 @@ public static class ImageRewriteRecovery
         var machine = new StaticMachine(limits, modelTypeInitialization: true);
         // The same environment the rest of the run uses, so that a fact stated for the run is
         // answered here too and a refusal here lands in the run's ledger.
-        machine.State.RegisterRunEnvironment(BootstrapMachine.Environment(context));
-        foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>())
-            machine.State.RegisterResource(resource.Name, resource.CreateReader().ToArray());
-        machine.State.RegisterAssemblyIdentity(
-            context.Module.Assembly?.Name ?? context.Module.Name,
-            context.Module.Assembly?.PublicKeyToken?.Data ?? []);
-        machine.State.RegisterPointerSize(context.OriginalImage.IsPe32Plus ? 8 : 4);
-        machine.State.RegisterModuleFile(Path.GetFullPath(context.InputPath), context.OriginalBytes);
-        if (!machine.State.TryRegisterImage(
-                context.OriginalImage.CreateMappedImage(),
-                context.OriginalImage.ImageBase,
-                BootstrapMachine.MappedProtections(context.OriginalImage)))
+        if (!BootstrapMachine.TryTell(context, machine, out var seedDiagnostic))
         {
-            diagnostic = "Mapped PE image exceeded the interpreter allocation budget.";
+            diagnostic = $"The bootstrap could not be set up: {seedDiagnostic}.";
             return false;
         }
 

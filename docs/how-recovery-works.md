@@ -213,6 +213,22 @@ metadata token. If any stub is left unrecovered, nothing downstream is allowed t
 run and no output is produced. A partially decrypted assembly is worse than no
 output, because it looks like a result.
 
+A loader that stops partway is not the same as a loader that proved nothing. The
+bodies it had already written are each held to every check above, so they are
+grafted and reported, and the stage reports itself partial rather than complete —
+which keeps every stage that would modify the assembly gated, exactly as an
+unrecovered stub does. What changes is that the bodies are readable and the report
+names them, instead of the run ending with nothing to show.
+
+Those bodies are then used to interpret the loader again. Reactor protects its own
+runtime with the same JIT hook it uses on everything else, so on a sample whose
+loader calls into its own virtualized code, the first interpretation reads a
+placeholder where the engine should be and stops on state the engine would have
+built. The second reads the real engine, which is the state a process is in once
+the JIT hook has fired. This repeats while each round recovers a body the previous
+rounds did not, so a loader that runs to completion the first time pays nothing
+for it.
+
 **4. Neutralise anti-tamper.** The integrity check is proven — the tool follows
 the verification through the machine and confirms it is a signature or checksum
 comparison — and only the proven check subtree and its failure paths are removed.
