@@ -100,6 +100,118 @@ public sealed class ArchitectureTests
         Assert.Equal(1u, facts.ModuleRows);
     }
 
+    [Fact]
+    public void ResourceDirectoryWalkFindsARcdataPayloadByName()
+    {
+        var payload = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x22 };
+        var image = ImageWithRcdataResource("PAYLOAD", payload);
+        bool Read(int rva, Span<byte> destination) =>
+            rva >= 0 && rva <= image.Length - destination.Length &&
+            image.AsSpan(rva, destination.Length).TryCopyTo(destination);
+
+        Assert.True(PeResourceDirectory.TryGetDirectory(Read, out var directoryRva, out _));
+        Assert.Equal(ResourceDirectoryRva, directoryRva);
+        Assert.True(PeResourceDirectory.TryFindDataEntry(
+            Read,
+            ResourceName.FromId(RcdataType),
+            // Windows compares resource names without case, and so does this.
+            ResourceName.FromString("payload"),
+            out var dataEntryRva));
+        Assert.True(PeResourceDirectory.TryReadDataEntry(
+            Read,
+            dataEntryRva,
+            out var dataRva,
+            out var size));
+
+        Assert.Equal(PayloadRva, dataRva);
+        Assert.Equal(payload.Length, size);
+        Assert.Equal(payload, image.AsSpan((int)dataRva, size).ToArray());
+    }
+
+    [Fact]
+    public void ResourceDirectoryWalkDoesNotInventAnAbsentResource()
+    {
+        var image = ImageWithRcdataResource("PAYLOAD", [1, 2, 3]);
+        bool Read(int rva, Span<byte> destination) =>
+            rva >= 0 && rva <= image.Length - destination.Length &&
+            image.AsSpan(rva, destination.Length).TryCopyTo(destination);
+
+        Assert.False(PeResourceDirectory.TryFindDataEntry(
+            Read,
+            ResourceName.FromId(RcdataType),
+            ResourceName.FromString("OTHER"),
+            out _));
+        Assert.False(PeResourceDirectory.TryFindDataEntry(
+            Read,
+            ResourceName.FromId(24),
+            ResourceName.FromString("PAYLOAD"),
+            out _));
+        // A named type is not the same key as a numbered one.
+        Assert.False(PeResourceDirectory.TryFindDataEntry(
+            Read,
+            ResourceName.FromString("10"),
+            ResourceName.FromString("PAYLOAD"),
+            out _));
+    }
+
+    internal const ushort RcdataType = 10;
+    internal const uint ResourceDirectoryRva = 0x1000;
+    internal const uint PayloadRva = 0x2000;
+
+    /// <summary>
+    /// Builds the smallest mapped image that carries one <c>RT_RCDATA</c> resource under a named
+    /// entry: DOS stub, PE signature, an optional header long enough to reach its data directories,
+    /// and a three-level resource tree of type, name, and language.
+    /// </summary>
+    internal static byte[] ImageWithRcdataResource(string name, ReadOnlySpan<byte> payload)
+    {
+        const int peOffset = 0x80;
+        const int optionalOffset = peOffset + 24;
+        const int directoriesOffset = optionalOffset + 96;
+        var image = new byte[0x4000];
+        "MZ"u8.CopyTo(image);
+        BinaryPrimitives.WriteInt32LittleEndian(image.AsSpan(0x3C), peOffset);
+        BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(peOffset), 0x0000_4550);
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(peOffset + 4), 0x014C);
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(peOffset + 20), 224);
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(optionalOffset), 0x10B);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            image.AsSpan(directoriesOffset + PeResourceDirectory.ResourceDirectoryIndex * 8),
+            ResourceDirectoryRva);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            image.AsSpan(directoriesOffset + PeResourceDirectory.ResourceDirectoryIndex * 8 + 4),
+            0x1000);
+
+        const int root = (int)ResourceDirectoryRva;
+        const int typeNode = root + 0x18;
+        const int nameNode = root + 0x30;
+        const int dataEntry = root + 0x48;
+        const int nameText = root + 0x60;
+
+        // Root: one entry, keyed by the numeric type.
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(root + 14), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(root + 16), RcdataType);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            image.AsSpan(root + 20), 0x8000_0000 | (uint)(typeNode - root));
+        // Type node: one entry, keyed by a name whose offset is relative to the directory.
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(typeNode + 12), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            image.AsSpan(typeNode + 16), 0x8000_0000 | (uint)(nameText - root));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            image.AsSpan(typeNode + 20), 0x8000_0000 | (uint)(nameNode - root));
+        // Name node: one language, pointing at the data entry rather than a further directory.
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(nameNode + 14), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(nameNode + 16), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            image.AsSpan(nameNode + 20), (uint)(dataEntry - root));
+        BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(dataEntry), PayloadRva);
+        BinaryPrimitives.WriteInt32LittleEndian(image.AsSpan(dataEntry + 4), payload.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(nameText), (ushort)name.Length);
+        System.Text.Encoding.Unicode.GetBytes(name).CopyTo(image.AsSpan(nameText + 2));
+        payload.CopyTo(image.AsSpan((int)PayloadRva));
+        return image;
+    }
+
     private static byte[] SignatureConstantAssembly()
     {
         using var module = new ModuleDefUser("decoy.dll") { Kind = ModuleKind.Dll };

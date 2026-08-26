@@ -1341,6 +1341,126 @@ public sealed class StaticMachineTests
         Assert.Equal(StaticExecutionStatus.InvalidProgram, refused.Status);
     }
 
+    /// <summary>
+    /// The sequence a loader uses to fetch a payload it hid in its own <c>RT_RCDATA</c>, end to end.
+    /// What comes back has to be the resource's real bytes: the point of modelling this API is that
+    /// the payload is readable, not that the calls return something.
+    /// </summary>
+    [Fact]
+    public void ResourceApiHandsBackTheImagesOwnResourceBytes()
+    {
+        byte[] payload = [0xDE, 0xAD, 0xBE, 0xEF, 0x11, 0x22];
+        var image = ArchitectureTests.ImageWithRcdataResource("PAYLOAD", payload);
+        var state = new StaticMachineState(new StaticMachineLimits());
+        Assert.True(state.TryRegisterImage(image, 0x0040_0000));
+        var heap = state.Heap;
+        Assert.True(heap.TryGetNativePointer(state.ImageRegion, 0, out var imageBase));
+        Assert.True(heap.TryAllocateString("PAYLOAD", out var name));
+        using var module = NewModule();
+        var invoke = NativeDelegateInvoke(module);
+        var intrinsic = new NativeDelegateIntrinsic();
+        var context = new IntrinsicContext(state);
+
+        StaticValue Call(string nativeName, params StaticValue[] arguments)
+        {
+            Assert.True(heap.TryAllocateObject("System.Delegate", out var target));
+            Assert.True(heap.TrySetModelValue(target, "NativeName", nativeName));
+            var result = intrinsic.Invoke(context, invoke, [target, .. arguments]);
+            Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+            return result.Value;
+        }
+
+        var found = Call(
+            "FindResourceA",
+            imageBase,
+            name,
+            StaticValue.FromInt32(ArchitectureTests.RcdataType));
+        var size = Call("SizeofResource", imageBase, found);
+        var loaded = Call("LoadResource", imageBase, found);
+        var locked = Call("LockResource", loaded);
+
+        Assert.Equal(payload.Length, size.AsInt32());
+        // FindResource yields a pointer to the resource entry, as it does on Windows, and the entry
+        // is at the RVA the directory said.
+        Assert.True(heap.TryGetNativeAddress(found, out var entryAddress));
+        Assert.Equal(0x0040_0000 + 0x1048, entryAddress);
+        Assert.True(heap.TryGetNativeAddress(locked, out var payloadAddress));
+        Assert.Equal(0x0040_0000 + ArchitectureTests.PayloadRva, (ulong)payloadAddress);
+        var read = new byte[payload.Length];
+        Assert.True(heap.TryReadBytes(locked, 0, read));
+        Assert.Equal(payload, read);
+    }
+
+    /// <summary>
+    /// A resource the image does not carry is a null handle rather than a refusal, because a loader
+    /// may probe for one and branch on the answer.
+    /// </summary>
+    [Fact]
+    public void ResourceApiReportsAnAbsentResourceAsNull()
+    {
+        var state = new StaticMachineState(new StaticMachineLimits());
+        Assert.True(state.TryRegisterImage(
+            ArchitectureTests.ImageWithRcdataResource("PAYLOAD", [1, 2, 3]),
+            0x0040_0000));
+        var heap = state.Heap;
+        Assert.True(heap.TryGetNativePointer(state.ImageRegion, 0, out var imageBase));
+        Assert.True(heap.TryAllocateString("ABSENT", out var name));
+        using var module = NewModule();
+        Assert.True(heap.TryAllocateObject("System.Delegate", out var target));
+        Assert.True(heap.TrySetModelValue(target, "NativeName", "FindResourceA"));
+
+        var result = new NativeDelegateIntrinsic().Invoke(
+            new IntrinsicContext(state),
+            NativeDelegateInvoke(module),
+            [target, imageBase, name, StaticValue.FromInt32(ArchitectureTests.RcdataType)]);
+
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(0, result.Value.AsInt64());
+    }
+
+    /// <summary>
+    /// The resources of some other module are not this machine's to read, and a handle that does not
+    /// name the analysed image is refused rather than quietly treated as if it did.
+    /// </summary>
+    [Fact]
+    public void ResourceApiRefusesAModuleThatIsNotTheAnalysedImage()
+    {
+        var state = new StaticMachineState(new StaticMachineLimits());
+        Assert.True(state.TryRegisterImage(
+            ArchitectureTests.ImageWithRcdataResource("PAYLOAD", [1, 2, 3]),
+            0x0040_0000));
+        var heap = state.Heap;
+        Assert.True(heap.TryAllocateRegion(4096, "RuntimeModule", out var otherModule));
+        Assert.True(heap.TryAllocateString("PAYLOAD", out var name));
+        using var module = NewModule();
+        Assert.True(heap.TryAllocateObject("System.Delegate", out var target));
+        Assert.True(heap.TrySetModelValue(target, "NativeName", "FindResourceA"));
+
+        var result = new NativeDelegateIntrinsic().Invoke(
+            new IntrinsicContext(state),
+            NativeDelegateInvoke(module),
+            [target, otherModule, name, StaticValue.FromInt32(ArchitectureTests.RcdataType)]);
+
+        Assert.Equal(StaticExecutionStatus.InvalidProgram, result.Status);
+    }
+
+    private static MethodDefUser NativeDelegateInvoke(ModuleDef module)
+    {
+        var delegateType = new TypeDefUser(
+            "Tests",
+            "NativeDelegate",
+            module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            BaseType = module.CorLibTypes.GetTypeRef("System", "MulticastDelegate")
+        };
+        module.Types.Add(delegateType);
+        var invoke = new MethodDefUser(
+            "Invoke",
+            MethodSig.CreateInstance(module.CorLibTypes.IntPtr));
+        delegateType.Methods.Add(invoke);
+        return invoke;
+    }
+
     [Fact]
     public void ProcessModuleBaseAddressHasStableSyntheticIdentity()
     {

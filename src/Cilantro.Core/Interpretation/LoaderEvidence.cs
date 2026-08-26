@@ -18,6 +18,17 @@ public enum LoaderObservationKind
     HostQuestion,
 
     /// <summary>
+    /// The loader read a Win32 resource of its own image through the resource API.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="ModuleFileRead"/>. That one is read as the hallmark of
+    /// self-hashing and feeds the anti-tamper account, whereas fetching a payload out of
+    /// <c>RT_RCDATA</c> is an unpacking step; recording them as the same thing would make every
+    /// resource-backed loader look like it verifies itself.
+    /// </remarks>
+    ImageResourceRead,
+
+    /// <summary>
     /// A call the machine does not model was answered from what the run was told it does.
     /// </summary>
     /// <remarks>

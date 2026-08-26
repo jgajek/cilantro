@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Cilantro.Core.Analysis;
 using Cilantro.Core.Payload;
 using BindingFlags = System.Reflection.BindingFlags;
 using FieldInfo = System.Reflection.FieldInfo;
@@ -265,8 +266,190 @@ public sealed class NativeDelegateIntrinsic : IStaticIntrinsic
                 heap.TryWriteManaged(arguments[5], StaticValue.FromInt32(count));
             return IntrinsicResult.Completed(StaticValue.FromInt32(1));
         }
+        if (ResourceApiModel.Handles(nativeName))
+            return ResourceApiModel.Invoke(context, nativeName, arguments.Skip(1).ToArray());
         return IntrinsicResult.Invalid(
             $"Native delegate operation {nativeName} is unsupported.");
+    }
+}
+
+/// <summary>
+/// Models the Win32 resource API against the analysed image's own resource directory.
+/// </summary>
+/// <remarks>
+/// A protector that keeps its payload in <c>RT_RCDATA</c> reaches it through this rather than
+/// through a managed manifest resource, and the whole sequence resolves to real bytes of the mapped
+/// image: <c>FindResource</c> returns a pointer to the <c>IMAGE_RESOURCE_DATA_ENTRY</c> exactly as
+/// Windows does, <c>SizeofResource</c> reads the size out of that structure, <c>LoadResource</c>
+/// follows its data RVA, and <c>LockResource</c> is the identity its contract makes it. Nothing here
+/// is synthesised, so a loader that reads its payload gets the payload rather than a model of one.
+/// </remarks>
+internal static class ResourceApiModel
+{
+    internal static bool Handles(string name) => name is
+        "FindResource" or "FindResourceA" or "FindResourceW" or
+        "FindResourceEx" or "FindResourceExA" or "FindResourceExW" or
+        "LoadResource" or "SizeofResource" or "LockResource" or
+        "UnlockResource" or "FreeResource";
+
+    internal static IntrinsicResult Invoke(
+        IntrinsicContext context,
+        string name,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        var state = context.State;
+        var heap = state.Heap;
+        if (!state.ImageRegion.IsKnown ||
+            !heap.TryGetNativePointer(state.ImageRegion, 0, out var imageStart))
+        {
+            return IntrinsicResult.Invalid(
+                $"{name} was called before the analysed image was registered.");
+        }
+
+        bool Read(int rva, Span<byte> destination) =>
+            rva >= 0 && heap.TryReadBytes(imageStart, rva, destination);
+
+        switch (name)
+        {
+            case "FindResource" or "FindResourceA" or "FindResourceW" or
+                "FindResourceEx" or "FindResourceExA" or "FindResourceExW":
+            {
+                // FindResourceEx takes a language after the type; which language a running process
+                // would be handed is a fact about that machine, and it is not consulted here.
+                if (arguments.Count < 3 ||
+                    !IsAnalysedImage(heap, imageStart, arguments[0]))
+                {
+                    return IntrinsicResult.Invalid(
+                        $"{name} may only name the analysed image's own resources.");
+                }
+                if (!TryResourceName(heap, arguments[1], out var resourceName) ||
+                    !TryResourceName(heap, arguments[2], out var resourceType))
+                {
+                    return IntrinsicResult.Invalid($"{name} was passed a non-constant name.");
+                }
+                if (!PeResourceDirectory.TryFindDataEntry(
+                        Read,
+                        resourceType,
+                        resourceName,
+                        out var dataEntryRva))
+                {
+                    // A resource the image does not carry is a NULL handle, not a refusal: a loader
+                    // may probe for one and take the answer as a branch.
+                    state.Observe(
+                        LoaderObservationKind.ImageResourceRead,
+                        $"{name} found no {resourceType} resource named {resourceName}");
+                    return IntrinsicResult.Completed(StaticValue.FromInt64(0));
+                }
+                state.Observe(
+                    LoaderObservationKind.ImageResourceRead,
+                    $"{name} of {resourceType} resource {resourceName}");
+                return heap.TryGetNativePointer(imageStart, checked((int)dataEntryRva), out var found)
+                    ? IntrinsicResult.Completed(found)
+                    : IntrinsicResult.Invalid($"{name} resolved outside the mapped image.");
+            }
+
+            case "SizeofResource":
+            {
+                if (arguments.Count < 2 || !TryDataEntryRva(heap, imageStart, arguments[1], out var rva))
+                    return IntrinsicResult.Invalid("SizeofResource was passed an unknown handle.");
+                return PeResourceDirectory.TryReadDataEntry(Read, rva, out _, out var size)
+                    ? IntrinsicResult.Completed(StaticValue.FromInt32(size))
+                    : IntrinsicResult.Invalid("SizeofResource could not read the resource entry.");
+            }
+
+            case "LoadResource":
+            {
+                if (arguments.Count < 2 || !TryDataEntryRva(heap, imageStart, arguments[1], out var rva))
+                    return IntrinsicResult.Invalid("LoadResource was passed an unknown handle.");
+                if (!PeResourceDirectory.TryReadDataEntry(Read, rva, out var dataRva, out var size))
+                    return IntrinsicResult.Invalid("LoadResource could not read the resource entry.");
+                state.Observe(
+                    LoaderObservationKind.ImageResourceRead,
+                    $"LoadResource of {size} byte(s) at RVA 0x{dataRva:x}");
+                return heap.TryGetNativePointer(imageStart, checked((int)dataRva), out var loaded)
+                    ? IntrinsicResult.Completed(loaded)
+                    : IntrinsicResult.Invalid("LoadResource resolved outside the mapped image.");
+            }
+
+            // LockResource is documented as yielding the pointer LoadResource's handle stands for,
+            // and that handle is already that pointer here.
+            case "LockResource":
+                return arguments.Count >= 1
+                    ? IntrinsicResult.Completed(arguments[0])
+                    : IntrinsicResult.Invalid("LockResource was passed no handle.");
+
+            default:
+                return IntrinsicResult.Completed(StaticValue.FromInt32(1));
+        }
+    }
+
+    /// <summary>Whether a module handle names the image under analysis. NULL does, as it does to
+    /// Windows: the process's own image is what a null module means.</summary>
+    private static bool IsAnalysedImage(
+        StaticHeap heap,
+        StaticValue imageStart,
+        StaticValue module)
+    {
+        if (module.IsInteger && module.AsInt64() == 0)
+            return true;
+        var candidate = module;
+        if (candidate.IsInteger &&
+            heap.TryResolveNativeAddress(candidate.AsInt64(), out var resolved))
+        {
+            candidate = resolved;
+        }
+        return candidate.Kind == StaticValueKind.NativePointer &&
+            candidate.NativeRegionId == imageStart.NativeRegionId;
+    }
+
+    private static bool TryDataEntryRva(
+        StaticHeap heap,
+        StaticValue imageStart,
+        StaticValue handle,
+        out uint rva)
+    {
+        rva = 0;
+        var candidate = handle;
+        if (candidate.IsInteger &&
+            heap.TryResolveNativeAddress(candidate.AsInt64(), out var resolved))
+        {
+            candidate = resolved;
+        }
+        if (candidate.Kind != StaticValueKind.NativePointer ||
+            candidate.NativeRegionId != imageStart.NativeRegionId ||
+            candidate.NativeOffset < 0)
+        {
+            return false;
+        }
+        rva = (uint)candidate.NativeOffset;
+        return true;
+    }
+
+    private static bool TryResourceName(
+        StaticHeap heap,
+        StaticValue value,
+        out ResourceName name)
+    {
+        name = default;
+        if (heap.TryGetString(value, out var text) && text is not null)
+        {
+            // MAKEINTRESOURCE values arrive as small integers even where the parameter is typed as a
+            // string, and a "#123" string means the same thing to Windows.
+            name = text.StartsWith('#') && ushort.TryParse(text[1..], out var parsed)
+                ? ResourceName.FromId(parsed)
+                : ResourceName.FromString(text);
+            return true;
+        }
+        if (value.IsInteger)
+        {
+            var raw = value.AsInt64();
+            if (raw is >= 0 and <= ushort.MaxValue)
+            {
+                name = ResourceName.FromId((ushort)raw);
+                return true;
+            }
+        }
+        return false;
     }
 }
 

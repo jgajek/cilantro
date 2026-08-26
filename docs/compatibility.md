@@ -71,7 +71,18 @@ allowlist of models; a call outside it is stepped over by default and stops the
 frame under `--strict`, as set out in [the two modes](#the-two-modes) below.
 Allowlisted models cover resources, streams/readers, encoding, hashing,
 decompression, symmetric crypto, synthetic module/process metadata, Marshal
-operations, and virtual memory writes. They also cover the types a sample passes
+operations, and virtual memory writes. Win32 resources are among them, because a
+protector that keeps its payload in `RT_RCDATA` fetches it through
+`FindResource`/`LoadResource`/`SizeofResource`/`LockResource` rather than as a
+managed manifest resource. That sequence is answered from the image's own resource
+directory and resolves to real bytes of the mapped image throughout: `FindResource`
+returns a pointer to the `IMAGE_RESOURCE_DATA_ENTRY` as Windows does, and
+`LockResource` is the identity its contract makes it. Only the analysed image's
+resources can be read; a module handle naming anything else is refused, and a
+resource the image does not carry is a null handle rather than a refusal, because a
+loader may probe for one and branch on the answer. Which language a running process
+would be handed is a fact about that machine and is not consulted, so the single
+language entry filed under a name is what is read. They also cover the types a sample passes
 through on the way there: `StringBuilder`, formatted number-to-text conversion,
 `ToString` decided by the receiver rather than the call site, `TimeSpan` and
 `DateTime` arithmetic, named mutexes, certificates held as the bytes they
