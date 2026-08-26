@@ -1060,7 +1060,8 @@ public sealed class StaticMachine
                                     return AllocationFailure(instruction, "object");
                                 callArguments = [constructed, .. callArguments];
                             }
-                            var definition = target.ResolveMethodDef();
+                            var definition = target.ResolveMethodDef() ??
+                                ResolveThroughInstantiation(target);
                             if ((instruction.OpCode.Code == Code.Callvirt ||
                                  definition is { HasBody: false }) &&
                                 callArguments.Length > 0)
@@ -1097,8 +1098,7 @@ public sealed class StaticMachine
                                 definition.MethodSig?.Params.Count == 0 &&
                                 definition.ReturnType.ToTypeDefOrRef()?.ResolveTypeDef() is
                                     { IsValueType: false } factoryType &&
-                                State.Heap.TryAllocateObject(
-                                    factoryType.FullName, out var factoryResult))
+                                Fabricated(factoryType.FullName, out var factoryResult))
                             {
                                 callResult = FrameResult.Success(factoryResult);
                             }
@@ -1107,7 +1107,7 @@ public sealed class StaticMachine
                                 ClassNamed(
                                     method.Module,
                                     factorySignature.RetType.FullName) is { } unresolvedFactoryType &&
-                                State.Heap.TryAllocateObject(
+                                Fabricated(
                                     unresolvedFactoryType.FullName,
                                     out var unresolvedFactoryResult))
                             {
@@ -2120,6 +2120,48 @@ public sealed class StaticMachine
     /// own, but the methods it calls are the subject's, and asking about the caller would refuse
     /// to run them.
     /// </remarks>
+    /// <summary>
+    /// Stands something in for the result of a parameterless call whose body could not be followed.
+    /// </summary>
+    /// <remarks>
+    /// A fresh object is the right stand-in for most types, because nothing is known about the one the
+    /// call would have returned. The assembly is the exception: only one is visible to an
+    /// interpretation, so a second model of it is not an unknown assembly but the same assembly wearing
+    /// a disguise, and everything that asks a reflection handle whether it addresses this metadata gets
+    /// told no. Reactor asks exactly that, about its own entry point, from inside its virtual machine.
+    /// </remarks>
+    private bool Fabricated(string typeName, out StaticValue value)
+    {
+        if (typeName != "System.Reflection.Assembly")
+            return State.Heap.TryAllocateObject(typeName, out value);
+        if (!State.TryGetOrAllocateRuntimeSingleton(typeName, out value))
+            return false;
+        State.Heap.TrySetModelValue(value, LoaderFrameworkIntrinsic.HomeModuleMark, true);
+        return true;
+    }
+
+    /// <summary>
+    /// Finds the method behind a call whose declaring type is written as a generic instantiation.
+    /// </summary>
+    /// <remarks>
+    /// A member of a generic type is referred to through a TypeSpec, and resolving one of those is not
+    /// the same lookup as resolving a reference to a member of an ordinary type. The second is
+    /// answered for us and the first is not always, so a construct with nothing obfuscated about it —
+    /// a generic closure class caching its only instance in a static field, which is what a compiler
+    /// emits for a lambda that captures nothing — reads as a call leaving the assembly, and the
+    /// interpretation stops on a method whose body is sitting in the same module. The instantiation
+    /// names the type, so the method is a name and signature lookup away.
+    /// </remarks>
+    private static MethodDef? ResolveThroughInstantiation(IMethod target)
+    {
+        var reference = target as MemberRef ?? (target as MethodSpec)?.Method as MemberRef;
+        if (reference?.MethodSig is null)
+            return null;
+        return reference.DeclaringType?.ScopeType?.ResolveTypeDef() is { } declaring
+            ? declaring.FindMethod(reference.Name, reference.MethodSig)
+            : null;
+    }
+
     private bool BelongsToSubject(MethodDef definition, MethodDef caller) =>
         definition.Module == caller.Module ||
         definition.Module == State.ModuleMetadata ||

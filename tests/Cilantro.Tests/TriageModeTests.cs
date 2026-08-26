@@ -356,6 +356,67 @@ public sealed class TriageModeTests
     }
 
     /// <summary>
+    /// A cast on one of the compiler's own generated types is settled from the metadata like any other.
+    /// </summary>
+    /// <remarks>
+    /// The names a compiler generates for itself are written in angle brackets: the global type is
+    /// called &lt;Module&gt;, Reactor keeps its per-module state in a &lt;Module&gt;{guid} beside it,
+    /// and a closure is a &lt;&gt;c. Read as the opening of a generic argument list, that first bracket
+    /// leaves nothing of the name behind, so the type is never found and every cast involving it is
+    /// answered by assumption instead of from the hierarchy sitting in the file. On the sample this was
+    /// found on, that was 1,616 casts.
+    /// </remarks>
+    [Theory]
+    [InlineData("<Module>")]
+    [InlineData("<Module>{3c31d1d4-a959-42cf-9144-fd8de0816d1f}")]
+    [InlineData("<>c__DisplayClass0_0")]
+    public void ACastOnAGeneratedNameIsSettledFromTheMetadata(string generated)
+    {
+        using var module = BlockerTests.NewModule();
+        var kind = Declare(module, "Base", module.CorLibTypes.Object.TypeDefOrRef);
+        var derived = Declare(module, generated, kind);
+        var machine = Triage();
+        machine.State.RegisterModuleMetadata(module);
+
+        var result = machine.Execute(
+            Asks(module, derived.FindInstanceConstructors().First(), kind));
+
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(StaticValueKind.HeapReference, result.Value.Kind);
+        Assert.Empty(machine.State.Blockers.Continuations);
+    }
+
+    /// <summary>
+    /// The global type carries the one generated name that is nothing but brackets and a word, so it
+    /// is the case where reading them as arguments leaves the empty string.
+    /// </summary>
+    [Fact]
+    public void TheGlobalTypesOwnNameIsNotReadAsGenericArguments()
+    {
+        using var module = BlockerTests.NewModule();
+        var kind = Declare(module, "Base", module.CorLibTypes.Object.TypeDefOrRef);
+        module.GlobalType.BaseType = kind;
+
+        Assert.True(Ancestry.Reaches([module], module, "<Module>", "Tests.Base"));
+    }
+
+    /// <summary>
+    /// A constructed generic still has its arguments taken off, which is what the brackets mean when
+    /// they close the name rather than open it.
+    /// </summary>
+    [Fact]
+    public void AConstructedGenericIsStillComparedByTheTypeItWasBuiltFrom()
+    {
+        using var module = BlockerTests.NewModule();
+        var kind = Declare(module, "Base", module.CorLibTypes.Object.TypeDefOrRef);
+        var generic = Declare(module, "Holder`1", kind);
+        generic.GenericParameters.Add(new GenericParamUser(0, GenericParamAttributes.NonVariant, "T"));
+
+        Assert.True(Ancestry.Reaches(
+            [module], module, "Tests.Holder`1<System.Int32>", "Tests.Base"));
+    }
+
+    /// <summary>
     /// The two things a triage run does to the assembly for the reader's sake, and a strict run
     /// does not: it renames what the protector generated, and it builds the virtualized methods
     /// back into a copy of their own.

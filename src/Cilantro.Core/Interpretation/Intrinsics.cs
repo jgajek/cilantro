@@ -3285,6 +3285,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     public const string HomeModuleMark = "HomeModule";
 
     /// <summary>
+    /// The profile key naming the type an assembly or module model was reached through.
+    /// </summary>
+    /// <remarks>
+    /// Every model of somebody else's assembly looks the same, so a refusal to answer for one reads as
+    /// a refusal to answer for any, and the reader cannot tell a type this module defines from a type
+    /// it merely mentions. The step that made the model is the only place that still knows which type
+    /// was asked, so it leaves the name behind for whatever declines later to quote.
+    /// </remarks>
+    public const string ReachedThroughMark = "ReachedThrough";
+
+    /// <summary>
     /// The profile key naming the runtime library the process is modelled as having loaded.
     /// </summary>
     /// <remarks>
@@ -3820,16 +3831,19 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             var modelType = name == "get_Module"
                 ? "System.Reflection.Module"
                 : "System.Reflection.Assembly";
-            if (!heap.TryAllocateObject(modelType, out var owner))
-                return AllocationFailure(modelType);
             // A TypeDef is defined in the module being interpreted, so the assembly and module it
             // reports are that module's own. A TypeRef names something outside it and carries the
             // mark no further.
-            if (heap.TryGetModelValue<object>(arguments[0], "Metadata", out var owning) &&
-                owning is TypeDef)
-            {
+            heap.TryGetModelValue<object>(arguments[0], "Metadata", out var owning);
+            if (!heap.TryAllocateObject(modelType, out var owner))
+                return AllocationFailure(modelType);
+            if (Defines(owning, context.State.ModuleMetadata))
                 heap.TrySetModelValue(owner, HomeModuleMark, true);
-            }
+            else if (heap.TryGetModelValue(arguments[0], "TypeName", out string? reached) &&
+                !string.IsNullOrEmpty(reached))
+                heap.TrySetModelValue(owner, ReachedThroughMark, reached);
+            else if (owning is IFullName spelled)
+                heap.TrySetModelValue(owner, ReachedThroughMark, spelled.FullName);
             return IntrinsicResult.Completed(owner);
         }
         if (type == "System.Type" &&
@@ -5414,6 +5428,14 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         };
         if (member is IMemberDef { Module: { } owner } && owner == context.State.ModuleMetadata)
             heap.TrySetModelValue(model, HomeModuleMark, true);
+        // An assembly and a module are not members of anything, so the test above never reaches them
+        // and a handle on the very file being read comes back indistinguishable from a handle on a
+        // stranger's. Everything downstream then has to assume what it is holding, and the assembly is
+        // the handle protected code asks about most: it wants its own entry point.
+        else if (Home(member, context.State.ModuleMetadata))
+            heap.TrySetModelValue(model, HomeModuleMark, true);
+        else if (member is IFullName spelled)
+            heap.TrySetModelValue(model, ReachedThroughMark, spelled.FullName);
         // Which type the member was found on, which is not always the type that declares it. A
         // program looking for a hook beside an inherited member searches the type it was reading,
         // so the difference decides where it looks.
@@ -5421,6 +5443,33 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             heap.TrySetModelValue(model, "ReflectedType", asked);
         return model;
     }
+
+    /// <summary>
+    /// Whether a reflection handle on a whole file addresses the one being read.
+    /// </summary>
+    private static bool Home(object member, ModuleDef? subject) => member switch
+    {
+        ModuleDef module => module == subject,
+        AssemblyDef assembly => subject is not null && assembly == subject.Assembly,
+        _ => false
+    };
+
+    /// <summary>
+    /// Whether the type a reflection handle stands for is one the module being read declares.
+    /// </summary>
+    /// <remarks>
+    /// A definition is the plain case. The one that matters is the rest: a type is written as a
+    /// reference or an instantiation in plenty of places that have nothing to do with leaving the
+    /// assembly — a generic built over one of this module's own types is a TypeSpec — and reading only
+    /// definitions as local makes the assembly reached from one of those look like a stranger's.
+    /// </remarks>
+    private static bool Defines(object? owning, ModuleDef? subject) => owning switch
+    {
+        TypeDef defined => subject is null || defined.Module == subject,
+        ITypeDefOrRef named => subject is not null &&
+            named.ScopeType?.ResolveTypeDef() is { } resolved && resolved.Module == subject,
+        _ => false
+    };
 
     /// <summary>
     /// The one member of a type a lookup by name asked for, or <see langword="null"/> when the type
@@ -8168,7 +8217,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         {
             var heap = context.State.Heap;
             if (!heap.TryGetModelValue<bool>(arguments[0], HomeModuleMark, out var home) || !home)
-                return IntrinsicResult.Invalid("The entry point of another assembly is unknown.");
+            {
+                return IntrinsicResult.Invalid(
+                    "The entry point of another assembly is unknown." +
+                    (heap.TryGetModelValue(arguments[0], ReachedThroughMark, out string? through) &&
+                        !string.IsNullOrEmpty(through)
+                        ? $" This one was reached through {through}, which the module being read " +
+                            "mentions rather than defines."
+                        : heap.TryGetRuntimeTypeName(arguments[0], out var standing)
+                        ? $" What was asked is modelled as a {standing}."
+                        : " Nothing is known about what was asked."));
+            }
             if (context.State.ModuleMetadata?.EntryPoint is not { } entry)
                 return IntrinsicResult.Completed(StaticValue.Null);
             var described = Describing(heap, "System.Reflection.MethodInfo", entry);

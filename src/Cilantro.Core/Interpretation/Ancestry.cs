@@ -110,10 +110,31 @@ internal static class Ancestry
     /// </returns>
     private static string? Unconstructed(string name)
     {
-        var at = name.IndexOf('<', StringComparison.Ordinal);
-        if (at < 0)
+        // Angle brackets are not only what generic arguments are written in. A compiler puts them in
+        // the names it generates itself — the global type is <Module>, Reactor's per-module state
+        // lives in a <Module>{guid}, a closure is a <>c — and reading the first one as the start of an
+        // argument list leaves nothing of the name, so the type is not found and its ancestry reads as
+        // unknown. Arguments end the name they belong to, so the list to remove is the balanced one at
+        // the end, and a name that does not end in a bracket has none.
+        if (!name.EndsWith('>'))
             return name;
-        return name.IndexOf('/', at) < 0 ? name[..at] : null;
+        var depth = 0;
+        for (var at = name.Length - 1; at > 0; at--)
+        {
+            if (name[at] == '>')
+            {
+                depth++;
+                continue;
+            }
+            if (name[at] != '<' || --depth != 0)
+                continue;
+            // A bracket opening the type's own name is part of it rather than around its arguments.
+            return name[at - 1] is '/' or '.'
+                ? name
+                : name.IndexOf('/', at) < 0 ? name[..at] : null;
+        }
+
+        return name;
     }
 
     /// <summary>

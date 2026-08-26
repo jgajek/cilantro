@@ -1051,6 +1051,29 @@ verification. Any unmet condition preserves every body and refuses output.
   the metadata they describe. Searching is kept for images whose header cannot be
   believed, prefers aligned candidates, and requires a candidate to parse as a
   root before accepting it; falling back to it is recorded as an anomaly.
+- A call to a member of a generic type is resolved through the instantiation that
+  names it when the reference itself does not resolve. A member of a generic type
+  is reached through a `TypeSpec`, which is a different lookup from a reference to
+  a member of an ordinary type, and without it a construct with nothing obfuscated
+  about it — a generic closure class caching its only instance, which is what a
+  compiler emits for a lambda that captures nothing — reads as a call leaving the
+  assembly, stopping the run on a body sitting in the same module.
+- Type ancestry is read for the names a compiler generates for itself. Those are
+  written in angle brackets — the global type is `<Module>`, Reactor keeps its
+  per-module state in a `<Module>{guid}` beside it, a closure is a `<>c` — so the
+  first bracket cannot be read as opening a generic argument list; the arguments
+  to remove are the balanced group that ends the name, and a name not ending in a
+  bracket has none. Read the other way the name is emptied, the type is never
+  found, and every cast involving it is answered by assumption rather than from
+  the hierarchy in the file. On one profiled sample that was 1,616 casts.
+- A reflection handle on the file being read is marked as such when it is reached
+  as a whole assembly or module rather than as a member of one, when the type it
+  was reached through is defined here even if written as a reference or an
+  instantiation, and when one is stood in for a parameterless call that could not
+  be followed. Only one assembly is visible to an interpretation, so a second
+  model of it is the same assembly rather than an unknown one, and code that asks
+  whether a handle addresses this metadata — which protected code does about its
+  own entry point — would otherwise be told no.
 - Resource roles are inferred from consumers such as `ResolveMethod`,
   `GetManifestResourceStream`, `Assembly.Load`, and `string(int32)` resolvers.
 - Encrypted resource bundles are recovered by running the module's own bundle

@@ -516,10 +516,19 @@ public static class ImageRewriteRecovery
             // its stubs, so a real accessor can decode to fewer instructions. What must hold is
             // that the body actually changed.
             if (destination.HasBody && BodiesMatch(destination.Body, source.Body))
-                return PrepareFailure(
-                    out replacements,
-                    out diagnostic,
-                    $"MethodDef token 0x{target.Token:X8} still holds its placeholder body.");
+            {
+                // Two opposite things look identical here. Either the rewrite produced nothing and the
+                // stub is still in place, which is what this guards, or the body being asked for is
+                // already there because an earlier round grafted it — the ordinary case as soon as the
+                // loader is interpreted more than once, because Reactor's own runtime is protected too
+                // and reading it takes a second pass. Refusing that threw away every later round.
+                if (policy.IsStillProtected(destination))
+                    return PrepareFailure(
+                        out replacements,
+                        out diagnostic,
+                        $"MethodDef token 0x{target.Token:X8} still holds its placeholder body.");
+                continue;
+            }
 
             result.Add(
                 destination,
