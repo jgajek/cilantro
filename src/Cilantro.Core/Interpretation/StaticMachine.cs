@@ -154,6 +154,19 @@ public sealed class StaticMachine
     /// <summary>Steps the current frame spent inside the frames it called, for the profile.</summary>
     private long _stepsInCalls;
 
+    /// <summary>Where each instruction of a body sits in it, kept for as long as this machine runs.</summary>
+    /// <remarks>
+    /// Only branches, switches and handlers ask this, but every frame used to build the whole map
+    /// before running a single instruction — a pass over the body and a hash of every instruction in
+    /// it. A block cipher is called once per block of its input, so decrypting a megabyte built the
+    /// same map a quarter of a million times, and the building came to more than the decryption. The
+    /// map belongs to the body rather than to the call. Nothing rewrites a body while this machine is
+    /// running it, and a machine does not outlive the pass that made it, so keeping it here needs no
+    /// invalidation beyond noticing a body that is no longer the length it was indexed at.
+    /// </remarks>
+    private readonly Dictionary<IList<Instruction>, Dictionary<Instruction, int>> _indexed =
+        new(ReferenceEqualityComparer.Instance);
+
     /// <summary>
     /// Called as each frame is entered, when something wants to watch interpretation happen.
     /// </summary>
@@ -271,25 +284,39 @@ public sealed class StaticMachine
                 $"{method.FullName} expected {expectedArguments} arguments, got {arguments.Count}.");
 
         var instructions = method.Body.Instructions;
-        var indices = instructions.Select((instruction, index) => (instruction, index))
-            .ToDictionary(item => item.instruction, item => item.index);
-        var mutableArguments = arguments
-            .Select((value, index) => value.ProvenanceId != 0
-                ? value
-                : State.Provenance.Origin(
-                    value,
-                    ProvenanceKind.Argument,
-                    $"{method.MDToken}/arg{index}",
-                    method.FullName))
-            .ToArray();
+        var indices = Indexed(instructions);
+        // Nothing describes itself to a graph with no room to hear it. This is the ordinary state of a
+        // long interpretation, not a corner of one, and describing a frame is the costliest thing a
+        // frame does before it runs an instruction.
+        var labelled = State.Provenance.Saturated
+            ? null
+            : Labelled(method, expectedArguments);
+        var mutableArguments = new StaticValue[arguments.Count];
+        for (var at = 0; at < mutableArguments.Length; at++)
+        {
+            mutableArguments[at] = arguments[at].ProvenanceId != 0
+                ? arguments[at]
+                : labelled is null
+                    ? State.Provenance.Unrecorded(arguments[at])
+                    : State.Provenance.Origin(
+                        arguments[at],
+                        ProvenanceKind.Argument,
+                        labelled.Arguments[at],
+                        labelled.Declaring);
+        }
         var argumentReferences = new Dictionary<int, StaticValue>();
-        var locals = method.Body.Variables
-            .Select((local, index) => State.Provenance.Origin(
-                DefaultValue(local.Type),
-                ProvenanceKind.Default,
-                $"{method.MDToken}/local{index}",
-                local.Type.FullName))
-            .ToArray();
+        var variables = method.Body.Variables;
+        var locals = new StaticValue[variables.Count];
+        for (var at = 0; at < locals.Length; at++)
+        {
+            locals[at] = labelled is null
+                ? State.Provenance.Unrecorded(DefaultValue(variables[at].Type))
+                : State.Provenance.Origin(
+                    DefaultValue(variables[at].Type),
+                    ProvenanceKind.Default,
+                    labelled.Locals[at],
+                    labelled.LocalTypes[at]);
+        }
         var localReferences = new Dictionary<int, StaticValue>();
         var pendingLeaves = new Stack<int>();
         var stack = new List<StaticValue>(Math.Max(method.Body.MaxStack, (ushort)8));
@@ -2452,6 +2479,12 @@ public sealed class StaticMachine
     /// <remarks>
     /// Only the target is asked about, so the answer holds for every call site that shares one, and a
     /// dispatcher calls the same handful of targets over and over.
+    ///
+    /// Indexing every declaration's overriders in one pass instead was tried and was slower. The scan
+    /// below looks worse than it is: almost nothing overrides anything, so the test is a check of an
+    /// empty list, and it stops as soon as a second implementation makes the answer moot. An index has
+    /// to visit everything before it can answer once, and a machine that asks about one target — which
+    /// most do — pays for every target it never asks about.
     /// </remarks>
     private MethodDef? SoleImplementationOf(MethodDef expected, ModuleDef module)
     {
@@ -2976,6 +3009,66 @@ public sealed class StaticMachine
         int value => value,
         _ => throw new InvalidOperationException("Invalid local operand.")
     };
+
+    /// <summary>
+    /// What a frame tells provenance about where its arguments and locals came from.
+    /// </summary>
+    /// <remarks>
+    /// None of it depends on the call: it is the method's token, the name of the method, and the names
+    /// of its locals' types. Built per frame, it meant an interpolated string per argument and per
+    /// local, and a walk of dnlib's signature for every name, on every entry — for a method called
+    /// once per block of a megabyte of ciphertext, hundreds of thousands of times over, to hand
+    /// provenance the same words it had already interned, or to hand them to a graph that had run out
+    /// of room to record anything and dropped them.
+    /// </remarks>
+    private sealed record FrameLabels(
+        string Declaring,
+        string[] Arguments,
+        string[] Locals,
+        string[] LocalTypes);
+
+    private readonly Dictionary<MethodDef, FrameLabels> _labelled =
+        new(ReferenceEqualityComparer.Instance);
+
+    private FrameLabels Labelled(MethodDef method, int arguments)
+    {
+        var variables = method.Body.Variables;
+        if (_labelled.TryGetValue(method, out var known) &&
+            known.Arguments.Length == arguments &&
+            known.Locals.Length == variables.Count)
+        {
+            return known;
+        }
+
+        var argued = new string[arguments];
+        for (var at = 0; at < argued.Length; at++)
+            argued[at] = $"{method.MDToken}/arg{at}";
+        var locals = new string[variables.Count];
+        var types = new string[variables.Count];
+        for (var at = 0; at < locals.Length; at++)
+        {
+            locals[at] = $"{method.MDToken}/local{at}";
+            types[at] = variables[at].Type.FullName;
+        }
+
+        return _labelled[method] = new FrameLabels(method.FullName, argued, locals, types);
+    }
+
+    /// <summary>Where each instruction of a body sits in it, built once per body.</summary>
+    private Dictionary<Instruction, int> Indexed(IList<Instruction> instructions)
+    {
+        if (_indexed.TryGetValue(instructions, out var known) &&
+            known.Count == instructions.Count)
+        {
+            return known;
+        }
+
+        var built = new Dictionary<Instruction, int>(instructions.Count);
+        for (var at = 0; at < instructions.Count; at++)
+            built[instructions[at]] = at;
+        _indexed[instructions] = built;
+        return built;
+    }
 
     private static int Target(
         Dictionary<Instruction, int> indices,

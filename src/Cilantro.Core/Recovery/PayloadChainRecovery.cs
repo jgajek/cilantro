@@ -66,6 +66,23 @@ public static class PayloadChainRecovery
 
     public sealed record Recovered(MethodDef Root, byte[] Image, string AssemblyName, string Sha256);
 
+    /// <summary>What asking this module to unpack itself came to, for a later pass to consult.</summary>
+    /// <remarks>
+    /// Interpreting a startup path is among the most expensive things the tool does, and it is done
+    /// on the module with everything recovered — which is the most informed the question can be
+    /// asked. Anything later that needs the same answer should read this rather than arrange to ask
+    /// again, because asking again costs what it cost the first time and cannot be better informed.
+    /// </remarks>
+    public const string ChainFact = "payload.interpretedChain";
+
+    /// <param name="Unpacked">
+    /// The SHA-256 of every assembly the startup path was watched handing to the runtime.
+    /// </param>
+    /// <param name="Why">What the interpretation said, where it found nothing.</param>
+    public sealed record InterpretedChain(
+        IReadOnlySet<string> Unpacked,
+        IReadOnlyList<string> Why);
+
     /// <summary>
     /// How a caller wants the interpretation done, for callers who need it done differently.
     /// </summary>
@@ -168,8 +185,9 @@ public static class PayloadChainRecovery
     /// </remarks>
     private static MethodDef[] UnpackingRoots(ModuleDef module)
     {
+        var surveyed = new CallSurvey(module);
         var roots = new List<MethodDef>();
-        if (module.EntryPoint is { HasBody: true } entry && ReachesAMemoryLoad(entry))
+        if (module.EntryPoint is { HasBody: true } entry && ReachesAMemoryLoad(entry, surveyed))
             roots.Add(entry);
         roots.AddRange(module.GetTypes()
             .SelectMany(type => type.Methods)
@@ -179,7 +197,7 @@ public static class PayloadChainRecovery
                 !method.IsConstructor &&
                 method != module.EntryPoint &&
                 (method.IsStatic || CanSupplyReceiver(method.DeclaringType)) &&
-                ReachesAMemoryLoad(method))
+                ReachesAMemoryLoad(method, surveyed))
             .OrderBy(method => method.MDToken.Raw)
             .Take(MaximumRoots));
         return [.. roots];
@@ -201,8 +219,14 @@ public static class PayloadChainRecovery
     /// <summary>
     /// Whether a method can reach <c>Assembly.Load</c> on a byte array through the calls it makes.
     /// </summary>
-    private static bool ReachesAMemoryLoad(MethodDef root)
+    private static bool ReachesAMemoryLoad(MethodDef root, CallSurvey surveyed)
     {
+        // Almost nothing in a protected module reaches a load, and the survey says which for every
+        // method at once. Asking it first is what keeps the walk below off the tens of thousands of
+        // methods that were only ever going to be walked to the end and refused.
+        if (!surveyed.MightReachALoad(root))
+            return false;
+
         const int maximumVisited = 2048;
         var visited = new HashSet<MethodDef>(MethodEqualityComparer.CompareDeclaringTypes);
         var pending = new Queue<MethodDef>();
@@ -216,7 +240,7 @@ public static class PayloadChainRecovery
             // An abstract stage is called through its base declaration, so a body-less method is
             // where the interesting edge starts rather than where the search stops. The overrides
             // are what actually run.
-            foreach (var over in Overrides(root.Module, method))
+            foreach (var over in surveyed.Overriding(method))
                 pending.Enqueue(over);
             if (!method.HasBody)
                 continue;
@@ -234,16 +258,98 @@ public static class PayloadChainRecovery
         return false;
     }
 
-    private static IEnumerable<MethodDef> Overrides(ModuleDef module, MethodDef method)
+    /// <summary>
+    /// The module's calls, read once, so that what reaches a load is known of every method together.
+    /// </summary>
+    /// <remarks>
+    /// Deciding whether one method reaches a load is a walk of the calls below it, and a walk that
+    /// met a virtual declaration used to scan every method in the module to find what overrides it.
+    /// Done once per candidate on a build whose bodies have all been recovered, that is a scan of tens
+    /// of thousands of methods, nested inside a walk, nested inside a pass over tens of thousands of
+    /// candidates — nearly all of it spent establishing that a method reaches nothing.
+    ///
+    /// The overrides are indexed here instead, and the reaching is worked out for the whole module by
+    /// finding the methods that hand bytes to the runtime and spreading that back along the calls.
+    /// What comes out is every method a load is reachable from at all, which is a superset of what a
+    /// bounded walk admits: so the walk still decides what is admitted, and only ever runs on a
+    /// candidate that could qualify.
+    /// </remarks>
+    private sealed class CallSurvey
     {
-        if (method.HasBody || !method.IsVirtual)
-            return [];
-        return module.GetTypes()
-            .SelectMany(type => type.Methods)
-            .Where(candidate => candidate.HasBody &&
-                candidate.IsVirtual &&
-                candidate.Name == method.Name &&
-                candidate.MethodSig?.Params.Count == method.MethodSig?.Params.Count);
+        private readonly Dictionary<(string Name, int? Arity), List<MethodDef>> _overriding = [];
+        private readonly HashSet<MethodDef> _reaching = [];
+
+        internal CallSurvey(ModuleDef module)
+        {
+            var methods = module.GetTypes().SelectMany(type => type.Methods).ToArray();
+            foreach (var method in methods.Where(method => method.HasBody && method.IsVirtual))
+            {
+                var named = Named(method);
+                if (!_overriding.TryGetValue(named, out var overriding))
+                    _overriding[named] = overriding = [];
+                overriding.Add(method);
+            }
+
+            // Who calls whom, backwards, which is the direction the answer travels.
+            var callers = new Dictionary<MethodDef, List<MethodDef>>();
+            var spreading = new Queue<MethodDef>();
+            foreach (var method in methods)
+            {
+                foreach (var called in Calls(module, method))
+                {
+                    if (!callers.TryGetValue(called, out var from))
+                        callers[called] = from = [];
+                    from.Add(method);
+                }
+
+                if (method.HasBody &&
+                    method.Body.Instructions.Any(
+                        instruction => instruction.Operand is IMethod called && IsMemoryLoad(called)))
+                {
+                    spreading.Enqueue(method);
+                }
+            }
+
+            while (spreading.Count != 0)
+            {
+                var reached = spreading.Dequeue();
+                if (!_reaching.Add(reached) || !callers.TryGetValue(reached, out var from))
+                    continue;
+                foreach (var caller in from)
+                    spreading.Enqueue(caller);
+            }
+        }
+
+        /// <summary>Whether a load is reachable from a method at all, however far below it.</summary>
+        internal bool MightReachALoad(MethodDef method) => _reaching.Contains(method);
+
+        /// <summary>What actually runs when a body-less virtual declaration is called.</summary>
+        internal List<MethodDef> Overriding(MethodDef method) =>
+            !method.HasBody &&
+            method.IsVirtual &&
+            _overriding.TryGetValue(Named(method), out var overriding)
+                ? overriding
+                : [];
+
+        private IEnumerable<MethodDef> Calls(ModuleDef module, MethodDef method)
+        {
+            foreach (var over in Overriding(method))
+                yield return over;
+            if (!method.HasBody)
+                yield break;
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is IMethod called &&
+                    called.ResolveMethodDef() is { } resolved &&
+                    resolved.Module == module)
+                {
+                    yield return resolved;
+                }
+            }
+        }
+
+        private static (string, int?) Named(MethodDef method) =>
+            (method.Name.String, method.MethodSig?.Params.Count);
     }
 
     private static bool IsMemoryLoad(IMethod called) =>

@@ -52,6 +52,19 @@ internal static class DevirtualizedRun
         ArtifactContext original,
         IReadOnlyList<VirtualProgram> programs)
     {
+        // Everything below rests on this module unpacking something, and the run has already asked
+        // it to, on the module with every recovery applied. A module that unpacked nothing then will
+        // not unpack anything for a copy prepared with less, so preparing one settles nothing that
+        // is not settled here — and preparing one costs a second run of nearly the whole pipeline,
+        // which on a build with no payload was the largest single cost of the analysis.
+        if (original.TryGetFact<PayloadChainRecovery.InterpretedChain>(
+                PayloadChainRecovery.ChainFact, out var asked) &&
+            asked is not null &&
+            asked.Unpacked.Count == 0)
+        {
+            return (DevirtualizationCheck.NotMade, [NothingToWatch(asked.Why)]);
+        }
+
         // A second copy of the same input, prepared the same way, rather than the module the run
         // has been working on. That one has had the bodies written into it already and cannot be
         // interpreted twice to compare; and an assembly written back out moves everything in it,
@@ -73,14 +86,7 @@ internal static class DevirtualizedRun
 
         var shipped = Unpacked(second, [], out var whyShipped);
         if (shipped.Count == 0)
-        {
-            return (DevirtualizationCheck.NotMade,
-            [
-                "The check was not made: this module does not unpack anything the check can watch " +
-                $"it unpack ({string.Join("; ", whyShipped.Select(Short))}), so there is nothing " +
-                "to compare the built bodies against."
-            ]);
-        }
+            return (DevirtualizationCheck.NotMade, [NothingToWatch(whyShipped)]);
 
         var built = new HashSet<uint>();
         foreach (var program in programs)
@@ -132,6 +138,12 @@ internal static class DevirtualizedRun
             $"built body was entered {entered} time(s) doing it.");
         return (DevirtualizationCheck.Agreed, said);
     }
+
+    /// <summary>That there is no reference to compare against, and what was said instead.</summary>
+    private static string NothingToWatch(IReadOnlyList<string> why) =>
+        "The check was not made: this module does not unpack anything the check can watch it " +
+        $"unpack ({string.Join("; ", why.Select(Short))}), so there is nothing to compare the " +
+        "built bodies against.";
 
     /// <summary>What the module unpacks when it is interpreted, and whether a built body ran.</summary>
     private static HashSet<string> Unpacked(

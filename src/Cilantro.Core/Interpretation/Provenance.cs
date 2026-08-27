@@ -85,6 +85,26 @@ public sealed class ProvenanceGraph
 
     public int Count => _nodes.Count;
 
+    /// <summary>Whether the graph has no room left, so nothing more can be recorded in it.</summary>
+    /// <remarks>
+    /// Asked by callers that would have to compose the words describing where a value came from before
+    /// they could offer them. Once there is no room, those words are dropped on arrival, and composing
+    /// them is the most expensive thing about a value that is not being recorded — a method's full
+    /// signature, walked out of the metadata, for every argument of every call. A saturated graph is
+    /// the normal state of a long interpretation rather than an edge of one: the room is tens of
+    /// thousands of nodes and a bootstrap runs tens of millions of steps.
+    /// </remarks>
+    public bool Saturated => _nodes.Count >= _maximumNodes - 1;
+
+    /// <summary>
+    /// Marks a value as coming from somewhere the graph had no room to record, describing nothing.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="Origin"/> does when the graph is full, for a caller that asked first and so
+    /// has nothing to describe it with.
+    /// </remarks>
+    public StaticValue Unrecorded(StaticValue value) => value.WithProvenance(BudgetNode());
+
     public StaticValue Origin(
         StaticValue value,
         ProvenanceKind kind,

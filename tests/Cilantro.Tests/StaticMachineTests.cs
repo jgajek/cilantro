@@ -34,6 +34,27 @@ public sealed class StaticMachineTests
         Assert.True(graph.Count <= 3);
     }
 
+    /// <summary>
+    /// A caller that asks whether the graph is full before describing anything to it gets the same
+    /// value it would have got by describing it, which is the whole reason it is allowed to skip
+    /// composing the description.
+    /// </summary>
+    [Fact]
+    public void AFullGraphMarksAValueTheSameWayWhetherOrNotItWasDescribed()
+    {
+        var graph = new ProvenanceGraph(2, 8, 8);
+        Assert.False(graph.Saturated);
+        graph.Origin(StaticValue.FromInt32(1), ProvenanceKind.Literal, "M/IL_0000", "1");
+        Assert.True(graph.Saturated);
+
+        var described = graph.Origin(
+            StaticValue.FromInt32(7), ProvenanceKind.Argument, "M/arg0", "System.Void M::N()");
+        var undescribed = graph.Unrecorded(StaticValue.FromInt32(7));
+
+        Assert.Equal(described.ProvenanceId, undescribed.ProvenanceId);
+        Assert.Contains("Budget", graph.Render(undescribed.ProvenanceId));
+    }
+
     [Fact]
     public void ArithmeticProvenanceRendersItsLiteralInputs()
     {

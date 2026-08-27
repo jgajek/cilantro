@@ -45,8 +45,70 @@ public sealed class PayloadChainRecoveryTests
         Assert.NotEmpty(diagnostics);
     }
 
+    /// <summary>
+    /// A stage called through a declaration that has no body of its own is still followed to the
+    /// bodies that do, which is the edge the whole-module survey has to account for as the walk did.
+    /// </summary>
+    [Fact]
+    public void ALoadReachedOnlyThroughAnOverrideStillOffersItsRoot()
+    {
+        using var context = SyntheticContext.Build(module =>
+            AddOverriddenDriver(module, Encode(NewPayloadAssembly(), Key)));
+
+        PayloadChainRecovery.Recover(context, out var diagnostics);
+
+        // Which is to say it was admitted and interpreted, rather than dismissed out of hand for
+        // reaching no load at all.
+        Assert.DoesNotContain(
+            "No startup path reaches a load of an assembly from memory.", diagnostics);
+        Assert.Contains(diagnostics, said => said.StartsWith("Start:", StringComparison.Ordinal));
+    }
+
     private static byte[] Encode(byte[] payload, byte key) =>
         [.. payload.Select(value => (byte)(value ^ key))];
+
+    /// <summary>
+    /// Adds a root that calls an abstract stage, and a subclass whose override does the loading.
+    /// </summary>
+    private static void AddOverriddenDriver(ModuleDefUser module, byte[] encoded)
+    {
+        var stage = SyntheticContext.AddType(module, "Stage");
+        stage.Attributes |= TypeAttributes.Abstract;
+        var declared = new MethodDefUser(
+            "Run",
+            MethodSig.CreateInstance(module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.Abstract |
+            MethodAttributes.NewSlot | MethodAttributes.HideBySig);
+        stage.Methods.Add(declared);
+
+        var real = new TypeDefUser("Synthetic", "Real", stage)
+        {
+            Attributes = TypeAttributes.NotPublic | TypeAttributes.Class
+        };
+        module.Types.Add(real);
+        var keyField = new FieldDefUser(
+            "key", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Private);
+        real.Fields.Add(keyField);
+        var overriding = NewUnpacker(
+            module, keyField, NewDataField(module, encoded), encoded.Length);
+        overriding.Name = "Run";
+        overriding.Attributes |= MethodAttributes.Virtual | MethodAttributes.HideBySig;
+        real.Methods.Add(overriding);
+
+        var start = new MethodDefUser(
+            "Start",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig)
+        {
+            Body = new CilBody()
+        };
+        start.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+        start.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(declared));
+        start.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        SyntheticContext.AddType(module, "Entry").Methods.Add(start);
+    }
 
     /// <summary>
     /// Builds a small but real assembly, so recovery has to parse metadata to accept it.

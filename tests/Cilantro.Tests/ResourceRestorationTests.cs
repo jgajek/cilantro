@@ -198,6 +198,21 @@ public sealed class ResourceRestorationTests
         Assert.True(cut > passes.IndexOf("resource-restoration"), "The bundle is read too late.");
     }
 
+    /// <summary>
+    /// The devirtualization check reads what unpacking the module came to rather than arranging to
+    /// find out again, so the pass that finds out has to have run by the time it looks.
+    /// </summary>
+    [Fact]
+    public void WhatTheModuleUnpacksIsEstablishedBeforeTheCheckNeedsIt()
+    {
+        var passes = CilantroPipeline.CreateDefaultPasses().Select(pass => pass.Name).ToList();
+        var found = passes.IndexOf("payload-extraction");
+        Assert.InRange(found, 0, passes.Count - 1);
+        Assert.True(
+            passes.IndexOf("virtualization-rebuild") > found,
+            "The check looks for the run's answer before the run has one.");
+    }
+
     private static EmbeddedResource Sized(int length) =>
         new("bundle", new byte[length], ManifestResourceAttributes.Public);
 

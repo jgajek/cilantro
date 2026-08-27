@@ -1592,6 +1592,10 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
+        // Nothing is recorded for a later pass here. What is proved is that no resource this module
+        // embeds carries an assembly, and a load takes the bytes it is given from wherever they were
+        // built; so this says nothing about what the module hands the runtime, and a reader treating
+        // it as though it did would take a check it could have made for one there was no point making.
         if (TryProveNoManagedPayload(context, out var accounting))
             return (PassStatus.Success, 0, accounting);
 
@@ -1599,6 +1603,9 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
         // change of crypter, so it is tried before anything that reasons about a particular codec.
         if (TryRecoverByInterpretation(context, out var interpreted, out var declined))
             return interpreted;
+
+        // This one did watch every load the startup path reached, so its silence means something.
+        Told(context, [], declined);
 
         context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts);
         if (facts is not null &&
@@ -1730,9 +1737,20 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
             : payloads.ToArray();
         context.SetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", combined);
         diagnostics.AddRange(why);
+        Told(context, recovered.Select(item => item.Sha256), why);
         outcome = (PassStatus.Success, payloads.Count, diagnostics);
         return true;
     }
+
+    /// <summary>Records what interpreting the module's own startup path came to.</summary>
+    private static void Told(
+        ArtifactContext context,
+        IEnumerable<string> unpacked,
+        IReadOnlyList<string> why) =>
+        context.SetFact(
+            PayloadChainRecovery.ChainFact,
+            new PayloadChainRecovery.InterpretedChain(
+                unpacked.ToHashSet(StringComparer.Ordinal), why));
 
     /// <summary>
     /// Decides whether the absence of a payload is a proven fact or an unsupported codec.
