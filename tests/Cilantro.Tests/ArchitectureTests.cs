@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Cilantro.Core;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Payload;
 using Cilantro.Core.Strings;
@@ -317,5 +318,75 @@ public sealed class ArchitectureTests
 
         Assert.True(result.Valid);
         Assert.Equal(2, result.MaximumDepth);
+    }
+
+    /// <summary>
+    /// The table naming the proxies is available to a reader before the pass that rewrites them runs.
+    /// </summary>
+    /// <remarks>
+    /// The string table is read early, long before proxy dispatch is undone, so its interpreter walks
+    /// into proxy fields the loader fills at run time and this run does not and stops on the null one
+    /// holds. Rewriting the sites first would settle it, but that pass has to follow much of the
+    /// pipeline, and moving it ahead of the loader-state census cost that census its static fields.
+    /// The table itself has no such ordering: it falls out of interpreting the bootstrap, which is
+    /// the pass before the string table.
+    /// </remarks>
+    [Fact]
+    public void TheProxyTableIsPublishedBeforeAnyReaderNeedsIt()
+    {
+        var passes = CilantroPipeline.CreateDefaultPasses().Select(pass => pass.Name).ToList();
+        var published = passes.IndexOf("method-body-recovery");
+        Assert.InRange(published, 0, passes.Count - 1);
+        foreach (var reader in new[] { "string-table-recovery", "string-table-relearning" })
+            Assert.True(passes.IndexOf(reader) > published, $"{reader} runs before the table exists.");
+
+        // The census whose static fields the reorder cost keeps its place ahead of the rewrite.
+        Assert.True(
+            passes.IndexOf("global-state-capture") < passes.IndexOf("delegate-proxy-analysis"),
+            "The loader-state census now runs on a module whose proxies are already rewritten.");
+    }
+
+    /// <summary>
+    /// A table naming something other than the proxy fields is not taken for the proxy map.
+    /// </summary>
+    [Fact]
+    public void ALoaderTableIsOnlyReadAsTheProxyMapWhenItAccountsForEveryProxy()
+    {
+        using var module = ModuleDefMD.Load(typeof(ArchitectureTests).Module);
+        var target = module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .First(method => method.HasBody);
+        var field = module.GetTypes().SelectMany(type => type.Fields).First();
+        var proxyFields = new Dictionary<uint, FieldDef> { [field.MDToken.Raw] = field };
+        var naming = (int field, int method) =>
+            new Dictionary<uint, IReadOnlyDictionary<int, int>>
+            {
+                [0x04000001] = new Dictionary<int, int> { [field] = method }
+            };
+
+        Assert.True(ProxyLoaderTable.TryRead(
+            module,
+            naming((int)field.MDToken.Raw, (int)target.MDToken.Raw),
+            proxyFields,
+            out var bindings,
+            out var source));
+        Assert.Equal(target.MDToken.Raw, Assert.Single(bindings).TargetToken);
+        Assert.Contains("04000001", source, StringComparison.Ordinal);
+
+        // A key that is not one of the proxy fields, and a value that names no method of this module.
+        Assert.False(ProxyLoaderTable.TryRead(
+            module, naming(0x04FFFFFF, (int)target.MDToken.Raw), proxyFields, out _, out _));
+        Assert.False(ProxyLoaderTable.TryRead(
+            module, naming((int)field.MDToken.Raw, 0x06FFFFFF), proxyFields, out _, out _));
+
+        // Two tables that both qualify leave nothing to choose between them, so neither is read.
+        var ambiguous = new Dictionary<uint, IReadOnlyDictionary<int, int>>
+        {
+            [0x04000001] = new Dictionary<int, int>
+                { [(int)field.MDToken.Raw] = (int)target.MDToken.Raw },
+            [0x04000002] = new Dictionary<int, int>
+                { [(int)field.MDToken.Raw] = (int)target.MDToken.Raw }
+        };
+        Assert.False(ProxyLoaderTable.TryRead(module, ambiguous, proxyFields, out _, out _));
     }
 }

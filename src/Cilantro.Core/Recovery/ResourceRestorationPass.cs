@@ -244,6 +244,26 @@ public sealed class ResourceRestorationPass : DeobfuscationPass
         method.Body.Instructions.Any(instruction =>
             instruction.Operand is string value && value == bundle.Name.String);
 
+    /// <summary>What reading one bundle is allowed to spend.</summary>
+    /// <remarks>
+    /// The reader decrypts and inflates a whole satellite assembly, and that costs on the order of a
+    /// hundred and fifty interpreted steps per byte of it, so what it needs is set by the bundle
+    /// rather than by a figure here: three and a half megabytes is around half a billion steps, where
+    /// a flat few million stops inside the first per cent of the decryption and reports its own
+    /// ceiling — which reads as a protection the tool cannot follow when it is only a resource the
+    /// tool declined to finish. The floor is what every reading used to get, so nothing that reads
+    /// today is given less, and the cap holds however large the resource claims to be.
+    /// </remarks>
+    internal static int Budget(EmbeddedResource bundle)
+    {
+        const int stepsPerByte = 150;
+        const int headroom = 2;
+        const int fewest = 8_000_000;
+        const int most = 1_200_000_000;
+        return (int)Math.Clamp(
+            (long)bundle.CreateReader().Length * stepsPerByte * headroom, fewest, most);
+    }
+
     /// <summary>
     /// Whether a method reads a manifest resource, directly or through the helpers it calls.
     /// </summary>
@@ -288,9 +308,9 @@ public sealed class ResourceRestorationPass : DeobfuscationPass
         EmbeddedResource bundle,
         out string diagnostic)
     {
-        const int maximumSteps = 8_000_000;
         diagnostic = string.Empty;
-        if (!BootstrapMachine.TryRunInitializers(context, maximumSteps, out var machine, out var seed) ||
+        if (!BootstrapMachine.TryRunInitializers(
+                context, Budget(bundle), out var machine, out var seed) ||
             machine is null)
         {
             diagnostic = seed;

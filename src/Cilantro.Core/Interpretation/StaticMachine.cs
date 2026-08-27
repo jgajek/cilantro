@@ -741,7 +741,12 @@ public sealed class StaticMachine
                                 return UnknownNumber(instruction, "array index");
                             var index = stored.AsInt32();
                             var array = Pop(stack);
-                            if (!State.Heap.TryWriteArray(array, index, value, out var inBounds))
+                            if (!State.Heap.TryWriteArray(
+                                    array,
+                                    index,
+                                    value,
+                                    StoredPrimitive(instruction.OpCode.Code),
+                                    out var inBounds))
                             {
                                 State.Heap.TryGetArrayElementType(array, out var elementType);
                                 throw new InvalidOperationException(inBounds
@@ -1748,6 +1753,27 @@ public sealed class StaticMachine
         _ => throw new InvalidOperationException("Branch condition is not integer or reference.")
     };
 
+    /// <summary>
+    /// The primitive a store instruction names, for an element type that names none this reader can
+    /// resolve.
+    /// </summary>
+    /// <remarks>
+    /// The unsigned spelling is used where the opcode does not distinguish, so that what is kept is
+    /// the slot as it was written; the matching read normalizes it to whichever the reading side
+    /// meant. <c>stelem</c> is absent because its operand is the element type, which is the thing
+    /// already tried.
+    /// </remarks>
+    private static string? StoredPrimitive(Code code) => code switch
+    {
+        Code.Stelem_I1 => "System.Byte",
+        Code.Stelem_I2 => "System.UInt16",
+        Code.Stelem_I4 or Code.Stelem_I => "System.Int32",
+        Code.Stelem_I8 => "System.Int64",
+        Code.Stelem_R4 => "System.Single",
+        Code.Stelem_R8 => "System.Double",
+        _ => null
+    };
+
     private static StaticValue NormalizeElement(Code code, StaticValue value)
     {
         if (!value.IsKnown || !value.IsInteger)
@@ -2112,15 +2138,6 @@ public sealed class StaticMachine
     }
 
     /// <summary>
-    /// Whether a callee's body is part of the code this machine was set running on.
-    /// </summary>
-    /// <remarks>
-    /// Normally that is just "the same module as the caller". The exception is a body the machine
-    /// assembled itself from instructions a program emitted: it lives in a scratch module of its
-    /// own, but the methods it calls are the subject's, and asking about the caller would refuse
-    /// to run them.
-    /// </remarks>
-    /// <summary>
     /// Stands something in for the result of a parameterless call whose body could not be followed.
     /// </summary>
     /// <remarks>
@@ -2162,6 +2179,15 @@ public sealed class StaticMachine
             : null;
     }
 
+    /// <summary>
+    /// Whether a callee's body is part of the code this machine was set running on.
+    /// </summary>
+    /// <remarks>
+    /// Normally that is just "the same module as the caller". The exception is a body the machine
+    /// assembled itself from instructions a program emitted: it lives in a scratch module of its
+    /// own, but the methods it calls are the subject's, and asking about the caller would refuse
+    /// to run them.
+    /// </remarks>
     private bool BelongsToSubject(MethodDef definition, MethodDef caller) =>
         definition.Module == caller.Module ||
         definition.Module == State.ModuleMetadata ||

@@ -63,6 +63,7 @@ public sealed record InterpretedRewrite(
     IReadOnlyList<MappedImageWrite> Writes,
     IReadOnlyList<MappedImageWrite> ImageWrites,
     IReadOnlyDictionary<uint, int> IntegerFields,
+    IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> TokenMaps,
     LoaderInterpretationEvidence Evidence);
 
 /// <summary>
@@ -138,6 +139,12 @@ public static class ImageRewriteRecovery
         {
             diagnostic = "The two bounded bootstrap interpretations disagreed on " +
                 "loader-initialized integer fields.";
+            return false;
+        }
+        if (!InitializedFieldCapture.MapsAgree(first.TokenMaps, second.TokenMaps))
+        {
+            diagnostic = "The two bounded bootstrap interpretations disagreed on " +
+                "loader-initialized token tables.";
             return false;
         }
         if (!first.Evidence.Agrees(second.Evidence))
@@ -367,8 +374,12 @@ public static class ImageRewriteRecovery
         // Snapshot before the key holders run, so the evidence describes the bootstrap alone.
         var evidence = machine.State.LoaderEvidence;
         var integerFields = new Dictionary<uint, int>();
+        var tokenMaps = new Dictionary<uint, IReadOnlyDictionary<int, int>>();
         if (result.Succeeded)
+        {
             integerFields = CaptureResolverKeys(context.Module, machine);
+            tokenMaps = InitializedFieldCapture.CaptureIntegerMaps(context.Module, machine.State);
+        }
         if (machine.State.TypeInitializationEvents.Count != 0)
             result = result with { Diagnostic = DescribeTypeInitialization(machine, result) };
 
@@ -382,6 +393,7 @@ public static class ImageRewriteRecovery
                     StringComparison.Ordinal))
                 .ToArray(),
             integerFields,
+            tokenMaps,
             evidence);
         diagnostic = null;
         return true;

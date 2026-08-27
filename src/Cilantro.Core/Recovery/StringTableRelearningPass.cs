@@ -63,29 +63,31 @@ public sealed class StringTableRelearningPass : DeobfuscationPass
         }
 
         var resolvers = StringResolverCandidates.In(context.Module);
-        if (resolvers.Length != 1)
-        {
-            return (PassStatus.Success, 0,
-            [
-                resolvers.Length == 0
-                    ? "No protected string resolver was detected."
-                    : $"{resolvers.Length} candidate resolvers were detected, so which one the " +
-                        "program reads is not settled."
-            ]);
-        }
+        if (resolvers.Length == 0)
+            return (PassStatus.Success, 0, ["No protected string resolver was detected."]);
 
         var diagnostics = new List<string>();
+        var incomplete = false;
+        // A shape is not a proof, so more than one method can look like the resolver, and which one
+        // it is is settled by which one produces a table rather than by insisting beforehand that
+        // only one looks the part. Declining instead left a build with eleven thousand protected
+        // call sites unread because two application methods happened to take an int and return a
+        // string, and neither of them so much as reads a resource.
+        foreach (var resolver in resolvers)
         foreach (var program in programs)
         {
             if (program.Operations.Count == 0)
                 continue;
+            var reading = resolvers.Length == 1
+                ? program.Method.Stub.Name.String
+                : $"{resolver.Name} under {program.Method.Stub.Name}";
             if (!StaticStringTableInterpreter.TryCapture(
-                    context.Module, context.OriginalImage, resolvers[0], out var capture,
-                    out var diagnostic, BootstrapMachine.Environment(context), program) ||
+                    context.Module, context.OriginalImage, resolver, out var capture,
+                    out var diagnostic, BootstrapMachine.Environment(context), program,
+                    ProxyLoaderTable.Read(context)) ||
                 capture is null)
             {
-                diagnostics.Add(
-                    $"{program.Method.Stub.Name}: {diagnostic}");
+                diagnostics.Add($"{reading}: {diagnostic}");
                 continue;
             }
 
@@ -94,7 +96,7 @@ public sealed class StringTableRelearningPass : DeobfuscationPass
                 new CapturedStringTable(
                     capture.Source, capture.Bytes, capture.Records, capture.IntegerFields));
             diagnostics.Add(
-                $"{program.Method.Stub.Name}: {diagnostic} " +
+                $"{reading}: {diagnostic} " +
                 $"{capture.Records.Count} string(s), read under this build's own numbering.");
 
             // The rewrite is attempted before the table is recorded, because a table nothing was
@@ -103,19 +105,20 @@ public sealed class StringTableRelearningPass : DeobfuscationPass
             // to them. Where it does account for them the fact is set, and the pass that reads it
             // next is reading a table whose every use has been proven.
             var (status, changes, said) = StringRecoveryPass.Restore(
-                context, Name, resolvers[0], table);
+                context, Name, resolver, table);
             // A rewrite that was never started is a decline; one that was started and rolled back is
             // a failure, and is reported as one — the module is as it was either way, but the second
-            // says the reading was wrong rather than incomplete.
+            // says the reading was wrong rather than incomplete. A reading that could not account for
+            // every use is not the end of the search either, because another candidate may account
+            // for all of its own.
             if (status == PassStatus.Partial)
             {
-                return (Owed(context), 0,
-                [
-                    .. diagnostics,
-                    .. said,
-                    "The strings were left as they were. This reading restores what it can prove " +
-                        "every use of, and it proved fewer than all of them."
-                ]);
+                incomplete = true;
+                diagnostics.AddRange(said);
+                diagnostics.Add(
+                    $"{reading}: the strings were left as they were. This reading restores what it " +
+                    "can prove every use of, and it proved fewer than all of them.");
+                continue;
             }
 
             context.SetFact("strings.table", table);
@@ -127,6 +130,9 @@ public sealed class StringTableRelearningPass : DeobfuscationPass
                 1.0));
             return (status, changes, [.. diagnostics, .. said]);
         }
+
+        if (incomplete)
+            return (Owed(context), 0, diagnostics);
 
         return (Owed(context), 0,
         [

@@ -363,15 +363,18 @@ public sealed class StaticHeap
         if (length < 0 || length > _limits.MaximumArrayLength)
             return false;
 
-        var width = ElementWidth(elementType);
+        var storageName = Storage(elementType);
+        var primitive = PrimitiveWidth(storageName);
+        var width = primitive != 0 ? primitive : ElementWidth(elementType);
         if (!TryReserve(checked((long)length * width)))
             return false;
 
         var typeName = elementType?.FullName ?? "?";
-        var initial = DefaultArrayValue(typeName, IsReferenceType(elementType));
+        var unsized = IsUnsized(elementType, storageName);
+        var initial = DefaultArrayValue(storageName, IsReferenceType(elementType) && !unsized);
         var values = new StaticValue[length];
         Array.Fill(values, initial);
-        reference = Add(new HeapArray(typeName, initial, values));
+        reference = Add(new HeapArray(typeName, storageName, unsized, initial, values));
         return true;
     }
 
@@ -387,7 +390,12 @@ public sealed class StaticHeap
             return false;
         }
 
-        reference = Add(new HeapArray(array.ElementType, array.DefaultValue, [.. array.Values]));
+        reference = Add(new HeapArray(
+            array.ElementType,
+            array.Storage,
+            array.Unsized,
+            array.DefaultValue,
+            [.. array.Values]));
         return true;
     }
 
@@ -401,6 +409,8 @@ public sealed class StaticHeap
             return false;
         var array = new HeapArray(
             "System.Byte",
+            "System.Byte",
+            false,
             StaticValue.FromInt32(0),
             new StaticValue[bytes.Length]);
         for (var i = 0; i < bytes.Length; i++)
@@ -502,6 +512,29 @@ public sealed class StaticHeap
         StaticValue reference,
         int index,
         StaticValue value,
+        out bool inBounds) =>
+        TryWriteArray(reference, index, value, null, out inBounds);
+
+    /// <summary>
+    /// Stores an element, letting the caller name the primitive its instruction stores.
+    /// </summary>
+    /// <param name="instructed">
+    /// The primitive the storing instruction names, where it names one. Consulted only for an
+    /// element type this reader could not reduce to a primitive itself.
+    /// </param>
+    /// <remarks>
+    /// An array of a framework enum is the case this exists for. Its element type does not resolve —
+    /// nothing hands the reader a corlib — so the reader cannot tell what the elements are written
+    /// on, and coercing to the enum's own name refuses every store. The instruction knows: a
+    /// <c>stelem.i4</c> puts four bytes in the slot whatever the slot is called. That is a fact
+    /// stated by the file being read rather than a guess about the framework, so it is the better
+    /// authority of the two, and where the element type resolves the two agree anyway.
+    /// </remarks>
+    public bool TryWriteArray(
+        StaticValue reference,
+        int index,
+        StaticValue value,
+        string? instructed,
         out bool inBounds)
     {
         inBounds = false;
@@ -510,11 +543,22 @@ public sealed class StaticHeap
         if ((uint)index >= (uint)array.Values.Length)
             return false;
         inBounds = true;
-        if (!TryNormalizeArrayElement(array.ElementType, value, out var normalized))
+        if (!TryNormalizeArrayElement(Sized(array, instructed), value, out var normalized))
             return false;
         array.Values[index] = normalized;
         return true;
     }
+
+    /// <summary>
+    /// What an element is coerced to, preferring the storing instruction where the type is unsized.
+    /// </summary>
+    /// <remarks>
+    /// Only an array whose element type gave up neither a width nor a reference is spoken for this
+    /// way. An array of something this reader can read keeps its own answer, so a number stored into
+    /// an array of strings is refused as it was before.
+    /// </remarks>
+    private static string Sized(HeapArray array, string? instructed) =>
+        instructed is not null && array.Unsized ? instructed : array.Storage;
 
     public bool TryClearArray(StaticValue reference, int index, int count)
     {
@@ -581,7 +625,7 @@ public sealed class StaticHeap
     {
         if (!TryObject(reference, out var item) || item is not HeapArray array)
             return false;
-        var width = array.ElementType switch
+        var width = array.Storage switch
         {
             "System.Byte" or "System.SByte" or "System.Boolean" => 1,
             "System.Int16" or "System.UInt16" or "System.Char" => 2,
@@ -595,7 +639,7 @@ public sealed class StaticHeap
         for (var index = 0; index < array.Values.Length; index++)
         {
             var element = bytes.Slice(index * width, width);
-            var value = array.ElementType switch
+            var value = array.Storage switch
             {
                 "System.Byte" or "System.Boolean" => StaticValue.FromInt32(element[0]),
                 "System.SByte" => StaticValue.FromInt32(unchecked((sbyte)element[0])),
@@ -788,7 +832,7 @@ public sealed class StaticHeap
         int offset,
         Span<byte> destination)
     {
-        var width = PrimitiveWidth(array.ElementType);
+        var width = PrimitiveWidth(array.Storage);
         var byteLength = checked(array.Values.Length * width);
         if (width == 0 || offset < 0 || offset > byteLength - destination.Length)
             return false;
@@ -800,7 +844,7 @@ public sealed class StaticHeap
         var last = (offset + destination.Length - 1) / width;
         for (var index = offset / width; index <= last; index++)
         {
-            if (!TryWriteElementBytes(array.ElementType, array.Values[index], wanted))
+            if (!TryWriteElementBytes(array.Storage, array.Values[index], wanted))
                 return false;
             var start = index * width;
             var from = Math.Max(start, offset);
@@ -823,7 +867,7 @@ public sealed class StaticHeap
         int offset,
         ReadOnlySpan<byte> source)
     {
-        var width = PrimitiveWidth(array.ElementType);
+        var width = PrimitiveWidth(array.Storage);
         var byteLength = checked(array.Values.Length * width);
         if (width == 0 || offset < 0 || offset > byteLength - source.Length)
             return false;
@@ -840,12 +884,12 @@ public sealed class StaticHeap
             var to = Math.Min(start + width, offset + source.Length);
             var existing = array.Values[index];
             if ((from != start || to != start + width) &&
-                !TryWriteElementBytes(array.ElementType, existing, replaced))
+                !TryWriteElementBytes(array.Storage, existing, replaced))
             {
                 return false;
             }
             source[(from - offset)..(to - offset)].CopyTo(replaced[(from - start)..]);
-            if (!TryReadElementBytes(array.ElementType, replaced, out var value))
+            if (!TryReadElementBytes(array.Storage, replaced, out var value))
                 return false;
             array.Values[index] = value.WithProvenance(existing.ProvenanceId);
         }
@@ -982,6 +1026,29 @@ public sealed class StaticHeap
                 _ => StaticValue.FromInt32(0)
             };
 
+    /// <summary>
+    /// The primitive an element of this type is kept as, which for an enum is what it is written on.
+    /// </summary>
+    /// <remarks>
+    /// An enum array holds integers: the IL that fills one stores an int and reads an int back, and
+    /// the enum's own name is not a primitive to coerce to. Read as the name, the store is refused
+    /// and the array keeps the zeroes it was made with, which on the sample this was found on lost a
+    /// table of registry views a path builder walks, and with it every path built from it.
+    ///
+    /// An enum the file defines says what it is written on directly. One belonging to the framework
+    /// does not resolve here at all, because nothing hands the reader a corlib; for those the width
+    /// comes from the instruction doing the storing instead, which is in the file being read and so
+    /// is not an assumption about anything.
+    /// </remarks>
+    private static string Storage(TypeSig? elementType)
+    {
+        var declared = elementType?.FullName ?? "?";
+        return elementType?.ElementType == ElementType.ValueType &&
+            elementType.ToTypeDefOrRef()?.ResolveTypeDef() is { IsEnum: true } enumerated
+            ? enumerated.GetEnumUnderlyingType()?.FullName ?? declared
+            : declared;
+    }
+
     private static int ElementWidth(TypeSig? type) => type?.ElementType switch
     {
         ElementType.I8 or ElementType.U8 or ElementType.R8 => 8,
@@ -994,6 +1061,22 @@ public sealed class StaticHeap
         ElementType.Class or ElementType.Object or ElementType.String or
         ElementType.Array or ElementType.SZArray;
 
+    /// <summary>
+    /// Whether the element type says neither how wide an element is nor that it is a reference.
+    /// </summary>
+    /// <remarks>
+    /// dnlib writes an unresolvable type reference as a class whether or not it names a struct, so
+    /// "class" on its own is not the reference the element-type test takes it for. A class that
+    /// resolves really is one. A class that does not resolve is a type nothing here can read, which
+    /// on this pipeline is every framework type: nothing hands the reader a corlib. So an array of
+    /// one is left for the instruction storing into it to size, and until something stores, no width
+    /// is claimed for it.
+    /// </remarks>
+    private static bool IsUnsized(TypeSig? elementType, string storage) =>
+        PrimitiveWidth(storage) == 0 &&
+        elementType?.ElementType is ElementType.Class or ElementType.ValueType &&
+        elementType.ToTypeDefOrRef()?.ResolveTypeDef() is null;
+
     private static StaticValue DefaultFieldValue(TypeSig? type) =>
         IsReferenceType(type)
             ? StaticValue.Null
@@ -1002,8 +1085,22 @@ public sealed class StaticHeap
                 : StaticValue.FromInt32(0);
 
     private abstract record HeapObject;
+    /// <summary>
+    /// An array, holding both what it says its elements are and the primitive they are kept as.
+    /// </summary>
+    /// <param name="ElementType">What the metadata calls the element type.</param>
+    /// <param name="Storage">
+    /// The primitive an element is coerced to and read back as, which for an enum is the type it is
+    /// written on and otherwise is the element type itself.
+    /// </param>
+    /// <param name="Unsized">
+    /// Whether the element type left this reader knowing neither a width nor that the elements are
+    /// references, which is where a storing instruction gets to say what the width is.
+    /// </param>
     private sealed record HeapArray(
         string ElementType,
+        string Storage,
+        bool Unsized,
         StaticValue DefaultValue,
         StaticValue[] Values) : HeapObject;
     private sealed record HeapRegion(byte[] Bytes, string Kind, long BaseAddress) : HeapObject;
@@ -1077,7 +1174,7 @@ public sealed class StaticHeap
     private sealed class ArrayLocation(HeapArray array, int index, int byteDelta = 0)
         : ManagedLocation
     {
-        public override int ElementWidth => PrimitiveWidth(array.ElementType);
+        public override int ElementWidth => PrimitiveWidth(array.Storage);
 
         public override bool TryRead(out StaticValue value)
         {
@@ -1090,14 +1187,14 @@ public sealed class StaticHeap
         public override bool TryWrite(StaticValue value)
         {
             if (!TryElementIndex(out var element) ||
-                !TryNormalizeArrayElement(array.ElementType, value, out var normalized))
+                !TryNormalizeArrayElement(array.Storage, value, out var normalized))
                 return false;
             array.Values[element] = normalized;
             return true;
         }
         public override bool TryReadBytes(int offset, Span<byte> destination)
         {
-            var width = PrimitiveWidth(array.ElementType);
+            var width = PrimitiveWidth(array.Storage);
             return width != 0 &&
                 TryReadArrayBytes(
                     array,
@@ -1106,7 +1203,7 @@ public sealed class StaticHeap
         }
         public override bool TryWriteBytes(int offset, ReadOnlySpan<byte> source)
         {
-            var width = PrimitiveWidth(array.ElementType);
+            var width = PrimitiveWidth(array.Storage);
             return width != 0 &&
                 TryWriteArrayBytes(
                     array,
@@ -1114,7 +1211,7 @@ public sealed class StaticHeap
                     source);
         }
         public override ManagedLocation? Offset(int delta) =>
-            PrimitiveWidth(array.ElementType) == 0
+            PrimitiveWidth(array.Storage) == 0
                 ? null
                 : new ArrayLocation(array, index, checked(byteDelta + delta));
 
@@ -1123,7 +1220,7 @@ public sealed class StaticHeap
             element = index;
             if (byteDelta != 0)
             {
-                var width = PrimitiveWidth(array.ElementType);
+                var width = PrimitiveWidth(array.Storage);
                 if (width == 0)
                     return false;
                 var absolute = checked(index * width + byteDelta);

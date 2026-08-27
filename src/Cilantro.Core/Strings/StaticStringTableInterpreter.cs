@@ -353,6 +353,42 @@ public static class StaticStringTableInterpreter
         MaximumAllocatedBytes: 64 * 1024 * 1024,
         MaximumArrayLength: 16 * 1024 * 1024);
 
+    /// <summary>What decrypting one byte of a table costs, measured.</summary>
+    /// <remarks>
+    /// The tables are decrypted by a block cipher the module carries, four bytes at a time, and the
+    /// one measured spends 306 interpreted steps on each block however large the table is. Eighty a
+    /// byte is that figure rounded up.
+    /// </remarks>
+    private const int StepsPerTableByte = 80;
+
+    /// <summary>How much more than the decryption a reading is allowed, for the rest of the program.
+    /// </summary>
+    private const int ReadingHeadroom = 2;
+
+    /// <summary>The most a reading may spend however large the table it was pointed at is.</summary>
+    private const int MostReadingSteps = 400_000_000;
+
+    /// <summary>What reading a table of this size is allowed to spend.</summary>
+    /// <remarks>
+    /// What a reading costs is a property of the file rather than of the tool: the table is a
+    /// resource the module carries, and at eighty steps a byte a quarter-megabyte of it is twenty-five
+    /// million of them. A flat few million therefore stops in the middle of the decryption on any
+    /// build that hides more than about fifty kilobytes, and reports its own ceiling rather than
+    /// anything about the build — which reads as a protection the tool cannot follow when it is only
+    /// a table the tool declined to finish. Sizing the ceiling from the resource being read keeps it
+    /// in proportion to the work in front of it, so a module with a small table still stops quickly
+    /// on a loop that will not end, and no module is refused for being large. The floor is what every
+    /// reading used to get, so nothing that fits today is given less.
+    /// </remarks>
+    internal static StaticMachineLimits Reading(int tableBytes) =>
+        Limits with
+        {
+            MaximumSteps = (int)Math.Clamp(
+                (long)tableBytes * StepsPerTableByte * ReadingHeadroom,
+                Limits.MaximumSteps,
+                MostReadingSteps)
+        };
+
     /// <summary>
     /// What the reading of last resort is given, which is less than the reading it stands behind.
     /// </summary>
@@ -411,7 +447,8 @@ public static class StaticStringTableInterpreter
         MethodDef resolver,
         RunEnvironment? environment,
         out IReadOnlyDictionary<int, long?> operations,
-        out string diagnostic)
+        out string diagnostic,
+        IReadOnlyList<ProxyBinding>? proxies = null)
     {
         operations = new Dictionary<int, long?>();
         var resourceName = FindResourceName(resolver);
@@ -423,7 +460,7 @@ public static class StaticStringTableInterpreter
         }
 
         if (!TryPrepare(module, image, initializer, resourceName, environment ?? new RunEnvironment(),
-                0, Limits, out var machine, out _, out diagnostic))
+                0, Limits, proxies, out var machine, out _, out diagnostic))
         {
             return false;
         }
@@ -472,7 +509,8 @@ public static class StaticStringTableInterpreter
         out StaticStringTableCapture? capture,
         out string diagnostic,
         RunEnvironment? environment = null,
-        VirtualProgram? learned = null)
+        VirtualProgram? learned = null,
+        IReadOnlyList<ProxyBinding>? proxies = null)
     {
         capture = null;
 
@@ -500,8 +538,8 @@ public static class StaticStringTableInterpreter
         foreach (var offset in new[] { 0, 1 })
         {
             if (!TryRun(module, image, initializer, resourceName,
-                    resource.CreateReader().ToArray(), offset, environment, numbering, out var run,
-                    out diagnostic))
+                    resource.CreateReader().ToArray(), offset, environment, numbering, proxies,
+                    out var run, out diagnostic))
             {
                 // What the engine did not say is the first thing to look at when a reading that had
                 // the engine's own numbering still stopped, so it is said here rather than left to
@@ -564,6 +602,7 @@ public static class StaticStringTableInterpreter
         int offset,
         RunEnvironment? environment,
         IReadOnlyDictionary<int, VmReading>? numbering,
+        IReadOnlyList<ProxyBinding>? proxies,
         out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
             IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
         out string diagnostic)
@@ -571,8 +610,9 @@ public static class StaticStringTableInterpreter
         run = default;
         environment ??= new RunEnvironment();
 
-        if (!TryPrepare(module, image, initializer, resourceName, environment, offset, Limits,
-                out var machine, out var arguments, out diagnostic))
+        if (!TryPrepare(module, image, initializer, resourceName, environment, offset,
+                Reading(resourceBytes.Length), proxies, out var machine, out var arguments,
+                out diagnostic))
         {
             return false;
         }
@@ -592,7 +632,7 @@ public static class StaticStringTableInterpreter
             // pinned to, and this one answers where it stops rather than replacing it.
             var serialized = diagnostic;
             if (!TryPrepare(module, image, initializer, resourceName, environment, offset, LastResort,
-                    out var interpreting, out var again, out diagnostic))
+                    proxies, out var interpreting, out var again, out diagnostic))
             {
                 return false;
             }
@@ -628,11 +668,12 @@ public static class StaticStringTableInterpreter
         RunEnvironment environment,
         int offset,
         StaticMachineLimits limits,
+        IReadOnlyList<ProxyBinding>? known,
         out StaticMachine machine,
         out IReadOnlyList<StaticValue> arguments,
         out string diagnostic)
     {
-        var proxies = ProxyIntrinsicRegistry.Create(module);
+        var proxies = ProxyIntrinsicRegistry.Create(module, known);
         machine = new StaticMachine(
             environment.Declarations.Budgets.Over(limits),
             proxies);
@@ -1798,24 +1839,36 @@ public static class StaticStringTableInterpreter
             _module = module;
         }
 
-        public static ProxyIntrinsicRegistry Create(ModuleDefMD module)
+        /// <summary>
+        /// A registry knowing every proxy binding the caller could account for.
+        /// </summary>
+        /// <param name="known">
+        /// Bindings the caller already has, which on a build the structural search cannot read is
+        /// the only way it has them: the map was read out of the table the loader built rather than
+        /// decoded from the resource behind it. Used in preference to nothing, and ignored where
+        /// decoding the resource worked, because then the two say the same thing.
+        /// </param>
+        public static ProxyIntrinsicRegistry Create(
+            ModuleDefMD module,
+            IReadOnlyList<ProxyBinding>? known = null)
         {
             var targets = new Dictionary<string, IMethod>(StringComparer.Ordinal);
             var bindings = new List<(FieldDef, IMethod)>();
             var facts = ReactorStructureDetector.Analyze(module);
-            if (StructuralStreamDiscovery.TryDiscoverProxyProfile(
-                    module, facts, out var profile) && profile is not null)
+            var accounted =
+                StructuralStreamDiscovery.TryDiscoverProxyProfile(module, facts, out var profile) &&
+                profile is not null
+                    ? profile.Bindings
+                    : known ?? [];
+            foreach (var binding in accounted)
             {
-                foreach (var binding in profile.Bindings)
-                {
-                    if (module.ResolveToken(binding.FieldToken) is not FieldDef field ||
-                        module.ResolveToken(binding.TargetToken) is not IMethod target)
-                        continue;
-                    bindings.Add((field, target));
-                    var delegateType = field.FieldSig?.Type.RemovePinnedAndModifiers().FullName;
-                    if (!string.IsNullOrEmpty(delegateType))
-                        targets.TryAdd(delegateType, target);
-                }
+                if (module.ResolveToken(binding.FieldToken) is not FieldDef field ||
+                    module.ResolveToken(binding.TargetToken) is not IMethod target)
+                    continue;
+                bindings.Add((field, target));
+                var delegateType = field.FieldSig?.Type.RemovePinnedAndModifiers().FullName;
+                if (!string.IsNullOrEmpty(delegateType))
+                    targets.TryAdd(delegateType, target);
             }
             return new ProxyIntrinsicRegistry(
                 StaticIntrinsicRegistry.CreateDefault(), targets, bindings, module);

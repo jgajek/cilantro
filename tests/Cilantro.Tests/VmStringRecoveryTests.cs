@@ -31,6 +31,32 @@ public sealed class VmStringRecoveryTests
         Assert.False(StrictStringTable.TryDecodeComplete(invalidSurrogate, out _));
     }
 
+    [Fact]
+    public void WhatAReadingMaySpendIsSetByTheTableItWasPointedAt()
+    {
+        // The cipher costs about eighty steps a byte, so a table has to be allowed that much to be
+        // decrypted at all. A quarter-megabyte one measured at just under twenty-five million.
+        var quarterMegabyte = StaticStringTableInterpreter.Reading(326_188);
+        Assert.InRange(quarterMegabyte.MaximumSteps, 25_000_000, 400_000_000);
+
+        // A table small enough to fit the old flat figure is still given it, so nothing that reads
+        // today is given less than it had.
+        var small = StaticStringTableInterpreter.Reading(1_024);
+        Assert.Equal(4_000_000, small.MaximumSteps);
+        Assert.Equal(4_000_000, StaticStringTableInterpreter.Reading(0).MaximumSteps);
+
+        // And a larger table is allowed more, up to a ceiling that holds however large it claims to
+        // be, so a length read out of a hostile file cannot ask for an unbounded run.
+        Assert.True(
+            StaticStringTableInterpreter.Reading(1_000_000).MaximumSteps >
+            quarterMegabyte.MaximumSteps);
+        Assert.Equal(400_000_000, StaticStringTableInterpreter.Reading(int.MaxValue).MaximumSteps);
+
+        // The rest of the machine is left exactly as it was; only the step ceiling moves.
+        Assert.Equal(96, quarterMegabyte.MaximumRecursionDepth);
+        Assert.Equal(64 * 1024 * 1024, quarterMegabyte.MaximumAllocatedBytes);
+    }
+
     [Theory]
     [InlineData(StaticStringTableInterpreter.VmMeaning.ShiftRight, -128, 2, -32)]
     [InlineData(StaticStringTableInterpreter.VmMeaning.ShiftLeft, 3, 4, 48)]

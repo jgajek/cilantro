@@ -180,6 +180,20 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                 $"{bootstrap.MDToken} {bootstrap.FullName}",
                 0.95));
         }
+        // The loader also builds the tables that say which method a hidden call reaches. They are
+        // its own work, decoded with constants that change from build to build, so the run that
+        // built them is the only place they exist without reimplementing that build's cipher.
+        if (rewrite.TokenMaps.Count != 0)
+        {
+            context.SetFact("bootstrap.tokenMaps", rewrite.TokenMaps);
+            context.AddEvidence(new Evidence(
+                "loader-token-tables",
+                $"Captured {rewrite.TokenMaps.Count} loader-initialized token table(s) holding " +
+                $"{rewrite.TokenMaps.Values.Sum(table => table.Count)} entry(ies) in total, agreeing " +
+                "across two independent bootstrap interpretations.",
+                $"{bootstrap.MDToken} {bootstrap.FullName}",
+                0.95));
+        }
         context.SetFact("bootstrap.evidence", rewrite.Evidence);
         context.SetFact("bootstrap.token", bootstrap.MDToken.Raw);
         foreach (var group in rewrite.Evidence.Observations.GroupBy(item => item.Kind))

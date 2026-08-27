@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 
 namespace Cilantro.Core.Analysis;
 
@@ -37,9 +38,18 @@ public static class ResourceRoleAnalyzer
         // AppDomain, plus the helpers that read and decrypt the bundle. Attributing a resource to
         // that type is what separates an encrypted resource bundle from an embedded assembly,
         // because both are opaque high-entropy blobs on their own.
-        var resolverHostTypes = module.GetTypes()
-            .Where(type => type.Methods.Any(IsResourceResolveHandler))
+        //
+        // A signature says a method could be the handler; the subscription says it is. Preferring the
+        // subscription is what keeps the attribution independent of how a build spells the handler,
+        // and it costs nothing to read here because the hook is Reactor's own code and so is never
+        // one of the stubs this runs ahead of. The signature stands in only where no subscription can
+        // be read at all.
+        var subscribed = SubscribedResolveHandlers(module)
+            .Select(handler => handler.DeclaringType)
             .ToHashSet();
+        var resolverHostTypes = subscribed.Count != 0
+            ? subscribed
+            : module.GetTypes().Where(type => type.Methods.Any(IsResourceResolveHandler)).ToHashSet();
         var results = new List<ResourceRoleFact>();
         foreach (var resource in module.Resources.OfType<EmbeddedResource>())
         {
@@ -107,11 +117,61 @@ public static class ResourceRoleAnalyzer
         return results;
     }
 
+    /// <summary>Whether a method is shaped like the handler the resource-resolve event is given.
+    /// </summary>
+    /// <remarks>
+    /// The event's delegate takes a <c>ResolveEventArgs</c>, but a handler does not have to say so to
+    /// be bound to one. An argument of that type arrives as a reference either way, so a method
+    /// declaring the parameter as <see cref="object"/> can be handed over with <c>ldftn</c> and runs,
+    /// and Reactor 6 declares its handler exactly that way. Insisting on the event's own spelling
+    /// therefore finds no handler on those builds, so no type hosts one, so the encrypted bundle is
+    /// attributed to nothing and the reading that would decrypt it declines on a module that plainly
+    /// has one. Both spellings are accepted, and what settles a candidate is the subscription rather
+    /// than the signature.
+    /// </remarks>
     public static bool IsResourceResolveHandler(MethodDef method) =>
         method.MethodSig?.Params.Count == 2 &&
         method.MethodSig.Params[0].ElementType == ElementType.Object &&
-        method.MethodSig.Params[1].FullName == "System.ResolveEventArgs" &&
+        method.MethodSig.Params[1].FullName is "System.ResolveEventArgs" or "System.Object" &&
         method.ReturnType.FullName == "System.Reflection.Assembly";
+
+    /// <summary>The handlers this module hands to <c>AppDomain.ResourceResolve</c>.</summary>
+    /// <remarks>
+    /// A hook that is never subscribed never runs, so the subscription is present in every build that
+    /// serves resources this way, which makes it the one piece of evidence that does not depend on how
+    /// the handler is declared. The delegate the event is given is the function loaded just before it,
+    /// so the <c>ldftn</c> nearest the subscription names the handler.
+    /// </remarks>
+    public static IEnumerable<MethodDef> SubscribedResolveHandlers(ModuleDef module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        const int reach = 4;
+        foreach (var method in module.GetTypes()
+                     .SelectMany(type => type.Methods)
+                     .Where(method => method.HasBody))
+        {
+            var instructions = method.Body.Instructions;
+            for (var index = 0; index < instructions.Count; index++)
+            {
+                if (instructions[index].Operand is not IMethod subscribed ||
+                    subscribed.Name != "add_ResourceResolve")
+                    continue;
+                for (var back = index - 1; back >= 0 && back >= index - reach; back--)
+                {
+                    if (instructions[back].OpCode.Code is not (Code.Ldftn or Code.Ldvirtftn) ||
+                        instructions[back].Operand is not IMethod bound ||
+                        bound.ResolveMethodDef() is not { } handler ||
+                        handler.Module != module)
+                    {
+                        continue;
+                    }
+
+                    yield return handler;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 public sealed class ResourceRolePass : DeobfuscationPass

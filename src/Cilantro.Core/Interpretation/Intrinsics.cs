@@ -3534,8 +3534,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             name == "GetRuntimeTypeHandleFromMetadataToken" &&
             arguments.Count == 2)
         {
+            // A token means nothing except in the module it was read from, so this is where it stops
+            // being a number and becomes the type it names. Handed on as a number the handle describes
+            // a type with no name, and a type with no name cannot say which assembly it belongs to —
+            // so the file's own type reads as a stranger's, and a run that asks the assembly it is
+            // already reading for its entry point is told that another assembly's is unknown.
+            var asked = arguments[1].AsInt32();
+            var named = context.State.ModuleMetadata?.ResolveToken((uint)asked);
             return context.State.Heap.TryAllocateMetadataHandle(
-                arguments[1].AsInt32(), out var handle)
+                named ?? (object)asked, out var handle)
                 ? IntrinsicResult.Completed(handle)
                 : AllocationFailure("runtime type handle");
         }

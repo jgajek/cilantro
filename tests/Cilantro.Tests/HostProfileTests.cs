@@ -133,6 +133,36 @@ public sealed class HostProfileTests
     }
 
     /// <summary>
+    /// The workstation answers every folder a Windows machine has a folder for.
+    /// </summary>
+    /// <remarks>
+    /// A profile that answers some of them stops a run on whichever one the sample happens to ask
+    /// about, and the sample chooses. There is nothing sample-specific about where Windows keeps
+    /// these, so answering a subset buys no caution — it only moves the dead end. Every value is a
+    /// path the profile's own user and drive already imply, and the ones Windows itself answers with
+    /// an empty string are answered that way rather than left out.
+    /// </remarks>
+    [Fact]
+    public void TheAssumedWorkstationKnowsWhereWindowsKeepsThings()
+    {
+        var workstation = HostProfile.Workstation;
+
+        foreach (var folder in Enum.GetValues<Environment.SpecialFolder>().Distinct())
+        {
+            Assert.True(
+                workstation.TryAnswer($"env:folder:{(int)folder}", out var path),
+                $"The workstation does not say where {folder} is.");
+            Assert.Equal(HostAnswerKind.Text, path.Kind);
+        }
+
+        Assert.True(workstation.TryAnswer("env:folder:42", out var programFiles));
+        Assert.Equal("C:\\Program Files (x86)", programFiles.Text);
+        // Windows answers these with nothing, and nothing is an answer.
+        Assert.True(workstation.TryAnswer("env:folder:17", out var myComputer));
+        Assert.Equal(string.Empty, myComputer.Text);
+    }
+
+    /// <summary>
     /// An answer nobody stated says that too, and says it differently, because the two are worth
     /// telling apart: one is checkable against the machine somebody described, and the other is the
     /// tool's own portrait of a plausible computer.

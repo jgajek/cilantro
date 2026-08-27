@@ -129,7 +129,8 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
         {
             if (!StaticStringTableInterpreter.TryReadOperations(
                     context.Module, context.OriginalImage, candidate,
-                    BootstrapMachine.Environment(context), out var operations, out var why) ||
+                    BootstrapMachine.Environment(context), out var operations, out var why,
+                    ProxyLoaderTable.Read(context)) ||
                 operations.Count == 0)
             {
                 continue;
@@ -211,7 +212,9 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
                 candidate,
                 out var interpreted,
                 out var interpreterDiagnostic,
-                BootstrapMachine.Environment(context)) ||
+                BootstrapMachine.Environment(context),
+                learned: null,
+                ProxyLoaderTable.Read(context)) ||
             interpreted is null)
         {
             why = interpreterDiagnostic;

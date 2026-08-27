@@ -132,6 +132,75 @@ public sealed class ResourceRestorationTests
                 called.Name == "add_ResourceResolve");
     }
 
+    [Fact]
+    public void AHandlerIsFoundByTheSubscriptionRatherThanBySignatureAlone()
+    {
+        using var context = HookContext();
+
+        Assert.Equal(
+            "Resolve",
+            Assert.Single(ResourceRoleAnalyzer.SubscribedResolveHandlers(context.Module)).Name);
+
+        // Reactor 6 declares the second parameter as System.Object, so a handler is not recognised by
+        // insisting on the ResolveEventArgs the framework documents.
+        var handler = Handler(context);
+        handler.MethodSig.Params[1] = context.Module.CorLibTypes.Object;
+        Assert.True(ResourceRoleAnalyzer.IsResourceResolveHandler(handler));
+        Assert.Equal(
+            "Resolve",
+            Assert.Single(ResourceRoleAnalyzer.SubscribedResolveHandlers(context.Module)).Name);
+    }
+
+    [Fact]
+    public void WhatReadingABundleMaySpendIsSetByTheBundle()
+    {
+        // A satellite assembly of a few megabytes needs hundreds of millions of steps to be decrypted
+        // and inflated at all, and the ceiling has to be in proportion to it or the reading reports
+        // itself instead of the bundle.
+        Assert.InRange(
+            ResourceRestorationPass.Budget(Sized(3_529_932)), 500_000_000, 1_200_000_000);
+
+        // A bundle small enough to fit the old flat figure is still given it.
+        Assert.Equal(8_000_000, ResourceRestorationPass.Budget(Sized(1_024)));
+
+        // And however large a hostile file claims its resource is, the run stays bounded.
+        Assert.Equal(1_200_000_000, ResourceRestorationPass.Budget(Sized(40_000_000)));
+    }
+
+    /// <summary>
+    /// The late string reading has to come first, or the bundle is attributed to nothing.
+    /// </summary>
+    /// <remarks>
+    /// Every role the analyzer can assign is keyed on a consumer naming the resource as a literal. On
+    /// a build that renumbered its engine the names are restored by the late reading, so resource
+    /// passes placed ahead of it see none of them and the entropy fallback calls the bundle a
+    /// method-patch stream.
+    /// </remarks>
+    [Fact]
+    public void TheResourcePassesRunAfterEveryReadingThatRestoresAName()
+    {
+        var passes = CilantroPipeline.CreateDefaultPasses().Select(pass => pass.Name).ToList();
+        var restored = passes.IndexOf("string-lookup-recovery");
+        Assert.InRange(restored, 0, passes.Count - 1);
+        foreach (var reader in new[]
+                 { "resource-role-refinement", "resource-restoration", "resource-hook-elision" })
+        {
+            Assert.True(
+                passes.IndexOf(reader) > restored,
+                $"{reader} runs before the names it needs are restored.");
+        }
+
+        // And everything that reads the module by running it stays ahead of the loader being cut, so
+        // the state those readings need is still being written when they run.
+        var cut = passes.IndexOf("loader-call-elision");
+        Assert.True(cut > passes.IndexOf("virtualization-disassembly"), "The engine is read too late.");
+        Assert.True(cut > passes.IndexOf("string-table-relearning"), "The table is read too late.");
+        Assert.True(cut > passes.IndexOf("resource-restoration"), "The bundle is read too late.");
+    }
+
+    private static EmbeddedResource Sized(int length) =>
+        new("bundle", new byte[length], ManifestResourceAttributes.Public);
+
     /// <summary>
     /// Puts a resource on the module and declares it, as restoration would have.
     /// </summary>

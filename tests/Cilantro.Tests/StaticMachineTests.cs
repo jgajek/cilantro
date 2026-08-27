@@ -1342,6 +1342,74 @@ public sealed class StaticMachineTests
     }
 
     /// <summary>
+    /// A type named by metadata token is the type that token names, and says so afterwards.
+    /// </summary>
+    /// <remarks>
+    /// Turning a token into a handle and the handle into a type is how Reactor's runtime names types it
+    /// never mentions by reference. A token means nothing outside the module it was read from, so if it
+    /// is handed on as the number it arrived as, what comes back describes a type with no name — and a
+    /// type with no name cannot be asked which assembly declares it. The run then stops on a question
+    /// about the assembly it is already reading, several thousand frames from the token.
+    /// </remarks>
+    [Fact]
+    public void ATypeNamedByMetadataTokenIsTheTypeItNames()
+    {
+        using var module = ModuleDefMD.Load(typeof(StaticMachineTests).Module);
+        var declared = module.Find("Cilantro.Tests.StaticMachineTests", false);
+        Assert.NotNull(declared);
+        var handleType = new TypeRefUser(
+            module, "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef);
+        var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
+        var fromToken = new MemberRefUser(
+            module,
+            "GetRuntimeTypeHandleFromMetadataToken",
+            MethodSig.CreateInstance(handleType.ToTypeSig(), module.CorLibTypes.Int32),
+            new TypeRefUser(module, "System", "ModuleHandle", module.CorLibTypes.AssemblyRef));
+        var fromHandle = new MemberRefUser(
+            module,
+            "GetTypeFromHandle",
+            MethodSig.CreateStatic(typeType.ToTypeSig(), handleType.ToTypeSig()),
+            typeType);
+        var declaringAssembly = new MemberRefUser(
+            module,
+            "get_Assembly",
+            MethodSig.CreateInstance(
+                new TypeRefUser(
+                    module,
+                    "System.Reflection",
+                    "Assembly",
+                    module.CorLibTypes.AssemblyRef).ToTypeSig()),
+            typeType);
+        var spelling = new MemberRefUser(
+            module, "get_FullName", MethodSig.CreateInstance(module.CorLibTypes.String), typeType);
+        var state = new StaticMachineState(new StaticMachineLimits());
+        state.RegisterModuleMetadata(module);
+        Assert.True(state.Heap.TryAllocateObject("System.ModuleHandle", out var owning));
+        var intrinsic = new LoaderFrameworkIntrinsic();
+        var context = new IntrinsicContext(state);
+
+        var handed = intrinsic.Invoke(
+            context,
+            fromToken,
+            [owning, StaticValue.FromInt32((int)declared.MDToken.Raw)]);
+        Assert.Equal(StaticExecutionStatus.Completed, handed.Status);
+        var described = intrinsic.Invoke(context, fromHandle, [handed.Value]);
+        Assert.Equal(StaticExecutionStatus.Completed, described.Status);
+
+        var named = intrinsic.Invoke(context, spelling, [described.Value]);
+        Assert.Equal(StaticExecutionStatus.Completed, named.Status);
+        Assert.True(state.Heap.TryGetString(named.Value, out var spelled));
+        Assert.Equal("Cilantro.Tests.StaticMachineTests", spelled);
+
+        // And because the type is known, so is the file that declares it.
+        var owner = intrinsic.Invoke(context, declaringAssembly, [described.Value]);
+        Assert.Equal(StaticExecutionStatus.Completed, owner.Status);
+        Assert.True(state.Heap.TryGetModelValue<bool>(
+            owner.Value, LoaderFrameworkIntrinsic.HomeModuleMark, out var home));
+        Assert.True(home);
+    }
+
+    /// <summary>
     /// The sequence a loader uses to fetch a payload it hid in its own <c>RT_RCDATA</c>, end to end.
     /// What comes back has to be the resource's real bytes: the point of modelling this API is that
     /// the payload is readable, not that the calls return something.
@@ -1740,6 +1808,95 @@ public sealed class StaticMachineTests
         Assert.True(inBounds);
         Assert.False(past);
         Assert.False(beyond);
+    }
+
+    /// <summary>
+    /// An array of an enum holds the numbers the enum is written on, both ways round.
+    /// </summary>
+    /// <remarks>
+    /// The IL that fills one stores an int and reads an int back, so refusing the store because the
+    /// enum's own name is not a primitive leaves the array holding the zeroes it was made with — and
+    /// nothing downstream that reads it can tell that from a table of zeroes the program meant.
+    /// </remarks>
+    [Fact]
+    public void AnArrayOfAnEnumHoldsTheNumbersItIsWrittenOn()
+    {
+        using var module = NewModule();
+        var enumerated = new TypeDefUser(
+            "Tests", "Sized", module.CorLibTypes.GetTypeRef("System", "Enum"));
+        enumerated.Fields.Add(new FieldDefUser(
+            "value__",
+            new FieldSig(module.CorLibTypes.Byte),
+            FieldAttributes.Public | FieldAttributes.SpecialName | FieldAttributes.RTSpecialName));
+        module.Types.Add(enumerated);
+        var heap = new StaticHeap(new StaticMachineLimits());
+        Assert.True(heap.TryAllocateArray(enumerated.ToTypeSig(), 2, out var values));
+
+        Assert.True(heap.TryWriteArray(values, 0, StaticValue.FromInt32(3)));
+        // The store is coerced by the underlying byte, not by the name the metadata gives it.
+        Assert.True(heap.TryWriteArray(values, 1, StaticValue.FromInt32(0x0102)));
+
+        Assert.True(heap.TryReadArray(values, 0, out var first));
+        Assert.Equal(3, first.AsInt32());
+        Assert.True(heap.TryReadArray(values, 1, out var second));
+        Assert.Equal(2, second.AsInt32());
+        // What it says it holds is still the enum, so everything comparing element names is unmoved.
+        Assert.True(heap.TryGetArrayElementType(values, out var named));
+        Assert.Equal("Tests.Sized", named);
+    }
+
+    /// <summary>A value type whose width is genuinely unknown is still refused.</summary>
+    [Fact]
+    public void AnArrayOfAnUnresolvableValueTypeStillRefusesANumber()
+    {
+        using var module = NewModule();
+        var unresolved = new TypeRefUser(module, "Absent", "Shape", module.CorLibTypes.AssemblyRef);
+        var heap = new StaticHeap(new StaticMachineLimits());
+        Assert.True(heap.TryAllocateArray(new ValueTypeSig(unresolved), 1, out var values));
+
+        Assert.False(heap.TryWriteArray(values, 0, StaticValue.FromInt32(3), out var inBounds));
+        Assert.True(inBounds);
+    }
+
+    /// <summary>
+    /// An enum the module only refers to is sized by the instruction storing into it.
+    /// </summary>
+    [Fact]
+    public void AnArrayOfAnEnumFromAnAbsentCorlibIsSizedByTheStore()
+    {
+        using var module = NewModule();
+        // Nothing hands this reader a corlib, so the element type resolves to nothing at all, which
+        // is exactly the position the pipeline is in on a framework enum.
+        var referenced = new TypeRefUser(
+            module, "Microsoft.Win32", "RegistryView", module.CorLibTypes.AssemblyRef);
+        Assert.Null(referenced.ResolveTypeDef());
+        var heap = new StaticHeap(new StaticMachineLimits());
+        // A class rather than a value type, which is what dnlib makes of a reference it cannot
+        // resolve however the type it names is declared, and so is what a newarr operand arrives as.
+        Assert.Equal(ElementType.Class, referenced.ToTypeSig().ElementType);
+        Assert.True(heap.TryAllocateArray(referenced.ToTypeSig(), 2, out var views));
+
+        Assert.True(
+            heap.TryWriteArray(views, 0, StaticValue.FromInt32(0x200), "System.Int32", out var wide));
+        Assert.True(wide);
+        Assert.True(heap.TryReadArray(views, 0, out var held));
+        Assert.Equal(0x200, held.AsInt32());
+
+        // A narrower store is coerced to what it says it stores, not widened to what it was given.
+        Assert.True(heap.TryWriteArray(views, 1, StaticValue.FromInt32(0x0102), "System.Byte", out _));
+        Assert.True(heap.TryReadArray(views, 1, out var narrow));
+        Assert.Equal(2, narrow.AsInt32());
+
+        // An array of something this reader can read keeps its own answer, whether the elements are
+        // references or a type the file declares.
+        Assert.True(heap.TryAllocateArray(module.CorLibTypes.String, 1, out var names));
+        Assert.False(
+            heap.TryWriteArray(names, 0, StaticValue.FromInt32(3), "System.Int32", out var inBounds));
+        Assert.True(inBounds);
+        var declared = new TypeDefUser("Tests", "Shape", module.CorLibTypes.Object.ToTypeDefOrRef());
+        module.Types.Add(declared);
+        Assert.True(heap.TryAllocateArray(declared.ToTypeSig(), 1, out var shapes));
+        Assert.False(heap.TryWriteArray(shapes, 0, StaticValue.FromInt32(3), "System.Int32", out _));
     }
 
     private static ModuleDefUser NewModule()

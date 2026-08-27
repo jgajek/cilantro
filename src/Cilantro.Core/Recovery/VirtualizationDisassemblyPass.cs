@@ -24,9 +24,12 @@ public sealed class VirtualizationDisassemblyPass : DeobfuscationPass
     public override string Name => "virtualization-disassembly";
     public override bool GatesEmission => false;
 
-    // The engine only runs once its proxies resolve to direct calls, so this has to follow the
-    // passes that restore them, and it has to precede the cleanup that would delete the engine.
-    public override IReadOnlyCollection<string> Dependencies => ["loader-call-elision"];
+    // The engine only runs once its proxies resolve to direct calls, so this has to follow the pass
+    // that restores them, and it has to precede the cleanup that would delete the engine. Naming the
+    // loader elision instead named a pass that happened to be late rather than the one the
+    // requirement is about, and reading the engine is what the late string reading depends on, so
+    // that spelling put the resource passes behind a reading that could not run until they had.
+    public override IReadOnlyCollection<string> Dependencies => ["delegate-proxy-analysis"];
 
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
         ArtifactContext context)

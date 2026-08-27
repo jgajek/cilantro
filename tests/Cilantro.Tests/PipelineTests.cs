@@ -68,11 +68,18 @@ public sealed class PipelineTests
             Assert.True(result.Success);
             Assert.Equal(expectedHash, result.Report.InputSha256);
             Assert.True(result.Report.VerificationPassed);
-            Assert.Equal(4, result.Report.ResourceCount);
+            // Four the input carries, plus the two application resources the encrypted bundle held:
+            // the resource passes run after the late string reading, so the name each consumer loads
+            // is a literal by the time they look and the bundle is attributed rather than being called
+            // a high-entropy blob.
+            Assert.Equal(6, result.Report.ResourceCount);
             // Down from the 374 types and 2126 methods the input carries: what remains is the
-            // program plus whatever recovery could not attribute to the protector.
+            // program plus whatever recovery could not attribute to the protector. The methods are
+            // sixteen fewer than when the bundle went unread, because reattaching what it held is what
+            // makes the resolve hook moot, and an elided subscription takes the machinery behind it
+            // out of reach of anything that still runs.
             Assert.Equal(115, result.Report.TypeCount);
-            Assert.Equal(1055, result.Report.MethodCount);
+            Assert.Equal(1039, result.Report.MethodCount);
             Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
             Assert.Equal(1341, Pass(result, "cfg-dead-code").Changes);
             // Proxy restoration reaches every validated site because it runs before forwarder

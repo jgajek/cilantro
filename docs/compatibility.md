@@ -856,6 +856,17 @@ A table must be unique and strictly length-framed UTF-16, and every reachable
 resolver use must have a proven offset. Replacements are atomic across the
 assembly; one unresolved use causes zero string edits.
 
+What a reading may spend is set by the table it was pointed at rather than by a
+figure in the tool. The table is a resource the module carries, decrypted four
+bytes at a time by a block cipher the module also carries, and that costs about
+eighty interpreted steps per byte however large the table is. A flat few million
+therefore stops in the middle of the decryption on any build hiding more than
+about fifty kilobytes, and reports its own ceiling — which reads as a protection
+the tool cannot follow when it is only a table the tool declined to finish. The
+ceiling is the resource's length at that rate with room to spare, floored at what
+every reading used to get so nothing that reads today is given less, and capped
+so that a length read out of a hostile file cannot ask for an unbounded run.
+
 #### Strings kept where no table can be framed
 
 A sample is often protected twice — once by whoever wrote it and again by
@@ -1074,6 +1085,13 @@ verification. Any unmet condition preserves every body and refuses output.
   model of it is the same assembly rather than an unknown one, and code that asks
   whether a handle addresses this metadata — which protected code does about its
   own entry point — would otherwise be told no.
+- A type named by metadata token is resolved against the module the token was read
+  from at the point the handle is made, rather than carried on as the number it
+  arrived as. Reactor's runtime names types it never mentions by reference this
+  way, and a token means nothing outside its own module: passed through unresolved
+  it yields a type with no name, no declaring type, and therefore no answer to
+  which assembly declares it. The run then stops on a question about the file it
+  is already reading, thousands of frames away from the token that caused it.
 - Resource roles are inferred from consumers such as `ResolveMethod`,
   `GetManifestResourceStream`, `Assembly.Load`, and `string(int32)` resolvers.
 - Encrypted resource bundles are recovered by running the module's own bundle

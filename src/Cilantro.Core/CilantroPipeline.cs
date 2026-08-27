@@ -641,19 +641,25 @@ public sealed class CilantroPipeline
         // Token recovery follows it for the same reason in reverse: the sites it reads are the ones
         // redirection just brought into view.
         new TokenRecoveryPass(),
-        // Resource classification and payload extraction run last because a JIT-hook artifact
-        // hides every resource consumer behind an encrypted body and an encrypted name literal.
-        new ResourceRoleRefinementPass(),
-        new ResourceRestorationPass(),
-        new ResourceHookElisionPass(),
-        // Cutting the loader loose comes last of the rewrites, because whether its state is still
-        // observable depends on every recovery before it having replaced the code that read it.
-        new LoaderCallElisionPass(),
         new VirtualizationDisassemblyPass(),
         // Reading the engine is what learns this build's numbering, so the one reading of the string
         // table that could not assume a numbering is only possible from here on.
         new StringTableRelearningPass(),
         new StringLookupRecoveryPass(),
+        // Resource classification and payload extraction run last because a JIT-hook artifact hides
+        // every resource consumer behind an encrypted body and an encrypted name literal. Last has to
+        // mean after the late reading as well as after the early one: a build that renumbered its
+        // engine has its strings restored there, so ahead of it the name a consumer loads is still a
+        // call into the resolver and the resource it reads is attributed to nothing. Every resource
+        // then falls to the entropy fallback and is called a method-patch stream, the bundle included,
+        // and the reading that would decrypt it declines on a module that plainly has one.
+        new ResourceRoleRefinementPass(),
+        new ResourceRestorationPass(),
+        new ResourceHookElisionPass(),
+        // Cutting the loader loose comes last of the rewrites, because whether its state is still
+        // observable depends on every recovery before it having replaced the code that read it — and
+        // because everything that reads the module by running it needs the loader still there to run.
+        new LoaderCallElisionPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
         // Building the read-back methods precedes cleanup, which would otherwise delete the very
@@ -1854,7 +1860,11 @@ public sealed class DelegateProxyPass : DeobfuscationPass
             return (PassStatus.Success, 0, ["No delegate proxies were detected."]);
         }
 
-        EmbeddedResource resource;
+        var fields = proxyTypes
+            .SelectMany(type => type.Fields)
+            .Where(field => field.IsStatic)
+            .ToDictionary(field => field.MDToken.Raw);
+        string mapSource;
         IReadOnlyList<ProxyBinding> bindings;
         var profileSource = "structural";
         context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var structureFacts);
@@ -1865,7 +1875,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
                 out var discovered) &&
             discovered is not null)
         {
-            resource = discovered.Resource;
+            mapSource = discovered.Resource.Name;
             bindings = discovered.Bindings;
             context.AddEvidence(new Evidence(
                 "stream-constants",
@@ -1873,15 +1883,29 @@ public sealed class DelegateProxyPass : DeobfuscationPass
                 discovered.EvidenceMethod,
                 1.0));
         }
+        else if (context.TryGetFact<IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>>>(
+                     ProxyLoaderTable.Fact, out var tables) &&
+            ProxyLoaderTable.TryRead(context.Module, tables, fields, out bindings, out var table))
+        {
+            profileSource = "loader-table";
+            mapSource = table;
+            context.AddEvidence(new Evidence(
+                "proxy-table",
+                $"Read {bindings.Count} field-to-method bindings out of the table the loader built, " +
+                "rather than decoding the resource behind it.",
+                table,
+                1.0));
+        }
         else if (ProxyResourceCodec.TryGetProfile(context.OriginalSha256, out var profile))
         {
             profileSource = "known-regression";
-            resource = context.Module.Resources
+            var resource = context.Module.Resources
                 .OfType<EmbeddedResource>()
                 .FirstOrDefault(item =>
                     Convert.ToHexStringLower(SHA256.HashData(item.CreateReader().ToArray())) ==
                     profile.ResourceSha256)
                 ?? throw new InvalidDataException("The profiled proxy mapping resource was not found.");
+            mapSource = resource.Name;
             var decoded = ProxyResourceCodec.Decode(resource.CreateReader().ToArray(), profile);
             if (Convert.ToHexStringLower(SHA256.HashData(decoded)) != profile.DecodedSha256)
                 return (PassStatus.Failed, 0, ["Decoded proxy map failed its regression hash."]);
@@ -1892,14 +1916,11 @@ public sealed class DelegateProxyPass : DeobfuscationPass
             return (PassStatus.Unsupported, 0,
             [
                 $"Cataloged {proxies.Length} delegate proxies.",
-                "No structurally validated proxy stream codec was found."
+                "No structurally validated proxy stream codec was found, and the loader " +
+                "interpretation left no table naming every one of them."
             ]);
         }
 
-        var fields = proxyTypes
-            .SelectMany(type => type.Fields)
-            .Where(field => field.IsStatic)
-            .ToDictionary(field => field.MDToken.Raw);
         if (bindings.Count != fields.Count ||
             bindings.Any(binding =>
                 !fields.ContainsKey(binding.FieldToken) ||
@@ -1968,7 +1989,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         context.AddEvidence(new Evidence(
             "proxy-map",
             $"Decoded and validated {bindings.Count} field-to-method bindings.",
-            resource.Name,
+            mapSource,
             1.0));
         return (PassStatus.Success, changes,
         [
@@ -1977,6 +1998,19 @@ public sealed class DelegateProxyPass : DeobfuscationPass
             $"Profile source: {profileSource}."
         ]);
     }
+
+    /// <summary>
+    /// Takes the field-to-method map out of the table the loader itself built, when it built one.
+    /// </summary>
+    /// <remarks>
+    /// The protector keeps its answers in a table from proxy field to target method, decoded on the
+    /// way up from a resource with constants that are chosen per build. Deriving those constants by
+    /// search only works while the arithmetic around them is the shape already seen; the loader, by
+    /// contrast, has just run and left the finished table behind, and reading it asserts nothing
+    /// about how it was made. A table is accepted only when it names every proxy field in the file
+    /// and nothing else, and only when exactly one table does — several would mean the pass had
+    /// chosen which to believe, and that is a guess.
+    /// </remarks>
 }
 
 public sealed record ProxyCodecProfile(
@@ -2040,26 +2074,14 @@ public sealed class StringRecoveryPass : DeobfuscationPass
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
-        var candidates = context.Module.GetTypes()
-            .SelectMany(type => type.Methods)
-            .Where(method => method.HasBody &&
-                method.IsStatic &&
-                method.ReturnType.FullName == "System.String" &&
-                method.MethodSig?.Params.Count == 1 &&
-                method.MethodSig.Params[0].ElementType == ElementType.I4)
-            .Where(method => method.Body.Instructions.Any(instruction =>
-                instruction.Operand is IMethod called &&
-                called.Name == "GetManifestResourceStream") ||
-                method.Body.Instructions.Any(instruction =>
-                    instruction.OpCode.Code == Code.Ldsfld &&
-                    instruction.Operand is IField field &&
-                    field.FieldSig?.Type.ElementType == ElementType.SZArray))
-            .ToArray();
+        var candidates = StringResolverCandidates.In(context.Module);
         if (candidates.Length == 0)
             return (PassStatus.Success, 0, ["No protected string resolver was detected."]);
-        if (candidates.Length != 1)
-            return (PassStatus.Unsupported, 0,
-                [$"Detected {candidates.Length} ambiguous string resolver candidates."]);
+        // A deferral is answered before the field is counted. Where reading the table was left to
+        // after the engine's numbering is learned, there is no table here to restore from however
+        // many candidates there are, and the one that matters is the one the later reading settles
+        // on. Counting first reported a build whose strings were merely not read yet as a build whose
+        // resolver could not be told apart, and did it in the pass that had nothing to do either way.
         if (!context.TryGetFact<CapturedStringTable>("strings.table", out var table) ||
             table is null)
         {
@@ -2071,9 +2093,15 @@ public sealed class StringRecoveryPass : DeobfuscationPass
                         "the sites it accounts for are restored there and none are restored here."
                 ]);
             }
+            if (candidates.Length != 1)
+                return (PassStatus.Unsupported, 0,
+                    [$"Detected {candidates.Length} ambiguous string resolver candidates."]);
             return (PassStatus.Partial, 0,
                 ["No unique captured string table is available; no call site was modified."]);
         }
+        if (candidates.Length != 1)
+            return (PassStatus.Unsupported, 0,
+                [$"Detected {candidates.Length} ambiguous string resolver candidates."]);
 
         return Restore(context, Name, candidates[0], table);
     }

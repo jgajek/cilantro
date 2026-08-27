@@ -94,12 +94,83 @@ public static class InitializedFieldCapture
     }
 
     /// <summary>
+    /// Captures the number-to-number tables a bounded interpretation left in static fields.
+    /// </summary>
+    /// <remarks>
+    /// A protector that hides which method a call reaches has to keep the answers somewhere, and
+    /// the place it keeps them is a table from one metadata token to another, built once on the way
+    /// up and read from every call site afterwards. The table is the loader's own work, so the only
+    /// place it exists is the machine state of the run that built it — and reimplementing whatever
+    /// decoded it means carrying that build's constants, which is exactly what does not survive the
+    /// next build. Reading the table out of the run costs nothing beyond a run already made.
+    ///
+    /// Only a field the interpretation actually filled is reported, and its contents are reported
+    /// only when every key and value is a concrete number. A table holding anything else is not a
+    /// token table, and half of one is worse than none.
+    /// </remarks>
+    public static Dictionary<uint, IReadOnlyDictionary<int, int>> CaptureIntegerMaps(
+        ModuleDef module,
+        StaticMachineState state)
+    {
+        const string dictionary = "System.Collections.Generic.Dictionary`2<System.Int32,System.Int32>";
+        var result = new Dictionary<uint, IReadOnlyDictionary<int, int>>();
+        foreach (var field in module.GetTypes()
+                     .SelectMany(type => type.Fields)
+                     .Where(field => field.IsStatic &&
+                         field.FieldSig?.Type.FullName == dictionary))
+        {
+            if (!state.StaticFields.TryGetValue(field.FullName, out var held) ||
+                held.Kind != StaticValueKind.HeapReference ||
+                !state.Heap.TryGetModelValue(
+                    held,
+                    "Pairs",
+                    out List<KeyValuePair<StaticValue, StaticValue>>? pairs) ||
+                pairs is null ||
+                pairs.Count == 0)
+            {
+                continue;
+            }
+
+            var table = new Dictionary<int, int>(pairs.Count);
+            foreach (var pair in pairs)
+            {
+                if (!pair.Key.IsInteger || !pair.Value.IsInteger)
+                {
+                    table = null!;
+                    break;
+                }
+                table[pair.Key.AsInt32()] = pair.Value.AsInt32();
+            }
+            if (table is not null)
+                result[field.MDToken.Raw] = table;
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Confirms two independent captures agree, so a key map is only trusted when it does
     /// not depend on interpretation order or on any ambient state.
     /// </summary>
     public static bool CapturesAgree(
         IReadOnlyDictionary<uint, int> first,
         IReadOnlyDictionary<uint, int> second) =>
+        first.Count == second.Count &&
+        first.All(entry =>
+            second.TryGetValue(entry.Key, out var value) && value == entry.Value);
+
+    /// <summary>Confirms two independent captures agree on every table and every entry in it.</summary>
+    public static bool MapsAgree(
+        IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> first,
+        IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> second) =>
+        first.Count == second.Count &&
+        first.All(entry =>
+            second.TryGetValue(entry.Key, out var table) &&
+            table is not null &&
+            CapturedTablesAgree(entry.Value, table));
+
+    private static bool CapturedTablesAgree(
+        IReadOnlyDictionary<int, int> first,
+        IReadOnlyDictionary<int, int> second) =>
         first.Count == second.Count &&
         first.All(entry =>
             second.TryGetValue(entry.Key, out var value) && value == entry.Value);

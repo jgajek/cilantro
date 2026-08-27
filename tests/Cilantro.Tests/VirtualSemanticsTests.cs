@@ -1101,6 +1101,60 @@ public sealed class VirtualSemanticsTests
         SyntheticContext.AddType(module, "Surface").Methods.Add(stub);
     }
 
+    /// <summary>
+    /// A jump with nothing on the stack is read as always taken, whatever the watching missed.
+    /// </summary>
+    /// <remarks>
+    /// A condition needs something to be a condition about. Where the trials measured an operation
+    /// taking nothing and found it no condition, a sighting of it not going anywhere is a seam in the
+    /// watching rather than a test coming out false, and reading it as conditional leaves an operation
+    /// nothing can perform: performing it would need the condition the name promises.
+    /// </remarks>
+    [Theory]
+    [InlineData(293, 295)]
+    [InlineData(2, 3)]
+    public void AJumpWithNothingToDecideWithIsReadAsAlwaysTaken(int taken, int seen)
+    {
+        var probed = new Dictionary<int, VirtualOperation>
+        {
+            [Jump] = new(Jump, 0, 0, null) { TouchesState = true }
+        };
+
+        var merged = VirtualProgramRecovery.Merge(probed, Watching(taken, seen), []);
+
+        Assert.Equal("branch", merged[Jump].Name);
+    }
+
+    /// <summary>
+    /// An operation that took a value and was watched falling through is left conditional.
+    /// </summary>
+    [Fact]
+    public void AJumpThatConsumedAValueAndWasSeenFallingThroughStaysConditional()
+    {
+        var takesOne = new Dictionary<int, VirtualOperation>
+        {
+            [Jump] = new(Jump, 1, 0, null) { TouchesState = true }
+        };
+        // And neither is a condition the trials did settle overturned by the same counts.
+        var settled = new Dictionary<int, VirtualOperation>
+        {
+            [Jump] = new(Jump, 0, 0, "branch if") { Decides = "brtrue", TouchesState = true }
+        };
+
+        Assert.Equal(
+            "branch if", VirtualProgramRecovery.Merge(takesOne, Watching(58, 100), [])[Jump].Name);
+        Assert.Equal(
+            "branch if", VirtualProgramRecovery.Merge(settled, Watching(58, 100), [])[Jump].Name);
+    }
+
+    /// <summary>A run that watched one operation jump as often as it says, and nothing else.</summary>
+    private static VirtualRun Watching(int taken, int seen) => new(
+        seen,
+        new Dictionary<int, (int, int)> { [Jump] = (taken, seen) },
+        new Dictionary<int, int>(),
+        new Dictionary<int, VirtualOperation>(),
+        new Dictionary<int, IReadOnlyList<string>>());
+
     private static MethodDefUser Constructor(ModuleDefUser module)
     {
         var constructor = new MethodDefUser(

@@ -130,6 +130,90 @@ public sealed class ResolverKeyRecoveryTests
         Assert.False(InitializedFieldCapture.CapturesAgree(first, shorter));
     }
 
+    /// <summary>
+    /// The table the loader built is read back from the field it left it in.
+    /// </summary>
+    /// <remarks>
+    /// The alternative to reading it is reimplementing whatever decoded it, and the constants that
+    /// decode differ per build, so a table read out of the run that made it is the only form of the
+    /// answer that survives the next sample.
+    /// </remarks>
+    [Fact]
+    public void ATableTheLoaderFilledIsReadBackFromTheFieldItWasLeftIn()
+    {
+        using var module = NewModule();
+        var field = NewTokenTableField(module, "targets");
+        var machine = new StaticMachine();
+        Assert.True(machine.State.Heap.TryAllocateObject(field.FieldSig.Type.FullName, out var map));
+        Assert.True(machine.State.Heap.TrySetModelValue(map, "Pairs", new List<
+            KeyValuePair<StaticValue, StaticValue>>
+        {
+            new(StaticValue.FromInt32(0x04000123), StaticValue.FromInt32(0x0A000456)),
+            new(StaticValue.FromInt32(0x04000124), StaticValue.FromInt32(0x4A000457))
+        }));
+        machine.State.WriteStaticField(field, map);
+
+        var tables = InitializedFieldCapture.CaptureIntegerMaps(module, machine.State);
+
+        var table = Assert.Contains(field.MDToken.Raw, tables);
+        Assert.Equal(0x0A000456, table[0x04000123]);
+        Assert.Equal(unchecked((int)0x4A000457), table[0x04000124]);
+    }
+
+    /// <summary>A field the interpretation never filled says nothing, so it is reported as nothing.</summary>
+    [Fact]
+    public void ATableTheLoaderNeverFilledIsNotReported()
+    {
+        using var module = NewModule();
+        var untouched = NewTokenTableField(module, "untouched");
+        var partial = NewTokenTableField(module, "partial");
+        var machine = new StaticMachine();
+        // A table holding something that is not a number is not a token table, and half of one is
+        // worse than none, so it is left out rather than reported with the entries that did parse.
+        Assert.True(machine.State.Heap.TryAllocateObject("Any", out var map));
+        Assert.True(machine.State.Heap.TryAllocateString("not a token", out var text));
+        Assert.True(machine.State.Heap.TrySetModelValue(map, "Pairs", new List<
+            KeyValuePair<StaticValue, StaticValue>>
+        {
+            new(StaticValue.FromInt32(0x04000123), text)
+        }));
+        machine.State.WriteStaticField(partial, map);
+
+        var tables = InitializedFieldCapture.CaptureIntegerMaps(module, machine.State);
+
+        Assert.DoesNotContain(untouched.MDToken.Raw, tables);
+        Assert.DoesNotContain(partial.MDToken.Raw, tables);
+    }
+
+    [Fact]
+    public void MapsAgreeRejectsDivergentTables()
+    {
+        IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> first = new Dictionary<
+            uint, IReadOnlyDictionary<int, int>>
+        {
+            [7] = new Dictionary<int, int> { [1] = 10, [2] = 20 }
+        };
+        IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> same = new Dictionary<
+            uint, IReadOnlyDictionary<int, int>>
+        {
+            [7] = new Dictionary<int, int> { [2] = 20, [1] = 10 }
+        };
+        IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> divergent = new Dictionary<
+            uint, IReadOnlyDictionary<int, int>>
+        {
+            [7] = new Dictionary<int, int> { [1] = 10, [2] = 21 }
+        };
+        IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> elsewhere = new Dictionary<
+            uint, IReadOnlyDictionary<int, int>>
+        {
+            [8] = new Dictionary<int, int> { [1] = 10, [2] = 20 }
+        };
+
+        Assert.True(InitializedFieldCapture.MapsAgree(first, same));
+        Assert.False(InitializedFieldCapture.MapsAgree(first, divergent));
+        Assert.False(InitializedFieldCapture.MapsAgree(first, elsewhere));
+    }
+
     [Fact]
     public void StrictFieldReadDistinguishesUnassignedFromZero()
     {
@@ -203,6 +287,21 @@ public sealed class ResolverKeyRecoveryTests
         forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Call, target));
         forwarder.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
         return forwarder;
+    }
+
+    private static FieldDefUser NewTokenTableField(ModuleDef module, string name)
+    {
+        var dictionary = new TypeRefUser(
+            module, "System.Collections.Generic", "Dictionary`2", module.CorLibTypes.AssemblyRef);
+        var field = new FieldDefUser(
+            name,
+            new FieldSig(new GenericInstSig(
+                new ClassSig(dictionary),
+                module.CorLibTypes.Int32,
+                module.CorLibTypes.Int32)),
+            FieldAttributes.Static | FieldAttributes.Public);
+        HostType(module).Fields.Add(field);
+        return field;
     }
 
     private static TypeDefUser NewKeyHolder(ModuleDef module, int integerFieldCount)

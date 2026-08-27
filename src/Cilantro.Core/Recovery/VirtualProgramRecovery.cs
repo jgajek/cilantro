@@ -84,6 +84,19 @@ public sealed record VirtualProgram(
     /// <summary>The jumping operations whose target was, every time it was watched, their operand.</summary>
     public IReadOnlySet<int> TargetIsOperand { get; init; } = new HashSet<int>();
 
+    /// <summary>
+    /// How often each jumping operation was watched running, and how often it went somewhere.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole of the evidence separating a jump always taken from one sometimes taken, and
+    /// therefore what decides whether the operation can be performed at all: a jump always taken
+    /// needs nothing to decide with, while one sometimes taken needs a condition, and an operation
+    /// that takes nothing off the stack has none to offer. Reported because a reader looking at an
+    /// operation left unnamed has no other way to see how close the counts came.
+    /// </remarks>
+    public IReadOnlyDictionary<int, (int Taken, int Seen)> Jumps { get; init; } =
+        new Dictionary<int, (int, int)>();
+
     /// <summary>The guarded regions the engine parsed alongside the operations.</summary>
     /// <remarks>
     /// A method's exception handling is not in its operations — nothing in a stream of stack
@@ -107,6 +120,12 @@ public sealed record VirtualProgram(
     /// what tells a reader whether the gap is in the method or in the tool.
     /// </remarks>
     public IReadOnlyList<string> Declined { get; init; } = [];
+
+    /// <summary>How often a jumping operation was watched, where it was watched at all.</summary>
+    private string Counted(int opcode) =>
+        Jumps.TryGetValue(opcode, out var counted) && counted.Seen > 0
+            ? $" (jumped {counted.Taken} of the {counted.Seen} time(s) it was watched)"
+            : string.Empty;
 
     /// <summary>What an operation leaves and takes, in the types the run found on them.</summary>
     private static string Typed(VirtualOperation operation)
@@ -184,7 +203,10 @@ public sealed record VirtualProgram(
                 "standing.";
             yield return ";";
             foreach (var operation in Operations.Values.OrderBy(item => item.Opcode))
-                yield return $";   op {operation.Opcode,4}  {operation.Describe()}{Typed(operation)}";
+            {
+                yield return $";   op {operation.Opcode,4}  {operation.Describe()}" +
+                    $"{Typed(operation)}{Counted(operation.Opcode)}";
+            }
             foreach (var line in Declined)
                 yield return $"; {line}".TrimEnd();
             if (Targets.Count > 0)
@@ -397,7 +419,8 @@ public static class VirtualProgramRecovery
         {
             Operations = operations,
             Targets = flow.Targets,
-            TargetIsOperand = byOperand
+            TargetIsOperand = byOperand,
+            Jumps = flow.Jumps
         };
 
         // An operation read from what the program forces on it and what its operand names is read,
@@ -1052,7 +1075,7 @@ public static class VirtualProgramRecovery
     /// its values and does nothing when it is performed with the engine standing still, and that
     /// reading is not merely incomplete but misleading.
     /// </remarks>
-    private static Dictionary<int, VirtualOperation> Merge(
+    internal static Dictionary<int, VirtualOperation> Merge(
         IReadOnlyDictionary<int, VirtualOperation> probed,
         VirtualRun flow,
         List<VirtualInstruction> decoded)
@@ -1093,6 +1116,20 @@ public static class VirtualProgramRecovery
             if (name is null)
                 continue;
             merged.TryGetValue(opcode, out var known);
+
+            // A jump that takes nothing off the stack has nothing to decide with, so a sighting of it
+            // not going anywhere is not a condition coming out false — there is no condition to come
+            // out either way. It is the seam this already allows for in the other direction: a program
+            // entered twice puts its last operation next to its first, and an engine that leaves and
+            // comes back does the same. Only an operation the trials could measure and could not find
+            // a condition for is read this way, so nothing the trials settled is overturned.
+            //
+            // Reading it as conditional instead named an operation that nothing could then perform,
+            // because performing it would need the condition the name promises. On the build this was
+            // found on that operation jumped 293 of the 295 times it was watched, and stood at the
+            // third instruction of the program that builds a string table of 11,110 strings.
+            if (name == "branch if" && known is { Measured: true, Pops: 0, Decides: null })
+                name = "branch";
 
             // A single sighting overturns nothing that was measured. A program entered twice puts
             // its last operation next to its first, and an engine that leaves and comes back does
