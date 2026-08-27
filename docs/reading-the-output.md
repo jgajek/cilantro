@@ -410,9 +410,10 @@ equivalent. `--verbose` reports how many it left alone.
 Ten to thirty seconds for a normal sample. The time goes into interpreting the
 loader, which is the price of not running it. Very large assemblies take longer.
 
-A sample with methods turned into bytecode takes a minute or two instead, because
-reading the hidden program, building it back, and running the result to check it
-are all work the ordinary sample does not need. `--no-devirtualize` skips the
+A sample with methods turned into bytecode takes half a minute or more instead,
+because reading the hidden program and building it back are work the ordinary
+sample does not need — and if the module unpacks something, running the result to
+check it costs as much again as everything else together. `--no-devirtualize` skips the
 building and the check and gets you the listings on their own.
 
 ### Can I run it on a whole folder?

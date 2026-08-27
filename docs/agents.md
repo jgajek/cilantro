@@ -199,8 +199,8 @@ in a sentence: whether to answer something, whether to run again, or whether
 this sample is as far as the tool goes.
 
 Two differences from the command line are worth knowing. `unpack` does **not**
-rebuild virtualized methods unless you ask, because that costs a minute or two
-per sample and a pipeline working through a queue is paying a different price
+rebuild virtualized methods unless you ask, because on a sample that has them it
+can cost minutes, and a pipeline working through a queue is paying a different price
 for it than a person watching one run. And `read_output` will not hand back an
 extracted payload: those are malware, and the manifest already names the path
 and the hash so that something built to hold them can be pointed at the file.

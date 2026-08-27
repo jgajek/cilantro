@@ -73,7 +73,7 @@ protected twice, with a second obfuscator hiding strings underneath Reactor
 | Of the 172 encrypted string sites | **all 172** | none | 17 | none |
 | C2 address, port, campaign ID | **recovered** | no | no | no |
 | Ran the sample | **no** | yes — and crashed there | no | tried to |
-| Time | 45s | 2.9s | 2.3s | 18s |
+| Time | 26s | 2.9s | 2.3s | 18s |
 
 Only this tool's output names the thing: `https://logs.uvexio.com` on port 8443,
 campaign `36f871795ba82`, and the sample's full anti-analysis blacklist from
@@ -281,8 +281,8 @@ turn. Three cases come up, and all three end with you knowing something:
   and port. That address is the thing worth having.
 - **The unpacker is itself virtualized**, so there is no unpacker code to follow.
   The tool then reads Reactor's interpreter the same way it reads everything
-  else, and lets it do the unpacking. That costs about a minute rather than a few
-  seconds, and the file still comes out.
+  else, and lets it do the unpacking. That costs about half a minute rather than a
+  few seconds, and the file still comes out.
 
 ### Reading methods that were turned into bytecode
 
@@ -449,8 +449,8 @@ through the machine:
 dotnet test Cilantro.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 429 of the 437 tests in about four seconds, against the three minutes
-those eight cost between them. They still run on a plain `dotnet test`,
+That is 467 of the 475 tests in about four seconds, against the two and a half
+minutes those eight cost between them. They still run on a plain `dotnet test`,
 which is what to do before pushing, because they are the ones that prove the tool
 recovers real malware.
 
@@ -467,7 +467,7 @@ dotnet run --project src/Cilantro.Cli -c Release --no-build -- \
     samples/NAME.exe --analyze-only --declarations /tmp/fast.json --report-dir /tmp/loop
 ```
 
-Fifteen seconds instead of twenty-nine, and the report still carries
+Ten seconds instead of twenty, and the report still carries
 the passes you kept, with their diagnostics and blockers. The output is not a
 recovery — skipping a pass that gates emission means no cleaned copy is written,
 which is the point: this is for reading a report, and the full run is what says

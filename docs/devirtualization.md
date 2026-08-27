@@ -666,9 +666,13 @@ read. `a reading, unchecked` means the comparison could not be made and the line
 under it say why; `IT DID NOT MATCH THE ORIGINAL` means the bodies were built and
 did something else, which is a reason not to trust them.
 
-Reading a virtual program is the slowest thing the tool does — a minute or so on
-top of the rest, and building the bodies back and running them to check adds most
-of another. `--no-devirtualize` keeps the listings and skips the building. If you
+Reading a virtual program is the slowest thing the tool does — ten seconds on top
+of the rest for a sample the size of the one above, and longer for a larger one.
+Building the bodies back is cheap beside reading them. The check is the expensive
+part, because it runs the whole pipeline again on a second copy, and it is only
+paid on a module that unpacks something for the check to watch; on one that
+unpacks nothing there is nothing to compare, and the run says so instead of
+paying. `--no-devirtualize` keeps the listings and skips the building. If you
 are working through a directory of samples and do not need either, you can leave
 the whole thing out:
 

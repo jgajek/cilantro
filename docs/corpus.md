@@ -158,8 +158,8 @@ where a wholly absent corpus is a choice the repository made.
 
 ## What the suite costs
 
-Where the samples are present the suite takes about twelve minutes, and eight
-tests account for all but five seconds of it:
+Where the samples are present the suite takes about two and a half minutes, and
+eight tests account for all but four seconds of it:
 
 | Test | Share of the work |
 | --- | --- |
@@ -175,7 +175,7 @@ They are described by work rather than by seconds because the seconds are not a
 property of the test: the same sample recovery has been measured at 108 seconds
 in one run and 418 in the next, unchanged, because a dozen interpretations running
 at once contend for memory bandwidth far more than for cores. What is stable is
-that these eight are minutes and the other 409 are five seconds together.
+that these eight are minutes and the other 467 are four seconds together.
 
 Each of the eight is marked `Cost=High` and can be left out with
 `--filter "Cost!=High"`, which is the loop to work in. None of them can run in

@@ -112,7 +112,7 @@ The input has 36 distinct string literals, 673 types and 3,708 methods.
 | | CILantro | NETReactorSlayer | de4dotEx | Krypton |
 | --- | --- | --- | --- | --- |
 | Produced an output file | yes | only with its string stage switched off | only when told which obfuscator | yes |
-| Wall time | 45s | 2.9s | 2.3s | 18s |
+| Wall time | 26s | 2.9s | 2.3s | 18s |
 | **Distinct string literals in the output** | **192** | 31 | 8 | **0** |
 | Reactor's own 17 string sites | **all 17** (11 distinct literals) | none | **all 17** (7 of those 11) | none |
 | The inner layer's 155 string sites | **all 155** | none, all 155 left as calls | none, all 155 left as calls | not reached |
@@ -189,13 +189,16 @@ Read the table as one hard sample, not a ranking.
   came out byte-identical to one with that stage disabled. **On Windows both
   would do better than this**, and Slayer's string stage might well succeed
   outright — that is the whole point of invoking the real decrypter.
-- **We are much slower.** 45s against 2.3s. A third of that is reading the virtual
-  machine: `--no-devirtualize` brings it to 29s with all 172 strings still
-  recovered, so the string result does not depend on the rebuild. Interpreting a
-  loader instead of running it costs more than an order of magnitude, every time.
-  It used to cost nearly seven minutes here; the interpreter was doing work
-  quadratic in the size of the buffers a protector decrypts into, and in the
-  number of types in the module, and neither had to be.
+- **We are much slower.** 26s against 2.3s. Interpreting a loader instead of
+  running it costs more than an order of magnitude, every time. Reading the
+  virtual machine is no longer the expensive part of it: `--no-devirtualize`
+  brings the run to 24s with all 172 strings still recovered, so the rebuild is
+  worth about two seconds here and the string result does not depend on it. What
+  used to make it look expensive was the check behind it, which reruns the whole
+  pipeline on a second copy to watch the rebuilt method unpack — worth its cost
+  on a module that unpacks something, and nothing but cost on one that does not,
+  which this sample is. It now asks that question before paying. The run cost
+  nearly seven minutes when this table was first written.
 - **One sample cannot rank renaming, Reactor 7, or native stubs**, all of which
   the others do better or at all. See [Where CILantro loses](#where-cilantro-loses).
 
@@ -295,7 +298,7 @@ side.
 - **Names.** Slayer and de4dotEx rename the whole de4dot surface, public types
   included. This tool renames only non-public members whose names it can prove
   are generated, so the result is less uniformly readable.
-- **Speed.** A second or two on a normal sample, and up to a minute on a
+- **Speed.** A second or two on a normal sample, and half a minute on a
   virtualized one — as on the sample measured
   [above](#all-four-on-one-hard-sample) — against two or three seconds for the
   others. Interpreting the loader is the price of not running it, and it is still
