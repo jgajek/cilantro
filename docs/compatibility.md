@@ -33,7 +33,7 @@ edits. Recovery expectations include restored-body counts, remaining-stub
 limits, string-site coverage, mutation limits, and optional oracle parity, plus
 gates for recovered booleans, restored tokens, restored resources, maximum
 remaining switch dispatchers, maximum unreachable instructions, and an expected
-unsupported diagnostic for native-packed inputs.
+unsupported diagnostic for mixed-mode inputs.
 
 ```bash
 dotnet run --project src/Cilantro.Cli -- corpus run
@@ -1033,10 +1033,14 @@ hashes, pass counts, and independent dnlib reload.
   rather than approximated; and
 - dynamic execution of protected assemblies.
 
-Native-stub unpacking (NecroBit native / QuickLZ) is a deferred capability, not
-a silent failure: `metadata-preflight` detects a native entry point, a managed
-native header, or a non-IL-only image and reports the input as unsupported with
-a specific diagnostic naming the deferred stage.
+Native inputs split two ways, and only one of them is a boundary. A native
+bootstrap — native code with no CLR header at all, keeping the encrypted
+assembly in an `RT_RCDATA` resource — is unpacked before the managed load, and
+the run writes the recovered assembly out and stops there. A mixed-mode image,
+where the CLR header itself declares a native entry point or a managed native
+header or is not IL-only, is a different shape: `metadata-preflight` detects it
+and reports the input as unsupported with a specific diagnostic, rather than
+mis-processing it.
 
 Destructive removal of runtime/proxy types and symbol renaming are no longer
 permanently out of scope. Both are what a triage run does and neither is what a

@@ -77,6 +77,30 @@ The full shape is [`schema/run.schema.json`](../schema/run.schema.json), and
 what will and will not change under you is in
 [`schema/README.md`](../schema/README.md).
 
+### The one outcome that means "run me again"
+
+`Protector` comes back `reactor-bootstrap` when the input was not a .NET file at
+all, but native code with the assembly encrypted inside it. Such a run succeeds,
+writes no `Cleaned` copy, reports no `Protections`, and puts exactly one entry in
+`Payloads`. None of that is a failure: it is the whole result. What was recovered
+is a protected assembly in its own right — usually much larger than the stub —
+and it has not been analysed.
+
+So branch on it. A pipeline that treats "no cleaned copy and no protections" as
+nothing-to-see will throw away the only thing the run produced:
+
+```python
+run = unpack(path)
+if run["Protector"] == "reactor-bootstrap":
+    # Not a dead end. Feed the recovered assembly back in; it is the real sample.
+    run = unpack(run["Payloads"][0]["WrittenTo"])
+```
+
+If the file is a bootstrap and the assembly could not be got out, the call fails
+with a message beginning "is a .NET Reactor native bootstrap". That is worth
+distinguishing from "is not a .NET assembly", which means the file was never
+managed and there is nothing further to try.
+
 ## The loop
 
 A sample that stops the run stops it somewhere nameable, and every stop that a

@@ -187,11 +187,19 @@ of the ordering is obvious, some of it is not. What follows is the Reactor
 pipeline, which is the longer of the two;
 [the ConfuserEx one](#the-order-things-happen-in-under-confuserex) is below it.
 
+**0. Get to a managed file at all.** Before any of the below, a file with no CLR
+header is checked for being a Reactor native bootstrap, and if it is, the
+assembly is decrypted out of its resources and written out. That run ends there:
+what comes out is a protected assembly of its own, so it is handed back as a
+recovered stage rather than carried into the steps below. Everything that
+follows assumes a managed input, which for a bootstrap means a second run.
+
 **1. Look before touching.** The raw metadata is parsed by hand first — before
 handing the file to a library that would normalise it — to record duplicate
 table rows, malformed stream bounds, and native-packing markers. Reactor puts
 deliberate anomalies here to break tools, and they are evidence rather than
-errors. If the file is native-packed, this is where the tool stops.
+errors. If the file is a mixed-mode image, whose CLR header declares a native
+entry point, this is where the tool stops.
 
 **2. Identify the protection.** Which Reactor generation this is, and which
 features are in use, is decided from structural evidence: the shape of the

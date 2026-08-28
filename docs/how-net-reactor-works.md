@@ -198,9 +198,28 @@ to machine code rather than IL.
 **What you see:** the file does not open in a .NET decompiler at all, or opens
 with almost nothing in it.
 
-CILantro detects this and reports it as unsupported rather than producing a
-damaged result. It is not implemented, for the reason given in the README: no
-sample has been available to develop against.
+The packing is thinner than it looks. The stub keeps the assembly in an
+`RT_RCDATA` resource named `__`, encrypted with a 256×256 byte substitution
+table applied twice over each 1024-byte block — no block cipher, no stream
+cipher, and nothing carried between blocks. The table is built from six bytes
+that sit in the stub's own decrypt routine as immediate operands, so the key
+ships in the file and can be read out of it. Decrypted, the resource is a
+little-endian `int32` length followed by a zlib stream. Inflating it gives
+either the assembly or a fourteen-byte header — the runtime version the stub
+asks for, such as `v4.0.30319` — in front of a small loader assembly whose first
+embedded resource is the assembly you wanted.
+
+CILantro reads all of that before it tries to load anything as managed code, and
+writes the recovered assembly out beside the report. It then stops: what came
+out is a Reactor-protected assembly in its own right, frequently larger than the
+stub, so it is reported as a recovered stage and run separately rather than
+folded into the same run. The key is found by matching the decrypt routine's
+code across the executable sections, which is the part most likely to need
+revisiting for a stub built by a different version of the protector.
+
+The mixed-mode variant — where the CLR header is present but declares a native
+entry point, which is what the compiled-NecroBit builds look like — is a
+different shape and is still detected and refused rather than unpacked.
 
 ## Code virtualization
 

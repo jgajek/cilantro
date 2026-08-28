@@ -87,6 +87,16 @@ internal static class Explain
         var protector = report.Evidence
             .FirstOrDefault(evidence => evidence.Category == "protector-name")?.Message
             ?? "an unrecognized protector";
+
+        // Asked before the capability list, because a bootstrap has no capabilities to list: the
+        // protections belong to the assembly inside it, which this run recovered and did not read.
+        // Falling through would print "no protection" about the most heavily protected input there is.
+        if (report.Evidence.Any(evidence => evidence.Category == "native-bootstrap"))
+        {
+            Bootstrap(result, home);
+            return;
+        }
+
         if (capabilities.Count == 0)
         {
             // Finding nothing is a real answer and the commonest one on a file somebody guessed
@@ -322,6 +332,50 @@ internal static class Explain
     {
         if (value > 0)
             lines.Add((label, value.ToString("N0", CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// What to say about a file whose managed half had to be made before it could be read.
+    /// </summary>
+    /// <remarks>
+    /// The recovered assembly is the whole of the result, so it is named first and the run's own
+    /// findings come second. The last line is an instruction rather than a summary because it is the
+    /// only thing the reader has to do: this run deliberately stopped at the stub.
+    /// </remarks>
+    private static void Bootstrap(PipelineResult result, string home)
+    {
+        var report = result.Report;
+        Console.WriteLine(
+            "  PROTECTION   .NET Reactor, native bootstrap. The file is native code with the");
+        Console.WriteLine(
+            "               managed assembly encrypted inside it.");
+        Console.WriteLine();
+
+        Console.WriteLine("  WROTE");
+        Console.WriteLine();
+        foreach (var payload in report.Payloads)
+        {
+            Console.WriteLine(
+                $"    Assembly        {payload.AssemblyName} ({Size(payload.PayloadLength)}), " +
+                $"SHA-256 {payload.PayloadSha256}");
+            if (payload.WrittenTo is { } path)
+                Console.WriteLine($"                    {Near(path, home)}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("  HOW");
+        Console.WriteLine();
+        foreach (var evidence in report.Evidence.Where(item => item.Category == "native-bootstrap"))
+            Console.WriteLine($"    {evidence.Message}");
+
+        Console.WriteLine();
+        Console.WriteLine("  NEXT");
+        Console.WriteLine();
+        Console.WriteLine("    The recovered assembly is protected in its own right and has not");
+        Console.WriteLine("    been read. Run this tool on it to undo what is on it:");
+        foreach (var payload in report.Payloads.Where(item => item.WrittenTo is not null))
+            Console.WriteLine($"      cilantro {Near(payload.WrittenTo!, home)}");
+        Console.WriteLine();
     }
 
     private static void Written(PipelineResult result, string home)

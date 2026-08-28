@@ -3,6 +3,7 @@ using Cilantro.Cli;
 using Cilantro.Core;
 using Cilantro.Core.Corpus;
 using Cilantro.Core.Interpretation;
+using Cilantro.Core.Native;
 
 return CilantroCommand.Run(args);
 
@@ -162,6 +163,13 @@ internal static class CilantroCommand
             }
 
             return result.Success ? 0 : 1;
+        }
+        // Caught before the general "not a .NET assembly", which is what an unmanaged file gets and
+        // is the wrong thing to tell someone holding a stub whose managed half was found but not
+        // opened: that reads as "wrong tool" when the answer is "right tool, and here is what beat it".
+        catch (NativeBootstrapException failure)
+        {
+            return Fail(failure.Message);
         }
         catch (BadImageFormatException)
         {

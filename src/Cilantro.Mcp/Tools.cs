@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cilantro.Core;
 using Cilantro.Core.Interpretation;
+using Cilantro.Core.Native;
 
 namespace Cilantro.Mcp;
 
@@ -285,7 +286,8 @@ internal static class Tools
                 "executables and libraries.");
         }
         catch (Exception ex) when (
-            ex is HostProfileException or TrustedLibraryException or DeclarationException)
+            ex is HostProfileException or TrustedLibraryException or DeclarationException
+                or NativeBootstrapException)
         {
             return Failed(ex.Message);
         }

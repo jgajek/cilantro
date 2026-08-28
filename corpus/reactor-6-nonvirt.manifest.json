@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "profile": "reactor-6-static",
-  "description": "Curated .NET Reactor 6 corpus. Binary samples remain outside git.",
+  "description": "Curated .NET Reactor 6 corpus. Binary samples remain outside git. One entry is not a .NET file at all: windowsmanagement-bootstrap is a native stub whose only gate is the hash of the assembly decrypted out of it, because a substitution table built slightly wrong still produces bytes and only the hash says whether they are the right ones. The assembly it yields is itself the qbjuef-family stub, so the two entries together cover the whole chain.",
   "samples": [
     {
       "id": "mlfhntkcvb",
@@ -123,6 +123,16 @@
       "minimumVirtualOperationsWalked": 0.998,
       "requireConsistentVirtualStack": true,
       "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
+    },
+    {
+      "id": "windowsmanagement-bootstrap",
+      "tier": "exploratory",
+      "sha256": "094dbed0af6664af52375a711e0b8e4e8e7e66c6d47390e8263b16efba4d1995",
+      "localName": "WindowsManagement.exe",
+      "expectedDetection": "reactor-bootstrap",
+      "expectedCapabilities": [],
+      "oracleSha256": null,
+      "expectedPayloadSha256": ["83ba5d833eba38f578eb8478f8961a0bddb63ff35016b40d8e0536b164ee1ed3"]
     },
     {
       "id": "reason-pac-oracle",

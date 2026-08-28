@@ -42,6 +42,16 @@ public sealed record CorpusSample(
     int? MaximumSurplusResources = null,
     bool RequireOracleResourceParity = false,
     int? MinimumConstantStringSites = null,
+
+    /// <summary>
+    /// Hashes the run is expected to recover, each of which must appear among its payloads.
+    /// </summary>
+    /// <remarks>
+    /// A regression lock for samples whose whole result is a recovered stage rather than a cleaned
+    /// copy — a native bootstrap being the case that needs it, since a substitution table built
+    /// slightly wrong still produces bytes, and only a hash says whether they are the right ones.
+    /// </remarks>
+    IReadOnlyList<string>? ExpectedPayloadSha256 = null,
     string? HostProfile = null,
     IReadOnlyList<string>? Libraries = null,
     string? Declarations = null,
@@ -322,6 +332,18 @@ public static class CorpusRunner
                 StringComparison.OrdinalIgnoreCase))
         {
             diagnostics.Add("Output hash did not match the regression lock.");
+        }
+
+        if (sample.ExpectedPayloadSha256 is { Count: > 0 } expectedPayloads)
+        {
+            var recovered = result.Report.Payloads
+                .Select(payload => payload.PayloadSha256)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = expectedPayloads
+                .Where(expected => !recovered.Contains(expected))
+                .ToArray();
+            if (missing.Length > 0)
+                diagnostics.Add($"Missing expected payloads: {string.Join(", ", missing)}.");
         }
         return new CorpusSampleOutcome(
             sample.Id,

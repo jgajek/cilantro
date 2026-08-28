@@ -58,7 +58,8 @@ with is virtualized and you would rather debug it than read it.
 | Next stage hidden inside | Yes, any crypter | Reactor's own | Reactor's own | — |
 | Costura bundle | Yes | Yes | — | — |
 | Anti-tamper and anti-debug | Yes, where proven | Yes | Anti-debug, strong name | Heuristic patches |
-| Native-packed stub | Detects, refuses | Unpacks | Unpacks | — |
+| Native bootstrap stub | Unpacks, and stops at the assembly | Unpacks | Unpacks | — |
+| Mixed-mode native entry | Detects, refuses | Unpacks | Unpacks | — |
 | Methods turned into bytecode | Reads, rebuilds in place | Detects only | Rebuilds in place | Rebuilds in place |
 | Names destroyed | Non-public only | Full de4dot renamer | Full de4dot renamer | Pattern-based |
 | Protectors other than Reactor | — | — | About 25 families | — |
@@ -81,6 +82,11 @@ it. Four cells deserve their footnote:
   came out.
 - **"Detects, refuses"** means the run stops and says what it found, rather than
   writing a mangled file that looks like a result.
+- **"Unpacks, and stops at the assembly"** means the bootstrap is decrypted and
+  the assembly inside it written out, and that the run then ends rather than
+  going on to undo the protection on it. That assembly is a stage of its own —
+  Reactor-protected, and often larger than the stub — so it is reported like
+  every other recovered stage and run separately.
 
 ## All four on one hard sample
 
@@ -288,9 +294,10 @@ side.
   there. de4dotEx has had years on that protector and its forks; if what you want
   is everything a ConfuserEx sample was hiding rather than its literals and most of
   its shape, start there.
-- **Native-packed files.** The .NET part is inside a native stub, and the way
-  the other tools get it out is by unpacking that stub. This one detects the
-  case and stops. Slayer and de4dotEx unpack it.
+- **Mixed-mode images.** An assembly whose CLR header declares a native entry
+  point is detected and refused here. Slayer and de4dotEx handle more of that
+  shape. The other native case — a native bootstrap holding the assembly in a
+  resource — is unpacked, and is covered in the matrix above.
 - **String codecs nobody has modeled.** Slayer calls the sample's own decrypter,
   so a codec variant it has never seen still comes out. This tool has to
   interpret the codec, and where it cannot, the strings stay encrypted and the
@@ -340,7 +347,8 @@ than porting any of it.
 | 15 | `SymbolRenamer` | `symbol-renaming` (on by default; `--keep-names` and `--strict` disable) | Much weaker. Slayer renames the full de4dot surface including public types and restores properties and events. We rename only non-public, non-virtual, structurally proven names to synthetic identifiers. |
 | — | no equivalent | `loader-call-elision` | Beyond Slayer. Cuts the loader calls Reactor injects at the head of type initializers throughout the assembly, once the bounded interpretation accounts for everything a call does and nothing that survives can read what it wrote. Slayer removes the runtime by recognizing it; this reaches the same code by proving the calls inert, and is what leaves the runtime unreachable for cleanup. The initializers left empty by the cut are handed to cleanup by the same pass, on the grounds that it is what emptied them. |
 | — | anti-debug (folded into `AntiManipulationPatcher`) | `antitamper-neutralization` | Partial. Debugger-probe sites are neutralized only where the value provably feeds a Reactor termination path. |
-| — | `Helper/NativeUnpacker` + `QuickLZ` | `metadata-preflight` (`NativePackDetector`) | Deferred. Native-packed input is detected and reported unsupported with a specific diagnostic rather than mis-processed. Slayer unpacks it. |
+| — | `Helper/NativeUnpacker` | `native-bootstrap` (`NativeBootstrap`) | Parity on the format, different on what happens next. Both read the six key bytes out of the bootstrap's own decrypt routine, undo the substitution over 1024-byte blocks, inflate, and step through the loader assembly to the payload. Slayer locates the routine at four known file offsets; this scans the executable sections, so a stub whose layout moved is still read. Slayer then carries straight on into its own stages; this writes the recovered assembly out and stops, on the grounds that it is a whole protected stage rather than a layer. The format was established by reading Slayer, which is GPLv3; no code crossed over. |
+| — | (part of `NativeUnpacker`) | `metadata-preflight` (`NativePackDetector`) | Weaker. A mixed-mode image, whose CLR header declares a native entry point rather than keeping the assembly in a resource, is detected and reported unsupported rather than mis-processed. Slayer handles more of that shape. |
 | — | `Helper/CodeVirtualizationUtils` | `reactor-detection`, `virtualization-disassembly`, `virtualization-rebuild` | Beyond Slayer. Slayer detects virtualization by looking for a known runtime; detection here is by the shape of the seam every virtualizer has to leave — pack the arguments, pass a program number, call once, return — which holds for engines neither tool has seen, and it names the affected methods rather than only reporting a flag. The engine's own decoder is then run under the machine and the decoded program read back off the heap, so nothing about the bytecode's framing or encryption has to be known, and what each operation means is derived per sample rather than from a table no per-build numbering would survive. The result is written as an annotated listing and as the IL it stands for, and built back into the cleaned copy with an attribute on each method saying it is a reading. See [devirtualization.md](devirtualization.md) for how the readings are arrived at and checked. |
 
 ## Where CILantro is intentionally different

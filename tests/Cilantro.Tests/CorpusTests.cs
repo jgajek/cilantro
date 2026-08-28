@@ -39,10 +39,15 @@ public sealed class CorpusTests
             manifest.Samples.Select(sample => sample.Sha256).Distinct().Count());
         Assert.All(manifest.Samples,
             sample => Assert.Matches("^[a-f0-9]{64}$", sample.Sha256));
-        // A gate that names no capability is a gate that would pass on an unprotected file.
+        // A gate that asserts nothing about what the run recovered is a gate that would pass on an
+        // unprotected file. A capability list is the usual way to assert something; pinning the hash
+        // of a recovered payload is the other, and is what a native bootstrap has instead, since its
+        // capabilities belong to the assembly inside it and this run never reads that.
         Assert.All(manifest.Samples, sample => Assert.True(
-            sample.ExpectedDetection == "none" || sample.ExpectedCapabilities.Count > 0,
-            $"{sample.Id} expects a protector but names no capability."));
+            sample.ExpectedDetection == "none" ||
+            sample.ExpectedCapabilities.Count > 0 ||
+            sample.ExpectedPayloadSha256 is { Count: > 0 },
+            $"{sample.Id} expects a protector but asserts nothing it must recover."));
     }
 
     [Fact]
@@ -52,7 +57,7 @@ public sealed class CorpusTests
             Path.Combine(Checkout.Root, "corpus", "reactor-6-nonvirt.manifest.json"));
 
         Assert.Equal(1, manifest.ManifestVersion);
-        Assert.Equal(11, manifest.Samples.Count);
+        Assert.Equal(12, manifest.Samples.Count);
         Assert.Equal(manifest.Samples.Count,
             manifest.Samples.Select(sample => sample.Sha256).Distinct().Count());
         Assert.Contains(manifest.Samples, sample => sample.Tier == "profiled");
@@ -139,7 +144,7 @@ public sealed class CorpusTests
                 index => reports[index] = CorpusRunner.Run(manifest, samples, directories[index]));
 
             var firstReport = reports[0];
-            Assert.Equal(11, firstReport.Passed);
+            Assert.Equal(12, firstReport.Passed);
             Assert.Equal(0, firstReport.Failed);
             Assert.Equal(0, firstReport.Missing);
 

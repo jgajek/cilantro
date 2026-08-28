@@ -357,6 +357,7 @@ triage answer needs, and stops short of its runtime-bound proxies.
 | Hidden metadata references | Yes | Not applicable to these builds |
 | Encrypted resources | Yes — restored in place | Not implemented |
 | Embedded payloads | Yes — written out as files | Not implemented |
+| Native bootstrap | Yes — the assembly is decrypted out of the stub and written out | Not applicable to these builds |
 | Virtualized methods | Read, and rebuilt as a reading | Not applicable to these builds |
 
 Reactor 6 covers the large majority of Reactor-protected samples in circulation.
@@ -377,8 +378,10 @@ Being straight about this matters more than the feature list.
   copy are the tool's reading, not code recovered from the file, and each says so
   in an attribute. Where the sample's own work can test them it does; where it
   cannot, the reading stands unchecked.
-- **Native-packed files.** A sample wrapped in a native stub rather than being
-  pure .NET is detected and reported as unsupported, not mangled.
+- **Mixed-mode images.** An assembly whose CLR header declares a native entry
+  point, rather than keeping its managed half in a resource, is detected and
+  reported as unsupported rather than mangled. The native bootstrap below is a
+  different shape and is handled.
 - **Reactor 7 and later, ConfuserEx forks, and other protectors.** The
   ConfuserEx support is written against 1.0.0; the many forks that followed it
   are not tested. Eazfuscator, Babel and friends are out of scope — try
@@ -491,8 +494,9 @@ without samples was checked, and the skip count says what was not. Put samples i
 
 Samples are the bottleneck, not ideas. If you have a sample under either
 protector that CILantro handles badly, that is the most valuable thing you can
-contribute — particularly native-packed ones, which are unimplemented purely
-because no sample has been available to develop against.
+contribute — particularly mixed-mode images, and native bootstraps built by any
+Reactor version other than the one this was developed against, since the
+bootstrap reader finds its key by matching the decrypt routine's own code.
 
 Bug reports should include the `--verbose` output and the SHA-256 of the sample.
 

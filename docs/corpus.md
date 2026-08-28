@@ -35,10 +35,23 @@ Protected and exploratory samples:
   (`profiled`, `Qafcakg.payload.Ptnifif.dll`)
 - `81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a`
   (`exploratory`, `Mlfhntkcvb.payload.Lqcuzgc.dll`)
+- `094dbed0af6664af52375a711e0b8e4e8e7e66c6d47390e8263b16efba4d1995`
+  (`exploratory`, `WindowsManagement.exe`)
 
-The last two are the assemblies the first two carry. Both are protected by
-Reactor in turn, so recovering the outer sample only reaches the next wrapper,
-and they are in the corpus in their own right for that reason.
+`Mlfhntkcvb.payload` and `Qafcakg.payload` are the assemblies the two `profiled`
+samples carry. Both are protected by Reactor in turn, so recovering the outer
+sample only reaches the next wrapper, and they are in the corpus in their own
+right for that reason.
+
+`WindowsManagement.exe` is the odd one: not a .NET file at all, but a native
+bootstrap with the assembly encrypted into a resource. Its only gate is
+`expectedPayloadSha256`, the hash of what comes out, because the decryption has
+no integrity check of its own — a table built slightly wrong still produces
+bytes, and nothing short of the hash distinguishes those from the right ones.
+What comes out is
+`83ba5d833eba38f578eb8478f8961a0bddb63ff35016b40d8e0536b164ee1ed3`, a
+Reactor-protected assembly in its own right, which is why the run stops there
+rather than carrying on into it.
 
 They are protected in two different ways, and each is held to what it reaches.
 `Ptnifif` is a JIT-hook build: all 313 of its protected bodies come back and no

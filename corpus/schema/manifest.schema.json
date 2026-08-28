@@ -51,6 +51,12 @@
             "type": ["string", "null"],
             "pattern": "^[a-f0-9]{64}$"
           },
+          "expectedPayloadSha256": {
+            "description": "Hashes the run must recover as payloads. The regression lock for samples whose result is a recovered stage rather than a cleaned copy.",
+            "type": ["array", "null"],
+            "items": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "minItems": 1
+          },
           "minimumBooleansRecovered": { "type": ["integer", "null"], "minimum": 0 },
           "minimumTokensRestored": { "type": ["integer", "null"], "minimum": 0 },
           "minimumResourcesRestored": { "type": ["integer", "null"], "minimum": 0 },

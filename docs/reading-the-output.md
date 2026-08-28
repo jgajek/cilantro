@@ -276,10 +276,22 @@ sample.
 
 ### "is not a .NET assembly"
 
-The file is not managed code. If you expected .NET, it may be natively packed
-with the .NET part hidden inside — see the native packing section in
-[how-net-reactor-works.md](how-net-reactor-works.md). That case is detected and
-reported separately when the file is still recognisably a .NET image.
+The file is not managed code, and it is not a Reactor native bootstrap either —
+that case is unpacked rather than refused, and reports itself as one. So this
+message means what it says. See the native packing section in
+[how-net-reactor-works.md](how-net-reactor-works.md) for the two shapes and
+which of them this tool opens.
+
+### ".NET Reactor native bootstrap ... but it could not be opened"
+
+The file *is* a bootstrap — native code with the managed assembly encrypted
+inside it — and the assembly could not be recovered. The rest of the message
+says which step failed. A key that could not be found means the decrypt routine
+did not match, which is the expected outcome for a stub built by a Reactor
+version this has not seen; a length or inflate failure after a key *was* found
+usually means the resource has been modified since the stub was built. Either
+way nothing is written, because a half-decrypted assembly is indistinguishable
+from a whole one until something tries to read it.
 
 ### The cleaned copy still has meaningless names
 

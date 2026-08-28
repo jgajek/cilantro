@@ -9,6 +9,7 @@ using dnlib.DotNet.Writer;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Codec;
 using Cilantro.Core.Interpretation;
+using Cilantro.Core.Native;
 using Cilantro.Core.Passes;
 using Cilantro.Core.Pipeline;
 using Cilantro.Core.Recovery;
@@ -779,6 +780,12 @@ public sealed class CilantroPipeline
                 : options.Strict
                     ? HostProfile.Default
                     : HostProfile.Workstation);
+        // Before the managed load, because a native bootstrap has nothing for it to load: the
+        // assembly is inside the file rather than being the file. A run that gets a result here is
+        // finished, having produced the stage that was hidden rather than a reading of it.
+        if (NativeBootstrapStage.TryRun(inputPath, options, out var recovered))
+            return recovered;
+
         using var context = ArtifactContext.Load(
             inputPath,
             [.. options.LibraryPaths ?? [], .. declarations.Libraries]);
@@ -1326,7 +1333,7 @@ public sealed class CilantroPipeline
         }
     }
 
-    private static void WriteJson<T>(string path, T value)
+    internal static void WriteJson<T>(string path, T value)
     {
         File.WriteAllText(path, JsonSerializer.Serialize(value, ReportJsonOptions));
     }
@@ -1660,7 +1667,15 @@ public static class ResourceInspector
             })
             .ToArray();
 
-    private static string Classify(byte[] data, double entropy)
+    /// <summary>
+    /// What a blob looks like from its first bytes and its entropy, for reports that list resources.
+    /// </summary>
+    /// <remarks>
+    /// Public because the Win32 resources of a native bootstrap are described the same way as a
+    /// managed module's own, and a reader comparing the two should not have to know that one of them
+    /// was classified by a different rule.
+    /// </remarks>
+    public static string Classify(byte[] data, double entropy)
     {
         if (data.Length >= 2 && data[0] == 0x1F && data[1] == 0x8B) return "gzip";
         if (data.Length >= 2 && data[0] == 0x4D && data[1] == 0x5A) return "portable-executable";
