@@ -39,6 +39,7 @@ internal static class CilantroCommand
         var allowDeclaredCalls = false;
         var strict = false;
         bool? devirtualize = null;
+        var status = false;
         string? input = null;
         var libraries = new List<string>();
 
@@ -104,6 +105,9 @@ internal static class CilantroCommand
                 case "--no-devirtualize":
                     devirtualize = false;
                     break;
+                case "--status":
+                    status = true;
+                    break;
                 default:
                     if (args[index].StartsWith('-'))
                         return Fail($"Unknown option: {args[index]}");
@@ -136,7 +140,8 @@ internal static class CilantroCommand
                 DeclarationsPath: declarations,
                 AllowDeclaredCalls: allowDeclaredCalls,
                 Strict: strict,
-                Devirtualize: devirtualize));
+                Devirtualize: devirtualize,
+                StatusPath: status ? RunStatus.PathFor(input, reportDirectory) : null));
 
             if (_json)
             {
@@ -286,6 +291,9 @@ internal static class CilantroCommand
                                        marked as a reading rather than a proof (default, and how
                                        to ask for it in a strict run)
                   --no-devirtualize    Leave virtualized methods as the stubs they shipped as
+                  --status             Keep a NAME.status.json beside the reports saying which
+                                       pass is running, so a long run can be watched from
+                                       elsewhere while it goes
                   --fail-on-partial    Write nothing unless every stage fully succeeded
                   --strict             Assume nothing: stop where a normal run would carry on,
                                        and leave the assembly as it stands

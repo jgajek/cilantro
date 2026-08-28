@@ -21,6 +21,7 @@ dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 | `suspicious.virtualized/` | Per method turned into interpreter bytecode: the program read as IL, and the listing it was read from |
 | `suspicious.renames.json` | Old-to-new name map. Not written by a `--strict` run unless you add `--rename` |
 | `suspicious.config.json` | Constants recovered from a protector's table that could not all go back into the code — byte arrays, mostly. Written only where the sample had some |
+| `suspicious.status.json` | Which pass is running and how far along, updated while the run goes. Written only with `--status`, for watching a long run from elsewhere |
 
 The folder is not named after the sample, so a directory of samples all report
 into one folder without colliding.

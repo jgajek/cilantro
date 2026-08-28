@@ -247,6 +247,13 @@ turns what stopped a run into the file to run with next — and `read_output`:
 { "mcpServers": { "cilantro": { "command": "/opt/cilantro/cilantro-mcp" } } }
 ```
 
+A protected sample takes minutes and can take ten, which is longer than many
+clients will hold a call open. So `start_unpack` begins a run and returns at
+once, and `unpack_status` says which pass it is in and hands back the whole
+manifest when it is done — no request in a measured six-and-a-half-minute run
+took longer than 45 ms. A call killed on a timeout instead loses the payload
+extraction that runs near the end, which is generally the thing you were after.
+
 Method-body recovery raises its own step ceiling when it has to, since it decides
 whether any body comes back and nobody should have to drive that by hand. Other
 budget stops come back with the figure to raise them to and are left there, which

@@ -166,11 +166,14 @@ pointed at the same way as any other:
 }
 ```
 
-Three tools:
+Six tools:
 
 | Tool | What it does |
 | --- | --- |
 | `unpack` | Runs the pipeline on a file and returns the manifest above |
+| `start_unpack` | The same run, started in the background, returning at once |
+| `unpack_status` | How far a background run has got, and its manifest once done |
+| `cancel_unpack` | Asks a background run to stop |
 | `next_declarations` | Turns what stopped a run into the file to run with next |
 | `read_output` | Reads back a report, a rename map, or a listing |
 
@@ -204,6 +207,76 @@ can cost minutes, and a pipeline working through a queue is paying a different p
 for it than a person watching one run. And `read_output` will not hand back an
 extracted payload: those are malware, and the manifest already names the path
 and the hash so that something built to hold them can be pointed at the file.
+
+## Runs that outlast the call
+
+`unpack` returns when the pipeline finishes, which on a protected sample of any
+size is minutes and can be ten. If your client gives up before then, the call is
+killed with the analysis unfinished, and what it had left to write goes unwritten
+— which is the expensive half, because payload extraction runs near the end. A
+sample measured at six and a half minutes, killed at seven, cost 11,107 recovered
+strings and five payloads, one of them the 3.86 MB assembly the sample existed to
+carry. Nothing about the run was wrong; nobody was left to receive it.
+
+So for anything that might take more than a minute or two, start it and ask:
+
+```jsonc
+// start_unpack — same arguments as unpack, returns immediately
+{
+  "StatusPath": "/work/reports/suspicious.status.json",
+  "ReportDir": "/work/reports",
+  "Advice": "Started. Poll unpack_status on statusPath every 10 to 15 seconds. ..."
+}
+
+// unpack_status — cheap, safe to call every few seconds
+{
+  "Run": {
+    "Phase": "running",
+    "Pass": "method-body-recovery",
+    "PassesDone": 10,
+    "PassesTotal": 40,
+    "ElapsedSeconds": 132.4,
+    "Ended": false,
+    "Result": null
+  },
+  "Live": true,
+  "SecondsSinceObserved": 1.2,
+  "Stalled": false,
+  "Advice": "Running method-body-recovery, 10 of 40 passes decided after 132s. ..."
+}
+```
+
+`Phase` goes `starting`, `running`, then one of `finished`, `failed` or
+`cancelled`; `Ended` is the same thing as one field. When it is `finished`,
+`Run.Result` is the whole manifest, so the poll that sees the end needs no
+further call.
+
+Four things about it are worth knowing:
+
+**The file is the contract, not the connection.** The status is on disk, beside
+the reports and under the sample's stem, and `unpack_status` reads it. So a poll
+that times out costs you nothing, a run started at the command line with
+`--status` can be watched the same way, and nothing is lost by asking again.
+
+**`Stalled` is how a killed run looks.** A run writes a heartbeat every few
+seconds; when nothing has been written for a minute, the process is gone. Its
+last phase would otherwise sit there looking current forever. Whatever it had
+written is still in the report directory.
+
+**A cancel is not immediate.** It takes effect at the end of the pass being run,
+because that is where it is checked. That sounds coarse and is bounded: the
+interpreter's step and allocation budgets stop any single pass from running
+away, so the wait is the slowest pass rather than the whole run. A cancelled run
+has no manifest and no cleaned copy — half a pipeline has nothing to claim —
+though what reached disk stays there.
+
+**The run lives in the server.** It survives a poll that times out. It does not
+survive the server exiting, and there is no way to reattach to a run from a
+previous server: `unpack_status` will show you the last thing it wrote and then
+report it stalled.
+
+Starting a second run into a report directory a live run is already using is
+refused rather than allowed to interleave, whichever process owns the first one.
 
 ## Things worth doing
 

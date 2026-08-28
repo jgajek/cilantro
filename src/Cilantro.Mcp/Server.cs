@@ -99,7 +99,11 @@ internal sealed class Server(Rpc rpc)
                 "Recovers readable code and hidden payloads from .NET Reactor protected assemblies " +
                 "by reading them, never by running them. Call unpack on a file; read Wrote for what " +
                 "it produced and Payloads for what was hidden inside. Where MoreToDeclare is true, " +
-                "next_declarations turns what stopped the run into the file to run with next."
+                "next_declarations turns what stopped the run into the file to run with next. " +
+                "A sample of any size takes minutes and a protected one can take ten, so prefer " +
+                "start_unpack and poll unpack_status: a call that outlives your timeout is killed " +
+                "with the analysis unfinished, and the payloads it had yet to write are the thing " +
+                "you came for."
         };
     }
 

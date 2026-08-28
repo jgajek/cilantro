@@ -9,6 +9,7 @@ Five shapes, four files and one thing printed on standard output:
 | [`blockers.schema.json`](blockers.schema.json) | `cilantro/NAME.blockers.json`, what stopped it and what to declare |
 | [`config.schema.json`](config.schema.json) | `cilantro/NAME.config.json`, constants a protector kept out of the metadata that could not all go back into it |
 | [`error.schema.json`](error.schema.json) | What `--json` prints instead when the run could not be attempted |
+| [`status.schema.json`](status.schema.json) | `cilantro/NAME.status.json`, where a run has got to while it is still going |
 
 `corpus/schema/manifest.schema.json` is a different thing: an input the tool
 reads, not an output it writes.

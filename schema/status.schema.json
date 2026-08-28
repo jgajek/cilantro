@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jgajek/cilantro/schema/status.schema.json",
+  "title": "CILantro run status",
+  "description": "Where a run has got to, written to disk while it runs so that something other than the caller holding the call can find out. Written as `cilantro/NAME.status.json` by a run given `--status`, and by every run the MCP server's `start_unpack` begins. A run takes minutes, so a caller with a shorter timeout than the run needs somewhere to look that is not the return value.",
+  "type": "object",
+  "required": [
+    "Schema",
+    "ToolVersion",
+    "Phase",
+    "InputPath",
+    "Pass",
+    "PassesDone",
+    "PassesTotal",
+    "StartedUtc",
+    "ObservedUtc",
+    "ProcessId",
+    "ElapsedSeconds",
+    "Result",
+    "Error",
+    "Ended"
+  ],
+  "properties": {
+    "Schema": {
+      "description": "Which version of this shape the object is. Read it first and refuse a major version you were not written for.",
+      "type": "string",
+      "pattern": "^cilantro\\.status/[0-9]+$"
+    },
+    "ToolVersion": { "type": "string" },
+    "Phase": {
+      "description": "What the run is doing, and the first thing to branch on. Deliberately coarse: a watcher either keeps waiting, reads the manifest, or gives up.",
+      "enum": ["starting", "running", "finished", "failed", "cancelled"]
+    },
+    "InputPath": { "type": "string" },
+    "Pass": {
+      "description": "The pass now running, or null where the run is not in one. A name rather than a number, because the pass list is not a stable numbering.",
+      "type": ["string", "null"]
+    },
+    "PassesDone": {
+      "description": "How many passes have been decided — run, skipped or refused. Skipped ones count, so that a fraction shown to a person advances instead of stalling on passes the plan left out.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "PassesTotal": {
+      "description": "How many passes the plan has, known before the first one starts.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "StartedUtc": { "type": "string", "format": "date-time" },
+    "ObservedUtc": {
+      "description": "When the run last said anything. The field that separates a slow run from a dead one: a run writes here every few seconds, so nothing for a minute means the process is gone. A killed run leaves its last phase behind looking current forever, and only the staleness of this gives it away.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "ProcessId": {
+      "description": "Which process is doing the work, so that a watcher which finds a stale heartbeat can confirm what it suspects rather than guess.",
+      "type": "integer"
+    },
+    "ElapsedSeconds": { "type": "number", "minimum": 0 },
+    "Result": {
+      "description": "The full manifest, once there is one. Present exactly where Phase is `finished`, so that a caller polling this file never has to go and read a second one.",
+      "oneOf": [{ "$ref": "run.schema.json" }, { "type": "null" }]
+    },
+    "Error": {
+      "description": "Why the run stopped, where it stopped for a reason worth stating. Set where Phase is `failed` or `cancelled`.",
+      "type": ["string", "null"]
+    },
+    "Ended": {
+      "description": "Whether the run is over, whatever the outcome. The one question a polling loop asks every time round, said as one field so that three phases do not have to be enumerated at every call site.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

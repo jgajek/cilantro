@@ -82,7 +82,11 @@ internal static class DevirtualizedRun
         second.SetFact(
             BootstrapMachine.RunEnvironmentFact,
             new RunEnvironment(world.Host, world.Declarations, new BlockerLedger(), world.Strict));
-        Prepare(second);
+        // Carried across from the first run: this loop is the second-largest thing the tool does, and
+        // a run asked to stop while it is in here should stop here rather than at the end of it.
+        original.TryGetFact<CancellationToken>(
+            CilantroPipeline.CancellationFact, out var cancellation);
+        Prepare(second, cancellation);
 
         var shipped = Unpacked(second, [], out var whyShipped);
         if (shipped.Count == 0)
@@ -195,10 +199,11 @@ internal static class DevirtualizedRun
         "metadata-sanitization"
     };
 
-    private static void Prepare(ArtifactContext built)
+    private static void Prepare(ArtifactContext built, CancellationToken cancellation)
     {
         foreach (var planned in PipelinePlanner.Plan(CilantroPipeline.CreateDefaultPasses()))
         {
+            cancellation.ThrowIfCancellationRequested();
             if (Skipped.Contains(planned.Pass.Name) ||
                 !PipelinePlanner.Decide(planned, built).Execute)
                 continue;

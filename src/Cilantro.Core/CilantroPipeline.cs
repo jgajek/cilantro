@@ -523,7 +523,35 @@ public sealed record PipelineOptions(
     /// shows above the method, and where the module's own work can test the bodies the tool runs
     /// that test and reports the verdict.
     /// </remarks>
-    bool? Devirtualize = null)
+    bool? Devirtualize = null,
+
+    /// <summary>
+    /// Where to keep a <see cref="RunStatus"/> file current while the run lasts, or null to write
+    /// none.
+    /// </summary>
+    /// <remarks>
+    /// Opt-in rather than always, for two reasons. A run whose caller is sitting in front of it has
+    /// the summary and does not need a file to find out what is happening; and the file carries a
+    /// clock and a process id, so a run that wrote one unconditionally would stop being reproducible
+    /// byte for byte, which is a property the corpus leans on.
+    /// </remarks>
+    string? StatusPath = null,
+
+    /// <summary>Asks the run to stop.</summary>
+    /// <remarks>
+    /// <para>
+    /// Observed between passes rather than within them, which sounds coarse and is not, because the
+    /// interpreter's step and allocation budgets already bound how long a single pass can take: a pass
+    /// cannot spin forever without exhausting one of them and reporting a blocker. So the wait for a
+    /// cancellation to take effect is bounded by the slowest pass rather than by the run.
+    /// </para>
+    /// <para>
+    /// A cancelled run throws <see cref="OperationCanceledException"/> rather than returning a partial
+    /// result, because a <see cref="PipelineResult"/> is a claim about an assembly and half a pipeline
+    /// has no claim to make. What the run had already written to disk stays written.
+    /// </para>
+    /// </remarks>
+    CancellationToken Cancellation = default)
 {
     /// <summary>
     /// Whether this run gives Reactor's generated names readable placeholders.
@@ -571,6 +599,12 @@ public sealed record PipelineResult(
 public sealed class CilantroPipeline
 {
     public const string Version = "0.6.0";
+
+    /// <summary>
+    /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
+    /// their own and cannot see the options.
+    /// </summary>
+    public const string CancellationFact = "options.cancellation";
 
     /// <summary>
     /// How everything the tool writes as JSON is written, so that all of it reads the same way.
@@ -671,9 +705,54 @@ public sealed class CilantroPipeline
         new MetadataSanitizationPass()
     ];
 
+    /// <summary>Runs the pipeline over one assembly.</summary>
+    /// <remarks>
+    /// The run proper is <see cref="RunCore"/>; this wraps it in the reporting of its own progress,
+    /// which is a separate concern and one with an exception path. Every way out of the pipeline has to
+    /// leave a terminal status behind, or a caller polling the file would wait for a run that is not
+    /// coming back — so the phase is recorded here, where all three ways out are visible at once,
+    /// rather than at whichever point inside produced it.
+    /// </remarks>
     public PipelineResult Run(string inputPath, PipelineOptions? options = null)
     {
         options ??= new PipelineOptions();
+        // Planned up front rather than inside the loop, because the number of passes is the
+        // denominator of the run's progress and a caller polling for it should not have to wait for
+        // the first pass to learn how many there are.
+        var plan = PipelinePlanner.Plan(_passes);
+        if (options.StatusPath is not { } statusPath)
+        {
+            return RunCore(inputPath, options, plan, null);
+        }
+
+        using var status = RunStatusWriter.Begin(statusPath, inputPath, plan.Count);
+        try
+        {
+            var result = RunCore(inputPath, options, plan, status);
+            status.Finished(RunManifest.Of(result));
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            status.Cancelled();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // The type is named as well as the message because the messages of the exceptions that
+            // reach here are written for a developer reading a stack trace, and without the type some
+            // of them do not say what went wrong.
+            status.Failed($"{exception.GetType().Name}: {exception.Message}");
+            throw;
+        }
+    }
+
+    private PipelineResult RunCore(
+        string inputPath,
+        PipelineOptions options,
+        IReadOnlyList<PlannedPass> plan,
+        RunStatusWriter? status)
+    {
         // What the run was told is read before the module is, because a declarations file that
         // cannot be read is the caller's mistake and there is no point loading a sample to find out.
         var declarations = (options.DeclarationsPath is { } stated
@@ -712,14 +791,24 @@ public sealed class CilantroPipeline
         // A run asked only to say what is there builds nothing, so it does not pay for the building
         // or for the run that checks it.
         context.SetFact("options.devirtualize", options.Devirtualizes && !options.AnalyzeOnly);
+        // Carried on the context because the second pass loop that checks the rebuilt bodies is
+        // reached from inside a pass, which has the context and not the options.
+        context.SetFact(CancellationFact, options.Cancellation);
         var environment = new RunEnvironment(host, declarations, strict: options.Strict);
         context.SetFact(BootstrapMachine.RunEnvironmentFact, environment);
         RecordLibraries(context);
         RecordDeclarations(context, declarations, options);
 
-        foreach (var planned in PipelinePlanner.Plan(_passes))
+        for (var index = 0; index < plan.Count; index++)
         {
+            // Between passes rather than within them. See PipelineOptions.Cancellation for why that
+            // is bounded.
+            options.Cancellation.ThrowIfCancellationRequested();
+            var planned = plan[index];
             var pass = planned.Pass;
+            // Said before the pass is decided rather than after, so that the count advances past the
+            // passes a plan leaves out instead of stalling on them.
+            status?.Entering(pass.Name, index);
             if (declarations.Skips(pass.Name))
             {
                 // A pass left out is not a pass that succeeded, so this still withholds the clean
@@ -790,8 +879,7 @@ public sealed class CilantroPipeline
         // is the thing the analyst came for, so it lands next to the input where it can be found.
         // The folder is not named after the sample because the files inside it already are, which
         // lets a directory of samples share one folder without any of them colliding.
-        var reportDirectory = Path.GetFullPath(options.ReportDirectory ??
-            Path.Combine(inputDirectory, "cilantro"));
+        var reportDirectory = RunStatus.DirectoryFor(context.InputPath, options.ReportDirectory);
         Directory.CreateDirectory(reportDirectory);
         var analysisPath = Path.Combine(reportDirectory, $"{stem}.analysis.json");
         var changesPath = Path.Combine(reportDirectory, $"{stem}.changes.json");

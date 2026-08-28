@@ -30,6 +30,7 @@ public sealed class ReportSchemaTests
         { "run.schema.json", string.Empty, typeof(RunManifest) },
         { "run.schema.json", "outputs", typeof(RunOutputs) },
         { "error.schema.json", string.Empty, typeof(RunFailure) },
+        { "status.schema.json", string.Empty, typeof(RunStatus) },
         { "analysis.schema.json", string.Empty, typeof(ArtifactReport) },
         { "analysis.schema.json", "resource", typeof(ResourceInfo) },
         { "analysis.schema.json", "payload", typeof(PayloadInfo) },
@@ -100,9 +101,12 @@ public sealed class ReportSchemaTests
             .GetProperty("properties").GetProperty("Schema").GetProperty("pattern").GetString()!;
         var failure = Shape("error.schema.json", string.Empty)
             .GetProperty("properties").GetProperty("Schema").GetProperty("pattern").GetString()!;
+        var status = Shape("status.schema.json", string.Empty)
+            .GetProperty("properties").GetProperty("Schema").GetProperty("pattern").GetString()!;
 
         Assert.Matches(manifest, RunManifest.Current);
         Assert.Matches(failure, RunFailure.Current);
+        Assert.Matches(status, RunStatus.Current);
     }
 
     /// <summary>
