@@ -177,6 +177,100 @@ public sealed class CorpusTests
 
     [SampleFact]
     [Trait(Cost.Key, Cost.High)]
+    public void ReactorSevenVirtualizedFullBuildIsFullyRecovered()
+    {
+        var sample = Checkout.Sample("reactor7-probe-net48.full.exe");
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.VirtualizedFullTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.exe");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                PreserveTokens: true,
+                RenameSymbols: false,
+                Devirtualize: true,
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            // The full build stacks a virtualization layer over NecroBit: the same 680 bodies are
+            // decrypted, but the string table and the delegate-proxy map are behind the module's own
+            // VM, and a date-based trial guard throws under any clock the interpreter injects. A full
+            // run resolves the proxies, learns the engine's numbering (including the operations only
+            // the string table's own program uses), neutralises the guard by shape, and reads the
+            // table out, so every protected-string site is restored and a verified copy is written.
+            Assert.True(result.Success);
+            Assert.Equal("reactor", result.Report.Protector);
+            Assert.NotNull(result.OutputPath);
+
+            var recovery = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "method-body-recovery");
+            Assert.Equal(PassStatus.Success, recovery.Status);
+            Assert.Equal(680, result.Report.Recovery.RestoredMethodBodies);
+            Assert.Equal(0, result.Report.Recovery.RemainingMethodStubs);
+
+            // Every protected-string call site comes back, which is what the virtualization work was
+            // for: the table it produces is only reachable once the engine's numbering is learned.
+            Assert.Equal(20, result.Report.Recovery.StringCallSites);
+            Assert.Equal(20, result.Report.Recovery.ReplacedStringSites);
+
+            // The engine was read whole and its stack walk agreed with itself, and the initializer
+            // it stands for was built back into the cleaned copy from that reading.
+            Assert.Equal(
+                result.Report.Recovery.VirtualOperations,
+                result.Report.Recovery.VirtualOperationsRead);
+            Assert.Equal(0, result.Report.Recovery.VirtualDepthDisagreements);
+            Assert.True(result.RebuiltMethods >= 1);
+
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(result.OutputPath);
+
+            // The virtualized loader initializer holds real IL where it shipped as a stub, and it
+            // says so about itself with the marker every rebuilt body carries.
+            var rebuilt = cleaned.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Single(method => method.Name == "KMP0OXI4h");
+            Assert.NotNull(rebuilt.Body);
+            Assert.True(rebuilt.Body.Instructions.Count > 100);
+            Assert.Contains(
+                rebuilt.CustomAttributes,
+                attribute => attribute.TypeFullName.Contains("RebuiltFromReading"));
+
+            // The recovered plaintext is the probe's own planted strings, present at the call sites
+            // the resolver used to hide. Their presence in the cleaned copy is the byte-level proof
+            // that the table was read correctly rather than merely that some count came out right.
+            var literals = cleaned.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Where(method => method.HasBody)
+                .SelectMany(method => method.Body.Instructions)
+                .Where(instruction => instruction.OpCode == dnlib.DotNet.Emit.OpCodes.Ldstr)
+                .Select(instruction => instruction.Operand as string)
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.Contains("PROBE_STR_01 probe entry point", literals);
+            Assert.Contains("Probe.Secret.txt", literals);
+            Assert.Contains(
+                literals,
+                literal => literal is not null && literal.Contains("probe.invalid:8443/gate"));
+
+            // Neutralising the trial guard also lets the module's own bundle reader finish, so the
+            // encrypted managed-resource bundle is decrypted statically rather than stopping in the
+            // module initializer. The two streams it holds are the probe's own resources.
+            var resources = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "resource-restoration");
+            Assert.Equal(PassStatus.Success, resources.Status);
+            Assert.Contains(
+                result.Report.Payloads,
+                payload => payload.PayloadLength == 2048);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
+    [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
     public void CorpusOutcomesAreDeterministic()
     {
         var first = Path.Combine(Path.GetTempPath(), $"reactor-corpus-{Guid.NewGuid():N}");

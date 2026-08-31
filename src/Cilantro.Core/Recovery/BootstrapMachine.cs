@@ -101,6 +101,7 @@ public static class BootstrapMachine
 
         watching?.Invoke(machine);
         RunInitializers(context, machine);
+        SeedResolvedProxies(context, machine);
         if (machine.State.ModuleFileIsAbsent || Refusal(machine) is not { } refusal)
             return true;
 
@@ -115,7 +116,73 @@ public static class BootstrapMachine
 
         watching?.Invoke(machine);
         RunInitializers(context, machine);
+        SeedResolvedProxies(context, machine);
         return true;
+    }
+
+    /// <summary>
+    /// Seeds the proxy delegate fields with delegates over the targets the proxy map named, so that
+    /// code reached after the map is recovered can call through a proxy and land on the real method
+    /// rather than on a field the loader has left unfilled or filled with a delegate over a dynamic
+    /// method this machine cannot follow.
+    /// </summary>
+    /// <remarks>
+    /// It does nothing until the proxy map is recovered, which is a pass that runs after method
+    /// bodies are back and before the string readings that need it, so the interpretations that must
+    /// not see seeded proxies — method-body recovery among them — never do, and the ones that must
+    /// always do. Each delegate is marked open, because Reactor's adapter passes every argument
+    /// straight through to the target, receiver included.
+    /// </remarks>
+    public static void SeedResolvedProxies(ArtifactContext context, StaticMachine machine)
+    {
+        if (!context.TryGetFact<IReadOnlyList<ProxyBinding>>("proxy.bindings", out var bindings) ||
+            bindings is null ||
+            bindings.Count == 0)
+        {
+            return;
+        }
+
+        var fields = ProxyLoaderTable.ProxyFields(context.Module);
+        foreach (var binding in bindings)
+        {
+            if (!fields.TryGetValue(binding.FieldToken, out var field) ||
+                context.Module.ResolveToken(binding.TargetToken) is not IMethod target ||
+                field.FieldSig?.Type.FullName is not { } delegateType ||
+                !machine.State.Heap.TryAllocateObject(delegateType, out var proxy))
+            {
+                continue;
+            }
+
+            machine.State.Heap.TrySetModelValue(proxy, StaticMachine.DelegateMethodKey, target);
+            machine.State.Heap.TrySetModelValue(proxy, StaticMachine.DelegateTargetKey, StaticValue.Null);
+            machine.State.Heap.TrySetModelValue(proxy, StaticMachine.DelegateOpenKey, true);
+            machine.State.WriteStaticField(field, proxy);
+        }
+    }
+
+    /// <summary>
+    /// The date-based trial guards to enter and leave rather than run, seen through the proxy map
+    /// once it is recovered.
+    /// </summary>
+    /// <remarks>
+    /// The guard reads the wall clock through one of the module's delegate proxies, so it is
+    /// invisible until the proxy map is in hand — the same point <see cref="SeedResolvedProxies"/>
+    /// begins acting, and for the same reason. Before then a machine simply runs the guard and lets
+    /// it throw, which the early passes already tolerate as a bounded stop; after then every machine
+    /// this teller seeds knows to pass it the way a registered copy would, so a reading of the
+    /// loader's later work is not ended by a clock the interpretation itself chose.
+    /// </remarks>
+    private static HashSet<uint> NeutralizedGuards(ArtifactContext context)
+    {
+        if (!context.TryGetFact<IReadOnlyList<ProxyBinding>>("proxy.bindings", out var bindings) ||
+            bindings is null ||
+            bindings.Count == 0)
+        {
+            return [];
+        }
+        return TrialGuardAnalysis.Find(
+            context.Module,
+            [.. bindings.Select(binding => (binding.FieldToken, binding.TargetToken))]);
     }
 
     private static void RunInitializers(ArtifactContext context, StaticMachine machine)
@@ -220,6 +287,8 @@ public static class BootstrapMachine
             context.Module.Assembly?.PublicKeyToken?.Data ?? []);
         machine.State.RegisterPointerSize(context.OriginalImage.IsPe32Plus ? 8 : 4);
         machine.State.RegisterModuleMetadata(context.Module);
+        foreach (var guard in NeutralizedGuards(context))
+            machine.State.RegisterNeutralizedMethod(guard);
         if (context.TryGetFact<bool>(FileRefusedFact, out _))
             machine.State.RegisterModuleBytes(context.OriginalBytes);
         else

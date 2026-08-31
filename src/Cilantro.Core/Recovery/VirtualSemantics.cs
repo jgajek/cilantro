@@ -273,6 +273,28 @@ public static class VirtualSemantics
     }
 
     /// <summary>
+    /// Whether an operation refused a stack of numbers by wanting an array and then faulted once
+    /// given one, which is what reading an element out of an array looks like from outside.
+    /// </summary>
+    /// <remarks>
+    /// The first half is the operation saying it wants an array where a number was offered; the
+    /// second is it accepting one and faulting past the cast, on the work of wrapping what it read.
+    /// Neither half alone is the reading — an operation might want an array to measure it, or fault
+    /// for a reason of its own — but together, with the walk forcing a net of one taken, there is
+    /// nothing left for it to be but a read of one element.
+    /// </remarks>
+    private static bool WantsArrayThenFaulted(List<string> reasons)
+    {
+        var wantsArray = reasons.Exists(reason =>
+            reason.StartsWith(WrongKind, StringComparison.Ordinal) &&
+            reason.Contains("System.Array", StringComparison.Ordinal));
+        var faulted = reasons.Exists(reason =>
+            reason.StartsWith("it threw", StringComparison.Ordinal) ||
+            reason.StartsWith("the machine could not follow", StringComparison.Ordinal));
+        return wantsArray && faulted;
+    }
+
+    /// <summary>
     /// How much work one operation is allowed before it is taken not to be one.
     /// </summary>
     /// <remarks>
@@ -472,6 +494,22 @@ public static class VirtualSemantics
                     insisted))
             {
                 found = new VirtualOperation(opcode, 1, 0, Throwing) { Popped = insisted };
+            }
+
+            // An operation that refuses a stack of numbers by wanting an array, then runs past that
+            // cast when handed an array beneath an index only to fault building what it read, is
+            // reading an element of the array. The fault is in wrapping the value it took out, which
+            // is work only a read has to do — a write leaves nothing to wrap and is measured where
+            // this one throws. The stack effect is left to the walk, which forces the -1 that a read
+            // of one element from one array beneath one index has no choice but to be.
+            if (found is null && WantsArrayThenFaulted(reasons))
+            {
+                found = new VirtualOperation(opcode, 0, 0, null)
+                {
+                    Measured = false,
+                    Needs = "an array beneath an index",
+                    Unmeasured = "it took an array beneath an index and faulted building what it read"
+                };
             }
 
             if (found is not null)

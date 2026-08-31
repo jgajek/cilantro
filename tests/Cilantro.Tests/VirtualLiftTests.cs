@@ -26,6 +26,8 @@ public sealed class VirtualLiftTests
     private const int Mystery = 7;
     private const int Call = 8;
     private const int Throw = 9;
+    private const int Make = 10;
+    private const int Element = 11;
 
     /// <summary>
     /// A jump carrying a table of places is the operation that turns a flattened program back into
@@ -413,7 +415,16 @@ public sealed class VirtualLiftTests
                 [Jump] = new(Jump, 0, 0, "branch"),
                 [Add] = new(Add, 2, 1, "add"),
                 [Call] = new(Call, 0, 0, "calls the method it names") { Measured = false },
-                [Throw] = new(Throw, 1, 0, VirtualSemantics.Throwing)
+                [Throw] = new(Throw, 1, 0, VirtualSemantics.Throwing),
+
+                // A measured operation that leaves an array but the trials could not name, and one
+                // the trials never measured at all but marked as wanting an array beneath an index.
+                [Make] = new(Make, 1, 1, null) { Pushed = "System.Int32[]" },
+                [Element] = new(Element, 0, 0, null)
+                {
+                    Measured = false,
+                    Needs = "an array beneath an index"
+                }
             },
             TargetIsOperand = new HashSet<int> { Jump, Switch }
         };
@@ -472,6 +483,66 @@ public sealed class VirtualLiftTests
         var settled = VirtualProgramRecovery.Settled(program, context.Module);
 
         Assert.False(settled.TryGetValue(Mystery, out var read) && read.Identified);
+    }
+
+    /// <summary>
+    /// An operation that leaves an array of the very type its operand names is making that array,
+    /// however the framework built it out of sight of the watching: the type it names and the type
+    /// of array it leaves are the same, which no operation that merely mentioned one would arrange.
+    /// </summary>
+    [Fact]
+    public void AnOperationLeavingAnArrayOfTheTypeItNamesIsReadAsMakingOne()
+    {
+        using var context = Module();
+        var held = context.Module.Types.First(one => one.Name == "Held");
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(4)),
+            (Make, new VirtualOperand.Number(held.MDToken.ToInt32()))
+        ]);
+        program = program with
+        {
+            Operations = new Dictionary<int, VirtualOperation>(program.Operations)
+            {
+                [Make] = new(Make, 1, 1, null) { Pushed = held.FullName + "[]" }
+            }
+        };
+
+        var settled = VirtualProgramRecovery.Settled(program, context.Module);
+        var lifted = string.Join(
+            "\n",
+            VirtualLift.Render(program with { Operations = settled }, context.Module));
+
+        Assert.Equal("makes an array of the type it names", settled[Make].Name);
+        Assert.Contains("newarr", lifted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An operation the trials could not measure — because wrapping what it read faulted on a value
+    /// they made rather than the program did — but which wanted an array and faulted once given one,
+    /// is read as reading an element where the walk forces it to take one more than it leaves.
+    /// </summary>
+    [Fact]
+    public void AnOperationThatWantedAnArrayAndFaultedIsReadAsReadingAnElement()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(5)),
+            (Switch, new VirtualOperand.Table([6])),
+            (Push, new VirtualOperand.Number(6)),
+            (Element, new VirtualOperand.None()),
+            (Jump, new VirtualOperand.Number(6)),
+            (Push, new VirtualOperand.Number(0)),
+            (Push, new VirtualOperand.Number(1))
+        ]);
+
+        var settled = VirtualProgramRecovery.Settled(program, context.Module);
+        var lifted = string.Join(
+            "\n",
+            VirtualLift.Render(program with { Operations = settled }, context.Module));
+
+        Assert.Equal(-1, settled[Element].Net);
+        Assert.Equal("reads an array element", settled[Element].Name);
+        Assert.Contains("ldelem", lifted, StringComparison.Ordinal);
     }
 
     private static ArtifactContext Module() => SyntheticContext.Build(module =>

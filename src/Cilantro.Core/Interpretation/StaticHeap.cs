@@ -1266,6 +1266,30 @@ public sealed class StaticMachineState
     private readonly List<TypeInitializationEvent> _typeInitializationEvents = [];
     private readonly Dictionary<string, StaticValue> _runtimeSingletons =
         new(StringComparer.Ordinal);
+    private readonly HashSet<uint> _neutralizedMethods = [];
+
+    /// <summary>
+    /// Methods a caller has proven to be recovery-irrelevant guards, which the machine treats as
+    /// doing nothing when they are entered.
+    /// </summary>
+    /// <remarks>
+    /// A protector's trial or tamper guard reads the host clock the run injected and throws when
+    /// the arbitrary instant it was given falls outside the window the guard allows. That throw is
+    /// an artefact of the injected clock rather than a behaviour of the program a registered copy
+    /// runs, so a caller that has identified such a guard registers it here and the interpretation
+    /// proceeds as the intended run would. Only argument-free void methods qualify, so entering one
+    /// and returning at once is the whole of what a passing run of it would leave behind.
+    /// </remarks>
+    public IReadOnlyCollection<uint> NeutralizedMethods => _neutralizedMethods;
+
+    /// <summary>How many times an entered method was neutralized instead of run.</summary>
+    public int NeutralizedInvocations { get; internal set; }
+
+    public void RegisterNeutralizedMethod(uint methodToken) =>
+        _neutralizedMethods.Add(methodToken);
+
+    public bool IsNeutralized(uint methodToken) => _neutralizedMethods.Contains(methodToken);
+
 
     public StaticMachineState(StaticMachineLimits limits)
     {

@@ -2004,9 +2004,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
                 discovered.EvidenceMethod,
                 1.0));
         }
-        else if (context.TryGetFact<IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>>>(
-                     ProxyLoaderTable.Fact, out var tables) &&
-            ProxyLoaderTable.TryRead(context.Module, tables, fields, out bindings, out var table))
+        else if (ProxyLoaderTable.TryResolve(context, fields, out bindings, out var table))
         {
             profileSource = "loader-table";
             mapSource = table;

@@ -925,7 +925,7 @@ public sealed class AmbientIntrinsic : IStaticIntrinsic
                 HostFacts.Stated(context, HostClock.NowKey, instant));
         }
         if (name == "get_Ticks" && arguments.Count == 1 &&
-            heap.TryGetModelValue(arguments[0], Ticks, out long reading))
+            TryReadTicks(heap, arguments[0], out long reading))
             return IntrinsicResult.Completed(StaticValue.FromInt64(reading));
         if (name is "NewGuid" or "get_Empty" && arguments.Count == 0)
         {
@@ -1053,6 +1053,38 @@ public sealed class AmbientIntrinsic : IStaticIntrinsic
             return IntrinsicResult.Completed();
         }
 
+        if (declared == "System.DateTime" && name == ".ctor" && arguments.Count >= 2)
+        {
+            var parts = arguments.Skip(1).ToArray();
+            // The kind argument some overloads end with does not change the tick count, and the
+            // calendar overloads are not modelled, so only the numeric shapes are read.
+            long? ticks;
+            try
+            {
+                ticks = parts.Length switch
+                {
+                    1 or 2 when parts[0].IsInteger => new DateTime(parts[0].AsInt64()).Ticks,
+                    3 => new DateTime(
+                        (int)parts[0].AsInt64(), (int)parts[1].AsInt64(),
+                        (int)parts[2].AsInt64()).Ticks,
+                    6 or 7 or 8 => new DateTime(
+                        (int)parts[0].AsInt64(), (int)parts[1].AsInt64(), (int)parts[2].AsInt64(),
+                        (int)parts[3].AsInt64(), (int)parts[4].AsInt64(), (int)parts[5].AsInt64(),
+                        parts.Length >= 7 ? (int)parts[6].AsInt64() : 0).Ticks,
+                    _ => (long?)null
+                };
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return IntrinsicResult.Invalid("The instant built is out of range.");
+            }
+
+            if (ticks is not { } built)
+                return IntrinsicResult.Invalid("Unsupported instant construction.");
+            heap.TrySetModelValue(arguments[0], Ticks, built);
+            return IntrinsicResult.Completed();
+        }
+
         if (declared == "System.TimeSpan" && arguments.Count == 0)
         {
             return name switch
@@ -1066,7 +1098,7 @@ public sealed class AmbientIntrinsic : IStaticIntrinsic
 
         // Reading a part off either type is reading it off the count of ticks it holds.
         if (arguments.Count == 1 && name.StartsWith("get_", StringComparison.Ordinal) &&
-            heap.TryGetModelValue(arguments[0], Ticks, out long held))
+            TryReadTicks(heap, arguments[0], out long held))
         {
             var span = TimeSpan.FromTicks(held);
             var instant = declared == "System.DateTime" && held >= 0 && held <= DateTime.MaxValue.Ticks
@@ -1109,8 +1141,8 @@ public sealed class AmbientIntrinsic : IStaticIntrinsic
         // Two of these compared or combined is their tick counts compared or combined. What comes
         // back depends on which types went in, and the signature says which.
         if (arguments.Count == 2 &&
-            heap.TryGetModelValue(arguments[0], Ticks, out long left) &&
-            heap.TryGetModelValue(arguments[1], Ticks, out long right))
+            TryReadTicks(heap, arguments[0], out long left) &&
+            TryReadTicks(heap, arguments[1], out long right))
         {
             switch (name)
             {
@@ -1144,6 +1176,21 @@ public sealed class AmbientIntrinsic : IStaticIntrinsic
         }
 
         return null;
+    }
+
+    // A value-type instant or duration reaches an instance member through the address of the slot
+    // that holds it (ldloca/ldflda), so the receiver is a managed reference to the object rather
+    // than the object itself. Read the tick count through that indirection when it is present.
+    private static bool TryReadTicks(StaticHeap heap, StaticValue value, out long ticks)
+    {
+        if (heap.TryGetModelValue(value, Ticks, out ticks))
+            return true;
+        if (value.Kind == StaticValueKind.ManagedReference &&
+            heap.TryReadManaged(value, out var pointed) &&
+            heap.TryGetModelValue(pointed, Ticks, out ticks))
+            return true;
+        ticks = 0;
+        return false;
     }
 
     private static IntrinsicResult Allocated(StaticHeap heap, string type, long ticks)

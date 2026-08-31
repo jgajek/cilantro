@@ -66,7 +66,16 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
             // studied knows this build's. The work is handed on rather than given up, so the gap
             // is recorded once, by the reading that was handed it, instead of once here and again
             // there.
-            if (carried)
+            //
+            // The hand-off does not depend on this pass having read the program's operations. It
+            // runs before the proxies are resolved, so on a build whose engine cannot frame a
+            // program until they are it captures nothing here; the operations are then taken by the
+            // reading of the engine instead, once the proxies are direct calls. What settles the
+            // deferral is that the table is behind the machine at all, which the resolver's own
+            // shape shows whether or not its operations could be read yet.
+            var vmBacked = carried ||
+                resolvers.Any(resolver => Behind(resolver, stubs).Length != 0);
+            if (vmBacked)
             {
                 context.SetFact("strings.deferred", true);
                 return (PassStatus.Success, 0,

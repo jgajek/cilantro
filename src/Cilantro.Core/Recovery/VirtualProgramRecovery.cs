@@ -402,6 +402,10 @@ public static class VirtualProgramRecovery
         // this one uses has been read: most of the numbering comes from the program itself, and only
         // what is left over has to be performed on an operation made for the purpose.
         probed = Made(context, attempt, watched, operandField, probed with { Operations = operations });
+
+        // Operations the program uses only in arms no run entered are decoded but never performed,
+        // so they are asked about the same way another program's are: with one made to carry them.
+        probed = Rounding(context, attempt, watched, operandField, probed);
         operations = new Dictionary<int, VirtualOperation>(probed.Operations);
         var byOperand = Rules(attempt.Decoded, flow);
         var refused = probed.Refused
@@ -697,7 +701,82 @@ public static class VirtualProgramRecovery
             if (Arguments(program, operation) is { } named)
                 operations[opcode] = operation with { Name = named };
         }
+
+        // An operation that leaves an array of the very type its operand names, taking the one
+        // count an array is made from, is making that array. The run names this where it watched
+        // the framework build the array, but a build whose handler makes it another way leaves the
+        // watching nothing to see, and the shape says it regardless: the type it names and the type
+        // it leaves an array of are the same type, which no operation that merely mentions one would
+        // arrange.
+        foreach (var (opcode, operation) in operations)
+        {
+            if (Makes(program, module, opcode, operation) is { } made)
+                operations[opcode] = operation with { Name = made };
+        }
+
+        // An operation that reads an element cannot be measured where wrapping what it read throws
+        // on a value the trials made rather than the program did, so it is marked instead: it wanted
+        // an array and faulted once given one. With the walk forcing it to take one more than it
+        // leaves, a read of one element from one array beneath one index is the whole of what it can
+        // be, and it is named the counterpart of the write the trials measured cleanly.
+        foreach (var (opcode, operation) in operations)
+        {
+            if (operation.Identified || operation.Needs != "an array beneath an index")
+                continue;
+            var reads = operation.Measured
+                ? (operation.Pops, operation.Pushes) is (2, 1)
+                : operation.Net == -1;
+            if (reads)
+                operations[opcode] = operation with { Name = "reads an array element" };
+        }
         return operations;
+    }
+
+    /// <summary>
+    /// Whether an operation makes an array of the type its operand names, read from its shape.
+    /// </summary>
+    /// <remarks>
+    /// A count in and an array out is the whole of what a <c>newarr</c> does to the stack, and on
+    /// its own says only that an array came from somewhere. What settles it is the type: every site
+    /// carries a token, and where each names the element type of the array the operation was
+    /// measured leaving, the operation resolved that token and made an array of it. A token that
+    /// named anything else — a method, a field, a different type — would not line up with the array
+    /// left behind, so nothing but the making arranges the two to agree at every site.
+    /// </remarks>
+    private static string? Makes(
+        VirtualProgram program,
+        ModuleDef module,
+        int opcode,
+        VirtualOperation operation)
+    {
+        if (operation.Identified ||
+            operation.Pushed is not { } pushed ||
+            !pushed.EndsWith("[]", StringComparison.Ordinal) ||
+            operation is { Measured: true, Pops: not 1 } or { Measured: true, Pushes: not 1 })
+        {
+            return null;
+        }
+        var element = pushed[..^2];
+        var carried = program.Instructions.Where(one => one.Opcode == opcode).ToList();
+        return carried.Count > 0 && carried.TrueForAll(one =>
+            one.Operand is VirtualOperand.Number number &&
+            number.Value is >= int.MinValue and <= int.MaxValue &&
+            string.Equals(Named(module, (int)number.Value), element, StringComparison.Ordinal))
+                ? "makes an array of the type it names"
+                : null;
+    }
+
+    /// <summary>The full name of the type a token names, where it names one.</summary>
+    private static string? Named(ModuleDef module, int token)
+    {
+        try
+        {
+            return (module.ResolveToken(token) as ITypeDefOrRef)?.FullName;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -806,7 +885,56 @@ public static class VirtualProgramRecovery
         {
             return first;
         }
+        return Asked(
+            context, attempt, watched, operandField, first, elsewhere,
+            "this program does not contain");
+    }
 
+    /// <summary>
+    /// Asks about operations the program contains that no run of it performed, by making one of
+    /// each to order exactly as the string table's own operations are asked about.
+    /// </summary>
+    /// <remarks>
+    /// A program flattened over a switch keeps most of its arms behind a jump one run never takes,
+    /// so an operation found only in an unentered arm is decoded but never performed and the trials
+    /// have nothing of it to seed. The stack walk still forces its net effect, which is enough to
+    /// know it takes more than it leaves and no more; which operation it is is then settled the way
+    /// every other is, on values chosen for the purpose, once an operation carrying it has been made
+    /// for the engine to perform. The operand is the one the program really pairs with it, so an
+    /// operation that names something only means anything where it is given something that exists.
+    /// </remarks>
+    private static VirtualSemanticsReport Rounding(
+        ArtifactContext context,
+        Attempt attempt,
+        Watched? watched,
+        FieldDef? operandField,
+        VirtualSemanticsReport first)
+    {
+        var census = new Dictionary<int, long?>();
+        foreach (var instruction in attempt.Decoded)
+        {
+            if (first.Operations.TryGetValue(instruction.Opcode, out var known) && known.Identified)
+                continue;
+            var operand = instruction.Operand is VirtualOperand.Number number
+                ? number.Value
+                : (long?)null;
+            if (!census.TryGetValue(instruction.Opcode, out var recorded) || recorded is null)
+                census[instruction.Opcode] = operand;
+        }
+        return census.Count == 0
+            ? first
+            : Asked(context, attempt, watched, operandField, first, census, "no run of it performed");
+    }
+
+    private static VirtualSemanticsReport Asked(
+        ArtifactContext context,
+        Attempt attempt,
+        Watched? watched,
+        FieldDef? operandField,
+        VirtualSemanticsReport first,
+        IReadOnlyDictionary<int, long?> elsewhere,
+        string source)
+    {
         var operations = first.Operations.ToDictionary(entry => entry.Key, entry => entry.Value);
         var refused = first.Refused.ToDictionary(entry => entry.Key, entry => entry.Value);
         var asked = 0;
@@ -900,7 +1028,7 @@ public static class VirtualProgramRecovery
             operations,
             refused,
             first.Summary +
-            $" {asked} operation(s) this program does not contain were asked about with an " +
+            $" {asked} operation(s) {source} were asked about with an " +
             $"operation made to carry them, which answered {gained}.{refusals}");
     }
 

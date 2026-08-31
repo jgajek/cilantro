@@ -693,6 +693,12 @@ public static class StaticStringTableInterpreter
         // out again — so the nulls accumulate silently and the run dies at some later field read,
         // looking for all the world like the engine rejecting its own state.
         machine.State.RegisterModuleMetadata(module);
+        foreach (var guard in TrialGuardAnalysis.Find(
+            module, [.. (known ?? []).Select(binding => (binding.FieldToken, binding.TargetToken))]))
+        {
+            machine.State.RegisterNeutralizedMethod(guard);
+        }
+
 
         if (!machine.State.TryOpenResource(resourceName, out var stream))
         {

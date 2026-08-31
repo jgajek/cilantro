@@ -248,6 +248,15 @@ public sealed class StaticMachine
         {
             return methodInitializationFailure;
         }
+        if (method.ReturnType.ElementType == ElementType.Void &&
+            State.IsNeutralized(method.MDToken.Raw))
+        {
+            // A guard proven recovery-irrelevant is entered and left at once: a passing run of it
+            // does nothing surviving code observes, and running it here only reproduces a throw the
+            // injected clock caused rather than the program did.
+            State.NeutralizedInvocations++;
+            return FrameResult.Success(default);
+        }
         if (!method.HasBody || method.Body.Instructions.Count == 0)
         {
             // A method that declares no code at all and one whose code could not be read are
@@ -2047,6 +2056,15 @@ public sealed class StaticMachine
     internal const string DelegateMethodKey = "DelegateMethod";
 
     /// <summary>
+    /// Marks a delegate whose call passes every argument straight to the bound method, with no
+    /// receiver held back. Reactor's proxy delegates are open over their target this way — a static
+    /// target takes the arguments as they are, and an instance target takes its receiver as the
+    /// first of them — so a delegate seeded from the recovered proxy map is invoked the same way the
+    /// generated adapter would have invoked it.
+    /// </summary>
+    internal const string DelegateOpenKey = "DelegateOpen";
+
+    /// <summary>
     /// Whether a constructor is a delegate's, decided from its signature rather than its type.
     /// </summary>
     /// <remarks>
@@ -2110,7 +2128,9 @@ public sealed class StaticMachine
 
         State.Heap.TryGetModelValue<StaticValue>(callArguments[0], DelegateTargetKey, out var receiver);
         var definition = bound.ResolveMethodDef();
-        var unbound = definition?.IsStatic ?? bound.MethodSig?.HasThis != true;
+        var open = State.Heap.TryGetModelValue<bool>(callArguments[0], DelegateOpenKey, out var isOpen) &&
+            isOpen;
+        var unbound = open || (definition?.IsStatic ?? bound.MethodSig?.HasThis != true);
         StaticValue[] arguments = unbound
             ? [.. callArguments[1..]]
             : [receiver, .. callArguments[1..]];

@@ -49,6 +49,7 @@ public sealed class VirtualizationDisassemblyPass : DeobfuscationPass
         var read = 0;
         var walked = 0;
         var disagreed = 0;
+        EnsureOtherProgramOperations(context, diagnostics);
         foreach (var method in virtualized)
         {
             var program = VirtualProgramRecovery.Recover(context, method, out var diagnostic);
@@ -87,6 +88,48 @@ public sealed class VirtualizationDisassemblyPass : DeobfuscationPass
             $"{programs.Count} program(s) were read back; the stubs were left as they are, " +
             "because their operations have not been given meaning yet.");
         return (PassStatus.Success, 0, diagnostics);
+    }
+
+    /// <summary>
+    /// Records the operations the string table's own program performs, so the reading of each
+    /// virtualized method can name the engine operations its own program never uses.
+    /// </summary>
+    /// <remarks>
+    /// The numbering an engine gives its operations is one thing across all of its programs, but a
+    /// reading only ever sees the operations of the program it read: the loader initializer uses one
+    /// set, and the string table's program another. The earlier string reading would have left this
+    /// census behind, except that it runs before the proxies are resolved and so cannot yet run the
+    /// engine to frame the program. By here the proxies are direct calls, so the program frames and
+    /// its operations can be taken — and taken once, only where the earlier reading left nothing.
+    /// </remarks>
+    private static void EnsureOtherProgramOperations(
+        ArtifactContext context,
+        List<string> diagnostics)
+    {
+        if (context.TryGetFact<IReadOnlyDictionary<int, long?>>(
+                "strings.vmOperations", out var already) &&
+            already is { Count: > 0 })
+        {
+            return;
+        }
+
+        var proxies = ProxyLoaderTable.Read(context);
+        foreach (var resolver in StringResolverCandidates.In(context.Module))
+        {
+            if (!Strings.StaticStringTableInterpreter.TryReadOperations(
+                    context.Module, context.OriginalImage, resolver,
+                    BootstrapMachine.Environment(context),
+                    out var census, out var why, proxies) ||
+                census.Count == 0)
+            {
+                continue;
+            }
+            context.SetFact("strings.vmOperations", census);
+            diagnostics.Add(
+                $"{resolver.DeclaringType.Name}::{resolver.Name}: {why} These are named alongside " +
+                "this program's own so the later reading meets no operation it has no meaning for.");
+            return;
+        }
     }
 
     /// <summary>
