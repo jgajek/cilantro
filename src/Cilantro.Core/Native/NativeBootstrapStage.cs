@@ -212,9 +212,9 @@ internal static class NativeBootstrapStage
             VerificationPassed: true,
             VerificationDiagnostics: [],
             Strict: strict,
-            // Its own token rather than the one a Reactor 6 assembly gets. Which generation
+            // Its own token rather than the one a Reactor assembly gets. Which generation
             // protected the assembly inside is decided by reading that assembly, which this run
-            // deliberately did not do, and "reactor6" here would be a claim nothing checked.
+            // deliberately did not do, and "reactor" here would be a claim nothing checked.
             Protector: BootstrapProtector);
     }
 

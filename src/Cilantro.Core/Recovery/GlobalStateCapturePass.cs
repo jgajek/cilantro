@@ -49,7 +49,7 @@ public sealed class GlobalStateCapturePass : DeobfuscationPass
         // whatever it ran out of steps on as though the run had been held up by it.
         if (!context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts) ||
             facts is null ||
-            !facts.IsReactor6)
+            !facts.IsReactor)
         {
             return (PassStatus.Success, 0,
                 ["No Reactor structure was detected, so no loader state was interpreted."]);

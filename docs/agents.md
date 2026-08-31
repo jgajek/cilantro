@@ -26,7 +26,7 @@ even that last case answers in JSON.
   "Schema": "cilantro.run/1",
   "Success": true,
   "Strict": false,
-  "Protector": "reactor6",
+  "Protector": "reactor",
   "Protections": ["protected-strings", "resource-container", "virtualization"],
   "Wrote": {
     "Cleaned":  "/samples/suspicious.cleaned.exe",
@@ -53,7 +53,7 @@ even that last case answers in JSON.
 Four fields carry most of the weight.
 
 **`Protector`** is which of the recognised protectors the run acted on —
-`reactor6`, `confuserex`, or `none`. Branch on this rather than on the contents of
+`reactor`, `confuserex`, or `none`. Branch on this rather than on the contents of
 `Protections`: both protectors have a capability called anti-tamper and mean
 different mechanisms by it, and how much of a cleaned copy you should expect
 differs by protector.

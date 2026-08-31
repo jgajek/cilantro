@@ -116,7 +116,7 @@ public sealed class NativeBootstrapTests
         var reported = Assert.Single(result.Report.Payloads);
         Assert.Equal(InnerAssemblySha256, reported.PayloadSha256);
         Assert.Equal(payload, reported.WrittenTo);
-        // Not "reactor6": nothing in this run read the assembly inside, so its generation is
+        // Not "reactor": nothing in this run read the assembly inside, so its generation is
         // unestablished and the token says only what was actually determined.
         Assert.Equal("reactor-bootstrap", result.Report.Protector);
         // The stub's own resources are described, since it has no managed ones to describe.

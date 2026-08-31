@@ -1,0 +1,187 @@
+{
+  "manifestVersion": 1,
+  "profile": "reactor-7-static",
+  "description": "Probes protected by .NET Reactor 7.5.0.0, built by corpus/probes/build.sh rather than collected, so each protected entry has its unprotected self beside it as an oracle -- the ground truth the malware profiles cannot have. Detection now reports the version-honest token 'reactor' rather than 'reactor6': the tool identifies the .NET Reactor family and its generation (jit-hook or delegate-runtime) from structure, but no structural signal separates Reactor 6 from 7.5 -- these probes carry the same clrjit/m_pData/RuntimeModule strings the Reactor 6 corpus does, getJit never appears in plaintext in either, and the only thing unique to these files is the Eziriz unregistered-trial watermark, a licence artifact absent from registered builds. So a 'reactor' verdict here is correct, not a mislabel; it simply does not claim a version the tool cannot prove. The strings-only configuration is now recognised too (reactor at 60%, on the strength of its protected-string resolver plus dispatcher and dead-call junk) where it was previously discarded as 'none' at 40% against the 0.55 gate, and it now recovers in full on all three target frameworks: every protected-string call site is replaced with its plaintext and the recovered strings match the oracle byte for byte. The .NET Framework build was already recovered by the resolver shape shared with Reactor 6; the CoreCLR builds inline the table-framing loop into the resolver and load the decrypted resource out of line through a one-argument (object stream) loader rather than the two-argument (stream, offset) initializer the Framework build uses, so the capture now also recognises that loader by shape and runs it on the resource stream to fill the same blob field the framing reads. probe-*-strings pin that recovery (full string-site coverage plus the one constant decoder site); the encrypted-resource bundle those builds also carry is a separate feature that stays unrecovered, which is why one pass reports unsupported without failing the run. The full configuration still recovers nothing and remains exploratory, and so do the CoreCLR necrobit builds, but the .NET Framework necrobit build now recovers in full. On .NET Framework, method-body recovery installs Reactor 7's getJit-based JIT hook -- the getJit native delegate returns a modelled vtable-backed ICorJitCompiler, so the loader gets past acquiring the JIT -- and the earlier belief that it then decrypts inside the JIT callback from live memory was wrong: NecroBit decrypts every protected body up front during module initialisation into a managed Hashtable keyed by each method's IL address, and its compileMethod hook only copies the already-decrypted bytes out. The loader interpretation stops where it turns to installing the native hook (a Marshal.ReadInt32 of a live-JIT address that lies in no modelled region), but by then the table is full, so probe-net48-necrobit is recovered by reading that table out of the interpreter heap, mapping each entry back to its method by the single module base that lines every key up with a protected stub's IL RVA, and grafting the plaintext. The locals-signature token and, for the one body that had them, the exception clauses are not in the table: NecroBit zeroes each protected method's LocalVarSigTok and stubs its header, then restores them at load time with the same deterministic mapped-image writes the Reactor 6 path already replays -- a four-byte write of the real StandAloneSig token into each fat header and a flags write that re-sets the more-sections bit -- and the exception section itself is left in the image at the offset the JIT computes from the stub's own code size. So recovery replays those header writes to recover the frame and reads the section back to reattach the handlers, and probe-net48-necrobit pins all thirteen bodies coming back with zero stubs remaining, its ComputeChecksum carrying its four locals and its ReadEmbeddedSecret its two finally clauses. probe-net48-full now recovers all 680 of its bodies the same way, but still stops short of a clean copy because its extra virtualization layer keeps the string table and the delegate-proxy codec behind the VM; it pins those 680 bodies coming back with no stubs left and the virtualized-proxy stop that follows. On CoreCLR the necrobit builds recover nothing and stay exploratory: there the loader does not fill a managed table but patches JITted native code directly through process memory (on Linux, /proc/self/mem), a mechanism this static reading does not model; probe-net80-necrobit and probe-net100-necrobit pin that they are still detected as reactor without their bodies coming back. The CoreCLR full builds answer RuntimeInformation.IsOSPlatform from the profile (Windows), read their own AssemblyName.Version and manifest module, and run on to roughly 18 million steps before stopping on FieldInfo.GetValue over a runtime-internal field, where the loader is reflecting an IntPtr[] of method-table pointers out of live runtime state; probe-net80-full and probe-net100-full pin the FieldInfo.GetValue stop, so a regression that reintroduced the get_Version or get_ManifestModule gaps fails here. Three target frameworks from one source separate those causes. Caveat on scale: the probe has few methods, so the detector's ten-stub and ten-proxy thresholds sit near the edge in the necrobit-only configuration and its confidence there says as much about probe size as about Reactor 7.",
+  "samples": [
+    {
+      "id": "probe-net48-oracle",
+      "tier": "oracle",
+      "sha256": "7d2bfd84a04a92ac7906a8d3a69b872ef28335961821255a37ea7c131d0b9955",
+      "localName": "reactor7-probe-net48.oracle.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": [],
+      "oracleSha256": null
+    },
+    {
+      "id": "probe-net80-oracle",
+      "tier": "oracle",
+      "sha256": "7c58bd8d739f0183508c8a97da6672b72f30f43764dd85e52b20c1b0f0d48f7e",
+      "localName": "reactor7-probe-net80.oracle.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": [],
+      "oracleSha256": null
+    },
+    {
+      "id": "probe-net100-oracle",
+      "tier": "oracle",
+      "sha256": "5540b64b3b9ac0468db79bc55ba33640afc8f17891f43d61d986610ded6f51e0",
+      "localName": "reactor7-probe-net100.oracle.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": [],
+      "oracleSha256": null
+    },
+
+    {
+      "id": "probe-net48-full",
+      "tier": "exploratory",
+      "sha256": "6efae54d60b08eea7254fae3fe787f73244e8b8ea4f04e73c770b05a07eb9c49",
+      "localName": "reactor7-probe-net48.full.exe",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "delegate-proxy",
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "protected-strings",
+        "resource-container",
+        "method-stubs",
+        "jit-hook",
+        "anti-tamper",
+        "virtualization"
+      ],
+      "oracleSha256": "7d2bfd84a04a92ac7906a8d3a69b872ef28335961821255a37ea7c131d0b9955",
+      "expectedRestoredBodyCount": 680,
+      "maximumRemainingStubs": 0,
+      "expectUnsupportedReason": "No structurally validated proxy stream codec was found"
+    },
+    {
+      "id": "probe-net80-full",
+      "tier": "exploratory",
+      "sha256": "11481d0c667e9d688e777a53789ed950b7aaf0b9feb2827d1592b180496c2bc5",
+      "localName": "reactor7-probe-net80.full.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "delegate-proxy",
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "protected-strings",
+        "resource-container",
+        "method-stubs",
+        "jit-hook",
+        "anti-tamper",
+        "virtualization"
+      ],
+      "oracleSha256": "7c58bd8d739f0183508c8a97da6672b72f30f43764dd85e52b20c1b0f0d48f7e",
+      "expectUnsupportedReason": "FieldInfo::GetValue"
+    },
+    {
+      "id": "probe-net100-full",
+      "tier": "exploratory",
+      "sha256": "f04bc3330e47ab26b87ddd4230396edfb5e41821dff889edd7d214750aada8ea",
+      "localName": "reactor7-probe-net100.full.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "delegate-proxy",
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "protected-strings",
+        "resource-container",
+        "method-stubs",
+        "jit-hook",
+        "anti-tamper",
+        "virtualization"
+      ],
+      "oracleSha256": "5540b64b3b9ac0468db79bc55ba33640afc8f17891f43d61d986610ded6f51e0",
+      "expectUnsupportedReason": "FieldInfo::GetValue"
+    },
+
+    {
+      "id": "probe-net48-necrobit",
+      "tier": "detected",
+      "sha256": "3608b192cfb40b7cb09aebafd6a5a21a7a1145a46bcb4051271ead1b34e4046b",
+      "localName": "reactor7-probe-net48.necrobit.exe",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "method-stubs",
+        "jit-hook"
+      ],
+      "oracleSha256": "7d2bfd84a04a92ac7906a8d3a69b872ef28335961821255a37ea7c131d0b9955",
+      "expectedRestoredBodyCount": 13,
+      "maximumRemainingStubs": 0,
+      "expectUnsupportedReason": "No payload could be recovered"
+    },
+    {
+      "id": "probe-net80-necrobit",
+      "tier": "exploratory",
+      "sha256": "b88e6d8cca74decabe13f586a14703dc3231673cfbddfaa41b648590ef5553a2",
+      "localName": "reactor7-probe-net80.necrobit.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "jit-hook"
+      ],
+      "oracleSha256": "7c58bd8d739f0183508c8a97da6672b72f30f43764dd85e52b20c1b0f0d48f7e"
+    },
+    {
+      "id": "probe-net100-necrobit",
+      "tier": "exploratory",
+      "sha256": "b0c29f971062aaac2410024774470e1b7ecfc9113ab78ef8732cfe8b739d6f95",
+      "localName": "reactor7-probe-net100.necrobit.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "jit-hook"
+      ],
+      "oracleSha256": "5540b64b3b9ac0468db79bc55ba33640afc8f17891f43d61d986610ded6f51e0"
+    },
+
+    {
+      "id": "probe-net48-strings",
+      "tier": "detected",
+      "sha256": "5e70f7744a0326e1de5af7ee7f3d5c84be5351e7ace701b31f9abbe3585de72d",
+      "localName": "reactor7-probe-net48.strings.exe",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "protected-strings"
+      ],
+      "oracleSha256": "7d2bfd84a04a92ac7906a8d3a69b872ef28335961821255a37ea7c131d0b9955",
+      "minimumStringSiteCoverage": 1.0,
+      "minimumConstantStringSites": 1
+    },
+    {
+      "id": "probe-net80-strings",
+      "tier": "detected",
+      "sha256": "33cb7f62c9552c085e6b92f95dda1c85f6148203670e5be9d9940895acfeced8",
+      "localName": "reactor7-probe-net80.strings.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "protected-strings"
+      ],
+      "oracleSha256": "7c58bd8d739f0183508c8a97da6672b72f30f43764dd85e52b20c1b0f0d48f7e",
+      "minimumStringSiteCoverage": 1.0,
+      "minimumConstantStringSites": 1
+    },
+    {
+      "id": "probe-net100-strings",
+      "tier": "detected",
+      "sha256": "9d8f42ceef7b1de271b9c8e4b1d05d04e265ad62ab7f3b80c055ae3acad6f2e2",
+      "localName": "reactor7-probe-net100.strings.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "invalid-call-junk",
+        "dispatcher-control-flow",
+        "protected-strings"
+      ],
+      "oracleSha256": "5540b64b3b9ac0468db79bc55ba33640afc8f17891f43d61d986610ded6f51e0",
+      "minimumStringSiteCoverage": 1.0,
+      "minimumConstantStringSites": 1
+    }
+  ]
+}

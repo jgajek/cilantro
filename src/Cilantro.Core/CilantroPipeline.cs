@@ -1447,7 +1447,7 @@ public sealed class ReactorDetectionPass : DeobfuscationPass
             "protector",
             $".NET Reactor {facts.Generation}: {string.Join(", ", strategy.Evidence)}.",
             Confidence: facts.Confidence));
-        foreach (var capability in facts.IsReactor6 ? facts.CapabilityNames : [])
+        foreach (var capability in facts.IsReactor ? facts.CapabilityNames : [])
         {
             context.AddEvidence(new Evidence(
                 "capability",
@@ -1469,7 +1469,7 @@ public sealed class ReactorDetectionPass : DeobfuscationPass
                 0.95));
         }
 
-        var status = facts.IsReactor6 ? PassStatus.Success : PassStatus.Unsupported;
+        var status = facts.IsReactor ? PassStatus.Success : PassStatus.Unsupported;
         return (status, 0,
         [
             $"Detection confidence: {facts.Confidence:P0}",

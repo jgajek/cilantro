@@ -1533,6 +1533,177 @@ public sealed class StaticMachineTests
         Assert.Equal(StaticExecutionStatus.InvalidProgram, result.Status);
     }
 
+    /// <summary>
+    /// Reactor 7.5's NecroBit reaches the JIT by binding the clrjit <c>getJit</c> export to a
+    /// delegate and invoking it, then installs its hook through the vtable that call returns. The
+    /// model has to hand back a pointer whose first word is a readable vtable, or the very next
+    /// thing the loader does — reading the compileMethod slot out of it — is refused. This is the
+    /// one operation that separates Reactor 7 from Reactor 6, which reaches the bodies through
+    /// runtime-module pointer arithmetic instead.
+    /// </summary>
+    [Fact]
+    public void GetJitDelegateReturnsAReadableVtableBackedCompiler()
+    {
+        var state = new StaticMachineState(new StaticMachineLimits());
+        var heap = state.Heap;
+        using var module = NewModule();
+        Assert.True(heap.TryAllocateObject("System.Delegate", out var target));
+        Assert.True(heap.TrySetModelValue(target, "NativeName", "getJit"));
+
+        var jit = new NativeDelegateIntrinsic().Invoke(
+            new IntrinsicContext(state),
+            NativeDelegateInvoke(module),
+            [target]);
+
+        Assert.Equal(StaticExecutionStatus.Completed, jit.Status);
+        // The first word of an ICorJitCompiler is its vtable, exactly as the loader reads it.
+        var vtableBytes = new byte[state.PointerSize];
+        Assert.True(heap.TryReadBytes(jit.Value, 0, vtableBytes));
+        var vtableAddress = state.PointerSize == 4
+            ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(vtableBytes)
+            : System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(vtableBytes);
+        Assert.True(heap.TryResolveNativeAddress(vtableAddress, out var vtable));
+        // The vtable is real memory the hook can read the compileMethod slot out of, unlike the
+        // deliberately opaque RuntimeModule the Reactor 6 path hands back.
+        var compileMethodSlot = new byte[state.PointerSize];
+        Assert.True(heap.TryReadBytes(vtable, 0, compileMethodSlot));
+    }
+
+    /// <summary>
+    /// A .NET Core loader asks which operating system it is on through
+    /// <c>RuntimeInformation.IsOSPlatform</c>, comparing against the <c>OSPlatform</c> constants.
+    /// The constants carry their own names and the answer comes from the profile, so the default
+    /// workstation reads as Windows and every other platform reads false.
+    /// </summary>
+    [Fact]
+    public void IsOSPlatformAnswersWindowsFromTheWorkstationProfile()
+    {
+        using var module = NewModule();
+        var (getWindows, getLinux, isOSPlatform) = OperatingSystemMembers(module);
+        var state = new StaticMachineState(new StaticMachineLimits());
+        state.RegisterHostEnvironment(new HostEnvironment(HostProfile.Workstation));
+        var intrinsic = new OperatingSystemIntrinsic();
+        var context = new IntrinsicContext(state);
+
+        var windows = intrinsic.Invoke(context, getWindows, []);
+        Assert.Equal(StaticExecutionStatus.Completed, windows.Status);
+        Assert.True(state.Heap.TryGetModelValue(windows.Value, "OSPlatform", out string? name));
+        Assert.Equal("WINDOWS", name);
+
+        var onWindows = intrinsic.Invoke(context, isOSPlatform, [windows.Value]);
+        Assert.Equal(StaticExecutionStatus.Completed, onWindows.Status);
+        Assert.Equal(1, onWindows.Value.AsInt32());
+
+        var linux = intrinsic.Invoke(context, getLinux, []);
+        var onLinux = intrinsic.Invoke(context, isOSPlatform, [linux.Value]);
+        Assert.Equal(StaticExecutionStatus.Completed, onLinux.Status);
+        Assert.Equal(0, onLinux.Value.AsInt32());
+    }
+
+    /// <summary>
+    /// A strict run has been told nothing about the machine, so which OS this is has no answer and
+    /// the call is refused with the fact that would settle it, rather than assumed to be Windows.
+    /// </summary>
+    [Fact]
+    public void IsOSPlatformIsRefusedWhenNoProfileSaysWhichMachineThisIs()
+    {
+        using var module = NewModule();
+        var (getWindows, _, isOSPlatform) = OperatingSystemMembers(module);
+        var state = new StaticMachineState(new StaticMachineLimits());
+        state.RegisterHostEnvironment(new HostEnvironment(HostProfile.Default));
+        var intrinsic = new OperatingSystemIntrinsic();
+        var context = new IntrinsicContext(state);
+
+        var windows = intrinsic.Invoke(context, getWindows, []);
+        var refused = intrinsic.Invoke(context, isOSPlatform, [windows.Value]);
+
+        Assert.Equal(StaticExecutionStatus.Unsupported, refused.Status);
+        Assert.Contains("runtime:OSPlatform", refused.Diagnostic);
+    }
+
+    private static (MemberRefUser Windows, MemberRefUser Linux, MemberRefUser IsOSPlatform)
+        OperatingSystemMembers(ModuleDef module)
+    {
+        var osPlatform = new TypeRefUser(
+            module,
+            "System.Runtime.InteropServices",
+            "OSPlatform",
+            module.CorLibTypes.AssemblyRef);
+        var runtimeInformation = new TypeRefUser(
+            module,
+            "System.Runtime.InteropServices",
+            "RuntimeInformation",
+            module.CorLibTypes.AssemblyRef);
+        var osPlatformSig = osPlatform.ToTypeSig();
+        return (
+            new MemberRefUser(module, "get_Windows", MethodSig.CreateStatic(osPlatformSig), osPlatform),
+            new MemberRefUser(module, "get_Linux", MethodSig.CreateStatic(osPlatformSig), osPlatform),
+            new MemberRefUser(
+                module,
+                "IsOSPlatform",
+                MethodSig.CreateStatic(module.CorLibTypes.Boolean, osPlatformSig),
+                runtimeInformation));
+    }
+
+    /// <summary>
+    /// A CoreCLR loader reads its own <c>AssemblyName.Version</c> to check it is running the build it
+    /// was protected as, and reaches its manifest module on the way to the handle its JIT hook needs.
+    /// The version is the one in the metadata, read back part by part through the Version intrinsic,
+    /// and the manifest module of the home assembly is itself the home module.
+    /// </summary>
+    [Fact]
+    public void AssemblyNameReportsTheMetadataVersionAndTheManifestModuleIsHome()
+    {
+        var module = new ModuleDefUser("versioned.dll") { Kind = ModuleKind.Dll };
+        var assembly = new AssemblyDefUser("versioned", new Version(4, 3, 2, 1));
+        assembly.Modules.Add(module);
+        var state = new StaticMachineState(new StaticMachineLimits());
+        state.RegisterModuleMetadata(module);
+        var heap = state.Heap;
+        var intrinsic = new LoaderFrameworkIntrinsic();
+        var context = new IntrinsicContext(state);
+
+        var assemblyNameType = new TypeRefUser(
+            module, "System.Reflection", "AssemblyName", module.CorLibTypes.AssemblyRef);
+        var versionType = new TypeRefUser(
+            module, "System", "Version", module.CorLibTypes.AssemblyRef);
+        var getVersion = new MemberRefUser(
+            module, "get_Version", MethodSig.CreateInstance(versionType.ToTypeSig()), assemblyNameType);
+
+        Assert.True(heap.TryAllocateObject("System.Reflection.AssemblyName", out var assemblyName));
+        var version = intrinsic.Invoke(context, getVersion, [assemblyName]);
+        Assert.Equal(StaticExecutionStatus.Completed, version.Status);
+
+        int Part(string getter)
+        {
+            var member = new MemberRefUser(
+                module, getter, MethodSig.CreateInstance(module.CorLibTypes.Int32), versionType);
+            var read = intrinsic.Invoke(context, member, [version.Value]);
+            Assert.Equal(StaticExecutionStatus.Completed, read.Status);
+            return read.Value.AsInt32();
+        }
+
+        Assert.Equal(4, Part("get_Major"));
+        Assert.Equal(3, Part("get_Minor"));
+        Assert.Equal(2, Part("get_Build"));
+        Assert.Equal(1, Part("get_Revision"));
+
+        var assemblyType = new TypeRefUser(
+            module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
+        var moduleType = new TypeRefUser(
+            module, "System.Reflection", "Module", module.CorLibTypes.AssemblyRef);
+        var manifestModule = new MemberRefUser(
+            module, "get_ManifestModule", MethodSig.CreateInstance(moduleType.ToTypeSig()), assemblyType);
+        Assert.True(heap.TryAllocateObject("System.Reflection.Assembly", out var home));
+        Assert.True(heap.TrySetModelValue(home, LoaderFrameworkIntrinsic.HomeModuleMark, true));
+
+        var reached = intrinsic.Invoke(context, manifestModule, [home]);
+        Assert.Equal(StaticExecutionStatus.Completed, reached.Status);
+        Assert.True(heap.TryGetModelValue<bool>(
+            reached.Value, LoaderFrameworkIntrinsic.HomeModuleMark, out var isHome));
+        Assert.True(isHome);
+    }
+
     private static MethodDefUser NativeDelegateInvoke(ModuleDef module)
     {
         var delegateType = new TypeDefUser(

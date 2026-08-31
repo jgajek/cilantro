@@ -33,7 +33,7 @@ public sealed record ProtectorIdentity(
     /// </remarks>
     public string Token => Family switch
     {
-        ProtectorFamily.Reactor => "reactor6",
+        ProtectorFamily.Reactor => "reactor",
         ProtectorFamily.Confuser => "confuserex",
         _ => "none"
     };
@@ -85,7 +85,7 @@ public sealed class ProtectorIdentityPass : DeobfuscationPass
     {
         context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var reactor);
         context.TryGetFact<ConfuserExStructureFacts>("confuserex.structure", out var confuser);
-        var reactorScore = reactor?.IsReactor6 == true ? reactor.Confidence : 0;
+        var reactorScore = reactor?.IsReactor == true ? reactor.Confidence : 0;
         var confuserScore = confuser?.IsConfuserExProtected == true ? confuser.Confidence : 0;
 
         if (confuserScore > reactorScore && confuser is not null)

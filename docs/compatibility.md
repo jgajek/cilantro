@@ -911,7 +911,7 @@ inside it, a module initializer reaching into that section, member names compose
 wholly of characters in the Unicode format, control, unassigned or private-use
 categories, and a generic getter in the global type. `protector-identity` then
 settles which of the two answers the run acts on, and reports it as
-`Protector` — `reactor6`, `confuserex`, or `none` — so a capability list is never
+`Protector` — `reactor`, `confuserex`, or `none` — so a capability list is never
 the thing that has to distinguish them. Passes that depend on Reactor structure
 decline explicitly on a ConfuserEx module rather than interpreting it to no
 purpose.

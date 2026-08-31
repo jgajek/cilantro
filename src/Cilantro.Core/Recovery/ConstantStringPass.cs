@@ -80,7 +80,7 @@ public sealed class ConstantStringPass : DeobfuscationPass
         // the pass only runs where one was found.
         if (!context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts) ||
             facts is null ||
-            !facts.IsReactor6)
+            !facts.IsReactor)
         {
             return (PassStatus.Success, 0,
                 ["No Reactor structure was detected, so no string decoder was looked for."]);

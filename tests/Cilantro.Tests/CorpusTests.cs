@@ -74,8 +74,8 @@ public sealed class CorpusTests
         using var context = ArtifactContext.Load(Checkout.Sample("Qbjuef.exe"));
         var facts = ReactorStructureDetector.Analyze(context.Module);
 
-        Assert.True(facts.IsReactor6);
-        Assert.Equal("reactor6-delegate-runtime", facts.Generation);
+        Assert.True(facts.IsReactor);
+        Assert.Equal("delegate-runtime", facts.Generation);
         Assert.Contains("delegate-proxy", facts.CapabilityNames);
         Assert.True(StructuralStreamDiscovery.TryDiscoverProxyProfile(
             context.Module,
@@ -115,6 +115,59 @@ public sealed class CorpusTests
             Assert.Equal(0, result.Report.Recovery.RemainingMethodStubs);
             Assert.Contains(result.Report.Evidence,
                 evidence => evidence.Category == "method-encryption");
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
+    [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
+    public void ReactorSevenNecroBitFrameworkBodiesAreStaticallyRecovered()
+    {
+        var sample = Checkout.Sample("reactor7-probe-net48.necrobit.exe");
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.NecroBitTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.exe");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                PreserveTokens: true,
+                RenameSymbols: false,
+                Devirtualize: false,
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            // NecroBit encrypts every body and hands the plaintext to the JIT from a managed table the
+            // loader fills before it hooks the JIT. Recovery reads that table and the header writes the
+            // loader makes, so a full run must decrypt every body and emit a verified clean copy.
+            Assert.True(result.Success);
+            Assert.Equal("reactor", result.Report.Protector);
+            Assert.NotNull(result.OutputPath);
+            var recovery = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "method-body-recovery");
+            Assert.Equal(PassStatus.Success, recovery.Status);
+            Assert.Equal(13, result.Report.Recovery.RestoredMethodBodies);
+            Assert.Equal(0, result.Report.Recovery.RemainingMethodStubs);
+
+            // The header writes carry back each method's locals-signature token and, for the one body
+            // that had them, its exception clauses; loading the clean copy proves both survived the
+            // graft rather than leaving a stub, a body missing its locals, or a try without its finally.
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(result.OutputPath);
+            var program = cleaned.Types.Single(type => type.Name == "Program");
+            var checksum = program.Methods.Single(method => method.Name == "ComputeChecksum");
+            Assert.Equal(4, checksum.Body.Variables.Count);
+            Assert.True(checksum.Body.Instructions.Count > 3);
+            var secret = program.Methods.Single(method => method.Name == "ReadEmbeddedSecret");
+            Assert.Equal(2, secret.Body.ExceptionHandlers.Count);
+            Assert.All(
+                secret.Body.ExceptionHandlers,
+                handler => Assert.Equal(
+                    dnlib.DotNet.Emit.ExceptionHandlerType.Finally,
+                    handler.HandlerType));
         }
         finally
         {

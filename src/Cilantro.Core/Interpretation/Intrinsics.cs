@@ -155,6 +155,7 @@ public sealed class StaticIntrinsicRegistry : IStaticIntrinsicRegistry
         new WeakReferenceIntrinsic(),
         new MutexIntrinsic(),
         new EnvironmentIntrinsic(),
+        new OperatingSystemIntrinsic(),
         new RegistryIntrinsic(),
         new ManagementIntrinsic(),
         new NetworkSettingsIntrinsic(),
@@ -266,10 +267,53 @@ public sealed class NativeDelegateIntrinsic : IStaticIntrinsic
                 heap.TryWriteManaged(arguments[5], StaticValue.FromInt32(count));
             return IntrinsicResult.Completed(StaticValue.FromInt32(1));
         }
+        if (nativeName == "getJit")
+            return ModelJitCompiler(context);
         if (ResourceApiModel.Handles(nativeName))
             return ResourceApiModel.Invoke(context, nativeName, arguments.Skip(1).ToArray());
         return IntrinsicResult.Invalid(
             $"Native delegate operation {nativeName} is unsupported.");
+    }
+
+    /// <summary>
+    /// The JIT compiler as Reactor 7.5's NecroBit reaches it: a pointer to an
+    /// <c>ICorJitCompiler</c> whose first word is its vtable, so the hook can read the original
+    /// <c>compileMethod</c> slot and overwrite it with its own.
+    /// </summary>
+    /// <remarks>
+    /// This is where Reactor 7 diverges from Reactor 6, which reaches the encrypted bodies through
+    /// runtime-module pointer arithmetic instead. The clrjit export is fetched by
+    /// <c>GetProcAddress</c>, bound to a delegate, and invoked as <c>getJit()</c>; the loader then
+    /// writes its hook into the vtable through <c>VirtualProtect</c> and <c>WriteIntPtr</c>, both of
+    /// which this model already satisfies. Nothing is executed: the returned structure exists only
+    /// so the loader's own installation sequence has real memory to read and write, exactly as it
+    /// would against a live JIT. The vtable is zero-filled, so the original slot the loader saves
+    /// reads back as null, which is correct for a hook that is never called back through.
+    /// </remarks>
+    private static IntrinsicResult ModelJitCompiler(IntrinsicContext context)
+    {
+        var heap = context.State.Heap;
+        var pointerSize = context.State.PointerSize;
+        // Room for the hook to find compileMethod at slot 0 and reach the neighbouring slots the
+        // ICorJitCompiler interface declares without running off the end of the region.
+        const int vtableSlots = 16;
+        if (!heap.TryAllocateRegion(vtableSlots * pointerSize, "JitVtable", out var vtable))
+            return new IntrinsicResult(
+                StaticExecutionStatus.AllocationLimitExceeded,
+                StaticValue.Unknown,
+                "JIT vtable exceeded the allocation budget.");
+        if (!heap.TryAllocateRegion(pointerSize, "JitCompiler", out var instance))
+            return new IntrinsicResult(
+                StaticExecutionStatus.AllocationLimitExceeded,
+                StaticValue.Unknown,
+                "JIT compiler instance exceeded the allocation budget.");
+        if (!heap.TryGetNativeAddress(vtable, out var vtableAddress))
+            return IntrinsicResult.Invalid("JIT vtable has no native address.");
+        Span<byte> pointerBytes = stackalloc byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(pointerBytes, vtableAddress);
+        return heap.TryWriteBytes(instance, 0, pointerBytes[..pointerSize])
+            ? IntrinsicResult.Completed(instance)
+            : IntrinsicResult.Invalid("JIT compiler instance could not be initialised.");
     }
 }
 
@@ -8203,6 +8247,18 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 heap.TrySetModelValue(assemblyModule, HomeModuleMark, true);
             return IntrinsicResult.Completed(modules);
         }
+        // The manifest module is the one carrying the assembly's metadata, and for the assembly
+        // under analysis that is the module being read. A loader asks for it on the way to the
+        // module handle its JIT hook needs, so it is modelled as that same home module.
+        if (name is "get_ManifestModule" or "GetModule" && arguments.Count is 1 or 2)
+        {
+            var heap = context.State.Heap;
+            if (!heap.TryAllocateObject("System.Reflection.Module", out var manifestModule))
+                return AllocationFailure("module model");
+            if (heap.TryGetModelValue<bool>(arguments[0], HomeModuleMark, out var home) && home)
+                heap.TrySetModelValue(manifestModule, HomeModuleMark, true);
+            return IntrinsicResult.Completed(manifestModule);
+        }
         // Two models of the assembly under analysis are the same assembly however they were reached.
         // Protected code compares them to check it is running where it was built to run, and a
         // comparison by object identity would tell it that it is not.
@@ -8296,7 +8352,50 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return context.State.Heap.TryAllocateString(context.State.AssemblyName, out var value)
                 ? IntrinsicResult.Completed(value)
                 : AllocationFailure("assembly name");
+        // A loader reads its own version to check it is running the build it was protected as, most
+        // often comparing it against a constant baked in at protection time. That constant is the
+        // real assembly version, so answering with the metadata's version is what lets the check
+        // pass; the neighbouring System.Version intrinsic then serves get_Major and the comparisons.
+        if (name == "get_Version")
+        {
+            if (!heap.TryAllocateObject("System.Version", out var version))
+                return AllocationFailure("assembly version");
+            heap.TrySetModelValue(version, "Components", AssemblyVersionComponents(context, arguments[0]));
+            return IntrinsicResult.Completed(version);
+        }
         return IntrinsicResult.Invalid($"AssemblyName operation {name} is denied.");
+    }
+
+    /// <summary>
+    /// The version parts a modelled <see cref="System.Reflection.AssemblyName"/> reports. A name
+    /// parsed from a string carries its own version in that string; otherwise the name stands for
+    /// the assembly under analysis, whose version is the one in its metadata.
+    /// </summary>
+    private static int[] AssemblyVersionComponents(IntrinsicContext context, StaticValue assemblyName)
+    {
+        if (context.State.Heap.TryGetModelValue(assemblyName, "FullName", out string? full) &&
+            full is not null &&
+            TryParseFullNameVersion(full, out var parsed))
+            return parsed;
+        var version = context.State.ModuleMetadata?.Assembly?.Version;
+        return version is null
+            ? [0, 0, 0, 0]
+            : [version.Major, version.Minor, version.Build, version.Revision];
+    }
+
+    private static bool TryParseFullNameVersion(string fullName, out int[] components)
+    {
+        components = [0, 0, 0, 0];
+        foreach (var field in fullName.Split(',', StringSplitOptions.TrimEntries))
+        {
+            if (!field.StartsWith("Version=", StringComparison.OrdinalIgnoreCase) ||
+                !System.Version.TryParse(field["Version=".Length..], out var version))
+                continue;
+            components = [version.Major, version.Minor, Math.Max(0, version.Build), Math.Max(0, version.Revision)];
+            return true;
+        }
+
+        return false;
     }
 
     private static IntrinsicResult InvokeModule(

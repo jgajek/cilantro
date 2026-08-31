@@ -99,7 +99,7 @@ public static class ResourceRoleAnalyzer
                 confidence = resource.CreateReader().Length > 1024 ? 0.65 : 0.4;
                 evidence.Add("high-entropy resource in method-stub generation");
             }
-            else if (resource.CreateReader().Length == 256 && structure.IsReactor6)
+            else if (resource.CreateReader().Length == 256 && structure.IsReactor)
             {
                 role = ResourceRole.IntegrityData;
                 confidence = 0.65;

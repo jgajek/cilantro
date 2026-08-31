@@ -205,7 +205,7 @@ hand over a result it cannot stand behind.
 | Key | Contents |
 | --- | --- |
 | `InputSha256`, `InputLength`, `ModuleName` | Identifies exactly what was analysed |
-| `Protector` | Which protector the run settled on, by the name a program uses — `reactor6`, `confuserex`, or `none`. Said outright because the capability list alone does not tell two protectors apart |
+| `Protector` | Which protector the run settled on, by the name a program uses — `reactor`, `confuserex`, or `none`. Said outright because the capability list alone does not tell two protectors apart. `reactor` names the .NET Reactor family without asserting a version, since 6 and 7 are not separable by structure alone |
 | `TypeCount`, `MethodCount`, `ConcreteMethodCount` | Size of the cleaned module |
 | `Resources` | Every embedded resource with size, SHA-256, entropy, and inferred role |
 | `Payloads` | Hidden assemblies found, with hashes at every decoding stage and the file each was written to |
@@ -265,10 +265,11 @@ emitted.
 ### "This file is not protected by a recognised protector"
 
 Both detectors were asked and neither claimed it. Either it is under a protector
-this tool does not handle, or it is a version or fork of one of the two whose
-structure is not recognised — Reactor 7 and later, and the ConfuserEx forks, are
-the common cases. Eazfuscator and Babel are the usual other answers, and
-[de4dot](https://github.com/de4dot/de4dot) handles those.
+this tool does not handle, or it is a fork or configuration of one of the two
+whose structure is not recognised — the ConfuserEx forks are the common case.
+.NET Reactor 7.5 is *not* one of these: it shares the Reactor 6 JIT-hook
+structure and is reported as `reactor`. Eazfuscator and Babel are the usual other
+answers, and [de4dot](https://github.com/de4dot/de4dot) handles those.
 
 The report names which protector the run settled on, or `none`, so a sample you
 believe is one of the two and that comes back `none` is worth reporting, with the

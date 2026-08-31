@@ -1,0 +1,10 @@
+<Project>
+  <!--
+    Deliberately does not import the repository root props. These probe assemblies are protector
+    input, not part of the product: they must build offline and their warnings are irrelevant.
+  -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+</Project>

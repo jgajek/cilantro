@@ -185,6 +185,105 @@ public sealed class EnvironmentIntrinsic : IStaticIntrinsic
 }
 
 /// <summary>
+/// Answers <c>RuntimeInformation.IsOSPlatform</c> and the <c>OSPlatform</c> values it compares
+/// against, which is how a CoreCLR loader asks which operating system it is running on.
+/// </summary>
+/// <remarks>
+/// This is the branch that stops a Reactor-protected .NET Core loader within the first couple of
+/// hundred steps, and it is not a Reactor 7 problem: a Reactor 6 build targeting .NET Core reaches
+/// the same call, because it is the framework rather than the protector that asks. The
+/// <c>OSPlatform</c> readers return framework constants, so they carry no host provenance; only the
+/// answer to "is this that platform?" comes from the profile, and it is tagged accordingly and
+/// refused in a strict run where nobody has said which machine this is. The default workstation
+/// profile states Windows, which is the same machine the rest of its facts describe.
+/// </remarks>
+public sealed class OperatingSystemIntrinsic : IStaticIntrinsic
+{
+    private const string PlatformKey = "runtime:OSPlatform";
+    private const string PlatformModel = "OSPlatform";
+
+    public bool Matches(IMethod method) =>
+        method.DeclaringType?.FullName is
+            "System.Runtime.InteropServices.OSPlatform" or
+            "System.Runtime.InteropServices.RuntimeInformation";
+
+    public IntrinsicResult Invoke(
+        IntrinsicContext context,
+        IMethod method,
+        IReadOnlyList<StaticValue> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(method);
+        ArgumentNullException.ThrowIfNull(arguments);
+        var heap = context.State.Heap;
+        var name = method.Name.String;
+        if (method.DeclaringType?.FullName == "System.Runtime.InteropServices.RuntimeInformation")
+        {
+            if (name == "IsOSPlatform" && arguments.Count == 1)
+                return IsOSPlatform(context, arguments[0]);
+            return IntrinsicResult.Invalid($"Unsupported RuntimeInformation operation {name}.");
+        }
+        switch (name)
+        {
+            case "get_Windows": return Platform(heap, "WINDOWS");
+            case "get_Linux": return Platform(heap, "LINUX");
+            case "get_OSX": return Platform(heap, "OSX");
+            case "get_FreeBSD": return Platform(heap, "FREEBSD");
+            case "Create" when arguments.Count == 1 && heap.TryGetString(arguments[0], out var made):
+                return Platform(heap, made);
+            case "op_Equality" when arguments.Count == 2:
+                return Compare(heap, arguments[0], arguments[1], equal: true);
+            case "op_Inequality" when arguments.Count == 2:
+                return Compare(heap, arguments[0], arguments[1], equal: false);
+            case "Equals" when arguments.Count == 2:
+                return Compare(heap, arguments[0], arguments[1], equal: true);
+            case "ToString" when arguments.Count == 1 &&
+                heap.TryGetModelValue(arguments[0], PlatformModel, out string? shown) &&
+                shown is not null:
+                return heap.TryAllocateString(shown, out var text)
+                    ? IntrinsicResult.Completed(text)
+                    : IntrinsicResult.Invalid("Could not allocate the OSPlatform name.");
+            default:
+                return IntrinsicResult.Invalid($"Unsupported OSPlatform operation {name}.");
+        }
+    }
+
+    private static IntrinsicResult Platform(StaticHeap heap, string platform)
+    {
+        if (!heap.TryAllocateObject("System.Runtime.InteropServices.OSPlatform", out var value))
+            return IntrinsicResult.Invalid("Could not allocate an OSPlatform value.");
+        heap.TrySetModelValue(value, PlatformModel, platform);
+        return IntrinsicResult.Completed(value);
+    }
+
+    private static IntrinsicResult Compare(
+        StaticHeap heap,
+        StaticValue left,
+        StaticValue right,
+        bool equal)
+    {
+        if (!heap.TryGetModelValue(left, PlatformModel, out string? a) || a is null ||
+            !heap.TryGetModelValue(right, PlatformModel, out string? b) || b is null)
+            return IntrinsicResult.Unknown("An OSPlatform being compared could not be identified.");
+        // The framework compares the underlying names ordinally, so the model does too.
+        var same = string.Equals(a, b, StringComparison.Ordinal);
+        return IntrinsicResult.Completed(StaticValue.FromInt32(same == equal ? 1 : 0));
+    }
+
+    private static IntrinsicResult IsOSPlatform(IntrinsicContext context, StaticValue platform)
+    {
+        if (!context.State.Heap.TryGetModelValue(platform, PlatformModel, out string? want) ||
+            string.IsNullOrEmpty(want))
+            return IntrinsicResult.Unknown(
+                "RuntimeInformation.IsOSPlatform received an OSPlatform this reading could not identify.");
+        if (!HostFacts.TryAsk(context, PlatformKey, out var answer))
+            return HostFacts.Refuse(context, PlatformKey);
+        var isMatch = string.Equals(answer.Text, want, StringComparison.OrdinalIgnoreCase);
+        return HostFacts.Number(context, PlatformKey, isMatch ? 1 : 0);
+    }
+}
+
+/// <summary>
 /// Answers the registry, which malware reads to learn where it is and whether it has been here.
 /// </summary>
 /// <remarks>

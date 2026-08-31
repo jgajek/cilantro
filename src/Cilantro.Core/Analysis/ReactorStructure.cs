@@ -32,7 +32,7 @@ public sealed record ReactorStructureFacts(
     double Confidence,
     string Generation)
 {
-    public bool IsReactor6 => Confidence >= 0.55;
+    public bool IsReactor => Confidence >= 0.55;
 
     public IReadOnlyList<string> CapabilityNames =>
         Enum.GetValues<ReactorCapability>()
@@ -96,15 +96,20 @@ public static class ReactorStructureDetector
         if (deadPrefixes >= 10) score += 0.15;
         if (dispatchers >= 2) score += 0.15;
         if (stubs >= 10) score += 0.35;
-        if (stringResolvers > 0) score += 0.10;
+        // A method that takes an integer and returns a string by reading a manifest resource is
+        // Reactor's protected-string resolver and almost nothing else -- far more specific than the
+        // dispatchers or dead-call junk other obfuscators also emit -- so a strings-only Reactor
+        // configuration, which has no stubs or proxies to lean on, still clears the gate on the
+        // strength of the resolver plus its corroborating control flow.
+        if (stringResolvers > 0) score += 0.30;
         if (highEntropyResources >= 2) score += 0.10;
         if (clrJit) score += 0.20;
         if (runtimePointer) score += 0.10;
         score = Math.Min(1.0, score);
 
         var generation = stubs >= 10 && clrJit
-            ? "reactor6-jit-hook"
-            : delegates >= 10 ? "reactor6-delegate-runtime" : "unknown";
+            ? "jit-hook"
+            : delegates >= 10 ? "delegate-runtime" : "unknown";
         return new ReactorStructureFacts(
             delegates,
             deadPrefixes,
@@ -251,7 +256,7 @@ public interface IReactorStrategy
 
 public sealed class StructuralReactor6Strategy : IReactorStrategy
 {
-    public string Id => "reactor6-structural";
+    public string Id => "reactor-structural";
 
     public StrategyMatch Match(ModuleDefMD assemblyModule, ReactorStructureFacts facts)
     {

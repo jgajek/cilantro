@@ -5,6 +5,7 @@
     "env:UserName": "mhoffman",
     "env:UserDomainName": "DESKTOP-N7QK2LP",
     "env:OSVersion": "Microsoft Windows NT 10.0.19045.0",
+    "runtime:OSPlatform": "Windows",
     "env:ProcessorCount": 8,
     "env:Is64BitOperatingSystem": true,
     "env:Is64BitProcess": true,

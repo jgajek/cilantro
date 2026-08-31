@@ -1771,15 +1771,24 @@ public static class StaticStringTableInterpreter
         int offset)
     {
         var parameters = initializer.MethodSig?.Params;
-        if (parameters is null || parameters.Count != 2 || !initializer.IsStatic ||
-            parameters[1].ElementType != ElementType.I4)
+        if (parameters is null || !initializer.IsStatic)
             return null;
-        return [stream, StaticValue.FromInt32(offset)];
+        // The .NET Framework initializer takes the resource stream and the resolver's own offset,
+        // and both loads the resource and frames the table. The CoreCLR resource loader takes only
+        // the stream, because the framing is inlined into the resolver rather than shared with it,
+        // so the offset means nothing to it and is not handed over.
+        if (parameters.Count == 2 && parameters[1].ElementType == ElementType.I4)
+            return [stream, StaticValue.FromInt32(offset)];
+        if (parameters.Count == 1 && parameters[0].ElementType == ElementType.Object)
+            return [stream];
+        return null;
     }
 
     private static MethodDef? FindInitializer(MethodDef resolver)
     {
         var instructions = resolver.Body.Instructions;
+        // The .NET Framework shape: a separate (object stream, int32 offset) -> void initializer,
+        // handed the resolver's own argument, that loads the resource and frames the table together.
         for (var index = 0; index < instructions.Count; index++)
         {
             if (instructions[index].Operand is not IMethod called ||
@@ -1793,6 +1802,44 @@ public static class StaticStringTableInterpreter
             if (index > 0 && instructions[index - 1].OpCode.Code is
                     Code.Ldarg or Code.Ldarg_S or Code.Ldarg_0)
                 return definition;
+        }
+        // The CoreCLR shape: the framing loop is inlined into the resolver and only the resource is
+        // loaded out of line, by a (object stream) -> void method handed the stream straight off
+        // GetManifestResourceStream. Running that loader alone fills the same blob field the inlined
+        // framing then reads, so it stands in for the initializer that framing is captured from.
+        return FindResourceLoader(resolver);
+    }
+
+    /// <summary>
+    /// The out-of-line resource loader a CoreCLR resolver hands its manifest-resource stream to.
+    /// </summary>
+    /// <remarks>
+    /// Recognized by shape rather than name: a static <c>(object) -> void</c> of the resolver's own
+    /// module, called on the value that came straight out of <c>GetManifestResourceStream</c>. The
+    /// short window after the stream call is what keeps this from matching an unrelated one-argument
+    /// call later in the body; the .NET Framework resolver never reaches here because its two-argument
+    /// initializer is found first.
+    /// </remarks>
+    private static MethodDef? FindResourceLoader(MethodDef resolver)
+    {
+        var instructions = resolver.Body.Instructions;
+        for (var index = 0; index < instructions.Count; index++)
+        {
+            if (instructions[index].Operand is not IMethod stream ||
+                stream.Name != "GetManifestResourceStream")
+                continue;
+            for (var next = index + 1; next < Math.Min(instructions.Count, index + 4); next++)
+            {
+                if (instructions[next].Operand is not IMethod called ||
+                    called.ResolveMethodDef() is not { } definition ||
+                    definition.Module != resolver.Module ||
+                    !definition.IsStatic ||
+                    definition.MethodSig?.Params.Count != 1 ||
+                    definition.MethodSig.Params[0].ElementType != ElementType.Object ||
+                    definition.ReturnType.ElementType != ElementType.Void)
+                    continue;
+                return definition;
+            }
         }
         return null;
     }

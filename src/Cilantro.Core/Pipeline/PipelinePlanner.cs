@@ -53,7 +53,7 @@ public static class PipelinePlanner
             return new PassExecutionDecision(true, null);
         if (!context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts) ||
             facts is null ||
-            facts.Generation != "reactor6-jit-hook")
+            facts.Generation != "jit-hook")
         {
             return new PassExecutionDecision(true, null);
         }

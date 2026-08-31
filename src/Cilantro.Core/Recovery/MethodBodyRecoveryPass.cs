@@ -110,6 +110,12 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
                     [interpretDiagnostic!, "No method body or initializer was modified."]);
             }
 
+            // NecroBit never writes bodies into the image to replay; it decrypts them up front into
+            // its JIT-hook table, which one interpretation fills whole. When that table is present it
+            // is the recovery, and the image-write rounds below have nothing to do.
+            if (round == 1 && rewrite.NecroBitBodies.Count > 0)
+                return RecoverViaNecroBit(context, stubs, bootstrap, rewrite, raisings);
+
             application = ImageRewriteRecovery.TryApply(
                 context,
                 policy,
@@ -328,6 +334,103 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
     /// pass is not converging on anything.
     /// </remarks>
     internal const int MostRounds = 3;
+
+    /// <summary>
+    /// Restores NecroBit-protected bodies from the decrypt table the loader filled before it stopped,
+    /// then publishes the same loader facts the image-replay path does so that downstream string and
+    /// call recovery can proceed on a fully deprotected module.
+    /// </summary>
+    private (PassStatus, int, IReadOnlyList<string>) RecoverViaNecroBit(
+        ArtifactContext context,
+        IReadOnlyList<ProtectedMethodStub> stubs,
+        MethodDef bootstrap,
+        InterpretedRewrite rewrite,
+        IReadOnlyList<string> raisings)
+    {
+        PublishLoaderFacts(context, bootstrap, rewrite);
+        var attempt = new MethodRecoveryAttempt(
+            bootstrap.MDToken.Raw,
+            rewrite.Result.Status,
+            rewrite.Result.Steps,
+            stubs.Count,
+            0,
+            0,
+            rewrite.Result.Diagnostic);
+        context.SetFact("method-protection.attempt", attempt);
+
+        if (!NecroBitBodyRecovery.TryApply(
+                context,
+                stubs,
+                rewrite.NecroBitBodies,
+                rewrite.ImageWrites,
+                out var recovered,
+                out var applyDiagnostics))
+        {
+            context.SetFact("method-protection.complete", false);
+            return (PassStatus.Unsupported, 0,
+            [
+                .. raisings,
+                $"The NecroBit decrypt table held {rewrite.NecroBitBodies.Count} body(ies), but they " +
+                "could not be mapped and grafted.",
+                .. applyDiagnostics,
+            ]);
+        }
+
+        var names = stubs.ToDictionary(stub => stub.Token, stub => stub.Method);
+        foreach (var token in recovered)
+        {
+            context.AddChange(new ChangeRecord(
+                Name,
+                "restore-method-body",
+                $"0x{token:X8} {names.GetValueOrDefault(token, "method")}",
+                "Grafted plaintext CIL captured from the NecroBit decrypt table by unchanged " +
+                "MethodDef token."));
+        }
+
+        // Every catalogued stub whose body came back means NecroBit was holding nothing more, so the
+        // protection is fully undone and the passes gated on that can run. A stub left behind is one
+        // whose ciphertext the loader had not decrypted when it stopped, which keeps this partial.
+        var complete = recovered.Count == stubs.Count;
+        context.SetFact("method-protection.complete", complete);
+        context.SetFact("method-protection.restored", recovered.Count);
+        context.AddEvidence(new Evidence(
+            "method-recovery",
+            $"Captured NecroBit's decrypt table from two agreeing bootstrap interpretations and " +
+            $"grafted {recovered.Count} of {stubs.Count} protected method bodies.",
+            $"{bootstrap.MDToken} {bootstrap.FullName}",
+            0.95));
+
+        var notes = new List<string>();
+        notes.AddRange(raisings);
+        notes.Add(complete
+            ? $"Restored and verified all {recovered.Count} protected method bodies from the NecroBit " +
+                "decrypt table."
+            : $"Restored and verified {recovered.Count} of {stubs.Count} protected method bodies from " +
+                "the NecroBit decrypt table; the loader had not decrypted the rest when it stopped.");
+        notes.AddRange(applyDiagnostics);
+        notes.Add(complete
+            ? "Removing the loader bootstrap and JIT hook is left to anti-tamper neutralization."
+            : "Restoration is reported partial because the loader stopped before decrypting every " +
+                "body, so the passes that mutate a JIT-hook artifact stay gated.");
+        return (complete ? PassStatus.Success : PassStatus.Partial, recovered.Count, notes);
+    }
+
+    /// <summary>
+    /// Records the loader-built keys, token tables, and observations from the one interpretation that
+    /// runs the bootstrap, which downstream string and call recovery depend on.
+    /// </summary>
+    private static void PublishLoaderFacts(
+        ArtifactContext context,
+        MethodDef bootstrap,
+        InterpretedRewrite rewrite)
+    {
+        if (rewrite.IntegerFields.Count != 0)
+            context.SetFact("bootstrap.integerFields", rewrite.IntegerFields);
+        if (rewrite.TokenMaps.Count != 0)
+            context.SetFact("bootstrap.tokenMaps", rewrite.TokenMaps);
+        context.SetFact("bootstrap.evidence", rewrite.Evidence);
+        context.SetFact("bootstrap.token", bootstrap.MDToken.Raw);
+    }
 
     private static MethodDef? FindBootstrap(ModuleDef module)
     {
