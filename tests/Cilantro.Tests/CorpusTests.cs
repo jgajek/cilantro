@@ -177,6 +177,79 @@ public sealed class CorpusTests
 
     [SampleFact]
     [Trait(Cost.Key, Cost.High)]
+    public void ReactorSixVirtualizedPayloadIsFullyRecovered()
+    {
+        // A .NET Framework payload a Reactor 6 bootstrap unpacks, virtualized in its own right: its
+        // strings are behind the module's virtual machine and one method ships as a program of it
+        // rather than as IL. It carries no oracle because it is a stage recovered from another
+        // sample, so the proof is the reading itself -- every string site restored, every virtual
+        // operation read as IL with a stack walk that agrees with itself, and the program method
+        // built back into a copy that round-trips. The same devirtualization proven on Reactor 7.5
+        // reads this Reactor 6 build with nothing version-specific asked of it.
+        var sample = Checkout.Sample("Mlfhntkcvb.payload.Lqcuzgc.dll");
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.ReactorSixVirtualizedTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.dll");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                PreserveTokens: true,
+                RenameSymbols: false,
+                Devirtualize: true,
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            Assert.True(result.Success);
+            Assert.Equal("reactor", result.Report.Protector);
+            Assert.NotNull(result.OutputPath);
+
+            // No NecroBit layer here, so nothing is a decrypted body; the recovery is the strings
+            // and the virtualized method rather than a stub count.
+            Assert.Equal(0, result.Report.Recovery.RemainingMethodStubs);
+
+            // Every protected-string call site comes back, which the string table only yields once
+            // the engine's numbering is learned from the module's own programs.
+            Assert.Equal(172, result.Report.Recovery.StringCallSites);
+            Assert.Equal(172, result.Report.Recovery.ReplacedStringSites);
+
+            // The engine was read whole and its stack walk agreed with itself, and the program
+            // method it stands for was built back into the cleaned copy from that reading.
+            Assert.Equal(
+                result.Report.Recovery.VirtualOperations,
+                result.Report.Recovery.VirtualOperationsRead);
+            Assert.Equal(0, result.Report.Recovery.VirtualDepthDisagreements);
+            Assert.True(result.RebuiltMethods >= 1);
+
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(result.OutputPath);
+
+            // The one method that shipped as a virtual program holds real IL in the cleaned copy and
+            // says so about itself with the marker every rebuilt body carries.
+            var rebuilt = cleaned.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Single(method => method.Name == "Rj743eA3ha");
+            Assert.NotNull(rebuilt.Body);
+            Assert.True(rebuilt.Body.Instructions.Count > 100);
+            Assert.Contains(
+                rebuilt.CustomAttributes,
+                attribute => attribute.TypeFullName.Contains("RebuiltFromReading"));
+
+            // This payload unpacks nothing further, so payload-extraction is the one pass that
+            // reports unsupported without failing the run rather than a blocker still to clear.
+            var extraction = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "payload-extraction");
+            Assert.Equal(PassStatus.Unsupported, extraction.Status);
+            Assert.DoesNotContain(result.Report.Passes, pass => pass.Status == PassStatus.Failed);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
+    [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
     public void ReactorSevenVirtualizedFullBuildIsFullyRecovered()
     {
         var sample = Checkout.Sample("reactor7-probe-net48.full.exe");

@@ -7,7 +7,7 @@ analysis.
 
 | Manifest | Covers |
 | --- | --- |
-| `corpus/reactor-6-nonvirt.manifest.json` | .NET Reactor 6, both generations, eleven samples |
+| `corpus/reactor-6-nonvirt.manifest.json` | .NET Reactor 6, both generations, twelve samples |
 | `corpus/confuserex-1-static.manifest.json` | ConfuserEx 1.0.0, whole-section anti-tamper, two samples |
 
 Each sample names the protector it is expected to be identified as, so a change
@@ -34,7 +34,7 @@ Protected and exploratory samples:
 - `e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2`
   (`profiled`, `Qafcakg.payload.Ptnifif.dll`)
 - `81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a`
-  (`exploratory`, `Mlfhntkcvb.payload.Lqcuzgc.dll`)
+  (`detected`, `Mlfhntkcvb.payload.Lqcuzgc.dll`)
 - `094dbed0af6664af52375a711e0b8e4e8e7e66c6d47390e8263b16efba4d1995`
   (`exploratory`, `WindowsManagement.exe`)
 
@@ -63,23 +63,23 @@ back, because the paths that would produce it call into `user32` and then ask
 Windows about the machine it is running on, which is outside the runtime the
 machine models.
 
-`Lqcuzgc` is a virtualizing build whose string decryption and payload unpacking
-are both inside the virtual machine, so what is locked for it is the reading of
-that machine: 4,851 of its 4,854 operations written as IL, the walk reaching
-4,846 and stopping nowhere, the depths agreeing everywhere, and the 8 operations
-left over being code no path arrives at. Its strings and its payload are still
-declined rather than guessed at, and its self-check is no longer what stands in
-the way: the module is interpreted as the assembly with no file of its own that a
-recovered payload is, which is the case its own code makes room for, and under
-that reading nothing in the loader throws.
+`Lqcuzgc` is a virtualizing build whose string decryption is inside the virtual
+machine, and it now comes back in full. The engine is read whole — 4,854 of
+4,854 operations written as IL, the walk reaching 4,846 and stopping nowhere, the
+depths agreeing everywhere, and the 8 operations left over being code no path
+arrives at — and a triage run builds the one virtualized method back into the
+cleaned copy from that reading. Its self-check no longer stands in the way: the
+date-based trial guard the loader injects is recognised by shape and neutralised
+during interpretation, so running the engine far enough to build the table no
+longer throws. All 172 of its protected-string call sites are restored across
+both layers — the 17 of Reactor's own resolver and the 155 the second protector
+keeps in a domain-slot `Hashtable` and fetches by number — and a verified copy is
+written, which is why it sits in the `detected` tier.
 
-What stands in the way of its strings is two things above the decoder. Each call
-site computes the key rather than carrying it — three constants combined with
-`xor` and `sub`, and then an integer field of the second protector's state object
-mixed in — and that object is never built during the loader initialization the
-machine runs, so none of its fields is proven and the key is not a constant to
-fold. Behind that, the table those keys index is parsed by the virtualized method,
-so reading a string means running the engine far enough to have built it.
+The one pass that reports unsupported without failing the run is
+payload-extraction: this assembly is itself the final managed payload the outer
+`Mlfhntkcvb` bootstrap unpacks, so there is no further stage inside it for the
+module's own unpacker to produce.
 
 Validation-only deobfuscated counterparts:
 

@@ -6,10 +6,11 @@ Two protectors are supported, with a manifest each. Every entry in both is
 SHA-256-pinned and names the protector it must be identified as, so a detector
 that claimed the other's samples would fail the manifest rather than pass it.
 
-`corpus/reactor-6-nonvirt.manifest.json` contains eleven entries:
+`corpus/reactor-6-nonvirt.manifest.json` contains twelve entries:
 
 - three `profiled` full-recovery fixtures;
-- three `detected` JIT-hook/method-stub samples;
+- four `detected` samples — three JIT-hook/method-stub builds and one
+  virtualized .NET Framework payload recovered end to end;
 - two `exploratory` control-flow/proxy samples; and
 - three deobfuscated validation oracles used as negative controls.
 
@@ -154,7 +155,7 @@ carry `Assumed` provenance rather than `Host`, and every call stepped over is li
 in `ContinuedPast` in `NAME.blockers.json` and in the summary. `Blockers` keeps its
 meaning: things that stopped the run.
 
-Measured on the eleven-sample corpus, the two modes agree on every expectation —
+Measured on the twelve-sample corpus, the two modes agree on every expectation —
 detection, capabilities, restored body counts, string-site coverage, remaining stubs,
 mutation counts, oracle parity and preserved names: 2041 of 2057 reported fields are
 identical, and the sixteen that differ are diagnostic text. What changes is where a
