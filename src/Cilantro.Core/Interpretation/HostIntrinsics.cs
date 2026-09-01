@@ -221,6 +221,12 @@ public sealed class OperatingSystemIntrinsic : IStaticIntrinsic
         {
             if (name == "IsOSPlatform" && arguments.Count == 1)
                 return IsOSPlatform(context, arguments[0]);
+            // A NecroBit loader reads the architecture only to divert to an Arm or Arm64 code path,
+            // falling through to x64 otherwise. The image the machine interprets is modelled as a
+            // 64-bit process, so x64 is both the honest answer and the mainstream path the rest of the
+            // model supports. Architecture.X64 is 1.
+            if (name is "get_ProcessArchitecture" or "get_OSArchitecture")
+                return IntrinsicResult.Completed(StaticValue.FromInt32(1));
             return IntrinsicResult.Invalid($"Unsupported RuntimeInformation operation {name}.");
         }
         switch (name)

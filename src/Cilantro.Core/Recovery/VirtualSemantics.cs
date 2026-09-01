@@ -245,6 +245,15 @@ public static class VirtualSemantics
     /// <summary>What an operation that throws the value it is handed is called in a reading.</summary>
     internal const string Throwing = "throws what it takes";
 
+    /// <summary>What the operation that ends a finally handler is called in a reading.</summary>
+    /// <remarks>
+    /// A finally leaves the runtime through <c>endfinally</c>, which takes and leaves nothing and
+    /// only decides where control goes next. That is the one shape the trials cannot tell apart
+    /// from any other state change, so it is named from where it sits — the last operation of a
+    /// guarded region that names no type — rather than from what a trial made it do.
+    /// </remarks>
+    internal const string Ending = "ends a finally";
+
     /// <summary>
     /// The type a refusal says the operation insisted on, where one of them named a type by
     /// refusing to treat what it was given as one.

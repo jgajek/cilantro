@@ -25,6 +25,7 @@ public sealed class VirtualBodyTests
     private const int Mystery = 7;
     private const int Throw = 8;
     private const int Return = 9;
+    private const int EndFinally = 10;
 
     /// <summary>
     /// The engine keeps every value as an object, so the body does too: a constant is boxed where
@@ -154,8 +155,86 @@ public sealed class VirtualBodyTests
         Assert.Same(clause.TryEnd, clause.HandlerStart);
         Assert.Equal(2, body.Instructions.Count(one => one.OpCode == OpCodes.Leave));
         Assert.DoesNotContain(body.Instructions, one => one.OpCode == OpCodes.Br);
-        Assert.Contains("guarded region(s) became catch handlers", string.Join(" ", built.Notes),
+        Assert.Contains("guarded region(s) became handlers", string.Join(" ", built.Notes),
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A clause that names no type is a finally, and the operation the engine ends it with — one
+    /// nothing measured but that changes the engine's state at the last place of a typeless
+    /// handler — is that end. It becomes a finally handler closed by <c>endfinally</c>, which is
+    /// the only shape the runtime accepts a finally in.
+    /// </summary>
+    [Fact]
+    public void ATypelessRegionBecomesAFinallyClosedByEndfinally()
+    {
+        using var context = Module();
+        var built = VirtualBody.Build(Finally(context), context.Module, Stub(context));
+
+        Assert.Null(built.Refused);
+        var body = built.Body!;
+        var clause = Assert.Single(body.ExceptionHandlers);
+        Assert.Equal(ExceptionHandlerType.Finally, clause.HandlerType);
+        Assert.Null(clause.CatchType);
+        Assert.Contains(body.Instructions, one => one.OpCode == OpCodes.Endfinally);
+    }
+
+    /// <summary>
+    /// CoreCLR's clause class still has a Type field on a finally, and the machine stores a
+    /// placeholder there when it cannot name what is caught. That placeholder is not a type the
+    /// module can put on a catch clause; the region is the same finally a typeless clause is.
+    /// </summary>
+    [Fact]
+    public void APlaceholderCatchNameIsWrittenAsAFinally()
+    {
+        using var context = Module();
+        var program = Finally(context);
+        program = program with
+        {
+            Regions =
+            [
+                ((VirtualRegion)program.Regions[0]) with { Caught = "something unnamed" }
+            ]
+        };
+
+        var built = VirtualBody.Build(program, context.Module, Stub(context));
+
+        Assert.Null(built.Refused);
+        var clause = Assert.Single(built.Body!.ExceptionHandlers);
+        Assert.Equal(ExceptionHandlerType.Finally, clause.HandlerType);
+        Assert.Null(clause.CatchType);
+    }
+
+    /// <summary>A program with one finally, whose handler the engine ends with its own operation.</summary>
+    private static VirtualProgram Finally(ArtifactContext context)
+    {
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(1)),
+            (Store, new VirtualOperand.Number(0)),
+            (Jump, new VirtualOperand.Number(4)),
+            (EndFinally, new VirtualOperand.None()),
+            (Return, new VirtualOperand.None())
+        ]);
+        return program with
+        {
+            Operations = new Dictionary<int, VirtualOperation>(program.Operations)
+            {
+                // The end of a finally takes and leaves nothing and only changes engine state. The
+                // recovery names it from where it sits; here it is named the same way directly, the
+                // synthetic program not being built through the recovery that would do so.
+                [EndFinally] = new(EndFinally, 0, 0, VirtualSemantics.Ending) { TouchesState = true }
+            },
+            // The clause names no type (a finally) and its handler-kind flag, last of its numbers,
+            // is 2 — the runtime's own value for a finally.
+            Regions =
+            [
+                new VirtualRegion([3, 3, 0, 2], 0, null)
+                {
+                    Guarded = (1, 2),
+                    Handled = (3, 3)
+                }
+            ]
+        };
     }
 
     /// <summary>

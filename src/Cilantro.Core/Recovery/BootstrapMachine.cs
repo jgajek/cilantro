@@ -174,15 +174,17 @@ public static class BootstrapMachine
     /// </remarks>
     private static HashSet<uint> NeutralizedGuards(ArtifactContext context)
     {
-        if (!context.TryGetFact<IReadOnlyList<ProxyBinding>>("proxy.bindings", out var bindings) ||
-            bindings is null ||
-            bindings.Count == 0)
-        {
-            return [];
-        }
-        return TrialGuardAnalysis.Find(
-            context.Module,
-            [.. bindings.Select(binding => (binding.FieldToken, binding.TargetToken))]);
+        // A guard that reads the clock through a delegate proxy is invisible until the proxy map is in
+        // hand, so those are seen only once the bindings exist. A guard that reads the clock directly
+        // needs no map and is recognised from its own body, so the search runs whether or not bindings
+        // are known yet -- which is what lets method-body recovery, run before proxies are resolved,
+        // pass the direct trial guard a CoreCLR loader trips on instead of ending on the injected clock.
+        var proxies =
+            context.TryGetFact<IReadOnlyList<ProxyBinding>>("proxy.bindings", out var bindings) &&
+            bindings is not null
+                ? bindings.Select(binding => (binding.FieldToken, binding.TargetToken)).ToArray()
+                : [];
+        return TrialGuardAnalysis.Find(context.Module, proxies);
     }
 
     private static void RunInitializers(ArtifactContext context, StaticMachine machine)

@@ -49,6 +49,36 @@ public sealed class ResourceRestorationTests
     }
 
     [Fact]
+    public void DrainingABrotliStreamIntoAnotherYieldsTheInflatedBytes()
+    {
+        // CoreCLR NecroBit builds inflate their decrypted resource satellite through a BrotliStream
+        // where the .NET Framework builds use Deflate, so the machine has to model Brotli the same
+        // way to reach the plaintext the reader hands the container parser.
+        var plaintext = new byte[512];
+        for (var index = 0; index < plaintext.Length; index++)
+            plaintext[index] = (byte)(index % 7);
+        using var module = NewModule();
+        var state = new StaticMachineState(new StaticMachineLimits());
+        var intrinsic = new LoaderFrameworkIntrinsic();
+        var source = NewMemoryStream(module, state, intrinsic, Brotli(plaintext));
+        var inflater = NewBrotliStream(module, state, intrinsic, source);
+        var destination = NewMemoryStream(module, state, intrinsic, []);
+
+        var copy = intrinsic.Invoke(
+            new IntrinsicContext(state),
+            new MemberRefUser(
+                module,
+                "CopyTo",
+                MethodSig.CreateInstance(module.CorLibTypes.Void, StreamSig(module)),
+                StreamType(module)),
+            [inflater, destination]);
+
+        Assert.Equal(StaticExecutionStatus.Completed, copy.Status);
+        Assert.True(state.Heap.TryGetModelValue(destination, "Buffer", out StaticValue written));
+        Assert.Equal(plaintext, state.Heap.GetBytesSnapshot(written));
+    }
+
+    [Fact]
     public void ASatelliteAssemblyIsReadBackAsItsNamedStreams()
     {
         var bundle = NewSatellite(
@@ -311,6 +341,14 @@ public sealed class ResourceRestorationTests
         return compressed.ToArray();
     }
 
+    private static byte[] Brotli(byte[] plaintext)
+    {
+        using var compressed = new MemoryStream();
+        using (var brotli = new BrotliStream(compressed, CompressionMode.Compress, true))
+            brotli.Write(plaintext, 0, plaintext.Length);
+        return compressed.ToArray();
+    }
+
     private static byte[] NewSatellite(params (string Name, byte[] Data)[] resources)
     {
         using var module = new ModuleDefUser("Satellite.resources.dll");
@@ -379,6 +417,30 @@ public sealed class ResourceRestorationTests
             module, "System.IO.Compression", "DeflateStream", module.CorLibTypes.AssemblyRef);
         Assert.True(state.Heap.TryAllocateObject(
             "System.IO.Compression.DeflateStream", out var inflater));
+        Assert.Equal(
+            StaticExecutionStatus.Completed,
+            intrinsic.Invoke(
+                new IntrinsicContext(state),
+                new MemberRefUser(
+                    module,
+                    ".ctor",
+                    MethodSig.CreateInstance(
+                        module.CorLibTypes.Void, StreamSig(module), module.CorLibTypes.Int32),
+                    type),
+                [inflater, source, StaticValue.FromInt32(0)]).Status);
+        return inflater;
+    }
+
+    private static StaticValue NewBrotliStream(
+        ModuleDef module,
+        StaticMachineState state,
+        LoaderFrameworkIntrinsic intrinsic,
+        StaticValue source)
+    {
+        var type = new TypeRefUser(
+            module, "System.IO.Compression", "BrotliStream", module.CorLibTypes.AssemblyRef);
+        Assert.True(state.Heap.TryAllocateObject(
+            "System.IO.Compression.BrotliStream", out var inflater));
         Assert.Equal(
             StaticExecutionStatus.Completed,
             intrinsic.Invoke(

@@ -175,6 +175,64 @@ public sealed class CorpusTests
         }
     }
 
+    [SampleTheory]
+    [Trait(Cost.Key, Cost.High)]
+    [InlineData("reactor7-probe-net80.necrobit.dll")]
+    [InlineData("reactor7-probe-net100.necrobit.dll")]
+    public void ReactorSevenNecroBitCoreClrBodiesAreStaticallyRecovered(string filename)
+    {
+        var sample = Checkout.Sample(filename);
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.NecroBitCoreClrTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.dll");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                PreserveTokens: true,
+                RenameSymbols: false,
+                Devirtualize: false,
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            // CoreCLR NecroBit decrypts every body up front into a managed Hashtable the same way the
+            // Framework build does, but each record names its plaintext by a length and a native
+            // pointer into a VirtualAlloc page rather than carrying a managed byte[]. The loader finds
+            // the module base by reflecting runtime-internal fields, not from metadata; modelling that
+            // surface lets the table fill, so a full run must decrypt every body and emit a verified
+            // clean copy exactly as on Framework.
+            Assert.True(result.Success);
+            Assert.Equal("reactor", result.Report.Protector);
+            Assert.NotNull(result.OutputPath);
+            var recovery = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "method-body-recovery");
+            Assert.Equal(PassStatus.Success, recovery.Status);
+            Assert.Equal(7, result.Report.Recovery.RestoredMethodBodies);
+            Assert.Equal(0, result.Report.Recovery.RemainingMethodStubs);
+
+            // The header writes carry back each method's locals-signature token and, for the one body
+            // that had them, its exception clauses; loading the clean copy proves both survived the
+            // graft rather than leaving a stub, a body missing its locals, or a try without its finally.
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(result.OutputPath);
+            var program = cleaned.Types.Single(type => type.FullName == "Probe.Program");
+            var checksum = program.Methods.Single(method => method.Name == "ComputeChecksum");
+            Assert.Equal(4, checksum.Body.Variables.Count);
+            Assert.True(checksum.Body.Instructions.Count > 3);
+            var secret = program.Methods.Single(method => method.Name == "ReadEmbeddedSecret");
+            Assert.Equal(2, secret.Body.ExceptionHandlers.Count);
+            Assert.All(
+                secret.Body.ExceptionHandlers,
+                handler => Assert.Equal(
+                    dnlib.DotNet.Emit.ExceptionHandlerType.Finally,
+                    handler.HandlerType));
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
     [SampleFact]
     [Trait(Cost.Key, Cost.High)]
     public void ReactorSixVirtualizedPayloadIsFullyRecovered()
@@ -335,6 +393,105 @@ public sealed class CorpusTests
             Assert.Contains(
                 result.Report.Payloads,
                 payload => payload.PayloadLength == 2048);
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
+    [SampleTheory]
+    [Trait(Cost.Key, Cost.High)]
+    [InlineData("reactor7-probe-net80.full.dll")]
+    [InlineData("reactor7-probe-net100.full.dll")]
+    public void ReactorSevenCoreClrFullBuildIsFullyRecovered(string filename)
+    {
+        var sample = Checkout.Sample(filename);
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.CoreClrFullTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.dll");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                PreserveTokens: true,
+                RenameSymbols: false,
+                Devirtualize: true,
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            // The CoreCLR full build stacks the same layers over NecroBit as the .NET Framework one:
+            // 677 native-pointer bodies are decrypted, the string table and delegate-proxy map are
+            // behind the module's own VM, a date-based trial guard throws, and the encrypted resource
+            // satellite is inflated through Brotli rather than Deflate. A full run recovers the bodies,
+            // resolves the proxies, reads the engine, neutralises the guard, models Brotli to finish
+            // the bundle reader, and writes a verified copy.
+            Assert.True(result.Success);
+            Assert.Equal("reactor", result.Report.Protector);
+            Assert.NotNull(result.OutputPath);
+
+            var recovery = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "method-body-recovery");
+            Assert.Equal(PassStatus.Success, recovery.Status);
+            Assert.Equal(677, result.Report.Recovery.RestoredMethodBodies);
+            Assert.Equal(0, result.Report.Recovery.RemainingMethodStubs);
+
+            // Every protected-string call site comes back, which is only reachable once the engine's
+            // numbering is learned.
+            Assert.Equal(26, result.Report.Recovery.StringCallSites);
+            Assert.Equal(26, result.Report.Recovery.ReplacedStringSites);
+
+            // The engine was read whole with a stack walk that agreed with itself, and — as on the
+            // .NET Framework build — the virtualized method is built back into the cleaned copy from
+            // that reading. Its bytecode carries six guarded regions, one of them a finally the VM
+            // ends with its own endfinally operation and a generic call it names by a method spec,
+            // both of which the rebuild now reads.
+            Assert.Equal(
+                result.Report.Recovery.VirtualOperations,
+                result.Report.Recovery.VirtualOperationsRead);
+            Assert.Equal(0, result.Report.Recovery.VirtualDepthDisagreements);
+            Assert.True(result.RebuiltMethods >= 1);
+
+            // The Brotli-inflated resource satellite is decrypted statically; it is a 2048-byte
+            // assembly carrying the probe's own secret stream.
+            var resources = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "resource-restoration");
+            Assert.Equal(PassStatus.Success, resources.Status);
+            Assert.Contains(
+                result.Report.Payloads,
+                payload => payload.PayloadLength == 2048);
+
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(result.OutputPath);
+
+            // The virtualized method holds real IL where it shipped as a stub, marked as the reading
+            // it is, with all six of its guarded regions written back: five catch clauses and the
+            // one finally the engine ended with its own operation.
+            var rebuilt = cleaned.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Single(method => method.HasBody && method.CustomAttributes.Any(
+                    attribute => attribute.TypeFullName.Contains("RebuiltFromReading")));
+            Assert.NotNull(rebuilt.Body);
+            Assert.True(rebuilt.Body.Instructions.Count > 100);
+            Assert.Equal(6, rebuilt.Body.ExceptionHandlers.Count);
+            Assert.Contains(
+                rebuilt.Body.ExceptionHandlers,
+                handler => handler.HandlerType == dnlib.DotNet.Emit.ExceptionHandlerType.Finally);
+
+            // The recovered plaintext is the probe's own planted strings, present at the call sites
+            // the resolver used to hide — byte-level proof the table was read correctly.
+            var literals = cleaned.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Where(method => method.HasBody)
+                .SelectMany(method => method.Body.Instructions)
+                .Where(instruction => instruction.OpCode == dnlib.DotNet.Emit.OpCodes.Ldstr)
+                .Select(instruction => instruction.Operand as string)
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.Contains("PROBE_STR_01 probe entry point", literals);
+            Assert.Contains(
+                literals,
+                literal => literal is not null && literal.Contains("probe.invalid:8443/gate"));
         }
         finally
         {

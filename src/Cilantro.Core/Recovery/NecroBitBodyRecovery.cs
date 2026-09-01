@@ -27,6 +27,13 @@ public sealed record NecroBitBody(long Key, byte[] Il, bool NativeMode);
 /// live process memory it cannot model — but by then the table is already full, so the plaintext is
 /// sitting in the interpreter heap. This reads it out, maps each entry back to the method it belongs
 /// to by the loader's own key, and grafts it.
+///
+/// On CoreCLR the table is the same up-front <see cref="System.Collections.Hashtable"/>, but each
+/// record names its plaintext by a length and a native pointer into a single page the loader decrypts
+/// into rather than carrying a managed <c>byte[]</c>, and the loader finds the module base by
+/// reflecting runtime-internal fields rather than from metadata. Modelling that reflection surface and
+/// the native decrypt page lets the loader run to the end and this reads each body back out of the page
+/// its record points at; the mapping and grafting are otherwise identical.
 /// </remarks>
 public static class NecroBitBodyRecovery
 {
@@ -597,6 +604,9 @@ public static class NecroBitBodyRecovery
         if (type is null)
             return false;
         byte[]? bodyBytes = null;
+        var lengthField = 0;
+        var haveLength = false;
+        var pointerFields = new List<FieldDef>();
         foreach (var field in type.Fields)
         {
             // NecroBit's per-body record holds one byte array — the plaintext the JIT hook hands over
@@ -617,7 +627,25 @@ public static class NecroBitBodyRecovery
             {
                 nativeMode = flag.AsInt32() != 0;
             }
+            // A CoreCLR NecroBit record carries no plaintext array. Its bodies are decrypted into one
+            // native page and each record names its own with a length and a pointer into that page,
+            // where a .NET Framework record would have carried the bytes themselves. The length is the
+            // record's only Int32; the pointer is one of its two native-int fields (the other is the IL
+            // address the record is keyed by), so both are tried and the one whose bytes are a body wins.
+            else if (field.FieldSig?.Type.ElementType == ElementType.I4 &&
+                     heap.TryReadField(instance, field, out var length) &&
+                     length.Kind == StaticValueKind.Int32)
+            {
+                lengthField = length.AsInt32();
+                haveLength = true;
+            }
+            else if (field.FieldSig?.Type.ElementType is ElementType.I or ElementType.U)
+            {
+                pointerFields.Add(field);
+            }
         }
+        if (bodyBytes is null && haveLength && lengthField > MarkerLength)
+            bodyBytes = TryReadNativeBody(heap, instance, pointerFields, lengthField);
         if (bodyBytes is null || bodyBytes.Length <= MarkerLength ||
             bodyBytes[0] != 0x2B || bodyBytes[1] != 0x05 || bodyBytes[2] != 0x28)
         {
@@ -625,5 +653,70 @@ public static class NecroBitBodyRecovery
         }
         il = bodyBytes;
         return true;
+    }
+
+    /// <summary>
+    /// Reads a CoreCLR NecroBit body out of the native page it was decrypted into, given the record's
+    /// length and the candidate pointer fields.
+    /// </summary>
+    /// <remarks>
+    /// The record keeps two native-int fields: the address of its decrypted body in the shared page,
+    /// and the IL address it is keyed by. Only the first points into a page the run allocated, so each
+    /// is resolved to a region and read from; the one that yields a body -- length bytes that open with
+    /// the anti-tamper marker -- is the body, and the IL-address field simply fails to read as one.
+    /// </remarks>
+    private static byte[]? TryReadNativeBody(
+        StaticHeap heap,
+        StaticValue instance,
+        IReadOnlyList<FieldDef> pointerFields,
+        int length)
+    {
+        foreach (var field in pointerFields)
+        {
+            if (!heap.TryReadField(instance, field, out var pointer))
+                continue;
+            if (!TryResolvePointerAddress(heap, pointer, out var address) ||
+                !heap.TryResolveNativeAddress(address, out var native))
+            {
+                continue;
+            }
+            var bytes = new byte[length];
+            if (heap.TryReadBytes(native, 0, bytes) &&
+                bytes[0] == 0x2B && bytes[1] == 0x05 && bytes[2] == 0x28)
+            {
+                return bytes;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves a native-int field value -- which the loader stores as an <see cref="System.IntPtr"/>
+    /// wrapping either a synthetic pointer or a raw address -- to the absolute address it names.
+    /// </summary>
+    private static bool TryResolvePointerAddress(StaticHeap heap, StaticValue value, out long address)
+    {
+        address = 0;
+        var current = value;
+        for (var unwound = 0; unwound < 8; unwound++)
+        {
+            if (heap.TryGetModelValue(current, "Pointer", out StaticValue modeled))
+            {
+                current = modeled;
+                continue;
+            }
+            break;
+        }
+        if (current.Kind == StaticValueKind.NativePointer &&
+            heap.TryGetNativeAddress(current, out address))
+        {
+            return true;
+        }
+        if (current.IsInteger)
+        {
+            address = current.AsInt64();
+            return true;
+        }
+        return false;
     }
 }

@@ -52,6 +52,7 @@ public static class VirtualLift
         ["returns the value it takes"] = "ret",
         ["stops the program"] = "ret",
         [VirtualSemantics.Throwing] = "throw",
+        [VirtualSemantics.Ending] = "endfinally",
         ["add"] = "add",
         ["sub"] = "sub",
         ["mul"] = "mul",
@@ -1079,7 +1080,8 @@ public static class VirtualLift
     /// <summary>Whether an operation ends the path it is on rather than handing it onwards.</summary>
     private static bool Terminal(VirtualProgram program, VirtualInstruction instruction) =>
         program.Operations.TryGetValue(instruction.Opcode, out var known) &&
-        known.Name is "returns the value it takes" or "stops the program" or VirtualSemantics.Throwing;
+        known.Name is "returns the value it takes" or "stops the program" or
+            VirtualSemantics.Throwing or VirtualSemantics.Ending;
 
     /// <summary>The depth given to an operation two paths disagreed about.</summary>
     private const int Disagreed = int.MinValue;

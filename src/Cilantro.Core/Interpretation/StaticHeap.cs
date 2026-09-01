@@ -732,6 +732,13 @@ public sealed class StaticHeap
     public bool TryResolveNativeAddress(long address, out StaticValue result)
     {
         result = StaticValue.Unknown;
+        // A region's end address is the next region's start when the two abut, and here they often do:
+        // synthetic regions are page-aligned and a whole page long, so one ends exactly where the next
+        // begins. An address on that seam belongs to the region it starts, not the one it ends, so a
+        // region that strictly contains the address is preferred and a one-past-the-end match is only
+        // a fallback for an address no region contains.
+        HeapRegion? boundary = null;
+        var boundaryId = 0;
         foreach (var pair in _objects)
         {
             if (pair.Value is not HeapRegion region ||
@@ -740,12 +747,23 @@ public sealed class StaticHeap
             {
                 continue;
             }
-            result = StaticValue.FromNativePointer(
-                pair.Key,
-                checked((int)(address - region.BaseAddress)));
-            return true;
+            if (address < region.BaseAddress + region.Bytes.Length)
+            {
+                result = StaticValue.FromNativePointer(
+                    pair.Key,
+                    checked((int)(address - region.BaseAddress)));
+                return true;
+            }
+            boundary ??= region;
+            if (boundaryId == 0)
+                boundaryId = pair.Key;
         }
-        return false;
+        if (boundary is null)
+            return false;
+        result = StaticValue.FromNativePointer(
+            boundaryId,
+            checked((int)(address - boundary.BaseAddress)));
+        return true;
     }
 
     /// <summary>Every object the interpretation made, for a search that must not miss one.</summary>

@@ -267,6 +267,23 @@ public sealed class NativeDelegateIntrinsic : IStaticIntrinsic
                 heap.TryWriteManaged(arguments[5], StaticValue.FromInt32(count));
             return IntrinsicResult.Completed(StaticValue.FromInt32(1));
         }
+        if (nativeName is "VirtualAlloc" or "VirtualAllocEx" && arguments.Count >= 3)
+        {
+            // The delegate is argument 0, so the Win32 arguments start at 1 and the size a page
+            // allocation asks for is the second of them -- the third for the Ex form, which carries a
+            // process handle first. A CoreCLR NecroBit loader allocates a page here to stage a body it
+            // has already decrypted into its managed table, so the region need only exist and be
+            // writable for the run to go on to fill that table.
+            var sizeIndex = nativeName == "VirtualAllocEx" ? 3 : 2;
+            return arguments.Count > sizeIndex &&
+                context.State.Heap.TryAllocateRegion(
+                    arguments[sizeIndex].AsInt32(), "VirtualAlloc", out var region)
+                ? IntrinsicResult.Completed(region)
+                : new IntrinsicResult(
+                    StaticExecutionStatus.AllocationLimitExceeded,
+                    StaticValue.Unknown,
+                    "VirtualAlloc region exceeded the allocation budget.");
+        }
         if (nativeName == "getJit")
             return ModelJitCompiler(context);
         if (ResourceApiModel.Handles(nativeName))
@@ -3396,6 +3413,29 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// </remarks>
     private const string RuntimeModuleName = "runtime:ModuleName";
 
+    /// <summary>
+    /// The runtime-internal pointer fields a CoreCLR NecroBit loader reflects to find where its own
+    /// image is mapped, before it decrypts every protected body into a managed table keyed by that
+    /// base plus each method's IL RVA.
+    /// </summary>
+    /// <remarks>
+    /// On .NET Framework NecroBit reaches its image through <c>Marshal.GetHINSTANCE</c>, which the
+    /// machine already answers with the mapped image's base. On CoreCLR the same loader instead reads
+    /// the runtime's own private pointers -- <c>RuntimeModule.m_ptr</c> and <c>m_pData</c>, and a
+    /// metadata-import object's <c>m_pStringHeap</c> -- through <see cref="FieldInfo"/> reflection,
+    /// because there is no public handle to them. None of these values decides where a recovered body
+    /// lands: the loader falls through every one of them to the same <c>GetHINSTANCE</c> return, and
+    /// the recovery solves for whatever single base lines the decrypt table's keys up with the
+    /// protected stubs. So answering them with the same mapped-image base is enough to let the loader
+    /// fill the table, and honest, since that is the address these private pointers stand for.
+    /// </remarks>
+    private static readonly HashSet<string> RuntimeImagePointerFields = new(StringComparer.Ordinal)
+    {
+        "m_ptr",
+        "m_pData",
+        "m_pStringHeap",
+    };
+
     private static readonly HashSet<string> AllowedTypes = new(StringComparer.Ordinal)
     {
         "System.Object",
@@ -3431,6 +3471,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         "System.IO.BinaryReader",
         "System.IO.Compression.DeflateStream",
         "System.IO.Compression.GZipStream",
+        "System.IO.Compression.BrotliStream",
         "System.Security.Cryptography.SHA1",
         "System.Security.Cryptography.SHA256",
         "System.Security.Cryptography.MD5",
@@ -3523,6 +3564,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 return AllocationFailure("runtime type");
             AttachDefinition(context, runtimeType, runtimeTypeName);
             return IntrinsicResult.Completed(runtimeType);
+        }
+        // A native pointer boxed as an object answers GetType as the IntPtr it is. A CoreCLR loader
+        // that reads a runtime-internal pointer by reflection then asks the result what type it is
+        // to tell a raw pointer from a wrapper object, and gets the plain answer here.
+        if (name == "GetType" && method.MethodSig?.HasThis == true && arguments.Count == 1 &&
+            arguments[0].Kind == StaticValueKind.NativePointer)
+        {
+            if (!context.State.Heap.TryAllocateType("System.IntPtr", out var pointerType))
+                return AllocationFailure("runtime type");
+            AttachDefinition(context, pointerType, "System.IntPtr");
+            return IntrinsicResult.Completed(pointerType);
         }
         // ToString is decided by the receiver too, and a call site holding something as an object
         // spells it through this type. That is the shape a string concatenation takes after the
@@ -3657,7 +3709,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (type == "System.IO.BinaryReader")
             return InvokeBinaryReader(context, name, arguments);
         if (type is "System.IO.Compression.DeflateStream" or
-            "System.IO.Compression.GZipStream")
+            "System.IO.Compression.GZipStream" or
+            "System.IO.Compression.BrotliStream")
             return InvokeCompression(context, type, name, arguments);
         if (type is "System.Security.Cryptography.SHA1" or
             "System.Security.Cryptography.SHA256" or "System.Security.Cryptography.MD5")
@@ -3867,21 +3920,42 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             arguments.Count == 1)
         {
             var pointer = arguments[0];
-            if (context.State.Heap.TryGetModelValue(
-                    pointer,
-                    "Pointer",
-                    out StaticValue modeled))
+            // A boxed IntPtr can be reached through more than one layer: an instance call on a struct
+            // element hands over a managed reference to the slot, and the slot holds the IntPtr object
+            // whose address lives under its "Pointer" model. Unwrap the managed reference and the
+            // model in turn until neither applies, so a pointer stored in an array reads back as the
+            // address it is rather than as the object standing for it.
+            for (var unwound = 0; unwound < 8; unwound++)
             {
-                pointer = modeled;
+                if (context.State.Heap.TryGetModelValue(
+                        pointer, "Pointer", out StaticValue modeled))
+                {
+                    pointer = modeled;
+                    continue;
+                }
+                if (pointer.Kind == StaticValueKind.ManagedReference &&
+                    context.State.Heap.TryReadManaged(pointer, out var managed))
+                {
+                    pointer = managed;
+                    continue;
+                }
+                break;
             }
-            if (context.State.Heap.TryReadManaged(pointer, out var managed))
-                pointer = managed;
             if (pointer.Kind == StaticValueKind.NativePointer &&
                 context.State.Heap.TryGetNativeAddress(pointer, out var nativeAddress))
             {
                 return IntrinsicResult.Completed(name == "ToInt32"
                     ? StaticValue.FromInt32(unchecked((int)nativeAddress))
                     : StaticValue.FromInt64(nativeAddress));
+            }
+            // A pointer can also stand for a region the run allocated -- a page a loader took from
+            // VirtualAlloc to stage a body, held as a reference to that region rather than as a raw
+            // address. Its synthetic base is the integer the program means to read here.
+            if (context.State.Heap.TryGetNativeAddress(pointer, out var regionAddress))
+            {
+                return IntrinsicResult.Completed(name == "ToInt32"
+                    ? StaticValue.FromInt32(unchecked((int)regionAddress))
+                    : StaticValue.FromInt64(regionAddress));
             }
             return pointer.IsInteger
                 ? IntrinsicResult.Completed(name == "ToInt32"
@@ -4050,6 +4124,79 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 arguments.Count == 3 ? arguments[1] : StaticValue.Null);
             heap.TrySetModelValue(bound, StaticMachine.DelegateMethodKey, boundMethod);
             return IntrinsicResult.Completed(bound);
+        }
+        // Re-wrapping a delegate that stands only for a bare pointer -- the loader takes its hook's
+        // native delegate apart with .Method and rebuilds it as a typed delegate over the same address.
+        // The MethodInfo carries the pointer rather than a managed method, so the rebuilt delegate
+        // carries it too and behaves like one made straight from the function pointer.
+        if (type is "System.Delegate" or "System.MulticastDelegate" &&
+            name == "CreateDelegate" && arguments.Count is 2 or 3 &&
+            heap.TryGetModelValue(arguments[^1], "Pointer", out StaticValue rewrappedPointer))
+        {
+            var delegateType =
+                heap.TryGetModelValue(arguments[0], "TypeName", out string? shape) && shape is not null
+                    ? shape
+                    : "System.Delegate";
+            if (!heap.TryAllocateObject(delegateType, out var rewrapped))
+                return AllocationFailure("delegate");
+            heap.TrySetModelValue(rewrapped, "Pointer", rewrappedPointer);
+            if (heap.TryGetModelValue(arguments[^1], "NativeName", out string? rewrappedName) &&
+                !string.IsNullOrEmpty(rewrappedName))
+            {
+                heap.TrySetModelValue(rewrapped, "NativeName", rewrappedName);
+            }
+            return IntrinsicResult.Completed(rewrapped);
+        }
+        // A delegate names the method it targets. A NecroBit loader reads that name to pre-JIT its own
+        // hook before it installs it -- PrepareMethod(d.Method.MethodHandle) -- so the bound method is
+        // the honest answer, and the pin that follows is a no-op under static interpretation.
+        if (type is "System.Delegate" or "System.MulticastDelegate" &&
+            name == "get_Method" && arguments.Count == 1)
+        {
+            if (heap.TryGetModelValue<IMethod>(
+                    arguments[0], StaticMachine.DelegateMethodKey, out var targetMethod) &&
+                targetMethod is not null)
+            {
+                return Describing(heap, "System.Reflection.MethodInfo", targetMethod);
+            }
+            // A delegate the loader built from a bare function pointer -- its own hook, reached through
+            // GetDelegateForFunctionPointer -- has no managed method behind it, only the address. The
+            // loader still reads its .Method to re-wrap it with CreateDelegate and to pin it; carrying
+            // the address onto the MethodInfo lets that round-trip name the same routine throughout.
+            if (heap.TryAllocateObject("System.Reflection.MethodInfo", out var pointerMethod))
+            {
+                if (heap.TryGetModelValue(arguments[0], "Pointer", out StaticValue functionPointer))
+                    heap.TrySetModelValue(pointerMethod, "Pointer", functionPointer);
+                if (heap.TryGetModelValue(arguments[0], "NativeName", out string? nativeName) &&
+                    !string.IsNullOrEmpty(nativeName))
+                {
+                    heap.TrySetModelValue(pointerMethod, "NativeName", nativeName);
+                }
+                return IntrinsicResult.Completed(pointerMethod);
+            }
+            return AllocationFailure("delegate method");
+        }
+        // A method handle is the method in the form the runtime pins and prepares; the loader reads one
+        // from its hook's MethodInfo. The metadata the MethodInfo already carries is that method, and
+        // handing it back as a handle lets the pin -- itself a no-op here -- name something real. A
+        // MethodInfo that stands only for a bare pointer has no metadata; a handle that carries the
+        // same pointer is enough for the no-op pin that follows.
+        if (name == "get_MethodHandle" && arguments.Count == 1 &&
+            type is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo")
+        {
+            if (heap.TryGetModelValue<object>(arguments[0], "Metadata", out var behindMethod) &&
+                behindMethod is not null &&
+                heap.TryAllocateMetadataHandle(behindMethod, out var methodHandle))
+            {
+                return IntrinsicResult.Completed(methodHandle);
+            }
+            if (heap.TryAllocateObject("System.RuntimeMethodHandle", out var pointerHandle))
+            {
+                if (heap.TryGetModelValue(arguments[0], "Pointer", out StaticValue functionPointer))
+                    heap.TrySetModelValue(pointerHandle, "Pointer", functionPointer);
+                return IntrinsicResult.Completed(pointerHandle);
+            }
+            return AllocationFailure("method handle");
         }
         // A type that is not a constructed generic has no arguments rather than no answer, so the
         // empty array is the honest reply and lets the caller carry on asking about it.
@@ -4317,6 +4464,22 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return heap.TryWriteField(instance, accessedField, stored)
                 ? IntrinsicResult.Completed()
                 : IntrinsicResult.Invalid("The field could not be written.");
+        }
+        // A CoreCLR NecroBit loader reads the runtime's own private module pointers by reflection to
+        // find where its image is mapped. They name no field of this module, so there is no metadata
+        // to read them from; the mapped-image base the loader is ultimately after is the honest answer
+        // and the one that lets it go on to fill its decrypt table. See RuntimeImagePointerFields.
+        if (name == "GetValue" && arguments.Count == 2 &&
+            heap.TryGetModelValue(arguments[0], "MemberName", out string? internalField) &&
+            internalField is not null &&
+            RuntimeImagePointerFields.Contains(internalField))
+        {
+            return context.State.ImageRegion.IsKnown &&
+                heap.TryGetNativePointer(context.State.ImageRegion, 0, out var imagePointer)
+                ? IntrinsicResult.Completed(imagePointer)
+                : IntrinsicResult.Invalid(
+                    $"The runtime image pointer {internalField} was read before the analysed image " +
+                    "was registered.");
         }
         // Where a member was found is recorded when it is handed over, and where it was not, the
         // type that declares it is the only answer there is to give.
@@ -6851,6 +7014,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
+        // Forcing a method or delegate to compile is a runtime housekeeping step with no result and
+        // nothing this machine models a state for: a NecroBit loader calls it to make sure its hook is
+        // JIT-compiled before it installs it, and under static interpretation there is nothing to
+        // prepare, so it completes and leaves the interpretation where it was.
+        if (name is "PrepareDelegate" or "PrepareMethod" or "PrepareConstrainedRegions" or
+            "ProbeForSufficientStack" or "PrepareContractedDelegate")
+        {
+            return IntrinsicResult.Completed();
+        }
         if (name != "InitializeArray" ||
             arguments.Count != 2 ||
             !context.State.Heap.TryGetMetadataHandle(arguments[1], out var metadata) ||
@@ -7378,7 +7550,9 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             using var input = new MemoryStream(compressed, writable: false);
             using Stream inflater = type.EndsWith("GZipStream", StringComparison.Ordinal)
                 ? new GZipStream(input, CompressionMode.Decompress)
-                : new DeflateStream(input, CompressionMode.Decompress);
+                : type.EndsWith("BrotliStream", StringComparison.Ordinal)
+                    ? new BrotliStream(input, CompressionMode.Decompress)
+                    : new DeflateStream(input, CompressionMode.Decompress);
             using var output = new MemoryStream();
             var chunk = new byte[8192];
             while (true)
@@ -8851,6 +9025,7 @@ public sealed class VirtualRegionIntrinsic : IStaticIntrinsic
         method.Name.String is "AllocHGlobal" or "FreeHGlobal" or
             "AllocCoTaskMem" or "FreeCoTaskMem" or "Copy" or
             "GetHINSTANCE" or "GetDelegateForFunctionPointer" or
+            "GetFunctionPointerForDelegate" or
             "ReadByte" or "ReadInt16" or "ReadInt32" or "ReadInt64" or "ReadIntPtr" or
             "WriteByte" or "WriteInt16" or "WriteInt32" or "WriteInt64" or "WriteIntPtr") ||
         (NativeName(method) ?? method.Name.String) is
@@ -8887,14 +9062,42 @@ public sealed class VirtualRegionIntrinsic : IStaticIntrinsic
             heap.TrySetModelValue(pointer, "NativeName", procedureName);
             return IntrinsicResult.Completed(pointer);
         }
-        if (name == "GetDelegateForFunctionPointer" && arguments.Count == 2 &&
-            heap.TryGetModelValue(arguments[0], "NativeName", out string? nativeName) &&
-            !string.IsNullOrEmpty(nativeName))
+        if (name == "GetDelegateForFunctionPointer" && arguments.Count == 2)
         {
             if (!heap.TryAllocateObject("System.Delegate", out var nativeDelegate))
                 return IntrinsicResult.Invalid("Could not allocate native delegate.");
-            heap.TrySetModelValue(nativeDelegate, "NativeName", nativeName);
+            // A delegate bound to an exported routine carries its name so an invocation can be modelled
+            // by it. One bound to a bare address -- the original JIT slot a NecroBit hook saves to call
+            // through, which it never does under static interpretation -- carries the address instead,
+            // so saving and reinstalling it round-trips even though nothing here calls it.
+            if (heap.TryGetModelValue(arguments[0], "NativeName", out string? nativeName) &&
+                !string.IsNullOrEmpty(nativeName))
+            {
+                heap.TrySetModelValue(nativeDelegate, "NativeName", nativeName);
+            }
+            if (heap.TryGetModelValue(arguments[0], "Pointer", out StaticValue functionPointer))
+                heap.TrySetModelValue(nativeDelegate, "Pointer", functionPointer);
             return IntrinsicResult.Completed(nativeDelegate);
+        }
+        if (name == "GetFunctionPointerForDelegate" && arguments.Count == 1)
+        {
+            // A delegate re-wrapped from a bare address carries it, so a save-and-reinstall round-trips.
+            // A managed hook delegate has no address until the runtime JITs it; a NecroBit loader writes
+            // this value straight into its JIT vtable and never calls through it here, so a synthetic
+            // page standing for the hook's code hands it a concrete, stable address to write. The page
+            // is cached on the delegate so every read of its pointer agrees, run to run.
+            if (heap.TryGetModelValue(arguments[0], "Pointer", out StaticValue existing))
+                return IntrinsicResult.Completed(existing);
+            if (!heap.TryAllocateRegion(16, "HookCode", out var hookCode) ||
+                !heap.TryGetNativePointer(hookCode, 0, out var hookPointer))
+            {
+                return new IntrinsicResult(
+                    StaticExecutionStatus.AllocationLimitExceeded,
+                    StaticValue.Unknown,
+                    "Hook code page exceeded the allocation budget.");
+            }
+            heap.TrySetModelValue(arguments[0], "Pointer", hookPointer);
+            return IntrinsicResult.Completed(hookPointer);
         }
         if (name == "GetHINSTANCE" && arguments.Count == 1)
             return heap.TryGetNativePointer(context.State.ImageRegion, 0, out var moduleBase)

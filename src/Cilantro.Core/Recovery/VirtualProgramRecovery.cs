@@ -448,6 +448,7 @@ public static class VirtualProgramRecovery
                         "running this program, none of them naming places in it, so they are " +
                         "something else of the engine's and nothing here is known to be guarded.";
         var settled = Settled(program, context.Module);
+        NameHandlerEnds(settled, regions, program);
         var left = refused
             .Where(entry => !settled.TryGetValue(entry.Key, out var known) || !known.Identified)
             .ToDictionary(entry => entry.Key, entry => entry.Value);
@@ -507,6 +508,41 @@ public static class VirtualProgramRecovery
                 found.Add(region);
         }
         return found;
+    }
+
+    /// <summary>
+    /// Names the operation that ends a finally, which no trial can classify on its own.
+    /// </summary>
+    /// <remarks>
+    /// A finally handler leaves the runtime through <c>endfinally</c>: an operation that takes and
+    /// leaves nothing and only decides where control resumes. That is the one shape the trials
+    /// cannot separate from any other change to the engine's own state, so it is written as
+    /// "changes engine state" and the reading stops at it. The clause names it instead. A guarded
+    /// region that catches no type is a finally — or a fault, which the runtime ends the same way —
+    /// and the operation at the last place of its handler is its end. Named here, the walk carries
+    /// on to the end of the program and <see cref="VirtualBody"/> can build the region back as the
+    /// handler it is rather than refuse a body over a place it cannot read.
+    /// </remarks>
+    private static void NameHandlerEnds(
+        Dictionary<int, VirtualOperation> operations,
+        IReadOnlyList<VirtualRegion> regions,
+        VirtualProgram program)
+    {
+        foreach (var region in regions)
+        {
+            if (VirtualBody.CatchName(region.Caught) is not null ||
+                region is not { Handled.To: var last } ||
+                last < 0 || last >= program.Instructions.Count)
+            {
+                continue;
+            }
+            var opcode = program.Instructions[last].Opcode;
+            if (operations.TryGetValue(opcode, out var known) &&
+                known is { Name: null, Pops: 0, Pushes: 0, TouchesState: true })
+            {
+                operations[opcode] = known with { Name = VirtualSemantics.Ending };
+            }
+        }
     }
 
     /// <summary>What each clause guards, where something holding it said so.</summary>
@@ -597,11 +633,7 @@ public static class VirtualProgramRecovery
                     break;
                 case "System.Type":
                     typed = true;
-                    caught ??= heap.TryGetModelValue<string>(stored, "TypeName", out var identity)
-                        ? identity
-                        : heap.TryGetModelValue<string>(stored, "Name", out var named)
-                            ? named
-                            : null;
+                    caught ??= NamedType(heap, stored);
                     break;
                 default:
                     break;
@@ -630,6 +662,37 @@ public static class VirtualProgramRecovery
             Guarded = apart ? guarded : null,
             Handled = apart ? handled : null
         };
+    }
+
+    /// <summary>
+    /// The type a clause's <see cref="System.Type"/> field names, or nothing where it names none.
+    /// </summary>
+    /// <remarks>
+    /// A finally clause still has the field — the engine's clause class is one shape — and what is
+    /// stored there is often a <see cref="System.Type"/> object with no identity: no
+    /// <c>TypeName</c>, no metadata, or a placeholder the machine used because it could not name
+    /// the type. Those are not catch types. Reading them as names would make
+    /// <see cref="VirtualBody"/> refuse a finally it could otherwise write.
+    /// </remarks>
+    private static string? NamedType(StaticHeap heap, StaticValue stored)
+    {
+        if (heap.TryGetModelValue<string>(stored, "TypeName", out var identity) &&
+            VirtualBody.CatchName(identity) is { } fromName)
+        {
+            return fromName;
+        }
+        if (heap.TryGetModelValue<string>(stored, "Name", out var named) &&
+            VirtualBody.CatchName(named) is { } fromShort)
+        {
+            return fromShort;
+        }
+        if (heap.TryGetModelValue<object>(stored, "Metadata", out var metadata) &&
+            metadata is IType typed &&
+            VirtualBody.CatchName(typed.FullName) is { } fromMetadata)
+        {
+            return fromMetadata;
+        }
+        return null;
     }
 
     /// <summary>How many places a clause has to name to be read as one.</summary>

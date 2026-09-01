@@ -54,6 +54,25 @@ public static class VirtualBody
         return builder.Run();
     }
 
+    /// <summary>
+    /// The catch type a region named, or nothing where the name is no type at all.
+    /// </summary>
+    /// <remarks>
+    /// A finally clause still carries a <see cref="System.Type"/> field — the engine's clause class
+    /// is one shape for every handler kind — and what lands there when nothing is caught is a
+    /// placeholder the machine could not name. Treating that placeholder as a catch type makes the
+    /// rebuild refuse a finally it could write. Empty names and names that say they are unnamed are
+    /// that placeholder, not a type this module could put on a clause.
+    /// </remarks>
+    internal static string? CatchName(string? caught)
+    {
+        if (string.IsNullOrWhiteSpace(caught))
+            return null;
+        return caught.Contains("unnamed", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : caught;
+    }
+
     private sealed class Builder(VirtualProgram program, ModuleDef module, MethodDef stub)
     {
         private readonly MethodDef _stub = stub;
@@ -86,7 +105,8 @@ public static class VirtualBody
             public bool Holds(int index) => index >= From && index <= To;
         }
 
-        private readonly record struct Guard(Span Try, Span Handler, ITypeDefOrRef Caught);
+        private readonly record struct Guard(
+            Span Try, Span Handler, ExceptionHandlerType Kind, ITypeDefOrRef? Caught);
 
         public Attempt Run()
         {
@@ -153,13 +173,13 @@ public static class VirtualBody
             // that means anything where one region sits inside another.
             foreach (var guard in _guards.OrderBy(guard => guard.Handler.To - guard.Try.From))
             {
-                _body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+                _body.ExceptionHandlers.Add(new ExceptionHandler(guard.Kind)
                 {
                     TryStart = _entries[guard.Try.From],
                     TryEnd = Following(guard.Try.To),
                     HandlerStart = _entries[guard.Handler.From],
                     HandlerEnd = Following(guard.Handler.To),
-                    CatchType = guard.Caught
+                    CatchType = guard.Kind == ExceptionHandlerType.Catch ? guard.Caught : null
                 });
             }
 
@@ -178,7 +198,7 @@ public static class VirtualBody
                     : $" {dead} of them are places nothing reaches and throw instead.") +
                 (_guards.Count == 0
                     ? string.Empty
-                    : $" {_guards.Count} guarded region(s) became catch handlers."));
+                    : $" {_guards.Count} guarded region(s) became handlers."));
             return new Attempt(_body, null, _notes);
         }
 
@@ -211,11 +231,28 @@ public static class VirtualBody
                     return $"the program has a guarded region ({region.Describe()}) whose try and " +
                         "handler were not told apart, so the code it guards is not established";
                 }
-                if (region.Caught is not { } caught || Catching(caught) is not { } type)
+                ExceptionHandlerType kind;
+                ITypeDefOrRef? type = null;
+                if (CatchName(region.Caught) is { } caught)
                 {
-                    return $"the region over {guarded.From}-{guarded.To} catches " +
-                        $"{region.Caught ?? "something unnamed"}, which is not a type this module " +
-                        "can name";
+                    if (Catching(caught) is not { } named)
+                    {
+                        return $"the region over {guarded.From}-{guarded.To} catches {caught}, " +
+                            "which is not a type this module can name";
+                    }
+                    type = named;
+                    kind = ExceptionHandlerType.Catch;
+                }
+                else
+                {
+                    // A clause that names no type is a finally or a fault. The engine keeps the
+                    // runtime's own handler-kind flag among the clause's numbers, last of them, so
+                    // the two are told apart the way the runtime tells them apart: 4 is a fault and
+                    // anything else a finally, both of which end at endfinally and catch no type.
+                    kind = region.Numbers is { Count: > 0 } flags &&
+                        flags[^1] == (int)ExceptionHandlerType.Fault
+                        ? ExceptionHandlerType.Fault
+                        : ExceptionHandlerType.Finally;
                 }
                 if (guarded.To >= lines.Count || handled.To >= lines.Count)
                 {
@@ -223,7 +260,7 @@ public static class VirtualBody
                         "the program";
                 }
                 _guards.Add(new Guard(new Span(guarded.From, guarded.To),
-                    new Span(handled.From, handled.To), type));
+                    new Span(handled.From, handled.To), kind, type));
             }
 
             foreach (var guard in _guards)
@@ -233,7 +270,7 @@ public static class VirtualBody
                     // Falling out of a try or a handler is not something the runtime allows, and a
                     // reading in which the code does is a reading that has the ends in the wrong
                     // place rather than a program that does it.
-                    if (lines[part.To].Mnemonic is not ("br" or "ret" or "throw"))
+                    if (lines[part.To].Mnemonic is not ("br" or "ret" or "throw" or "endfinally"))
                     {
                         return $"operations {part.From}-{part.To} are guarded or handle what is, " +
                             $"and the last of them ({lines[part.To].Mnemonic ?? "unread"}) runs on " +
@@ -265,10 +302,23 @@ public static class VirtualBody
         {
             if (module.Find(caught, isReflectionName: false) is { } declared)
                 return declared;
+            if (module.Find(caught, isReflectionName: true) is { } reflected)
+                return reflected;
+            foreach (var candidate in module.GetTypes())
+            {
+                if (candidate.FullName.Equals(caught, StringComparison.Ordinal) ||
+                    candidate.Name.String.Equals(caught, StringComparison.Ordinal))
+                {
+                    return candidate;
+                }
+            }
             var cut = caught.LastIndexOf('.');
-            return cut > 0 && caught.StartsWith("System.", StringComparison.Ordinal)
-                ? module.CorLibTypes.GetTypeRef(caught[..cut], caught[(cut + 1)..])
-                : null;
+            if (cut <= 0)
+                return null;
+            // A dotted name is a type some assembly already known to this module can spell. Corlib
+            // is the usual home; a name that is not System.* is still written as a type ref against
+            // it, which is enough for the runtime to load a catch clause of a framework type.
+            return module.CorLibTypes.GetTypeRef(caught[..cut], caught[(cut + 1)..]);
         }
 
         /// <summary>Whether a jump from one operation to another leaves a guarded region.</summary>
@@ -360,6 +410,9 @@ public static class VirtualBody
                     // is what the operation established it is by refusing anything else.
                     Add(OpCodes.Castclass, Exceptions);
                     Add(OpCodes.Throw);
+                    return null;
+                case "endfinally":
+                    Add(OpCodes.Endfinally);
                     return null;
                 case "add":
                     return Arithmetic(line, OpCodes.Add);
@@ -583,7 +636,14 @@ public static class VirtualBody
             {
                 return "its operand names no method";
             }
-            if (signature.Generic || called is MethodSpec)
+            // A method spec is a generic method already instantiated: it names its type arguments,
+            // so the call can be written as it stands and each parameter converted to the concrete
+            // type the instantiation gives it. An open generic method carries no such arguments and
+            // is refused, since a body that converts to !!0 is a body the runtime will not load.
+            var instantiation = called is MethodSpec { GenericInstMethodSig.GenericArguments: { } args }
+                ? args
+                : null;
+            if ((signature.Generic || called is MethodSpec) && instantiation is null)
                 return "the method it names is generic, whose arguments the reading does not carry";
 
             var parameters = signature.Params;
@@ -602,7 +662,7 @@ public static class VirtualBody
             for (var at = 0; at < parameters.Count; at++)
             {
                 Push(at + (receives ? 1 : 0));
-                Unboxed(parameters[at]);
+                Unboxed(Instantiated(parameters[at], instantiation));
             }
 
             if (constructing)
@@ -615,9 +675,41 @@ public static class VirtualBody
 
             Add(receives ? OpCodes.Callvirt : OpCodes.Call, called);
             if (signature.RetType.ElementType != ElementType.Void)
-                Boxed(signature.RetType);
+                Boxed(Instantiated(signature.RetType, instantiation));
             return null;
         }
+
+        /// <summary>
+        /// A method spec's parameter or return type with its type arguments put in, so a value can
+        /// be converted to the concrete type the call takes rather than to the <c>!!0</c> the
+        /// generic method is written in.
+        /// </summary>
+        /// <remarks>
+        /// Only the method's own type parameters are substituted, which is all a spec supplies. A
+        /// type parameter of a generic declaring type is left as it stands, since it is carried by
+        /// the type the call reaches through rather than by the spec, and a call on one is reached
+        /// through a type spec that already names it.
+        /// </remarks>
+        private static TypeSig Instantiated(TypeSig type, IList<TypeSig>? methodArgs) =>
+            methodArgs is null ? type : Substitute(type, methodArgs) ?? type;
+
+        private static TypeSig? Substitute(TypeSig? type, IList<TypeSig> methodArgs) => type switch
+        {
+            null => null,
+            GenericMVar mvar => mvar.Number < methodArgs.Count
+                ? methodArgs[(int)mvar.Number]
+                : type,
+            SZArraySig array => new SZArraySig(Substitute(array.Next, methodArgs)),
+            ArraySig array => new ArraySig(
+                Substitute(array.Next, methodArgs), array.Rank, array.Sizes, array.LowerBounds),
+            ByRefSig reference => new ByRefSig(Substitute(reference.Next, methodArgs)),
+            PtrSig pointer => new PtrSig(Substitute(pointer.Next, methodArgs)),
+            PinnedSig pinned => new PinnedSig(Substitute(pinned.Next, methodArgs)),
+            GenericInstSig instance => new GenericInstSig(
+                instance.GenericType,
+                [.. instance.GenericArguments.Select(argument => Substitute(argument, methodArgs))]),
+            _ => type
+        };
 
         /// <summary>
         /// A return, which the reading gives in two forms: one that carries a value up and one
