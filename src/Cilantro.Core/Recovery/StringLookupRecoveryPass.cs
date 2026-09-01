@@ -72,6 +72,32 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
                     "literal into");
                 continue;
             }
+            // A method that draws on something no two runs agree on — a random source, the clock, a
+            // fresh guid — cannot be handing back a literal fixed at build time, whatever its shape.
+            // It is the program's own, and asking it for one number would get one of the many answers
+            // it is entitled to give, so it is neither restored nor counted as a string left undone.
+            if (DrawsOnAnUnrepeatableSource(lookup.Aliases))
+            {
+                said.Add(
+                    $"{Say(candidate)}: it reads a value no two runs share — a random, clock or " +
+                    $"guid source — so its {lookup.Calls} use(s) are the program's own logic rather " +
+                    "than encoded strings, and are left alone");
+                continue;
+            }
+            // Every number reaching it is a caller's own parameter, never a constant a protector
+            // would have written at the site. A resolver of hidden literals is called with the
+            // literal's number; a method called with whatever number the program happens to hold is
+            // ordinary program logic that returns a string, and folding its callers would invent one.
+            if (lookup.Sites.Count == 0 &&
+                lookup.ParameterKeyCalls > 0 &&
+                lookup.ParameterKeyCalls == lookup.Unproven.Count)
+            {
+                said.Add(
+                    $"{Say(candidate)}: every one of its {lookup.Calls} use(s) passes a caller's own " +
+                    "parameter rather than a constant, so it is a pass-through the program calls and " +
+                    "not a resolver of encoded strings");
+                continue;
+            }
             if (lookup.Unproven.Count != 0)
             {
                 unproven += lookup.Calls;
@@ -139,6 +165,7 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
         IReadOnlyCollection<MethodDef> Aliases,
         IReadOnlyList<(MethodDef Method, Instruction Call, int Key)> Sites,
         IReadOnlyList<string> Unproven,
+        int ParameterKeyCalls,
         int Taken)
     {
         /// <summary>Every call that reaches it, whether or not its number could be settled.</summary>
@@ -195,6 +222,7 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
 
         var sites = new List<(MethodDef, Instruction, int)>();
         var unproven = new List<string>();
+        var parameterKeyCalls = 0;
         var taken = 0;
         foreach (var reference in references)
         {
@@ -208,11 +236,13 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
             {
                 unproven.Add(
                     $"{reference.Method.MDToken} IL_{reference.Instruction.Offset:X4}: {slice}");
+                if (KeyIsParameterSourced(reference.Method, reference.Index))
+                    parameterKeyCalls++;
                 continue;
             }
             sites.Add((reference.Method, reference.Instruction, key));
         }
-        return new Lookup(candidate, aliases, sites, unproven, taken);
+        return new Lookup(candidate, aliases, sites, unproven, parameterKeyCalls, taken);
     }
 
     /// <summary>One instruction naming a method, and where in its own body it sits.</summary>
@@ -321,6 +351,80 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
             return;
         context.TryGetFact<int>("strings.callSites", out var counted);
         context.SetFact("strings.callSites", counted + sites);
+    }
+
+    /// <summary>
+    /// Whether the number handed to a call is the calling method's own parameter.
+    /// </summary>
+    /// <remarks>
+    /// Walked back from the call through the operations a slice reads straight through — the padding
+    /// a build leaves and a widening between int sizes — to the value that actually reaches it. A
+    /// parameter there means the caller passes whatever it was handed, which a resolver of literals
+    /// never is: those are called with the number the literal was filed under, written at the site.
+    /// The walk stays deliberately shallow, so a number built out of a parameter by arithmetic is not
+    /// claimed as one; that leaves such a site counted as unsettled rather than waved past, which is
+    /// the safe way to be wrong here.
+    /// </remarks>
+    private static bool KeyIsParameterSourced(MethodDef method, int callIndex)
+    {
+        var instructions = method.Body.Instructions;
+        var index = callIndex - 1;
+        while (index >= 0)
+        {
+            var code = instructions[index].OpCode.Code;
+            if (code is Code.Nop or Code.Conv_I4 or Code.Conv_U4)
+            {
+                index--;
+                continue;
+            }
+            return code is Code.Ldarg or Code.Ldarg_S or Code.Ldarg_0 or
+                Code.Ldarg_1 or Code.Ldarg_2 or Code.Ldarg_3;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a resolver draws on a source no two runs agree on, which no fixed literal does.
+    /// </summary>
+    /// <remarks>
+    /// A decoder of build-time strings is a function of its number and nothing else, so it gives one
+    /// answer however often it is asked. A method that reaches for randomness, the clock, or a fresh
+    /// guid gives a different one each time, which is proof it is the program's own logic wearing the
+    /// same <c>string(int)</c> shape rather than a table of hidden literals. The alias set is walked
+    /// as well as the resolver, since a forwarder standing in for it inherits the question.
+    /// </remarks>
+    private static bool DrawsOnAnUnrepeatableSource(IEnumerable<MethodDef> methods)
+    {
+        foreach (var method in methods)
+        {
+            if (!method.HasBody)
+                continue;
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is IMethod called && ReadsAnUnrepeatableValue(called))
+                    return true;
+                if (instruction.Operand is IField field &&
+                    field.FieldSig?.Type?.FullName == "System.Random")
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static bool ReadsAnUnrepeatableValue(IMethod method)
+    {
+        var declaring = method.DeclaringType?.FullName;
+        if (declaring is null)
+            return false;
+        var name = method.Name?.String ?? string.Empty;
+        return declaring == "System.Random"
+            || (declaring == "System.Guid" && name == "NewGuid")
+            || (declaring is "System.DateTime" or "System.DateTimeOffset" &&
+                name is "get_Now" or "get_UtcNow")
+            || (declaring == "System.Environment" && name is "get_TickCount" or "get_TickCount64")
+            || (declaring == "System.Diagnostics.Stopwatch" && name == "GetTimestamp");
     }
 
     private static readonly Dictionary<uint, int> EmptyKeys = [];

@@ -125,6 +125,77 @@ public sealed class StringLookupRecoveryTests
     }
 
     /// <summary>
+    /// A method whose number is always its caller's own parameter is program logic, not a lookup.
+    /// </summary>
+    /// <remarks>
+    /// A resolver of hidden literals is called with the number the literal was filed under, a
+    /// constant written at the site. A method reached only with whatever number its caller happens
+    /// to hold is being used, not decoded: there is no literal to write in its place, and counting
+    /// its calls as strings left undone would report a gap that no rewrite could ever close.
+    /// </remarks>
+    [Fact]
+    public void AMethodCalledOnlyWithACallersParameterIsLeftAsProgramLogic()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            var fetch = Fetcher(module, "Fetch", "slot");
+            type.Methods.Add(fetch);
+            type.Methods.Add(ParameterCaller(module, "Uses", fetch));
+        });
+
+        Triage(context);
+        var result = new StringLookupRecoveryPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(
+            result.Diagnostics,
+            said => said.Contains("pass-through", StringComparison.Ordinal));
+        Assert.Contains(
+            Method(context, "Uses").Body.Instructions,
+            instruction => instruction.Operand is IMethod called && called.Name == "Fetch");
+        // Nothing here was a string left undone, so nothing is owed against the run's totals.
+        context.TryGetFact<int>("strings.callSites", out var counted);
+        Assert.Equal(0, counted);
+    }
+
+    /// <summary>
+    /// A method that reaches for randomness is program logic, however it is called.
+    /// </summary>
+    /// <remarks>
+    /// A decoder of build-time strings answers the same for the same number every time. One that
+    /// draws on a random source gives a different answer each run, which is proof it is the program's
+    /// own and not a table of literals, even where its number is a plain constant. Asking it would
+    /// get one of the many answers it may give, so it is neither restored nor counted as unread.
+    /// </remarks>
+    [Fact]
+    public void AMethodThatReadsRandomnessIsLeftAsProgramLogic()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            var fetch = RandomFetcher(module, "Fetch");
+            type.Methods.Add(fetch);
+            type.Methods.Add(Caller(module, "Uses", fetch, 8));
+        });
+
+        Triage(context);
+        var result = new StringLookupRecoveryPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(
+            result.Diagnostics,
+            said => said.Contains("no two runs share", StringComparison.Ordinal));
+        Assert.Contains(
+            Method(context, "Uses").Body.Instructions,
+            instruction => instruction.Operand is IMethod called && called.Name == "Fetch");
+        context.TryGetFact<int>("strings.callSites", out var counted);
+        Assert.Equal(0, counted);
+    }
+
+    /// <summary>
     /// The sample that led to this reading, whose strings are kept two layers down.
     /// </summary>
     /// <remarks>
@@ -286,5 +357,49 @@ public sealed class StringLookupRecoveryTests
         }
         body.Add(Instruction.Create(OpCodes.Ret));
         return caller;
+    }
+
+    /// <summary>A caller that hands the fetcher its own parameter rather than a constant.</summary>
+    private static MethodDefUser ParameterCaller(
+        ModuleDefUser module,
+        string name,
+        MethodDef fetcher)
+    {
+        var caller = new MethodDefUser(
+            name, MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32))
+        {
+            Attributes = MethodAttributes.Public | MethodAttributes.Static,
+            Body = new CilBody()
+        };
+        var body = caller.Body.Instructions;
+        body.Add(Instruction.Create(OpCodes.Ldarg_0));
+        body.Add(Instruction.Create(OpCodes.Call, fetcher));
+        body.Add(Instruction.Create(OpCodes.Pop));
+        body.Add(Instruction.Create(OpCodes.Ret));
+        return caller;
+    }
+
+    /// <summary>A <c>string(int)</c> method whose body draws on a random source.</summary>
+    private static MethodDefUser RandomFetcher(ModuleDefUser module, string name)
+    {
+        var random = new TypeRefUser(module, "System", "Random", module.CorLibTypes.AssemblyRef);
+        var made = new MemberRefUser(
+            module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void), random);
+        var next = new MemberRefUser(
+            module, "Next", MethodSig.CreateInstance(module.CorLibTypes.Int32), random);
+        var fetcher = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32))
+        {
+            Attributes = MethodAttributes.Public | MethodAttributes.Static,
+            Body = new CilBody()
+        };
+        var body = fetcher.Body.Instructions;
+        body.Add(Instruction.Create(OpCodes.Newobj, made));
+        body.Add(Instruction.Create(OpCodes.Callvirt, next));
+        body.Add(Instruction.Create(OpCodes.Pop));
+        body.Add(Instruction.Create(OpCodes.Ldstr, "seed"));
+        body.Add(Instruction.Create(OpCodes.Ret));
+        return fetcher;
     }
 }

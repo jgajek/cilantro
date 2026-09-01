@@ -29,15 +29,21 @@
     },
     {
       "id": "qbjuef",
-      "tier": "exploratory",
+      "tier": "profiled",
       "sha256": "c8fab65dedd9c62a35cfab7e318225c42cc838d57fe0a1f072b195a1a779523b",
       "localName": "Qbjuef.exe",
       "expectedDetection": "reactor",
-      "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings", "dispatcher-control-flow"],
+      "expectedCapabilities": ["delegate-proxy", "resource-container", "protected-strings", "dispatcher-control-flow", "virtualization"],
       "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
       "minimumVirtualOperationsRead": 1.0,
       "minimumVirtualOperationsWalked": 0.998,
-      "requireConsistentVirtualStack": true
+      "requireConsistentVirtualStack": true,
+      "expectedPayloadSha256": [
+        "bb8fb1ca76cb531bdbedcdafa851b5de6e86042350e7cc5cb121c0fe4f23ca2b",
+        "417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd"
+      ]
     },
     {
       "id": "reason-pac",
