@@ -138,13 +138,22 @@ This is Reactor's headline feature and the one that matters most.
 The IL of every method is removed from the file and stored encrypted. Each method
 is left as a stub that does nothing. Reactor then installs a **hook into the JIT
 compiler** — the component that turns IL into machine code. When the runtime asks
-the JIT to compile a method, Reactor's hook intercepts the request, decrypts the
-real IL for that method, and hands it over instead of the stub.
+the JIT to compile a method, Reactor's hook intercepts the request and hands over
+the real IL for that method instead of the stub.
 
-The consequence is severe: **the real code is never in the file in readable form,
-and never all in memory at once.** It is decrypted one method at a time, at the
-moment that method is first called. A memory dump gets you the methods that
-happened to run, and nothing else.
+The consequence for you is that **the real code is never in the file in readable
+form.** A decompiler opening the file finds nothing but stubs.
+
+The old advice was that it is also never all in memory at once — that each method
+is decrypted only at the moment it is first called, so a memory dump gets you the
+methods that happened to run and nothing else. That is worth knowing because, in
+the builds examined here, it turned out to be wrong. Reactor decrypts *every*
+protected body up front, during the assembly's startup, into an ordinary in-memory
+table; the JIT hook then just copies the already-decrypted bytes out when a method
+is compiled. So a dump taken any time after startup does contain all the code —
+and, more usefully, the plaintext can be worked out statically without running
+anything, which is what makes CILantro's recovery possible. This may not hold for
+every build the protector can produce, but it held for all of these.
 
 **What you see:** a decompiler shows the full class structure — every type, every
 method signature — with every method body empty or a trivial `return 0`. It looks
@@ -263,17 +272,27 @@ virtualized, since the interpreter is ordinary IL and can simply be run.
 
 ## Generations
 
-Reactor's runtime has changed shape across versions, and the two that matter for
-current samples are:
+Reactor's runtime has changed shape across versions, and the two shapes that
+matter for current samples are:
 
 - **JIT-hook generation** — the NecroBit design described above, with encrypted
-  bodies restored through a JIT callback. This is what most current samples use.
+  bodies restored through a hook in the compiler. This is what most current
+  samples use.
 - **Delegate-runtime generation** — an older design leaning more heavily on proxy
   call tables and less on body encryption.
 
 CILantro identifies which one it is looking at from structural evidence —
 the shape of the metadata and the code — rather than from version strings or file
 hashes, which is what lets it work on samples it has never seen.
+
+A generation is not the same as a marketing version, and the tool does not claim
+one. Reactor 6 and Reactor 7.5 both ship the JIT-hook generation, and nothing in
+the structure separates the two cleanly, so a detection reports `reactor` and the
+generation rather than a version number. The JIT-hook generation also appears on
+both .NET Framework and modern .NET (the CoreCLR runtime, i.e. .NET 8 and later);
+the protection is the same idea in both, differing only in how the loader locates
+the module and where it stages the decrypted bytes, which is a recovery concern
+rather than something visible to a reader.
 
 ## Putting it together
 

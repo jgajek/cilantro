@@ -8,6 +8,7 @@ analysis.
 | Manifest | Covers |
 | --- | --- |
 | `corpus/reactor-6-nonvirt.manifest.json` | .NET Reactor 6, both generations, twelve samples |
+| `corpus/reactor-7-static.manifest.json` | .NET Reactor 7.5, net48/net8/net10 probes, twelve entries |
 | `corpus/confuserex-1-static.manifest.json` | ConfuserEx 1.0.0, whole-section anti-tamper, two samples |
 
 Each sample names the protector it is expected to be identified as, so a change
@@ -24,7 +25,7 @@ Protected and exploratory samples:
 - `c405398fc582e33bbbd37222b7360a6cfdc526146622141503de1ccf9de6174a`
   (`profiled`, `embedded_dotnet_Qafcakg.exe`)
 - `c8fab65dedd9c62a35cfab7e318225c42cc838d57fe0a1f072b195a1a779523b`
-  (`exploratory`, `Qbjuef.exe`)
+  (`profiled`, `Qbjuef.exe`)
 - `8266fb6626cb3ad88b3cb7d5d5542a530b38230445af7ff76d102f8c49129b16`
   (`detected`, `Reason.PAC.dll`)
 - `15931d5e8c20547c24c851dcb2e29b747699e8b81b925c46c2245269c93d1c91`
@@ -38,10 +39,10 @@ Protected and exploratory samples:
 - `094dbed0af6664af52375a711e0b8e4e8e7e66c6d47390e8263b16efba4d1995`
   (`exploratory`, `WindowsManagement.exe`)
 
-`Mlfhntkcvb.payload` and `Qafcakg.payload` are the assemblies the two `profiled`
-samples carry. Both are protected by Reactor in turn, so recovering the outer
-sample only reaches the next wrapper, and they are in the corpus in their own
-right for that reason.
+`Mlfhntkcvb.payload` and `Qafcakg.payload` are the assemblies that
+`Mlfhntkcvb` and `Qafcakg` carry. Both are protected by Reactor in turn, so
+recovering the outer sample only reaches the next wrapper, and they are in the
+corpus in their own right for that reason.
 
 `WindowsManagement.exe` is the odd one: not a .NET file at all, but a native
 bootstrap with the assembly encrypted into a resource. Its only gate is
@@ -52,6 +53,28 @@ What comes out is
 `83ba5d833eba38f578eb8478f8961a0bddb63ff35016b40d8e0536b164ee1ed3`, a
 Reactor-protected assembly in its own right, which is why the run stops there
 rather than carrying on into it.
+
+Fed back through the tool on its own, that inner assembly recovers in full:
+28,725 method bodies come back with no stub left, its virtualized string table
+is read whole (2,971 of 2,971 operations, the walk reaching 2,961 and the depths
+agreeing everywhere), Reactor's resource-backed table is restored in full, its
+resources come back, and five payloads are extracted — the 3.86 MB application
+inside it and four Costura-packed dependencies — with the clean copy verifying
+and reproducing byte-for-byte. All 11,107 of its string sites are restored, and
+the reading that asks a resolver for each number reaching it now finishes clean
+rather than owing three. Those three are not Reactor's: they are the program's
+own methods wearing the `string(int)` shape a second-layer decoder would have —
+an HTTP status-code to reason-phrase table read with a runtime status, a SOCKS5
+code stringifier read with a runtime argument, and a `System.Random` name
+generator. The reading tells each apart from a real decoder and leaves it alone:
+a method reached only with a caller's own parameter is a pass-through the program
+calls rather than a resolver of hidden literals, and one that draws on a random,
+clock or guid source cannot be handing back a literal fixed at build time. None
+holds a string to fold, and writing one in would replace behaviour with a wrong
+constant, so none is counted as a string left undone. It is not a corpus entry
+of its own: it is the payload the bootstrap already pins by hash, and reading it
+in full costs minutes to re-assert that same hash, so the corpus stops at the
+bootstrap and this is the note that it was carried the rest of the way by hand.
 
 They are protected in two different ways, and each is held to what it reaches.
 `Ptnifif` is a JIT-hook build: all 313 of its protected bodies come back and no
@@ -104,6 +127,60 @@ detection/capability result, a failed pass, or a required sample that cannot
 emit verified output. Manifest gates can additionally require exact restored
 body counts, zero remaining stubs, complete string-site coverage, bounded
 mutation counts, a regression-locked output hash, and normalized oracle parity.
+
+## Reactor 7.5
+
+The Reactor 6 samples above are real malware, which is their strength and their
+limit: nobody has the unprotected original, so the only ground truth is what two
+independent interpretations agree on and what a hash pins. The Reactor 7.5
+manifest is the other kind of evidence. Its entries are *probes* — small programs
+built from source by `corpus/probes/build.sh`, then run through .NET Reactor
+7.5.0.0 — so each protected build has its unprotected self beside it as an oracle,
+and recovery can be checked against the real answer byte for byte rather than only
+against itself.
+
+The same source is compiled for three target frameworks, which is what lets the
+manifest separate a Reactor problem from a framework problem:
+
+- **net48** — .NET Framework 4.8;
+- **net8** and **net10** — modern .NET, which runs on CoreCLR rather than the
+  .NET Framework runtime.
+
+For each framework there are four entries: an `oracle` (the unprotected build, which
+must be detected as `none`), a `strings`-only build, a `necrobit`-only build, and a
+`full` build carrying string encryption, NecroBit, virtualization, and an encrypted
+resource bundle. That is nine `detected` protected entries and three oracles.
+
+All nine recover in full. The `necrobit` builds bring every protected body back with
+no stub left (thirteen on net48, seven on each CoreCLR build); the `strings` builds
+replace every protected-string call site with its plaintext; and the `full` builds do
+both, resolve the delegate-proxy map, read the virtualized method end to end and
+build it back into the cleaned copy, and decrypt the encrypted resource bundle. Every
+recovered string and every recovered resource bundle matches the oracle's, and the
+manifest
+pins the body counts, full string-site coverage, the virtual-operation metrics, and
+the SHA-256 of each recovered resource bundle, so a regression that reintroduced any
+of the CoreCLR-specific gaps (module-base reflection, the JIT-hook delegate
+round-trip, native-pointer body reads, Brotli resource decompression, or the
+virtualized rebuild) fails here.
+
+The one pass that reports unsupported without failing a `full` run is
+payload-extraction: these probes pack no from-memory assembly for it to recover, so
+there is nothing for it to produce.
+
+Two caveats belong with this manifest. It is a controlled set of probes rather than a
+cross-section of Reactor 7.x seen in the wild, so it proves the mechanisms work on
+7.5, not that every real-world 7.x build is recognised. And the probes have few
+methods, so in the `necrobit`-only configuration the detector's ten-stub and ten-proxy
+thresholds sit near the edge and the detection confidence there says as much about
+probe size as about the protector.
+
+```bash
+dotnet run --project src/Cilantro.Cli -- corpus run \
+  --manifest corpus/reactor-7-static.manifest.json \
+  --samples samples \
+  --output artifacts/corpus
+```
 
 ## ConfuserEx 1.0.0
 
@@ -171,38 +248,43 @@ where a wholly absent corpus is a choice the repository made.
 
 ## What the suite costs
 
-Where the samples are present the suite takes about two and a half minutes, and
-eight tests account for all but four seconds of it:
+Where the samples are present the suite takes several minutes, and about a dozen
+whole-sample tests account for all but a few seconds of it:
 
 | Test | Share of the work |
 | --- | --- |
-| `CorpusTests.CorpusOutcomesAreDeterministic` | the Reactor corpus, twice over |
+| `CorpusTests.CorpusOutcomesAreDeterministic` | the Reactor 6 corpus, twice over |
 | `CorpusTests.ConfuserExSamplesAreDecryptedAndRead` | the ConfuserEx corpus |
-| `PipelineTests.PipelineRecoversProfiledSamples` | two samples, fully emitted |
+| `PipelineTests.PipelineRecoversProfiledSamples` | the profiled samples, fully emitted |
 | `VmStringRecoveryTests.Qbjuef...` | one sample, string tables read |
 | `StringLookupRecoveryTests.TheLayerUnderneathReactors...` | one sample, both string layers |
 | `AntiTamperNeutralizationTests.RemovesProvenIntegrityCheck...` | one sample, analysed |
-| `CorpusTests.MethodProtectedGenerationIsDetectedAndFullyRecovered` | one sample, analysed |
+| `CorpusTests.MethodProtectedGenerationIsDetectedAndFullyRecovered` | one Reactor 6 sample, analysed |
+| `CorpusTests.ReactorSixVirtualizedPayloadIsFullyRecovered` | one Reactor 6 payload, virtualized |
+| `CorpusTests.ReactorSevenNecroBitFrameworkBodiesAreStaticallyRecovered` | one Reactor 7.5 net48 build |
+| `CorpusTests.ReactorSevenNecroBitCoreClrBodiesAreStaticallyRecovered` | Reactor 7.5 net8 and net10 |
+| `CorpusTests.ReactorSevenVirtualizedFullBuildIsFullyRecovered` | one Reactor 7.5 net48 full build |
+| `CorpusTests.ReactorSevenCoreClrFullBuildIsFullyRecovered` | Reactor 7.5 net8 and net10 full builds |
 
 They are described by work rather than by seconds because the seconds are not a
 property of the test: the same sample recovery has been measured at 108 seconds
 in one run and 418 in the next, unchanged, because a dozen interpretations running
 at once contend for memory bandwidth far more than for cores. What is stable is
-that these eight are minutes and the other 467 are four seconds together.
+that these are minutes and the rest of the suite is a few seconds together.
 
-Each of the eight is marked `Cost=High` and can be left out with
+Each is marked `Cost=High` and can be left out with
 `--filter "Cost!=High"`, which is the loop to work in. None of them can run in
 continuous integration, since the samples are not in the repository, so a person
 running the full suite is the only thing that closes those gates.
 
-Determinism is proven once, on the Reactor side, rather than per sample elsewhere.
+Determinism is proven once, on the Reactor 6 side, rather than per sample elsewhere.
 `CorpusOutcomesAreDeterministic` runs that corpus twice at once and requires the
 two outcome files to be byte-for-byte identical; because each outcome carries the
 SHA-256 of the assembly emitted for that sample, that one comparison covers
 emission for every sample in it. Pinned hashes do the rest: a payload or an output
-that changed for any reason fails the expectations in `PipelineTests` and the
-manifest's own output locks, which is a stricter test than comparing two runs of
-one build against each other.
+that changed for any reason fails the expectations in `PipelineTests`, the Reactor
+7.5 corpus tests, and the manifests' own output locks, which is a stricter test
+than comparing two runs of one build against each other.
 
 The ConfuserEx side is not run twice, because the determinism that matters there
 is already inside a single run: neither the section nor a single string is accepted
@@ -211,6 +293,9 @@ the run rather than passing it and differing from a second one.
 
 `detected` ReasonLabs entries are release candidates rather than
 analysis-only fixtures. They pass only when all protected application bodies
-are restored and verified. Qbjuef remains exploratory until its complete
-string/proxy use set is accounted for; refusal without edits is an acceptable
-exploratory outcome.
+are restored and verified. `Qbjuef` is now `profiled`: its twelve string sites,
+its delegate-proxy map and its virtualized method all come back, it emits a
+verified clean copy deterministically, and the two payloads it carries are
+pinned by hash. The `WindowsManagement` bootstrap stays `exploratory` because it
+is a native file that emits no managed copy of its own; its only assertion is the
+hash of the assembly it decrypts, which it meets.

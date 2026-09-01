@@ -83,8 +83,12 @@ own portrait of a plausible workstation — a machine name, a user, a disk seria
 screen size, a processor id — and every answer taken from it is marked in the
 report as assumed rather than stated. Under `--strict` the profile shrinks to the
 fifteen answers the tool has always given: the clock reads a fixed instant, no
-debugger is attached, the process is number 1 and the only one, the runtime is
-4.8, and nothing else is answered at all. Protected code asks the debugger
+debugger is attached, the process is number 1 and the only one, the runtime
+reports itself as .NET Framework 4.8, and nothing else is answered at all. (That
+runtime answer is a built-in default; a sample that expects modern .NET can be
+told otherwise through a profile, and CoreCLR samples are recovered regardless,
+since recovery does not turn on the sample believing a particular version.)
+Protected code asks the debugger
 question inside the type initializer that builds its virtual machine, so refusing
 to answer it does not leave the tool neutral; it loses the program, the string
 table, and whatever is behind them. Every question is recorded when it is asked,

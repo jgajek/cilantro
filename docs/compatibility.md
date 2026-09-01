@@ -2,9 +2,13 @@
 
 ## Corpus and support contract
 
-Two protectors are supported, with a manifest each. Every entry in both is
+Two protectors are supported, across three manifests. Every entry is
 SHA-256-pinned and names the protector it must be identified as, so a detector
-that claimed the other's samples would fail the manifest rather than pass it.
+that claimed another manifest's samples would fail rather than pass. The Reactor
+side has two manifests — one of real-world Reactor 6 malware, one of Reactor 7.5
+probes built from source — because the two prove different things: the first that
+the tool works on samples nobody controlled, the second that it works on a newer
+version whose unprotected original is available to check against byte for byte.
 
 `corpus/reactor-6-nonvirt.manifest.json` contains twelve entries:
 
@@ -14,6 +18,29 @@ that claimed the other's samples would fail the manifest rather than pass it.
 - two `exploratory` control-flow/proxy samples; and
 - three deobfuscated validation oracles used as negative controls.
 
+`corpus/reactor-7-static.manifest.json` contains twelve entries protected by
+.NET Reactor 7.5.0.0 and built by `corpus/probes/build.sh` rather than collected,
+so each protected entry has its unprotected self beside it as an oracle — the
+ground truth a real malware sample cannot supply. The same source is compiled for
+three target frameworks: **.NET Framework 4.8 (net48)** and modern .NET / CoreCLR
+(**net8** and **net10**). For each framework there is a `strings`-only build, a
+`necrobit`-only build, and a `full` build that also carries virtualization and an
+encrypted resource bundle, plus one `oracle` per framework — nine `detected`
+entries and three oracles. All nine recover in full: every protected body comes
+back with no stub left, every protected-string call site is replaced with its
+plaintext, the virtualized method in each `full` build is read and rebuilt, and
+the recovered strings and resource bundles match the oracle byte for byte. This
+manifest is what proves Reactor 7.5 and CoreCLR support; it is a controlled set of
+probes, not a cross-section of Reactor 7.x seen in the wild.
+
+Detection reports the version-honest token `reactor` for these, not `reactor7`:
+the tool identifies the Reactor family and its generation (`jit-hook` or
+`delegate-runtime`) from structure, and no structural signal separates Reactor 6
+from 7.5 — the two share the same `clrjit`/`m_pData`/`RuntimeModule` markers, and
+the only thing unique to a 7.5 probe is Eziriz's unregistered-trial watermark, a
+licence artifact absent from registered builds. So a `reactor` verdict is correct
+rather than a mislabel; it simply does not claim a version the tool cannot prove.
+
 `corpus/confuserex-1-static.manifest.json` contains two entries, both `detected`,
 both whole-section anti-tamper builds with a constants table, and neither with an
 oracle — no unprotected counterpart of either program exists. What substitutes for
@@ -22,10 +49,11 @@ one is the internal agreement described under
 interpretations produced identical write logs, and a string is put back only if two
 separately built machines agreed on it.
 
-The three oracle assemblies are never implementation inputs. After recovery,
-they are compared by assembly identity, entry-point kind, normalized method
-signatures, public API sets, and resource sets. Binaries remain ignored under
-`samples/`.
+No oracle assembly is ever an implementation input — neither the three
+deobfuscated Reactor 6 controls nor the Reactor 7.5 unprotected originals. After
+recovery, they are compared by assembly identity, entry-point kind, normalized
+method signatures, public API sets, and resource sets. Binaries remain ignored
+under `samples/`.
 
 The batch runner verifies each input hash before analysis. `profiled` and
 `detected` entries must emit deterministic verified output; `exploratory`
@@ -1055,6 +1083,25 @@ restricts writes to catalogued method-prefix windows, reparses restored bodies
 by unchanged MethodDef token, and requires all stubs to pass branch/stack/EH
 verification. Any unmet condition preserves every body and refuses output.
 
+The same generation appears on both .NET Framework and modern .NET (CoreCLR), and
+the recovery is one path with a framework-specific detail at the point the
+plaintext is read. On both, NecroBit decrypts every protected body up front during
+module initialisation into a managed hashtable keyed by each method's IL address —
+the belief that it decrypts lazily from live JIT memory turned out to be wrong, so
+static recovery reads that table out of the interpreter heap and maps each entry
+back to its method by the module base that lines every key up with a protected
+stub's IL RVA. Where the two differ is the record: the Framework build stores each
+plaintext as a managed `byte[]`, while the CoreCLR build stores a length and a
+native pointer into a page it staged with `VirtualAlloc`, and it finds the module
+base by reflecting runtime-internal fields (`ModuleHandle.m_ptr` and the
+`RuntimeModule` `m_pData`/`m_pStringHeap` pointers) rather than from metadata.
+Modelling that reflection surface — so the loader runs to the end and fills the
+table — and then reading each entry's bytes from the page its pointer names is what
+extends the path to CoreCLR. The locals signature and any exception clauses are not
+in the table on either framework; they are recovered by replaying the deterministic
+mapped-image header writes the loader makes and reading the exception section back
+out of the image.
+
 ## Generic analysis components
 
 - Raw `BSJB`/tables-stream preflight records duplicate Module/Assembly rows,
@@ -1116,7 +1163,10 @@ verification. Any unmet condition preserves every body and refuses output.
   recovery, no remaining use sites, and at least 0.95 confidence.
 
 Unsupported mechanisms remain intact and are reported. This is safer than
-claiming broad Reactor 6/7 compatibility or emitting a partially damaged file.
+claiming compatibility with every Reactor build or emitting a partially damaged
+file: recovery is proven against the versions in the corpus (Reactor 6 in the
+wild, Reactor 7.5 on probes), and a build outside that is refused rather than
+approximated.
 
 ## Scaffolding removal and renaming
 

@@ -130,7 +130,7 @@ have no one to read a summary.
 | Know what an unfamiliar sample is and get the next stage out, without running it | **CILantro** |
 | Read a virtualized method without running anything | **CILantro** |
 | The most thoroughly cleaned assembly a Reactor tool will give you | [NETReactorSlayer](https://github.com/SychicBoy/NETReactorSlayer) |
-| Handle Reactor 7+, or a protector neither of the two this handles | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) |
+| Handle a Reactor build this does not recognise, or a protector neither of these covers | [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx) |
 | A devirtualized binary you can run and debug | [Krypton](https://github.com/dawwinci/krypton-devirtualizer) |
 | Rename everything, including public types, the way de4dot does | Slayer or de4dotEx |
 
@@ -342,7 +342,7 @@ Two protectors, to different depths. Reactor is the older and more complete side
 ConfuserEx covers the layers that hide the code and the text, which is what a
 triage answer needs, and stops short of its runtime-bound proxies.
 
-| | .NET Reactor 6 | ConfuserEx 1.0.0 |
+| | .NET Reactor | ConfuserEx 1.0.0 |
 | --- | --- | --- |
 | Recognising it | Structural, and it says which generation | Structural, and it says which layers are on |
 | Encrypted method bodies | Yes — NecroBit, per method, decrypted and put back | Yes — a whole encrypted section, decrypted and put back |
@@ -360,7 +360,18 @@ triage answer needs, and stops short of its runtime-bound proxies.
 | Native bootstrap | Yes — the assembly is decrypted out of the stub and written out | Not applicable to these builds |
 | Virtualized methods | Read, and rebuilt as a reading | Not applicable to these builds |
 
-Reactor 6 covers the large majority of Reactor-protected samples in circulation.
+The Reactor column covers both generations of the protector's runtime, and the
+recognised versions span **Reactor 6 and 7.5** on both .NET Framework and modern
+.NET (CoreCLR — .NET 8 and .NET 10). The tool identifies the Reactor family and
+its *generation* from structure rather than a version string, and no structural
+signal cleanly separates 6 from 7.5, so a detection reports `reactor` without
+claiming a marketing version. Reactor 6 is what the real-world sample corpus
+proves at scale, and covers the large majority of Reactor-protected samples in
+circulation; Reactor 7.5 recovery — NecroBit, strings, virtualization and
+encrypted resources — is proven end to end against purpose-built probes with
+their unprotected originals as ground truth, rather than against a broad
+real-world corpus (see [docs/corpus.md](docs/corpus.md)).
+
 On the ConfuserEx side, resources and payloads are the gap: the code, the strings
 and the shape come back, but anything the sample hid in a resource does not.
 Unflattening does not reach every edge — where two dispatcher states meet before
@@ -382,9 +393,13 @@ Being straight about this matters more than the feature list.
   point, rather than keeping its managed half in a resource, is detected and
   reported as unsupported rather than mangled. The native bootstrap below is a
   different shape and is handled.
-- **Reactor 7 and later, ConfuserEx forks, and other protectors.** The
-  ConfuserEx support is written against 1.0.0; the many forks that followed it
-  are not tested. Eazfuscator, Babel and friends are out of scope — try
+- **Reactor versions past 7.5, unusual Reactor builds, ConfuserEx forks, and
+  other protectors.** Reactor recovery is proven against 6 (real samples) and 7.5
+  (probes); a later version, or a build whose structure has moved far enough that
+  recognition does not fire, is reported as unsupported rather than guessed at.
+  The ConfuserEx support is written against 1.0.0; the many forks that followed it
+  are not tested. Eazfuscator, Babel and friends are out of scope — and for the
+  breadth of real-world Reactor 7.x families, try
   [de4dotEx](https://github.com/GDATAAdvancedAnalytics/de4dotEx).
 - **Every ConfuserEx dispatcher edge.** An edge is only redirected where the state
   reaching it is the same on every path. Where two states meet before either has
@@ -452,17 +467,17 @@ dotnet test Cilantro.slnx -c Release
 Use `-c Release` for the tests. Most of the suite is the analysis engine working
 through real samples, which an unoptimised build runs about five times slower.
 
-While you work, run the suite without the eight tests that put whole samples
+While you work, run the suite without the dozen or so tests that put whole samples
 through the machine:
 
 ```bash
 dotnet test Cilantro.slnx -c Release --filter "Cost!=High"
 ```
 
-That is 467 of the 475 tests in about four seconds, against the two and a half
-minutes those eight cost between them. They still run on a plain `dotnet test`,
-which is what to do before pushing, because they are the ones that prove the tool
-recovers real malware.
+That is the fast majority of the suite in a few seconds, against the several
+minutes the whole-sample tests cost between them. They still run on a plain
+`dotnet test`, which is what to do before pushing, because they are the ones that
+prove the tool recovers real malware.
 
 When the change is to one pass and you need a real sample to see it, skip the
 passes that come after the one you are working on rather than waiting for the

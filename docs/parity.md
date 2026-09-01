@@ -20,8 +20,9 @@ use a tool for the thing it does not do.
 - **[Krypton](https://github.com/dawwinci/krypton-devirtualizer)** — a
   purpose-built devirtualizer whose goal is a devirtualized binary that still
   runs. Continuation of PeterG75's Krypton, GPLv3.
-- **CILantro** — this tool. Reactor 6 and ConfuserEx 1.0.0, never executes the
-  sample, and refuses to write anything it cannot prove. MIT.
+- **CILantro** — this tool. .NET Reactor (6, and 7.5 on probes) and ConfuserEx
+  1.0.0, on both .NET Framework and modern .NET; never executes the sample, and
+  refuses to write anything it cannot prove. MIT.
 
 Everything below was checked against each project's source and release notes in
 August 2026. All three of the others are moving targets, and which Reactor
@@ -33,7 +34,7 @@ version each handles best changes with them.
 | --- | --- | --- |
 | Know what an unfamiliar sample is, and get the next stage out, without running it | CILantro | Nothing in the sample executes, and the payload comes out of a static reading of the unpacker |
 | The most thoroughly cleaned assembly a Reactor tool will give you | NETReactorSlayer | Widest stage coverage of the four, and it invokes the sample's own decrypters, so codecs nobody has modeled still come out |
-| Handle a Reactor 7+ sample, or one under a protector neither of these two covers | de4dotEx | It is the one that states support for Reactor 7.0 and later, and it covers about twenty-five families where this tool covers two |
+| Handle the breadth of real-world Reactor 7.x families, or a sample under a protector neither of these two covers | de4dotEx | It states support for Reactor 7.0 and later across many builds, and it covers about twenty-five families where this tool covers two. CILantro recovers Reactor 7.5, but that is proven on controlled probes rather than a wide field of samples |
 | A devirtualized binary you can run and debug | Krypton | That is its stated goal; it rebuilds VM methods in place and patches the output until it starts |
 | Read a virtualized method without running anything | CILantro | It builds the method back into the cleaned copy, reports the recovered program as a listing beside it, and says how each reading was arrived at |
 | Rename everything, including public types, the way de4dot does | Slayer or de4dotEx | Both carry the full de4dot renamer; CILantro renames only what it can prove is generated |
@@ -234,7 +235,7 @@ lookups are `call`/`callvirt` sites targeting a static `(int) -> string` method.
 | | CILantro | NETReactorSlayer | de4dotEx | Krypton |
 | --- | --- | --- | --- | --- |
 | Executes the protected sample | Never | Yes | Not on the Reactor path | Yes, by default |
-| Reactor versions | 6 only, refuses the rest | Not stated | 3.x through 7.0+ | Where the handler patterns are known |
+| Reactor versions | 6 (real samples) and 7.5 (probes); refuses builds it does not recognise | Not stated | 3.x through 7.0+ | Where the handler patterns are known |
 | What you get | Cleaned copy with virtualized methods built back into it, report, payloads | Cleaned copy | Cleaned copy | Runnable devirtualized copy and a per-method report |
 | When it cannot do something | Writes nothing and names the blocker | Skips the stage | Skips the stage | Skips the method |
 | Runs on | Single file, Windows or Linux, no runtime needed | CLI on .NET 6 or Framework, Windows or Linux; the GUI is Windows-only | .NET Framework or Mono, Docker image published | Windows x64, .NET 8 |
@@ -285,9 +286,12 @@ Worth knowing before you pick it up, and none of it is going to be fixed by
 trying harder — each item is the same design constraint seen from a different
 side.
 
-- **Anything but Reactor 6 and ConfuserEx 1.0.0.** A 7.x sample, or a ConfuserEx
-  fork whose structure has moved, is reported as unsupported and nothing is
-  written. de4dotEx covers considerably more families than either.
+- **Reactor builds past what the corpus proves, and ConfuserEx forks whose
+  structure has moved.** Recovery is proven on Reactor 6 (real samples) and
+  Reactor 7.5 (probes, on Framework and CoreCLR); a later Reactor version, or a
+  build recognition does not fire on, is reported as unsupported and nothing is
+  written. de4dotEx covers considerably more families, and more of the real-world
+  Reactor 7.x field, than either.
 - **ConfuserEx's strong proxies, resources and payloads, where the others handle
   them.** The ConfuserEx support here gets the bodies, the strings, the mild
   reference proxies and about nineteen dispatcher edges in twenty back, and stops
@@ -415,7 +419,10 @@ fails rather than passing quietly.
 
 ### Current corpus standing
 
-Last full run: 9 passed, 0 failed, 0 missing, against 189 passing unit tests.
+Last full run: every entry in the Reactor manifests — the Reactor 6 samples and
+the Reactor 7.5 probes — passed, with no failures and no missing samples,
+alongside the sample-free unit tests. (Exact counts drift as tests are added; the
+manifests and the suite are the source of truth.)
 
 The three JIT-hook samples restore every protected body (199, 312, and 253),
 fold their constant predicates, complete control flow, inline forwarders,
