@@ -7,7 +7,7 @@ analysis.
 
 | Manifest | Covers |
 | --- | --- |
-| `corpus/reactor-6-nonvirt.manifest.json` | .NET Reactor 6, both generations, twelve samples |
+| `corpus/reactor-6-nonvirt.manifest.json` | .NET Reactor 6, both generations, thirteen samples |
 | `corpus/reactor-7-static.manifest.json` | .NET Reactor 7.5, net48/net8/net10 probes, twelve entries |
 | `corpus/confuserex-1-static.manifest.json` | ConfuserEx 1.0.0, whole-section anti-tamper, two samples |
 
@@ -36,6 +36,8 @@ Protected and exploratory samples:
   (`profiled`, `Qafcakg.payload.Ptnifif.dll`)
 - `81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a`
   (`detected`, `Mlfhntkcvb.payload.Lqcuzgc.dll`)
+- `bf3f63c70625003090603f53dddd5160e9fa32b0eb233e509d166c219846ada9`
+  (`profiled`, `Rrdsk.payload.Ktjtiuwiixd.dll`)
 - `094dbed0af6664af52375a711e0b8e4e8e7e66c6d47390e8263b16efba4d1995`
   (`exploratory`, `WindowsManagement.exe`)
 
@@ -43,6 +45,23 @@ Protected and exploratory samples:
 `Mlfhntkcvb` and `Qafcakg` carry. Both are protected by Reactor in turn, so
 recovering the outer sample only reaches the next wrapper, and they are in the
 corpus in their own right for that reason.
+
+`Rrdsk.payload.Ktjtiuwiixd.dll` is another such inner assembly, and it is here
+for what it shows rather than for what it carries. It is the least a Reactor
+build can look like and still be recognised: no encrypted method bodies, no
+delegate proxies, nothing naming the JIT — only a protected-string resolver, the
+switch dispatchers around it, and two encrypted resources. Those three signals
+are weighted to add up to exactly the confidence the detector demands, so the
+sample sits on the boundary itself.
+
+It earned its place by falling off that boundary. Version 0.9.0 added the three
+weights together as binary fractions, which came to a hair less than the figure
+they are written as, and the sample was reported as protected by nothing at all.
+That verdict is not just a label: the passes that interpret a Reactor loader ask
+whether the module is Reactor before they run, so the state proving its resolver
+offsets was never captured, a quarter of its strings stayed encrypted, and the
+recovery — which had otherwise verified — was discarded rather than written out.
+The entry fails on all of that if the gate moves or its arithmetic drifts again.
 
 `WindowsManagement.exe` is the odd one: not a .NET file at all, but a native
 bootstrap with the assembly encrypted into a resource. Its only gate is

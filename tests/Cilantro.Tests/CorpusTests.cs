@@ -57,7 +57,7 @@ public sealed class CorpusTests
             Path.Combine(Checkout.Root, "corpus", "reactor-6-nonvirt.manifest.json"));
 
         Assert.Equal(1, manifest.ManifestVersion);
-        Assert.Equal(12, manifest.Samples.Count);
+        Assert.Equal(13, manifest.Samples.Count);
         Assert.Equal(manifest.Samples.Count,
             manifest.Samples.Select(sample => sample.Sha256).Distinct().Count());
         Assert.Contains(manifest.Samples, sample => sample.Tier == "profiled");
@@ -521,7 +521,7 @@ public sealed class CorpusTests
                 index => reports[index] = CorpusRunner.Run(manifest, samples, directories[index]));
 
             var firstReport = reports[0];
-            Assert.Equal(12, firstReport.Passed);
+            Assert.Equal(13, firstReport.Passed);
             Assert.Equal(0, firstReport.Failed);
             Assert.Equal(0, firstReport.Missing);
 

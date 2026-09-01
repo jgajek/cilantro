@@ -10,12 +10,13 @@ probes built from source — because the two prove different things: the first t
 the tool works on samples nobody controlled, the second that it works on a newer
 version whose unprotected original is available to check against byte for byte.
 
-`corpus/reactor-6-nonvirt.manifest.json` contains twelve entries:
+`corpus/reactor-6-nonvirt.manifest.json` contains thirteen entries:
 
-- three `profiled` full-recovery fixtures;
+- five `profiled` full-recovery fixtures, one of them a build carrying the least
+  structure a sample can and still be recognised, kept to hold that boundary;
 - four `detected` samples — three JIT-hook/method-stub builds and one
   virtualized .NET Framework payload recovered end to end;
-- two `exploratory` control-flow/proxy samples; and
+- one `exploratory` native bootstrap, which emits no managed copy of its own; and
 - three deobfuscated validation oracles used as negative controls.
 
 `corpus/reactor-7-static.manifest.json` contains twelve entries protected by
@@ -183,7 +184,8 @@ carry `Assumed` provenance rather than `Host`, and every call stepped over is li
 in `ContinuedPast` in `NAME.blockers.json` and in the summary. `Blockers` keeps its
 meaning: things that stopped the run.
 
-Measured on the twelve-sample corpus, the two modes agree on every expectation —
+Measured on the Reactor 6 corpus as it stood at twelve samples, the two modes agree
+on every expectation —
 detection, capabilities, restored body counts, string-site coverage, remaining stubs,
 mutation counts, oracle parity and preserved names: 2041 of 2057 reported fields are
 identical, and the sixteen that differ are diagnostic text. What changes is where a

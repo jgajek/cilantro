@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "profile": "reactor-6-static",
-  "description": "Curated .NET Reactor 6 corpus. Binary samples remain outside git. One entry is not a .NET file at all: windowsmanagement-bootstrap is a native stub whose only gate is the hash of the assembly decrypted out of it, because a substitution table built slightly wrong still produces bytes and only the hash says whether they are the right ones. The assembly it yields is itself the qbjuef-family stub, so the two entries together cover the whole chain.",
+  "description": "Curated .NET Reactor 6 corpus. Binary samples remain outside git. One entry is not a .NET file at all: windowsmanagement-bootstrap is a native stub whose only gate is the hash of the assembly decrypted out of it, because a substitution table built slightly wrong still produces bytes and only the hash says whether they are the right ones. The assembly it yields is itself the qbjuef-family stub, so the two entries together cover the whole chain. rrdsk-payload is the detection boundary: a string resolver, its dispatchers and two encrypted resources are the least a build can show and still be recognised, and they add up to exactly the confidence the gate asks for. It is here because that sum was once computed a fraction under the gate, which left the sample reported as unprotected and its recovery thrown away, so this entry fails if the gate moves or its arithmetic drifts again.",
   "samples": [
     {
       "id": "mlfhntkcvb",
@@ -129,6 +129,21 @@
       "minimumVirtualOperationsRead": 0.999,
       "minimumVirtualOperationsWalked": 0.998,
       "requireConsistentVirtualStack": true,
+      "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
+    },
+    {
+      "id": "rrdsk-payload",
+      "tier": "profiled",
+      "sha256": "bf3f63c70625003090603f53dddd5160e9fa32b0eb233e509d166c219846ada9",
+      "localName": "Rrdsk.payload.Ktjtiuwiixd.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": ["dispatcher-control-flow", "protected-strings", "resource-container"],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumTokensRestored": 44,
+      "minimumConstantStringSites": 153,
+      "maximumMutationCount": 20000,
       "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
     },
     {
