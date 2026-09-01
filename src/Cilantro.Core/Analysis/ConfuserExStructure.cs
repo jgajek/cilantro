@@ -101,14 +101,18 @@ public static class ConfuserExStructureDetector
         if (debuggerProbe) capabilities |= ConfuserExCapability.AntiDebug;
         if (HasConstantsInitializer(global)) capabilities |= ConfuserExCapability.ConstantsTable;
 
-        var score = 0.0;
-        if (invisible >= 10) score += 0.30;
-        if (encrypted is not null) score += 0.30;
-        if (inEncrypted > 0) score += 0.20;
-        if (virtualProtect) score += 0.10;
-        if (initializerCalls > 0) score += 0.10;
-        if (debuggerProbe) score += 0.05;
-        score = Math.Min(1.0, score);
+        // Whole percentage points, for the same reason the Reactor detector uses them: the gate is a
+        // decimal figure, and weights added up as binary fractions can land just under a total they
+        // were meant to reach exactly. No combination of these six misses its gate today, but the
+        // arithmetic should not be what decides that.
+        var points = 0;
+        if (invisible >= 10) points += 30;
+        if (encrypted is not null) points += 30;
+        if (inEncrypted > 0) points += 20;
+        if (virtualProtect) points += 10;
+        if (initializerCalls > 0) points += 10;
+        if (debuggerProbe) points += 5;
+        var score = Math.Min(100, points) / 100.0;
 
         return new ConfuserExStructureFacts(
             invisible,

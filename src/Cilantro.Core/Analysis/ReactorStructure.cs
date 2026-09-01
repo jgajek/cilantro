@@ -91,21 +91,26 @@ public static class ReactorStructureDetector
         if (stubs >= 10 && highEntropyResources >= 2) capabilities |= ReactorCapability.AntiTamper;
         if (virtualized > 0) capabilities |= ReactorCapability.Virtualization;
 
-        var score = 0.0;
-        if (delegates >= 10) score += 0.35;
-        if (deadPrefixes >= 10) score += 0.15;
-        if (dispatchers >= 2) score += 0.15;
-        if (stubs >= 10) score += 0.35;
+        // Weighed in whole percentage points rather than fractions, because some of these signals
+        // are meant to reach the gate exactly when they combine and no closer: a resolver with its
+        // dispatchers and an encrypted resource comes to precisely the 55 the gate asks for. Added
+        // up as binary fractions that total lands a sixteenth of a quadrillionth short, so a
+        // boundary the weights were chosen to sit on would read as a miss.
+        var points = 0;
+        if (delegates >= 10) points += 35;
+        if (deadPrefixes >= 10) points += 15;
+        if (dispatchers >= 2) points += 15;
+        if (stubs >= 10) points += 35;
         // A method that takes an integer and returns a string by reading a manifest resource is
         // Reactor's protected-string resolver and almost nothing else -- far more specific than the
         // dispatchers or dead-call junk other obfuscators also emit -- so a strings-only Reactor
         // configuration, which has no stubs or proxies to lean on, still clears the gate on the
         // strength of the resolver plus its corroborating control flow.
-        if (stringResolvers > 0) score += 0.30;
-        if (highEntropyResources >= 2) score += 0.10;
-        if (clrJit) score += 0.20;
-        if (runtimePointer) score += 0.10;
-        score = Math.Min(1.0, score);
+        if (stringResolvers > 0) points += 30;
+        if (highEntropyResources >= 2) points += 10;
+        if (clrJit) points += 20;
+        if (runtimePointer) points += 10;
+        var score = Math.Min(100, points) / 100.0;
 
         var generation = stubs >= 10 && clrJit
             ? "jit-hook"
