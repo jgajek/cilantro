@@ -599,7 +599,7 @@ public sealed record PipelineResult(
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.9.2";
+    public const string Version = "0.9.3";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
