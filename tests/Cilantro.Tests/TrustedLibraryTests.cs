@@ -115,6 +115,54 @@ public sealed class TrustedLibraryTests : IDisposable
     }
 
     /// <summary>
+    /// Touching a static of a library type does not run that type's initializer.
+    /// </summary>
+    /// <remarks>
+    /// This is the way into somebody else's code that is not a call and so was never asked whether
+    /// the body was ours to run. It cost more than the calls did: reading one static of a framework
+    /// type put the machine inside the framework, and once there it went on into whatever that code
+    /// called, so a sample that read a static was read differently on a machine that had the
+    /// assembly than on one that did not. A type left uninitialized is the position the machine is
+    /// in wherever the assembly is absent, and the model answers for the static as it does there.
+    /// </remarks>
+    [Fact]
+    public void AStaticOfALibraryTypeLeavesItsInitializerUnrun()
+    {
+        var library = WriteLibraryWithInitializer("helper", 41);
+        // Resolvable but never supplied, which is the position a Windows machine is in.
+        using var context = ArtifactContext.Load(WriteStaticReader("caller"), [library]);
+        // The point of the test is an initializer that is there to be run, so say so.
+        Assert.True(
+            Static(context).DeclaringType?.ResolveTypeDef()?.FindStaticConstructor() is
+                { HasBody: true });
+        var machine = new StaticMachine(modelTypeInitialization: true);
+        machine.State.RegisterModuleMetadata(context.Module);
+
+        var result = machine.Execute(Entry(context));
+
+        // The zero the static holds before anything writes to it, rather than the 41 the
+        // initializer would have left there had it been this machine's to run.
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(0, result.Value.AsInt32());
+    }
+
+    [Fact]
+    public void AStaticOfASuppliedLibraryTypeIsWhatItsInitializerLeftThere()
+    {
+        var library = WriteLibraryWithInitializer("helper", 41);
+        using var context = ArtifactContext.Load(WriteStaticReader("caller"), [library]);
+        var machine = new StaticMachine(modelTypeInitialization: true);
+        machine.State.RegisterModuleMetadata(context.Module);
+        foreach (var trusted in context.TrustedModules)
+            machine.State.RegisterTrustedModule(trusted);
+
+        var result = machine.Execute(Entry(context));
+
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(41, result.Value.AsInt32());
+    }
+
+    /// <summary>
     /// The identity of the file that was supplied is recorded, because a different build of the
     /// same library is a different program and a result that depended on one should say which.
     /// </summary>
@@ -173,6 +221,78 @@ public sealed class TrustedLibraryTests : IDisposable
         .Where(instruction => instruction.OpCode == OpCodes.Ldftn)
         .Select(instruction => (IMethod)instruction.Operand)
         .First();
+
+    /// <summary>The static the sample reads.</summary>
+    private static IField Static(ArtifactContext context) => context.Module
+        .GetTypes()
+        .SelectMany(type => type.Methods)
+        .Where(method => method.HasBody)
+        .SelectMany(method => method.Body.Instructions)
+        .Where(instruction => instruction.OpCode == OpCodes.Ldsfld)
+        .Select(instruction => (IField)instruction.Operand)
+        .First();
+
+    /// <summary>
+    /// A library whose initializer is the only thing that puts a value in its static, so whether
+    /// the initializer ran is visible in what the static holds.
+    /// </summary>
+    private string WriteLibraryWithInitializer(string name, int answers)
+    {
+        var module = new ModuleDefUser($"{name}.dll") { Kind = ModuleKind.Dll };
+        var assembly = new AssemblyDefUser(name, new Version(1, 0, 0, 0));
+        assembly.Modules.Add(module);
+        var type = new TypeDefUser("Library", "Answers", module.CorLibTypes.Object.TypeDefOrRef)
+        {
+            Attributes = TypeAttributes.Public | TypeAttributes.Class
+        };
+        module.Types.Add(type);
+        var ready = new FieldDefUser(
+            "Ready",
+            new FieldSig(module.CorLibTypes.Int32),
+            FieldAttributes.Public | FieldAttributes.Static);
+        type.Fields.Add(ready);
+        var initializer = new MethodDefUser(
+            ".cctor",
+            MethodSig.CreateStatic(module.CorLibTypes.Void))
+        {
+            Attributes = MethodAttributes.Private | MethodAttributes.Static |
+                MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            Body = new CilBody()
+        };
+        initializer.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4, answers));
+        initializer.Body.Instructions.Add(Instruction.Create(OpCodes.Stsfld, ready));
+        initializer.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(initializer);
+        var path = Path.Combine(_folder, $"{name}.dll");
+        module.Write(path);
+        return path;
+    }
+
+    /// <summary>A sample whose one method reads a static of the library and hands it back.</summary>
+    private string WriteStaticReader(string name)
+    {
+        var module = new ModuleDefUser($"{name}.dll") { Kind = ModuleKind.Dll };
+        var assembly = new AssemblyDefUser(name, new Version(1, 0, 0, 0));
+        assembly.Modules.Add(module);
+        var reference = new AssemblyRefUser("helper", new Version(1, 0, 0, 0));
+        module.UpdateRowId(reference);
+        var answers = new TypeRefUser(module, "Library", "Answers", reference);
+        var type = new TypeDefUser("Sample", "Program", module.CorLibTypes.Object.TypeDefOrRef);
+        module.Types.Add(type);
+        var method = new MethodDefUser("Ask", MethodSig.CreateStatic(module.CorLibTypes.Int32))
+        {
+            Attributes = MethodAttributes.Public | MethodAttributes.Static,
+            Body = new CilBody()
+        };
+        method.Body.Instructions.Add(Instruction.Create(
+            OpCodes.Ldsfld,
+            new MemberRefUser(module, "Ready", new FieldSig(module.CorLibTypes.Int32), answers)));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        type.Methods.Add(method);
+        var path = Path.Combine(_folder, $"{name}.dll");
+        module.Write(path);
+        return path;
+    }
 
     private string WriteLibrary(string name, int answers)
     {

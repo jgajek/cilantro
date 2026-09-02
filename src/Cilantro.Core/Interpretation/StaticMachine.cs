@@ -2253,11 +2253,30 @@ public sealed class StaticMachine
     /// gave a different answer here and there. Asking the same question everywhere is what makes
     /// the model, not the host, decide what a framework call does.
     /// </remarks>
-    private bool MayRun(MethodDef definition) =>
-        definition.Module == State.ModuleMetadata ||
-        State.IsTrusted(definition.Module) ||
-        State.IsAssembled(definition.Module) ||
-        (_frames.Count != 0 && definition.Module == _frames[^1].Module);
+    private bool MayRun(MethodDef definition) => MayRunHere(definition.Module);
+
+    /// <summary>
+    /// Whether code declared in a module is this machine's to run.
+    /// </summary>
+    /// <remarks>
+    /// Three modules are named as ours to run: the one under analysis, one an analyst supplied on
+    /// purpose, and one this machine assembled from instructions the program emitted. The fourth
+    /// case is the module the machine is already inside, which is how a run that was never told
+    /// which module it was reading still reads it, and how a body the machine assembled calls the
+    /// rest of its own scratch module.
+    ///
+    /// That last case cannot be a way in, only a way on: the machine can be inside a module in the
+    /// first place only by one of the other three, so nothing reaches somebody else's code by
+    /// arriving there first. Which is why the question is asked wherever a body is entered and not
+    /// only where a call is made — a foothold anywhere in a module opens the rest of it, because
+    /// from then on the machine goes on into whatever the code it is running calls, as it must.
+    /// </remarks>
+    private bool MayRunHere(ModuleDef? module) =>
+        module is not null &&
+        (module == State.ModuleMetadata ||
+            State.IsTrusted(module) ||
+            State.IsAssembled(module) ||
+            (_frames.Count != 0 && module == _frames[^1].Module));
 
     /// <summary>
     /// Supplies a framework constant that the machine models rather than stores.
@@ -3245,6 +3264,17 @@ public sealed class StaticMachine
         return rendered.Length == 0 ? string.Empty : $" | provenance:{rendered}";
     }
 
+    /// <remarks>
+    /// A type outside the code this machine may run is left uninitialized, which is the same
+    /// position the machine is in on a host where that type resolves to nothing: the statics are
+    /// answered by the model and the initializer is never a frame. It is also the only way in here
+    /// that a body outside the module was reached, because touching a static is not a call and so
+    /// was never asked whether the body was ours to run. Reading one static of a framework type was
+    /// enough to put the machine inside the framework, and from there it went on into whatever that
+    /// code called — a registry key really being opened, a table of opcodes really being built —
+    /// so a sample that read a static answered differently on a machine that had the assembly than
+    /// on one that did not.
+    /// </remarks>
     private FrameResult? EnsureTypeInitialized(
         TypeDef? type,
         TypeInitializationTrigger trigger,
@@ -3254,6 +3284,7 @@ public sealed class StaticMachine
         var initializer = type is null ? null : StaticConstructorOf(type);
         if (type is null ||
             initializer?.HasBody != true ||
+            !MayRunHere(type.Module) ||
             (trigger == TypeInitializationTrigger.MethodCall && type.IsBeforeFieldInit))
         {
             return null;
