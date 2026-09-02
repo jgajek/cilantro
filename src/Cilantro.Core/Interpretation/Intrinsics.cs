@@ -4735,19 +4735,29 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// </summary>
     /// <remarks>
     /// A member reached through a reference and the same member reached through its definition are
-    /// one member, so each side is resolved as far as it goes before they are compared. Names are
-    /// the last resort and carry signatures, which is what keeps two overloads apart.
+    /// one member, so a reference is resolved before the two are compared. Names are the last
+    /// resort and carry signatures, which is what keeps two overloads apart.
+    ///
+    /// What is never resolved away is an instantiation. A definition is what a generic was made
+    /// from and not one of the things made from it, so settling <c>Box&lt;int&gt;</c> on
+    /// <c>Box`1</c> answers about the wrong type — and settles <c>Box&lt;string&gt;</c> on the same
+    /// one, making two types answer equal. Left as it stands, each spells its arguments out in its
+    /// own name and the comparison is decided by them. That also stops the answer depending on the
+    /// machine: resolving needs the assembly the type was declared in, so it is where a framework
+    /// generic loses its arguments and where a missing framework keeps them.
     /// </remarks>
     private static bool Denote(object left, object right)
     {
         static object Settle(object member) => member switch
         {
-            MethodSpec { Method: { } instantiated } =>
-                (object?)instantiated.ResolveMethodDef() ?? member,
+            MethodSpec => member,
+            MemberRef { Class: TypeSpec } => member,
             MemberRef { IsMethodRef: true } method => (object?)method.ResolveMethod() ?? member,
             MemberRef { IsFieldRef: true } field => (object?)field.ResolveField() ?? member,
             TypeRef named => (object?)named.Resolve() ?? member,
-            TypeSig described => (object?)described.ToTypeDefOrRef().ResolveTypeDef() ?? member,
+            TypeDefOrRefSig { TypeDefOrRef: not TypeSpec } plain =>
+                (object?)plain.TypeDefOrRef.ResolveTypeDef() ?? member,
+            TypeSig => member,
             _ => member
         };
         var (settled, against) = (Settle(left), Settle(right));

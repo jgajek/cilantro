@@ -1372,6 +1372,70 @@ public sealed class StaticMachineTests
     /// type with no name cannot be asked which assembly declares it. The run then stops on a question
     /// about the assembly it is already reading, several thousand frames from the token.
     /// </remarks>
+    /// <summary>
+    /// Two instantiations of one generic type are two types.
+    /// </summary>
+    /// <remarks>
+    /// Asking what two pieces of metadata denote resolved each side as far as it would go, and a
+    /// signature resolves to the definition it was made from, so <c>Box&lt;int&gt;</c> and
+    /// <c>Box&lt;string&gt;</c> both settled on <c>Box`1</c> and answered equal. A program
+    /// switching on a type then takes the first branch whose name matches before the arguments are
+    /// looked at, and goes somewhere it would never have gone.
+    ///
+    /// It read differently on different machines for the same reason it was wrong: resolving needs
+    /// the assembly the type is declared in, so a framework generic settled on its definition where
+    /// that framework was installed and stayed a signature where it was not. Only the second of
+    /// those answers the question that was asked.
+    /// </remarks>
+    [Fact]
+    public void TwoInstantiationsOfOneGenericTypeAreNotOneType()
+    {
+        using var context = SyntheticContext.Build(module =>
+            SyntheticContext.AddType(module, "Box`1").GenericParameters.Add(
+                new GenericParamUser(0, GenericParamAttributes.NonVariant, "T")));
+        var module = context.Module;
+        var box = module.GetTypes().Single(type => type.Name == "Box`1");
+        var state = new StaticMachineState(new StaticMachineLimits());
+        state.RegisterModuleMetadata(module);
+        var intrinsics = StaticIntrinsicRegistry.CreateDefault();
+        var typeType = new TypeRefUser(module, "System", "Type", module.CorLibTypes.AssemblyRef);
+        var fromHandle = new MemberRefUser(
+            module,
+            "GetTypeFromHandle",
+            MethodSig.CreateStatic(
+                typeType.ToTypeSig(),
+                new TypeRefUser(
+                    module,
+                    "System",
+                    "RuntimeTypeHandle",
+                    module.CorLibTypes.AssemblyRef).ToTypeSig()),
+            typeType);
+        var equality = new MemberRefUser(
+            module,
+            "op_Equality",
+            MethodSig.CreateStatic(
+                module.CorLibTypes.Boolean, typeType.ToTypeSig(), typeType.ToTypeSig()),
+            typeType);
+
+        StaticValue Held(TypeSig instantiation)
+        {
+            Assert.True(state.Heap.TryAllocateMetadataHandle(instantiation, out var handle));
+            Assert.True(intrinsics.TryResolve(fromHandle, out var made));
+            var described = made.Invoke(new IntrinsicContext(state), fromHandle, [handle]);
+            Assert.Equal(StaticExecutionStatus.Completed, described.Status);
+            return described.Value;
+        }
+
+        var ofNumbers = Held(new GenericInstSig(new ClassSig(box), module.CorLibTypes.Int32));
+        var ofText = Held(new GenericInstSig(new ClassSig(box), module.CorLibTypes.String));
+        Assert.True(intrinsics.TryResolve(equality, out var compare));
+
+        var same = compare.Invoke(new IntrinsicContext(state), equality, [ofNumbers, ofText]);
+
+        Assert.Equal(StaticExecutionStatus.Completed, same.Status);
+        Assert.Equal(0, same.Value.AsInt32());
+    }
+
     [Fact]
     public void ATypeNamedByMetadataTokenIsTheTypeItNames()
     {
