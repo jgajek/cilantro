@@ -2134,16 +2134,17 @@ public sealed class StaticMachine
         StaticValue[] arguments = unbound
             ? [.. callArguments[1..]]
             : [receiver, .. callArguments[1..]];
-        if (definition is { HasBody: true })
+        if (definition is { HasBody: true } && MayRun(definition))
         {
             result = ExecuteFrame(
                 definition, arguments, budget, depth + 1, GenericScope.For(target, null));
             return true;
         }
 
-        // The delegate stands for a method whose body is not here to run, which for an obfuscator
-        // runtime usually means a framework method it chose to reach through a delegate rather than
-        // a direct call. It is the same call either way, so it is dispatched the same way.
+        // The delegate stands for a method whose body is not this machine's to run, which for an
+        // obfuscator runtime usually means a framework method it chose to reach through a delegate
+        // rather than a direct call. It is the same call either way, so it is dispatched the same
+        // way: the model answers it, and where there is no model the ordinary path says so.
         if (!_intrinsics.TryResolve(bound, out var intrinsic))
             return false;
         var answered = intrinsic.Invoke(Assisting(budget, depth), bound, arguments);
@@ -2239,6 +2240,24 @@ public sealed class StaticMachine
         definition.Module == caller.Module ||
         definition.Module == State.ModuleMetadata ||
         State.IsTrusted(definition.Module);
+
+    /// <summary>
+    /// Whether a body the machine arrived at other than by a direct call may be run.
+    /// </summary>
+    /// <remarks>
+    /// A delegate, a reflection call and a direct call all end at a body, and the same rule has to
+    /// decide all three. Only the direct call asked, and the others ran whatever the reference
+    /// resolved to — which for a framework method is nothing on a machine without that framework
+    /// installed, and the framework's own IL on a machine with it. That made the result depend on
+    /// the analyst's machine rather than on the sample: the same file, read by the same version,
+    /// gave a different answer here and there. Asking the same question everywhere is what makes
+    /// the model, not the host, decide what a framework call does.
+    /// </remarks>
+    private bool MayRun(MethodDef definition) =>
+        definition.Module == State.ModuleMetadata ||
+        State.IsTrusted(definition.Module) ||
+        State.IsAssembled(definition.Module) ||
+        (_frames.Count != 0 && definition.Module == _frames[^1].Module);
 
     /// <summary>
     /// Supplies a framework constant that the machine models rather than stores.
@@ -2389,18 +2408,28 @@ public sealed class StaticMachine
         int depth)
     {
         if (!State.Heap.TryGetModelValue<IMethod>(callee, DelegateMethodKey, out var bound) ||
-            bound?.ResolveMethodDef() is not { HasBody: true } definition)
+            bound is null)
         {
             return IntrinsicResult.Invalid("The callback is not a delegate this machine built.");
         }
 
         State.Heap.TryGetModelValue<StaticValue>(callee, DelegateTargetKey, out var receiver);
-        StaticValue[] callArguments = definition.IsStatic
+        var definition = bound.ResolveMethodDef();
+        StaticValue[] callArguments = (definition?.IsStatic ?? bound.MethodSig?.HasThis != true)
             ? [.. arguments]
             : [receiver, .. arguments];
-        var result = ExecuteFrame(
-            definition, callArguments, budget, depth + 1, GenericScope.For(bound, null));
-        return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
+        if (definition is { HasBody: true } && MayRun(definition))
+        {
+            var result = ExecuteFrame(
+                definition, callArguments, budget, depth + 1, GenericScope.For(bound, null));
+            return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
+        }
+
+        // A callback into the framework rather than into the file is still a call, and the model is
+        // what answers it — the same answer a direct call to it would have got.
+        return _intrinsics.TryResolve(bound, out var intrinsic)
+            ? intrinsic.Invoke(Assisting(budget, depth), bound, callArguments)
+            : IntrinsicResult.Invalid($"{bound.FullName} has no body here to run.");
     }
 
     /// <summary>
@@ -2422,7 +2451,7 @@ public sealed class StaticMachine
         StaticWorkBudget budget,
         int depth)
     {
-        if (method.ResolveMethodDef() is { HasBody: true } definition)
+        if (method.ResolveMethodDef() is { HasBody: true } definition && MayRun(definition))
         {
             var result = ExecuteFrame(
                 definition, [.. arguments], budget, depth + 1, GenericScope.For(method, null));
@@ -2433,7 +2462,8 @@ public sealed class StaticMachine
             !declared.IsStatic &&
             arguments.Count > 0 &&
             method.DeclaringType?.Module is { } module &&
-            ResolveVirtualTarget(method, arguments[0], module) is { } dispatched)
+            ResolveVirtualTarget(method, arguments[0], module) is { } dispatched &&
+            MayRun(dispatched))
         {
             var result = ExecuteFrame(
                 dispatched, [.. arguments], budget, depth + 1, GenericScope.For(method, null));
@@ -2442,7 +2472,7 @@ public sealed class StaticMachine
 
         return _intrinsics.TryResolve(method, out var intrinsic)
             ? intrinsic.Invoke(Assisting(budget, depth), method, [.. arguments])
-            : IntrinsicResult.Invalid($"{method.FullName} has no body to run.");
+            : IntrinsicResult.Invalid($"{method.FullName} has no body here to run.");
     }
 
     /// <summary>

@@ -2722,7 +2722,7 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
         var heap = context.State.Heap;
         if (!heap.TryGetModelValue<Program>(arguments[0], Built, out var program) || program is null)
             return IntrinsicResult.Invalid("A delegate was asked for over a method with no body.");
-        var host = Scratch("Method");
+        var host = Scratch(context, "Method");
         if (!TryAssemble(program, host, out var assembled, out var refusal) || assembled is null)
             return IntrinsicResult.Invalid(
                 $"The emitted instructions do not form a runnable body: {refusal}.");
@@ -2758,7 +2758,7 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
         }
 
         heap.TryGetModelValue(builder, Spelling, out string? spelled);
-        var host = Scratch(spelled ?? "Emitted");
+        var host = Scratch(context, spelled ?? "Emitted");
         foreach (var member in members)
         {
             if (!heap.TryGetModelValue<Program>(member, Built, out var program) || program is null)
@@ -2851,13 +2851,16 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     /// <remarks>
     /// The assembled methods deliberately do not join the module under analysis. That module is
     /// evidence and the machine never writes to it, so the bodies live in a scratch module and the
-    /// interpreter is told to treat calls out of it as calls within the subject.
+    /// interpreter is told to treat calls out of it as calls within the subject. The module is
+    /// registered as one the machine assembled, which is what allows calls back into it: the
+    /// instructions came out of the sample, so running them is running the sample's own code.
     /// </remarks>
-    private static TypeDefUser Scratch(string name)
+    private static TypeDefUser Scratch(IntrinsicContext context, string name)
     {
         var scratch = new ModuleDefUser("<emitted>");
         var host = new TypeDefUser("<emitted>", name, scratch.CorLibTypes.Object.TypeDefOrRef);
         scratch.Types.Add(host);
+        context.State.RegisterAssembledModule(scratch);
         return host;
     }
 

@@ -1612,6 +1612,25 @@ public sealed class StaticMachineState
 
     public bool IsTrusted(ModuleDef? module) => module is not null && _trustedModules.Contains(module);
 
+    private readonly HashSet<ModuleDef> _assembledModules = [];
+
+    /// <summary>
+    /// Modules this machine built itself, holding bodies a program emitted while it ran.
+    /// </summary>
+    /// <remarks>
+    /// A program that emits a method and then calls it is running its own code, however far from
+    /// the file the body now lives: the instructions came out of the sample. The assembled bodies
+    /// are kept out of the module under analysis because that module is evidence and is never
+    /// written to, so they need saying separately — otherwise the rule that keeps the machine out
+    /// of somebody else's IL would also keep it out of the sample's own emitted IL, and a string
+    /// decrypter that builds itself at run time would stop being readable.
+    /// </remarks>
+    public void RegisterAssembledModule(ModuleDef module) =>
+        _assembledModules.Add(module ?? throw new ArgumentNullException(nameof(module)));
+
+    public bool IsAssembled(ModuleDef? module) =>
+        module is not null && _assembledModules.Contains(module);
+
     public void RegisterPointerSize(int pointerSize)
     {
         if (pointerSize is not 4 and not 8)
