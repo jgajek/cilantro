@@ -20,6 +20,14 @@ namespace Cilantro.Core.Analysis;
 /// each approximation is a smaller cleanup; the cost of the opposite choice would be deleting live
 /// code.
 ///
+/// The walk reads only this module's bodies, and a reference leaving it counts as unresolvable even
+/// on a machine that could resolve it. A reference into another assembly finds a body, or finds
+/// nothing, according to what happens to be installed where the reading is done; following it would
+/// let the framework on that machine decide what this module keeps, and the same file would clean up
+/// differently on two desks. Reading past the edge is no more informative than stopping at it,
+/// because a framework body that calls something of a shape this module also declares says nothing
+/// about this module — so the boundary costs only the pretence of knowing.
+///
 /// Reachability here means the runtime can transfer control to the method without reflection.
 /// Reflective invocation is reported separately as <see cref="ReflectivelyExposedTypes"/> rather
 /// than folded in, because the two answer different questions. Whether a method can overwrite a
@@ -102,14 +110,14 @@ public sealed class ModuleReachability
                 switch (instruction.Operand)
                 {
                     case IMethod called when IsMethodReference(instruction):
-                        Mark(called.ResolveMethodDef());
+                        Mark(Own(called));
                         MarkVirtualCandidates(called);
                         break;
                     case IField field when IsStaticFieldAccess(instruction):
-                        Activate(field.DeclaringType?.ScopeType?.ResolveTypeDef());
+                        Activate(OwnType(field.DeclaringType?.ScopeType));
                         break;
                     case ITypeDefOrRef referenced when instruction.OpCode.Code == Code.Ldtoken:
-                        if (referenced.ResolveTypeDef() is { } exposed)
+                        if (OwnType(referenced) is { } exposed)
                         {
                             reflectivelyExposed.Add(exposed);
                             Activate(exposed);
@@ -135,13 +143,13 @@ public sealed class ModuleReachability
             while (type is not null && activated.Add(type))
             {
                 Mark(type.FindStaticConstructor());
-                type = type.DeclaringType;
+                type = OwnType(type.DeclaringType);
             }
         }
 
         void MarkVirtualCandidates(IMethod called)
         {
-            var resolved = called.ResolveMethodDef();
+            var resolved = Own(called);
             if (resolved is not null && !resolved.IsVirtual)
                 return;
             foreach (var candidate in
@@ -150,6 +158,16 @@ public sealed class ModuleReachability
                 Mark(candidate);
             }
         }
+
+        MethodDef? Own(IMethod reference) =>
+            reference.ResolveMethodDef() is { } definition && definition.Module == module
+                ? definition
+                : null;
+
+        TypeDef? OwnType(ITypeDefOrRef? reference) =>
+            reference?.ResolveTypeDef() is { } definition && definition.Module == module
+                ? definition
+                : null;
     }
 
     /// <summary>
