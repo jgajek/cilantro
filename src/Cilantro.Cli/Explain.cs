@@ -1,5 +1,6 @@
 using System.Globalization;
 using Cilantro.Core;
+using Cilantro.Core.Interpretation;
 using Cilantro.Core.Recovery;
 
 namespace Cilantro.Cli;
@@ -126,9 +127,10 @@ internal static class Explain
     /// <remarks>
     /// The point of printing these is that the next run can be better than this one. So each is
     /// printed with its remedy attached rather than as a complaint, and the ones with no remedy say so
-    /// instead of being left out, because "this needs a change to the tool" is also an answer. Only the
-    /// first few are shown: a run stops in one place for one reason, and the rest are usually the same
-    /// reason met again on another path.
+    /// instead of being left out. Most of those need a change to the tool. A throw is the other case:
+    /// the program itself threw, and saying so is the answer. Only the first few are shown: a run
+    /// stops in one place for one reason, and the rest are usually the same reason met again on
+    /// another path.
     /// </remarks>
     private static void Blocked(PipelineResult result, string home)
     {
@@ -157,7 +159,9 @@ internal static class Explain
             }
             Console.WriteLine(blocker.Declare is { } declare
                 ? $"      declare: {declare}"
-                : "      no declaration fixes this; it needs a change to the tool");
+                : blocker.Kind == BlockerKind.Threw
+                    ? "      the program threw here; that is its own decision, not a missing model"
+                    : "      no declaration fixes this; it needs a change to the tool");
         }
 
         if (blockers.Count > shown)

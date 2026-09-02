@@ -344,6 +344,31 @@ public sealed class BlockerTests
     }
 
     /// <summary>
+    /// A throw a trial provoked is the trial working, not what stopped the run.
+    /// </summary>
+    /// <remarks>
+    /// Virtualization reads an opcode by handing the engine's factory a stack the program never
+    /// built and watching it refuse. That refusal is often a throw. Recording it as a stop would
+    /// print the tool's own questions under BLOCKED, which is how a finished recovery of a
+    /// virtualized method came to look like a crash.
+    /// </remarks>
+    [Fact]
+    public void AThrowATrialProvokedIsNotWhatStoppedTheRun()
+    {
+        using var module = NewModule();
+        var method = NewMethod(module, "Refuse", MethodSig.CreateStatic(module.CorLibTypes.Void));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+        method.Body.Instructions.Add(Instruction.Create(OpCodes.Throw));
+        var machine = new StaticMachine();
+
+        using (machine.State.Blockers.Trying())
+            Assert.Equal(StaticExecutionStatus.Threw, machine.Execute(method).Status);
+
+        Assert.Empty(machine.State.Blockers.Blockers);
+        Assert.Empty(machine.State.Blockers.Continuations);
+    }
+
+    /// <summary>
     /// The same stop met twice is one entry with a count, because a loader that asks the same thing a
     /// hundred times has told the reader everything the first time.
     /// </summary>

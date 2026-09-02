@@ -51,9 +51,9 @@ public enum BlockerKind
 /// <para>
 /// So a refusal is recorded where it happens, while the method, the offset and the reason are all
 /// still in hand, and it carries <see cref="Declare"/>: the exact text of the declaration that would
-/// answer it, or nothing where no declaration can. A kind that cannot be declared away is still worth
-/// recording, because knowing that the next step is a change to the tool rather than to a file is
-/// itself the answer.
+/// answer it, or nothing where no declaration can. Most kinds that cannot be declared away are
+/// asking for a change to the tool. <see cref="BlockerKind.Threw"/> is the other case: the program
+/// itself threw, and naming that is the answer.
 /// </para>
 /// </remarks>
 /// <param name="Kind">Which sort of stop this is.</param>
@@ -180,6 +180,26 @@ public sealed class BlockerLedger
     public int Count => _stopped.Count;
 
     /// <summary>
+    /// How many nested trials are in progress, whose refusals must not be written down as the run's.
+    /// </summary>
+    private int _trying;
+
+    /// <summary>
+    /// A stretch of interpretation whose refusals are not the run's.
+    /// </summary>
+    /// <remarks>
+    /// A trial asks a method what it would do with a stack the program never gave it. The answer
+    /// is often a throw, or a call nobody modelled. Those are the trial working, not the run
+    /// stopping, and writing them down as what blocked the reading would report the tool's own
+    /// questions as the sample's.
+    /// </remarks>
+    public IDisposable Trying()
+    {
+        _trying++;
+        return new StopTrying(this);
+    }
+
+    /// <summary>
     /// Where the interpretation is, for the refusals raised somewhere that cannot see it.
     /// </summary>
     /// <remarks>
@@ -203,8 +223,11 @@ public sealed class BlockerLedger
         string key,
         string detail,
         Remedy? declare = null,
-        string? where = null) =>
-        _stopped.Add(kind, key, detail, declare, where ?? Reached(), Pass);
+        string? where = null)
+    {
+        if (_trying == 0)
+            _stopped.Add(kind, key, detail, declare, where ?? Reached(), Pass);
+    }
 
     /// <summary>
     /// Records something the run would once have stopped for and instead carried on past.
@@ -221,8 +244,11 @@ public sealed class BlockerLedger
         string key,
         string detail,
         Remedy? declare = null,
-        string? where = null) =>
-        _continued.Add(kind, key, detail, declare, where ?? Reached(), Pass);
+        string? where = null)
+    {
+        if (_trying == 0)
+            _continued.Add(kind, key, detail, declare, where ?? Reached(), Pass);
+    }
 
     /// <summary>Where the machine had got to, spelled out only when a stop is first recorded.</summary>
     private string? Reached() => Site.Method is not { } method
@@ -284,6 +310,11 @@ public sealed class BlockerLedger
         public string? Where { get; } = where;
         public string? Pass { get; } = pass;
         public int Times { get; set; } = 1;
+    }
+
+    private sealed class StopTrying(BlockerLedger ledger) : IDisposable
+    {
+        public void Dispose() => ledger._trying--;
     }
 }
 

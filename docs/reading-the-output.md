@@ -174,7 +174,9 @@ Each entry is one thing that stopped the interpretation, what it is about, where
 it happened, how often it came up, and the exact line to write down to get past
 it. An entry reading **no declaration fixes this** is one that needs a change to
 the tool rather than a line in a file, and saying so is the point: it tells you
-to stop looking for something to declare.
+to stop looking for something to declare. A **Threw** entry is different. It is
+the program's own exception reaching the top of a method the tool was reading —
+the sample deciding, not a gap in the model — and the line under it says that.
 
 `cilantro/NAME.blockers.json` carries all of them, with the tool version and
 the hashes of the input and the declarations, and is the file to read when a

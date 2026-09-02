@@ -458,6 +458,10 @@ public static class VirtualSemantics
         var derived = new Dictionary<int, VirtualOperation>();
         var declined = new Dictionary<int, string>();
         var undecided = new Dictionary<int, string>();
+        // The trials share this machine with the run that decoded the program. A throw or an
+        // unmodelled constructor on a stack the program never built is the trial finding out what
+        // an opcode is not, and must not be written down as what stopped the reading.
+        using var trying = machine.State.Blockers.Trying();
         foreach (var (opcode, example) in examples.OrderBy(entry => entry.Key))
         {
             var operand = Operand(heap, example, operandField);
