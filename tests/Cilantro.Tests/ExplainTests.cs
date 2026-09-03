@@ -67,6 +67,14 @@ public sealed class ExplainTests
         var page = Shown(result, sample);
 
         Assert.Contains("RESULT   Recovered", page, StringComparison.Ordinal);
+        Assert.Contains("Methods rebuilt from VM opcodes", page, StringComparison.Ordinal);
+        Assert.Contains("1 of 1", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Method bodies decrypted", page, StringComparison.Ordinal);
+        Assert.Contains("Proxy calls restored", page, StringComparison.Ordinal);
+        Assert.Contains("1,230", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hidden calls resolved", page, StringComparison.Ordinal);
+        Assert.Contains("VM listings", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hidden code", page, StringComparison.Ordinal);
         Assert.Contains("Cleaned copy", page, StringComparison.Ordinal);
         Assert.Contains("Open the cleaned copy", page, StringComparison.Ordinal);
         Assert.DoesNotContain("Failed", page, StringComparison.Ordinal);

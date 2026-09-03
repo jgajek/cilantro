@@ -113,7 +113,7 @@ internal static class Explain
 
         Verdict(output, result.Success ? "Recovered" : "Failed");
         Protection(capabilities, protector, output);
-        Recovered(report, output);
+        Recovered(result, output);
         if (detail)
             Assumed(report, output);
         if (detail || !result.Success)
@@ -262,14 +262,26 @@ internal static class Explain
         output.WriteLine();
     }
 
-    private static void Recovered(ArtifactReport report, TextWriter output)
+    private static void Recovered(PipelineResult result, TextWriter output)
     {
-        var recovery = report.Recovery;
+        var recovery = result.Report.Recovery;
         var lines = new List<(string Label, string Value)>();
         if (recovery.RestoredMethodBodies > 0 || recovery.RemainingMethodStubs > 0)
         {
             var total = recovery.RestoredMethodBodies + recovery.RemainingMethodStubs;
             lines.Add(("Method bodies decrypted", $"{recovery.RestoredMethodBodies:N0} of {total:N0}"));
+        }
+
+        // A different protection from the line above: those bodies were encrypted IL, these were
+        // bytecode for the protector's interpreter. Mixing them into one "methods recovered" figure
+        // is what made a sample with no NecroBit and one rebuilt virtualized method look as though
+        // nothing had been decrypted.
+        var virtualized = result.VirtualizedMethods;
+        if (virtualized > 0 || result.RebuiltMethods > 0)
+        {
+            var found = Math.Max(virtualized, result.RebuiltMethods);
+            lines.Add(("Methods rebuilt from VM opcodes",
+                $"{result.RebuiltMethods:N0} of {found:N0}"));
         }
 
         if (recovery.StringCallSites > 0)
@@ -279,6 +291,7 @@ internal static class Explain
         }
 
         Add(lines, "String calls decoded", recovery.ConstantStringSites);
+        Add(lines, "Proxy calls restored", recovery.ProxyCallsRestored);
         Add(lines, "Hidden calls resolved", recovery.TokensRestored);
         Add(lines, "Hidden true/false values resolved", recovery.BooleansRecovered);
         Add(lines, "Junk instructions removed", recovery.UnreachableInstructionsRemoved);
@@ -356,10 +369,11 @@ internal static class Explain
         {
             var folder = Near(Path.GetDirectoryName(result.VirtualProgramPaths[0])!, home);
             output.WriteLine(
-                $"    Hidden code     {result.VirtualProgramPaths.Count} listing(s) in {folder}");
+                $"    VM listings     {result.VirtualizedMethods} in {folder}");
         }
 
-        if (result.RebuiltMethods > 0)
+        if (result.RebuiltMethods > 0 &&
+            (detail || result.DevirtualizationCheck == DevirtualizationCheck.Disagreed))
         {
             var rebuilt = result.RebuiltMethods == 1
                 ? "1 method in the cleaned copy"
@@ -370,7 +384,7 @@ internal static class Explain
                 foreach (var note in result.DevirtualizationNotes)
                     output.WriteLine($"                      {note}");
             }
-            else if (detail)
+            else
             {
                 var standing = result.DevirtualizationCheck switch
                 {
@@ -383,14 +397,11 @@ internal static class Explain
                 foreach (var note in result.DevirtualizationNotes)
                     output.WriteLine($"                      {note}");
             }
-            else
-            {
-                output.WriteLine($"    Built back      {rebuilt}");
-            }
         }
         else if (detail &&
             result.DevirtualizationNotes.Count > 0 &&
-            result.VirtualProgramPaths.Count > 0)
+            result.VirtualProgramPaths.Count > 0 &&
+            result.RebuiltMethods == 0)
         {
             output.WriteLine("    Built back      nothing, and here is why:");
             foreach (var note in result.DevirtualizationNotes)

@@ -58,6 +58,7 @@ look like a failure.
 
     Method bodies decrypted        253 of 253
     Strings decrypted              163 of 163
+    Proxy calls restored           412
     Hidden calls resolved          17
     Junk instructions removed      1,942
     Encrypted resources restored   1
@@ -65,9 +66,17 @@ look like a failure.
 ```
 
 **Method bodies decrypted — `n` of `m`.** How many encrypted method bodies were
-recovered, out of how many were found. This is the number that matters most. It
-should read `n of n`; if it does not, no cleaned copy is written, because a
-partially decrypted assembly is misleading rather than useful.
+recovered, out of how many were found. This is NecroBit and the like: the
+original IL was in the file, encrypted, and came back. It should read `n of n`;
+if it does not, no cleaned copy is written, because a partially decrypted
+assembly is misleading rather than useful. The line is omitted when the sample
+did not encrypt method bodies at all.
+
+**Methods rebuilt from VM opcodes — `n` of `m`.** How many virtualized methods
+were written back as IL in the cleaned copy, out of how many the protector
+turned into interpreter bytecode. These were never encrypted IL; they were a
+custom instruction set, and the bodies in the cleaned copy are the tool's
+reading of that. `m` is also the number of listings under `VM listings`.
 
 **Strings decrypted — `n` of `m`.** Recovered string sites out of sites found.
 Also all-or-nothing: either every site is proven and replaced, or none are, so
@@ -79,6 +88,12 @@ This counts the calls that were run and replaced with the string they return.
 There is no "of `m`" here because there is no set of sites to have covered: a
 decoder is proven constant and folded, or it is left alone and named in the
 report.
+
+**Proxy calls restored.** Sites that went through Reactor's delegate lookup
+table, rewritten to call the real method. Only printed when the sample used
+that protection. It is a different thing from the next line: these were
+ordinary method calls hidden behind a table, not metadata handles hidden
+behind `Module.Resolve*`.
 
 **Hidden calls resolved.** Metadata references that were being looked up at run
 time to hide a dependency, turned back into direct references. Raises the number
@@ -419,11 +434,13 @@ the protector emitted it and never uses it. `operation(s) no path arrives at`
 is the weaker statement, made where the walk stopped somewhere: the code may
 only be past the place it stopped.
 
-Where the sample had methods turned into bytecode, a default run names them
-under `WROTE` and stops:
+Where the sample had methods turned into bytecode, a default run counts them
+under `RECOVERED` and points at the listings under `WROTE`:
 
 ```
-    Built back      1 method in the cleaned copy
+    Methods rebuilt from VM opcodes   1 of 1
+
+    VM listings     1 in cilantro/a.virtualized
 ```
 
 `--strict` and `--verbose` add the verdict of the check, and the part in

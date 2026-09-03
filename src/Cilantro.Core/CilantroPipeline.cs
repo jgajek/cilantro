@@ -238,7 +238,8 @@ public sealed record RecoveryReportMetrics(
     int VirtualOperationsRead = 0,
     int VirtualOperationsWalked = 0,
     int VirtualDepthDisagreements = 0,
-    int ConstantStringSites = 0);
+    int ConstantStringSites = 0,
+    int ProxyCallsRestored = 0);
 
 /// <summary>Raised when an assembly offered to the interpreter cannot be trusted as given.</summary>
 public sealed class TrustedLibraryException : Exception
@@ -573,8 +574,11 @@ public sealed record PipelineResult(
     IReadOnlyList<string> ExtractedPayloadPaths,
     ArtifactReport Report)
 {
-    /// <summary>Listings of the programs behind virtualized methods, one file per method.</summary>
+    /// <summary>Listings of the programs behind virtualized methods, two files per method.</summary>
     public IReadOnlyList<string> VirtualProgramPaths { get; init; } = [];
+
+    /// <summary>How many methods the protector turned into interpreter bytecode.</summary>
+    public int VirtualizedMethods { get; init; }
 
     /// <summary>Where the account of what stopped the run was written.</summary>
     public string? BlockerReportPath { get; init; }
@@ -996,6 +1000,8 @@ public sealed class CilantroPipeline
             report)
         {
             VirtualProgramPaths = virtualProgramPaths,
+            VirtualizedMethods = virtualProgramPaths
+                .Count(path => path.EndsWith(".vmprogram.txt", StringComparison.Ordinal)),
             BlockerReportPath = blockersPath,
             ConfigReportPath = configPath,
             RenameMapPath = renameMapPath,
@@ -1034,6 +1040,7 @@ public sealed class CilantroPipeline
         context.TryGetFact<int>("strings.replacedSites", out var replacedStringSites);
         context.TryGetFact<int>("booleans.replacedSites", out var booleansRecovered);
         context.TryGetFact<int>("tokens.restored", out var tokensRestored);
+        context.TryGetFact<int>("proxy.restoredCallSites", out var proxyCallsRestored);
         context.TryGetFact<int>("resources.restoredBundles", out var resourcesRestored);
         context.TryGetFact<int>("cfg.unreachableInstructionsRemoved", out var unreachableRemoved);
         context.TryGetFact<int>("cfg.dispatcherEdgesRedirected", out var redirectedEdges);
@@ -1086,7 +1093,8 @@ public sealed class CilantroPipeline
                 virtualRead,
                 virtualWalked,
                 virtualDisagreements,
-                constantStringSites),
+                constantStringSites,
+                proxyCallsRestored),
             verification.Passed,
             verification.Diagnostics,
             Consulted(environment?.Host),
@@ -2105,6 +2113,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         // and the initialization behind them exists only to populate those fields.
         RecoveryOrphans.DeclareSubtree(context, bypassedAdapters);
         context.SetFact("proxy.bindings", bindings);
+        context.SetFact("proxy.restoredCallSites", changes);
         context.AddEvidence(new Evidence(
             "proxy-map",
             $"Decoded and validated {bindings.Count} field-to-method bindings.",

@@ -173,7 +173,8 @@
         "VirtualOperationsRead",
         "VirtualOperationsWalked",
         "VirtualDepthDisagreements",
-        "ConstantStringSites"
+        "ConstantStringSites",
+        "ProxyCallsRestored"
       ],
       "properties": {
         "RestoredMethodBodies": { "type": "integer", "minimum": 0 },
@@ -206,7 +207,12 @@
         },
         "VirtualOperationsWalked": { "type": "integer", "minimum": 0 },
         "VirtualDepthDisagreements": { "type": "integer", "minimum": 0 },
-        "ConstantStringSites": { "type": "integer", "minimum": 0 }
+        "ConstantStringSites": { "type": "integer", "minimum": 0 },
+        "ProxyCallsRestored": {
+          "description": "Call sites that loaded a delegate from a protector lookup table, rewritten to call the target method directly.",
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "additionalProperties": false
     },
