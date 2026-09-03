@@ -6,7 +6,7 @@
       ReleaseMetadataTests holds the two together so a download cannot be labelled one version while
       claiming another.
     -->
-    <Version>0.9.5</Version>
+    <Version>0.9.6</Version>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
