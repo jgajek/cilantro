@@ -36,6 +36,23 @@ about it, so that none of it has to be found by convention first. See
 
 ## The summary
 
+The first thing the summary says is whether the run worked:
+
+```
+  RESULT   Recovered
+```
+
+`Recovered` means the tool finished and wrote a cleaned copy. `Failed` means it
+did not, and the rest of the page says why. `Not protected` means the file is
+not something this tool undoes. That line is the one to read first.
+
+A default run then lists what came back and where it was written, and stops.
+How the reading was licensed — assumed host facts, calls stepped over, whether
+a rebuilt body was cross-checked — is printed only under `--strict` or
+`--verbose`. Those are the modes that asked for the assumptions to be named.
+Printing them on an ordinary successful run is what made a finished recovery
+look like a failure.
+
 ```
   RECOVERED
 
@@ -83,6 +100,9 @@ they had nothing left to do. See "Why is Reactor's code still there?" below.
 placeholders. A `--strict` run leaves them alone unless you add `--rename`.
 
 ## The ASSUMED section
+
+Shown only with `--strict` or `--verbose`. A default run does the same work and
+does not lecture about it.
 
 ```
   ASSUMED   about the machine, from the "windows-10-workstation" profile
@@ -163,6 +183,10 @@ nothing asked about, which is what a mistyped key looks like.
 
 ## The BLOCKED section
 
+Shown on a failed run, and on a successful one only with `--strict` or
+`--verbose`. If the cleaned copy was written, a leftover stop did not prevent
+recovery.
+
 ```
   BLOCKED   what stopped the run, and what would get past it
 
@@ -193,8 +217,8 @@ a program can apply. The kinds and the file's shape are in
 
 ## The NOTES section
 
-Notes appear when a stage did not fully succeed. A line beginning `-` is a stage
-that declined to act; a line beginning `!` is a stage that failed.
+A failed stage is always named. Incomplete stages that declined because the
+sample does not use that feature appear only with `--strict` or `--verbose`.
 
 Declining is normal and usually means the sample does not use that feature — a
 sample with no encrypted booleans will report the boolean stage as incomplete.
@@ -395,8 +419,15 @@ the protector emitted it and never uses it. `operation(s) no path arrives at`
 is the weaker statement, made where the walk stopped somewhere: the code may
 only be past the place it stopped.
 
-Where the sample had methods turned into bytecode, one more line appears under
-`WROTE`, and the part in brackets is the part to read:
+Where the sample had methods turned into bytecode, a default run names them
+under `WROTE` and stops:
+
+```
+    Built back      1 method in the cleaned copy
+```
+
+`--strict` and `--verbose` add the verdict of the check, and the part in
+brackets is then the part to read:
 
 ```
     Built back      1 method(s) in the cleaned copy, marked [RebuiltFromReading] (they unpacked the same payload as the original)

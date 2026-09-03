@@ -155,7 +155,7 @@ internal static class CilantroCommand
 
             if (verbose)
                 Explain.PassLog(result.Report);
-            Explain.Summarize(result, input);
+            Explain.Summarize(result, input, verbose);
             if (!result.Report.VerificationPassed)
             {
                 foreach (var diagnostic in result.Report.VerificationDiagnostics)

@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cilantro.Core\Cilantro.Core.csproj" />
+    <ProjectReference Include="..\..\src\Cilantro.Cli\Cilantro.Cli.csproj" />
     <ProjectReference Include="..\..\src\Cilantro.Mcp\Cilantro.Mcp.csproj" />
   </ItemGroup>
 

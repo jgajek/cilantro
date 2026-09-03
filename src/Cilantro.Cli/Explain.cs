@@ -9,28 +9,21 @@ namespace Cilantro.Cli;
 /// Turns a pipeline report into something an analyst can read without knowing how the tool works.
 /// </summary>
 /// <remarks>
-/// The pass log the tool used to print is a record of its own reasoning, and it answers questions
-/// nobody arrives with. Someone who has just pulled a suspicious file out of a sandbox wants three
-/// things in this order: whether the file is protected and by what, how much of the original code
-/// came back, and where the readable copy is. The pass log answers none of those directly, so it
-/// moves behind <c>--verbose</c> and this takes the front.
+/// Someone who has just pulled a suspicious file out of a sandbox wants three things in this
+/// order: whether the run worked, what was recovered, and where the readable copy is. The default
+/// summary says those and stops. How the reading was licensed — assumed host facts, calls stepped
+/// over, whether a rebuilt body was cross-checked — is the business of <c>--strict</c> and
+/// <c>--verbose</c>, because printing it on an ordinary successful run is what made a finished
+/// recovery look like a failure.
 ///
 /// Everything printed here is read off the report rather than restated, so the summary cannot drift
-/// from what actually happened: the counts come from the recovery metrics, the protections come
-/// from the capabilities detection recorded, and the caveats come from pass status. What this file
-/// adds is only the English.
+/// from what actually happened.
 /// </remarks>
 internal static class Explain
 {
     /// <summary>
     /// What each protection means for the person reading the code, whichever protector applied it.
     /// </summary>
-    /// <remarks>
-    /// The names on the left are the tool's internal vocabulary and appear in the JSON report, so
-    /// they are worth keeping somewhere a reader can map them; the sentences on the right avoid
-    /// .NET terms wherever a plain one exists. "Method body" survives because there is no shorter
-    /// true way to say it and an analyst meets the phrase everywhere else too.
-    /// </remarks>
     private static readonly (string Capability, string Meaning)[] Protections =
     [
         ("jit-hook",
@@ -65,21 +58,30 @@ internal static class Explain
             "The file checks for a debugger and behaves differently when it finds one")
     ];
 
-    public static void Summarize(PipelineResult result, string inputPath)
+    public static void Summarize(
+        PipelineResult result, string inputPath, bool verbose = false) =>
+        Summarize(result, inputPath, Console.Out, verbose);
+
+    /// <summary>The same summary, written where a test can read it.</summary>
+    internal static void Summarize(
+        PipelineResult result, string inputPath, TextWriter output, bool verbose = false)
     {
         var report = result.Report;
         var home = Path.GetDirectoryName(Path.GetFullPath(inputPath))!;
-        Console.WriteLine();
-        Console.WriteLine($"  File     {Path.GetFileName(inputPath)}  ({Size(report.InputLength)})");
-        Console.WriteLine($"  SHA-256  {report.InputSha256}");
-        // Said at the top rather than buried, because it is the one thing that changes how the rest of
-        // this page should be read: a triage run answers more and vouches for less.
-        // What the mode did to the assembly is not said here, because either half of it can be asked
-        // for or waved off by name and the sections below report what actually happened.
-        Console.WriteLine(report.Strict
-            ? "  Reading  strict: nothing assumed, stopping wherever the tool cannot follow"
-            : "  Reading  triage: a plausible machine assumed, unreadable calls stepped over");
-        Console.WriteLine();
+        // Strict asked for the assumptions to be named. Verbose asked for the reasoning. Either
+        // one is a request for the long form; a default run is not.
+        var detail = verbose || report.Strict;
+        output.WriteLine();
+        output.WriteLine($"  File     {Path.GetFileName(inputPath)}  ({Size(report.InputLength)})");
+        output.WriteLine($"  SHA-256  {report.InputSha256}");
+        if (detail)
+        {
+            output.WriteLine(report.Strict
+                ? "  Reading  strict: nothing assumed, stopping wherever the tool cannot follow"
+                : "  Reading  triage: a plausible machine assumed, unreadable calls stepped over");
+        }
+
+        output.WriteLine();
 
         var capabilities = report.Evidence
             .Where(evidence => evidence.Category == "capability")
@@ -89,75 +91,69 @@ internal static class Explain
             .FirstOrDefault(evidence => evidence.Category == "protector-name")?.Message
             ?? "an unrecognized protector";
 
-        // Asked before the capability list, because a bootstrap has no capabilities to list: the
-        // protections belong to the assembly inside it, which this run recovered and did not read.
-        // Falling through would print "no protection" about the most heavily protected input there is.
         if (report.Evidence.Any(evidence => evidence.Category == "native-bootstrap"))
         {
-            Bootstrap(result, home);
+            Verdict(output, "Recovered the hidden assembly");
+            Bootstrap(result, home, output);
             return;
         }
 
         if (capabilities.Count == 0)
         {
-            // Finding nothing is a real answer and the commonest one on a file somebody guessed
-            // about, so it gets said outright. Reporting it as a string of incomplete stages would
-            // read as a malfunction, when in fact every stage declined for the same good reason.
-            Console.WriteLine(
-                "  PROTECTION   None. This file is not protected by anything this tool knows.");
-            Console.WriteLine();
-            Console.WriteLine("    There is nothing to undo, so no cleaned copy was written.");
-            Console.WriteLine("    If you expected protection here, the report lists what was");
-            Console.WriteLine($"    checked: {Near(result.AnalysisReportPath, home)}");
-            Console.WriteLine();
+            Verdict(output, "Not protected");
+            output.WriteLine(
+                "  This file is not protected by anything this tool knows.");
+            output.WriteLine();
+            output.WriteLine("    There is nothing to undo, so no cleaned copy was written.");
+            output.WriteLine("    If you expected protection here, the report lists what was");
+            output.WriteLine($"    checked: {Near(result.AnalysisReportPath, home)}");
+            output.WriteLine();
             return;
         }
 
-        Protection(capabilities, protector);
-        Recovered(report);
-        Assumed(report);
-        Blocked(result, home);
-        Written(result, home);
-        Caveats(result);
+        Verdict(output, result.Success ? "Recovered" : "Failed");
+        Protection(capabilities, protector, output);
+        Recovered(report, output);
+        if (detail)
+            Assumed(report, output);
+        if (detail || !result.Success)
+            Blocked(result, home, output);
+        Written(result, home, output, detail);
+        Caveats(result, output, detail);
+    }
+
+    /// <summary>The one line that says whether the run worked.</summary>
+    private static void Verdict(TextWriter output, string result)
+    {
+        output.WriteLine($"  RESULT   {result}");
+        output.WriteLine();
     }
 
     /// <summary>
     /// What stopped the run, and the exact thing to write down to get past it.
     /// </summary>
-    /// <remarks>
-    /// The point of printing these is that the next run can be better than this one. So each is
-    /// printed with its remedy attached rather than as a complaint, and the ones with no remedy say so
-    /// instead of being left out. Most of those need a change to the tool. A throw is the other case:
-    /// the program itself threw, and saying so is the answer. Only the first few are shown: a run
-    /// stops in one place for one reason, and the rest are usually the same reason met again on
-    /// another path.
-    /// </remarks>
-    private static void Blocked(PipelineResult result, string home)
+    private static void Blocked(PipelineResult result, string home, TextWriter output)
     {
         if (result.Report.Blockers is not { Count: > 0 } blockers)
             return;
-        Console.WriteLine("  BLOCKED   what stopped the run, and what would get past it");
-        Console.WriteLine();
+        output.WriteLine("  BLOCKED   what stopped the run, and what would get past it");
+        output.WriteLine();
         const int shown = 6;
         foreach (var blocker in blockers.Take(shown))
         {
-            Console.WriteLine(
+            output.WriteLine(
                 $"    {blocker.Kind}  {blocker.Key}" +
                 (blocker.Times > 1 ? $"  (x{blocker.Times})" : string.Empty));
 
-            // The reason, which for several kinds is the only part that says anything the heading
-            // did not. Where it opens by naming what the heading already named — a method, a fact
-            // key — that much is dropped so the line reads on from the heading instead of repeating
-            // it, which matters when the name is forty invisible characters long.
             if (Beyond(blocker.Detail, blocker.Key) is { Length: > 0 } detail)
-                Console.WriteLine($"      {detail}");
+                output.WriteLine($"      {detail}");
             if (blocker.Where is { } where && !string.Equals(where, blocker.Key, StringComparison.Ordinal))
             {
-                Console.WriteLine(Beyond(where, blocker.Key) is { Length: > 0 } within
+                output.WriteLine(Beyond(where, blocker.Key) is { Length: > 0 } within
                     ? $"      at {within}"
                     : $"      in {where}");
             }
-            Console.WriteLine(blocker.Declare is { } declare
+            output.WriteLine(blocker.Declare is { } declare
                 ? $"      declare: {declare}"
                 : blocker.Kind == BlockerKind.Threw
                     ? "      the program threw here; that is its own decision, not a missing model"
@@ -165,20 +161,16 @@ internal static class Explain
         }
 
         if (blockers.Count > shown)
-            Console.WriteLine($"    ... and {blockers.Count - shown} more");
+            output.WriteLine($"    ... and {blockers.Count - shown} more");
         if (result.BlockerReportPath is { } path)
         {
-            Console.WriteLine();
-            Console.WriteLine($"    All of them, in full: {Near(path, home)}");
+            output.WriteLine();
+            output.WriteLine($"    All of them, in full: {Near(path, home)}");
         }
 
-        Console.WriteLine();
+        output.WriteLine();
     }
 
-    /// <summary>
-    /// What is left of <paramref name="text"/> once it stops restating <paramref name="prefix"/>,
-    /// or null where the two say the same thing.
-    /// </summary>
     private static string? Beyond(string text, string prefix)
     {
         if (!text.StartsWith(prefix, StringComparison.Ordinal))
@@ -187,115 +179,90 @@ internal static class Explain
         return rest.Length == 0 ? null : rest;
     }
 
-    /// <summary>
-    /// What the run was told about the machine, as opposed to what it worked out from the file.
-    /// </summary>
-    /// <remarks>
-    /// A recovered string that came out of a decrypter is a fact about the sample. A recovered
-    /// string that came out of a decrypter keyed on the computer's serial number is a fact about the
-    /// sample and a serial number somebody typed in, and a reader who does not know the second half
-    /// cannot judge the first. Only what was consulted is listed, because a profile mostly describes
-    /// things this sample never asked about.
-    /// </remarks>
-    private static void Assumed(ArtifactReport report)
+    private static void Assumed(ArtifactReport report, TextWriter output)
     {
         var declarations = report.Declarations;
         if (report.HostProfile is { Consulted.Count: > 0 } profile)
         {
             var answered = profile.Consulted.Where(fact => fact.Answered).ToArray();
             var refused = profile.Consulted.Where(fact => !fact.Answered).ToArray();
-            Console.WriteLine($"  ASSUMED   about the machine, from the \"{profile.Name}\" profile");
-            Console.WriteLine();
-            // Padded to the longest key, up to a point: a registry path can be a hundred characters
-            // wide, and letting one of those set the column pushes every answer off the page.
+            output.WriteLine($"  ASSUMED   about the machine, from the \"{profile.Name}\" profile");
+            output.WriteLine();
             var width = Math.Min(56, profile.Consulted.Max(fact => fact.Key.Length));
             foreach (var fact in answered)
             {
-                // Marked rather than sorted into two lists, because the reader is checking one fact
-                // they care about and wants to know about that one without hunting for it twice.
-                Console.WriteLine(
+                output.WriteLine(
                     $"    {fact.Key.PadRight(width)}   {fact.Answer}" +
                     (fact.Stated ? "  (you stated this)" : "  (assumed)"));
             }
 
             foreach (var fact in refused)
-                Console.WriteLine($"    {fact.Key.PadRight(width)}   not stated, so the code that asked was not read");
-            Console.WriteLine();
+                output.WriteLine($"    {fact.Key.PadRight(width)}   not stated, so the code that asked was not read");
+            output.WriteLine();
         }
 
-        // A call nobody followed is the other half of what the reading rests on, and unlike a fact
-        // there is nothing to print in place of it — only the name of what went unread. A type test
-        // the hierarchy in hand could not settle belongs here for the same reason: the run answered
-        // it with a no it could not justify, and carried on as though the program had asked for one.
         if (report.ContinuedPast is { Count: > 0 } continued)
         {
-            Console.WriteLine("  ASSUMED   not to matter: what the tool could not read, carried on past");
-            Console.WriteLine();
+            output.WriteLine("  ASSUMED   not to matter: what the tool could not read, carried on past");
+            output.WriteLine();
             const int shown = 6;
             foreach (var call in continued.Take(shown))
             {
-                Console.WriteLine(
+                output.WriteLine(
                     $"    {call.Key}" +
                     (call.Times > 1 ? $"  (x{call.Times})" : string.Empty));
             }
 
             if (continued.Count > shown)
-                Console.WriteLine($"    ... and {continued.Count - shown} more");
-            Console.WriteLine();
-            Console.WriteLine("    Each was answered with nothing the run could know. Run again with --strict");
-            Console.WriteLine("    to stop at these instead of assuming past them.");
-            Console.WriteLine();
+                output.WriteLine($"    ... and {continued.Count - shown} more");
+            output.WriteLine();
+            output.WriteLine("    Each was answered with nothing the run could know. Run again with --strict");
+            output.WriteLine("    to stop at these instead of assuming past them.");
+            output.WriteLine();
         }
 
         if (declarations is null)
             return;
-        // A declared call outcome is the one input that can put a value into the interpretation which
-        // no code produced, so it is said out loud even when everything else went well.
         if (declarations.DeclaredCallsUsed.Count > 0)
         {
-            Console.WriteLine("  ASSUMED   about calls the tool does not model, because you said so");
-            Console.WriteLine();
+            output.WriteLine("  ASSUMED   about calls the tool does not model, because you said so");
+            output.WriteLine();
             foreach (var call in declarations.DeclaredCallsUsed)
-                Console.WriteLine($"    {call}");
-            Console.WriteLine();
+                output.WriteLine($"    {call}");
+            output.WriteLine();
         }
 
-        // A declaration nobody asked about is nearly always a key spelled differently from the one the
-        // run asks under, and an hour is easily lost to that if nothing says it went unused.
         if (declarations.DeclaredCallsUnused.Count == 0)
             return;
-        Console.WriteLine("  UNUSED    declared, but nothing asked");
-        Console.WriteLine();
+        output.WriteLine("  UNUSED    declared, but nothing asked");
+        output.WriteLine();
         foreach (var call in declarations.DeclaredCallsUnused)
-            Console.WriteLine($"    {call}");
+            output.WriteLine($"    {call}");
         if (!declarations.CallsAllowed)
-            Console.WriteLine("    (declared calls were not allowed; pass --allow-declared-calls)");
-        Console.WriteLine();
+            output.WriteLine("    (declared calls were not allowed; pass --allow-declared-calls)");
+        output.WriteLine();
     }
 
-    /// <summary>
-    /// Shortens a path to how it reads from where the sample sits, which is where the reader is.
-    /// </summary>
     private static string Near(string path, string home)
     {
         var relative = Path.GetRelativePath(home, path);
         return relative.StartsWith("..", StringComparison.Ordinal) ? path : relative;
     }
 
-    private static void Protection(HashSet<string> capabilities, string protector)
+    private static void Protection(HashSet<string> capabilities, string protector, TextWriter output)
     {
-        Console.WriteLine($"  PROTECTION   {protector}");
-        Console.WriteLine();
+        output.WriteLine($"  PROTECTION   {protector}");
+        output.WriteLine();
         foreach (var (capability, meaning) in Protections)
         {
             if (capabilities.Contains(capability))
-                Console.WriteLine($"    - {meaning}");
+                output.WriteLine($"    - {meaning}");
         }
 
-        Console.WriteLine();
+        output.WriteLine();
     }
 
-    private static void Recovered(ArtifactReport report)
+    private static void Recovered(ArtifactReport report, TextWriter output)
     {
         var recovery = report.Recovery;
         var lines = new List<(string Label, string Value)>();
@@ -311,9 +278,6 @@ internal static class Explain
                 $"{recovery.ReplacedStringSites:N0} of {recovery.StringCallSites:N0}"));
         }
 
-        // Counted separately from the line above because it is a different protection: the strings
-        // are behind the program's own decoder rather than behind Reactor's resolver, so there is no
-        // set of call sites to have covered all of, only calls read and replaced.
         Add(lines, "String calls decoded", recovery.ConstantStringSites);
         Add(lines, "Hidden calls resolved", recovery.TokensRestored);
         Add(lines, "Hidden true/false values resolved", recovery.BooleansRecovered);
@@ -324,12 +288,12 @@ internal static class Explain
         if (lines.Count == 0)
             return;
 
-        Console.WriteLine("  RECOVERED");
-        Console.WriteLine();
+        output.WriteLine("  RECOVERED");
+        output.WriteLine();
         var width = lines.Max(line => line.Label.Length);
         foreach (var (label, value) in lines)
-            Console.WriteLine($"    {label.PadRight(width)}   {value}");
-        Console.WriteLine();
+            output.WriteLine($"    {label.PadRight(width)}   {value}");
+        output.WriteLine();
     }
 
     private static void Add(List<(string, string)> lines, string label, int value)
@@ -338,150 +302,147 @@ internal static class Explain
             lines.Add((label, value.ToString("N0", CultureInfo.InvariantCulture)));
     }
 
-    /// <summary>
-    /// What to say about a file whose managed half had to be made before it could be read.
-    /// </summary>
-    /// <remarks>
-    /// The recovered assembly is the whole of the result, so it is named first and the run's own
-    /// findings come second. The last line is an instruction rather than a summary because it is the
-    /// only thing the reader has to do: this run deliberately stopped at the stub.
-    /// </remarks>
-    private static void Bootstrap(PipelineResult result, string home)
+    private static void Bootstrap(PipelineResult result, string home, TextWriter output)
     {
         var report = result.Report;
-        Console.WriteLine(
+        output.WriteLine(
             "  PROTECTION   .NET Reactor, native bootstrap. The file is native code with the");
-        Console.WriteLine(
+        output.WriteLine(
             "               managed assembly encrypted inside it.");
-        Console.WriteLine();
+        output.WriteLine();
 
-        Console.WriteLine("  WROTE");
-        Console.WriteLine();
+        output.WriteLine("  WROTE");
+        output.WriteLine();
         foreach (var payload in report.Payloads)
         {
-            Console.WriteLine(
+            output.WriteLine(
                 $"    Assembly        {payload.AssemblyName} ({Size(payload.PayloadLength)}), " +
                 $"SHA-256 {payload.PayloadSha256}");
             if (payload.WrittenTo is { } path)
-                Console.WriteLine($"                    {Near(path, home)}");
+                output.WriteLine($"                    {Near(path, home)}");
         }
 
-        Console.WriteLine();
-        Console.WriteLine("  HOW");
-        Console.WriteLine();
+        output.WriteLine();
+        output.WriteLine("  HOW");
+        output.WriteLine();
         foreach (var evidence in report.Evidence.Where(item => item.Category == "native-bootstrap"))
-            Console.WriteLine($"    {evidence.Message}");
+            output.WriteLine($"    {evidence.Message}");
 
-        Console.WriteLine();
-        Console.WriteLine("  NEXT");
-        Console.WriteLine();
-        Console.WriteLine("    The recovered assembly is protected in its own right and has not");
-        Console.WriteLine("    been read. Run this tool on it to undo what is on it:");
+        output.WriteLine();
+        output.WriteLine("  NEXT");
+        output.WriteLine();
+        output.WriteLine("    The recovered assembly is protected in its own right and has not");
+        output.WriteLine("    been read. Run this tool on it to undo what is on it:");
         foreach (var payload in report.Payloads.Where(item => item.WrittenTo is not null))
-            Console.WriteLine($"      cilantro {Near(payload.WrittenTo!, home)}");
-        Console.WriteLine();
+            output.WriteLine($"      cilantro {Near(payload.WrittenTo!, home)}");
+        output.WriteLine();
     }
 
-    private static void Written(PipelineResult result, string home)
+    private static void Written(PipelineResult result, string home, TextWriter output, bool detail)
     {
-        Console.WriteLine("  WROTE");
-        Console.WriteLine();
-        Console.WriteLine(result.OutputPath is null
-            ? "    Cleaned copy    none - see the notes below"
+        output.WriteLine("  WROTE");
+        output.WriteLine();
+        output.WriteLine(result.OutputPath is null
+            ? "    Cleaned copy    none"
             : $"    Cleaned copy    {Near(result.OutputPath, home)}");
         if (result.ExtractedPayloadPaths.Count > 0)
         {
             var folder = Near(Path.GetDirectoryName(result.ExtractedPayloadPaths[0])!, home);
-            Console.WriteLine(
+            output.WriteLine(
                 $"    Hidden files    {result.ExtractedPayloadPaths.Count} in {folder}");
         }
 
         if (result.VirtualProgramPaths.Count > 0)
         {
             var folder = Near(Path.GetDirectoryName(result.VirtualProgramPaths[0])!, home);
-            Console.WriteLine(
+            output.WriteLine(
                 $"    Hidden code     {result.VirtualProgramPaths.Count} listing(s) in {folder}");
         }
 
         if (result.RebuiltMethods > 0)
         {
-            // What the built bodies are worth is exactly what running them established, so the one
-            // line an analyst reads says that and not how much work went into it.
-            var standing = result.DevirtualizationCheck switch
+            var rebuilt = result.RebuiltMethods == 1
+                ? "1 method in the cleaned copy"
+                : $"{result.RebuiltMethods} methods in the cleaned copy";
+            if (result.DevirtualizationCheck == DevirtualizationCheck.Disagreed)
             {
-                DevirtualizationCheck.Agreed => "they unpacked the same payload as the original",
-                DevirtualizationCheck.Disagreed => "THEY DID NOT MATCH THE ORIGINAL — see below",
-                _ => "a reading, unchecked"
-            };
-            Console.WriteLine(
-                $"    Built back      {result.RebuiltMethods} method(s) in the cleaned copy, " +
-                $"marked [RebuiltFromReading] ({standing})");
-
-            // Underneath it, what each body cost and what the run established, because a verdict
-            // an analyst cannot see the basis of is one they have to take on trust.
-            foreach (var note in result.DevirtualizationNotes)
-                Console.WriteLine($"                      {note}");
+                output.WriteLine($"    Built back      {rebuilt} — did not match the original");
+                foreach (var note in result.DevirtualizationNotes)
+                    output.WriteLine($"                      {note}");
+            }
+            else if (detail)
+            {
+                var standing = result.DevirtualizationCheck switch
+                {
+                    DevirtualizationCheck.Agreed => "they unpacked the same payload as the original",
+                    _ => "a reading, unchecked"
+                };
+                output.WriteLine(
+                    $"    Built back      {result.RebuiltMethods} method(s) in the cleaned copy, " +
+                    $"marked [RebuiltFromReading] ({standing})");
+                foreach (var note in result.DevirtualizationNotes)
+                    output.WriteLine($"                      {note}");
+            }
+            else
+            {
+                output.WriteLine($"    Built back      {rebuilt}");
+            }
         }
-        else if (result.DevirtualizationNotes.Count > 0 && result.VirtualProgramPaths.Count > 0)
+        else if (detail &&
+            result.DevirtualizationNotes.Count > 0 &&
+            result.VirtualProgramPaths.Count > 0)
         {
-            // Not delivered where there was something to deliver is the case worth spelling out,
-            // since the alternative is an analyst looking for a file that was never written and not
-            // being told why. Where the sample had no virtualized method at all there is nothing to
-            // explain, and saying so on every ordinary file would be noise.
-            Console.WriteLine("    Built back      nothing, and here is why:");
+            output.WriteLine("    Built back      nothing, and here is why:");
             foreach (var note in result.DevirtualizationNotes)
-                Console.WriteLine($"                      {note}");
+                output.WriteLine($"                      {note}");
         }
 
-        // Named separately from the analysis report because it holds what the cleaned copy cannot:
-        // the constants that could not be put back into the code as literals.
         if (result.ConfigReportPath is { } config)
-            Console.WriteLine($"    Constants       {Near(config, home)}");
-        Console.WriteLine($"    Full report     {Near(result.AnalysisReportPath, home)}");
-        Console.WriteLine();
+            output.WriteLine($"    Constants       {Near(config, home)}");
+        output.WriteLine($"    Full report     {Near(result.AnalysisReportPath, home)}");
+        output.WriteLine();
     }
 
-    /// <summary>
-    /// What the tool could not do, said plainly, because a silent gap is the dangerous kind.
-    /// </summary>
-    private static void Caveats(PipelineResult result)
+    private static void Caveats(PipelineResult result, TextWriter output, bool detail)
     {
-        var unsupported = result.Report.Passes
-            .Where(pass => pass.Status is PassStatus.Unsupported or PassStatus.Partial)
-            .Where(pass => !DeclinedAnotherProtector(pass))
-            .ToArray();
         var failed = result.Report.Passes
             .Where(pass => pass.Status == PassStatus.Failed)
             .ToArray();
-        if (unsupported.Length == 0 && failed.Length == 0 && result.OutputPath is not null)
+        var unsupported = detail
+            ? result.Report.Passes
+                .Where(pass => pass.Status is PassStatus.Unsupported or PassStatus.Partial)
+                .Where(pass => !DeclinedAnotherProtector(pass))
+                .ToArray()
+            : [];
+        if (failed.Length == 0 && unsupported.Length == 0 && result.OutputPath is not null)
         {
-            Console.WriteLine("  Open the cleaned copy in dnSpyEx or ILSpy to read the code.");
-            Console.WriteLine();
+            output.WriteLine("  Open the cleaned copy in dnSpyEx or ILSpy to read the code.");
+            output.WriteLine();
             return;
         }
 
-        Console.WriteLine("  NOTES");
-        Console.WriteLine();
-        foreach (var pass in failed)
-            Console.WriteLine($"    ! {pass.Pass} failed: {First(pass)}");
-        foreach (var pass in unsupported)
-            Console.WriteLine($"    - {pass.Pass} was incomplete: {First(pass)}");
-        if (result.OutputPath is null)
+        if (failed.Length == 0 && unsupported.Length == 0 && result.OutputPath is null)
         {
-            Console.WriteLine();
-            Console.WriteLine("    No cleaned copy was written. CILantro only writes one when it");
-            Console.WriteLine("    can show the result still matches the original, so a partial result");
-            Console.WriteLine("    is reported instead of being handed over as if it were complete.");
-            Console.WriteLine("    The full report above records everything that was learned.");
+            output.WriteLine("    No cleaned copy was written.");
+            output.WriteLine();
+            return;
         }
 
-        Console.WriteLine();
+        output.WriteLine("  NOTES");
+        output.WriteLine();
+        foreach (var pass in failed)
+            output.WriteLine($"    ! {pass.Pass} failed: {First(pass)}");
+        foreach (var pass in unsupported)
+            output.WriteLine($"    - {pass.Pass} was incomplete: {First(pass)}");
+        if (result.OutputPath is null)
+        {
+            output.WriteLine();
+            output.WriteLine("    No cleaned copy was written.");
+        }
+
+        output.WriteLine();
     }
 
-    /// <summary>
-    /// Whether a pass declined because the module is under a different protector, which is an
-    /// answer rather than a gap and would read as a malfunction if listed as one.
-    /// </summary>
     private static bool DeclinedAnotherProtector(PassResult pass) =>
         pass.Pass is "reactor-detection" or "confuserex-detection";
 
@@ -495,22 +456,21 @@ internal static class Explain
         _ => $"{bytes} bytes"
     };
 
-    /// <summary>
-    /// The pass-by-pass log, kept for anyone who wants to see the tool's reasoning.
-    /// </summary>
-    public static void PassLog(ArtifactReport report)
+    public static void PassLog(ArtifactReport report) => PassLog(report, Console.Out);
+
+    internal static void PassLog(ArtifactReport report, TextWriter output)
     {
-        Console.WriteLine("  STEPS");
-        Console.WriteLine();
+        output.WriteLine("  STEPS");
+        output.WriteLine();
         foreach (var pass in report.Passes)
         {
-            Console.WriteLine(
+            output.WriteLine(
                 $"    [{pass.Status.ToString().ToLowerInvariant(),-11}] {pass.Pass}: " +
                 $"{pass.Changes} change(s)");
             foreach (var diagnostic in pass.Diagnostics)
-                Console.WriteLine($"                  {diagnostic}");
+                output.WriteLine($"                  {diagnostic}");
         }
 
-        Console.WriteLine();
+        output.WriteLine();
     }
 }
