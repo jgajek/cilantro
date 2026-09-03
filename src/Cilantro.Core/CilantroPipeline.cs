@@ -118,7 +118,44 @@ public sealed record ArtifactReport(
     /// Said outright because there is more than one protector now, and a reader that inferred it
     /// from the capability list was reading a set of names that two protectors can both produce.
     /// </remarks>
-    string Protector = "none");
+    string Protector = "none",
+
+    /// <summary>
+    /// What each body built back from a virtual program reaches, named as the cleaned copy names it.
+    /// </summary>
+    IReadOnlyList<RebuiltMethodReport>? RebuiltMethods = null);
+
+/// <summary>
+/// The way into a body the tool built rather than recovered.
+/// </summary>
+/// <remarks>
+/// A lifted body is faithful and hard to read: the interpreter's jump table for control flow,
+/// <see cref="object"/> for every local because the machine's slots had no types, and generated
+/// names throughout. What makes it tractable is that the framework calls leaving it were never
+/// obfuscated in the first place, so listing them says what the method is for in a line. Everything
+/// here is named as the cleaned copy names it, the account being written after renaming rather than
+/// before.
+/// </remarks>
+public sealed record RebuiltMethodReport(
+    string Method,
+
+    /// <summary>The members the body reaches, through whatever forwarders stand in the way.</summary>
+    IReadOnlyList<string> Reaches,
+
+    /// <summary>The fields it assigns, which is where its work is left.</summary>
+    IReadOnlyList<string> Writes,
+
+    /// <summary>
+    /// Whether anything in the cleaned copy calls it.
+    /// </summary>
+    /// <remarks>
+    /// Often nothing does, and that is a result rather than a fault: recovery replaces the code that
+    /// used to need the method, so the caller becomes dead and is removed. Saying so stops a reader
+    /// concluding the body was not written.
+    /// </remarks>
+    bool Reachable,
+
+    int Instructions);
 
 /// <summary>
 /// What the run was told, and what came of it.
@@ -603,7 +640,7 @@ public sealed record PipelineResult(
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.9.7";
+    public const string Version = "0.10.0";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -705,8 +742,15 @@ public sealed class CilantroPipeline
         // stubs the bodies go into, and follows the payload passes, which have to see the module
         // doing its own work rather than the tool's account of it.
         new VirtualizationRebuildPass(),
+        // The body the rebuild just wrote has had none of the folding the rest of the module got,
+        // every pass that does it having run while this method was still a stub. It gets it here.
+        new RebuiltBodyCleanupPass(),
         new RuntimeCleanupPass(),
         new SymbolRenamingPass(),
+        // What a rebuilt body reaches is written down last, after cleanup has settled what calls it
+        // and renaming has settled what everything is called, so the account names what a reader
+        // will actually find rather than what the module said several passes ago.
+        new RebuiltBodyDigestPass(),
         new MetadataSanitizationPass()
     ];
 
@@ -1105,7 +1149,11 @@ public sealed class CilantroPipeline
             context.TryGetFact<ProtectorIdentity>(ProtectorIdentityPass.Fact, out var protector) &&
                 protector is not null
                 ? protector.Token
-                : "none");
+                : "none",
+            context.TryGetFact<IReadOnlyList<RebuiltMethodReport>>(
+                RebuiltBodyDigestPass.DigestFact, out var rebuiltDigest)
+                ? rebuiltDigest
+                : null);
     }
 
     /// <summary>What the run was told, as the report says it.</summary>

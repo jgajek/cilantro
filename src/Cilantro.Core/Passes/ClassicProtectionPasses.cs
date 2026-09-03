@@ -101,42 +101,16 @@ public sealed class ConstantPredicatePass : DeobfuscationPass
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
-        var constants = context.Module.GetTypes()
-            .SelectMany(type => type.Methods)
-            .Select(method => (Method: method, Value: Classify(method)))
-            .Where(item => item.Value is not null)
-            .ToDictionary(item => item.Method.MDToken.Raw, item => item.Value!.Value);
-        var changes = 0;
         using var transaction = new InstructionMutationTransaction();
-        foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods)
-                     .Where(method => method.HasBody))
-        {
-            foreach (var instruction in method.Body.Instructions)
-            {
-                if (instruction.OpCode.FlowControl != FlowControl.Call ||
-                    instruction.Operand is not IMethod called ||
-                    !constants.TryGetValue(called.MDToken.Raw, out var value))
-                {
-                    continue;
-                }
-
-                transaction.Capture(instruction);
-                instruction.OpCode = value switch
-                {
-                    PredicateValue.True => OpCodes.Ldc_I4_1,
-                    PredicateValue.False => OpCodes.Ldc_I4_0,
-                    PredicateValue.Null => OpCodes.Ldnull,
-                    _ => instruction.OpCode
-                };
-                instruction.Operand = null;
-                changes++;
-                context.AddChange(new ChangeRecord(
-                    Name,
-                    "fold-constant-helper",
-                    $"{method.MDToken} IL_{instruction.Offset:X4}",
-                    value.ToString()));
-            }
-        }
+        var changes = ConstantHelperFolding.Fold(
+            context.Module.GetTypes().SelectMany(type => type.Methods),
+            ConstantHelperFolding.Catalog(context.Module),
+            transaction,
+            (method, instruction, value) => context.AddChange(new ChangeRecord(
+                Name,
+                "fold-constant-helper",
+                $"{method.MDToken} IL_{instruction.Offset:X4}",
+                value.ToString())));
 
         var verification = AssemblyVerifier.Verify(context.Module);
         if (!verification.Passed)
@@ -147,38 +121,5 @@ public sealed class ConstantPredicatePass : DeobfuscationPass
         }
         transaction.Commit();
         return (PassStatus.Success, changes, [$"Folded {changes} calls to proven constant helpers."]);
-    }
-
-    private static PredicateValue? Classify(MethodDef method)
-    {
-        if (!method.HasBody || method.HasGenericParameters || method.Parameters.Count != 0)
-            return null;
-        var instructions = method.Body.Instructions
-            .Where(instruction => instruction.OpCode != OpCodes.Nop)
-            .ToArray();
-        if (instructions.Length == 4 &&
-            instructions[0].OpCode == OpCodes.Ldnull &&
-            instructions[1].OpCode == OpCodes.Ldnull &&
-            instructions[2].OpCode == OpCodes.Ceq &&
-            instructions[3].OpCode == OpCodes.Ret)
-        {
-            return PredicateValue.True;
-        }
-
-        if (instructions.Length == 2 && instructions[1].OpCode == OpCodes.Ret)
-        {
-            if (instructions[0].OpCode == OpCodes.Ldnull) return PredicateValue.Null;
-            if (instructions[0].OpCode == OpCodes.Ldc_I4_0) return PredicateValue.False;
-            if (instructions[0].OpCode == OpCodes.Ldc_I4_1) return PredicateValue.True;
-        }
-
-        return null;
-    }
-
-    private enum PredicateValue
-    {
-        False,
-        True,
-        Null
     }
 }

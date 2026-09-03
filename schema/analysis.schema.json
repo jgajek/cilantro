@@ -28,7 +28,8 @@
     "Declarations",
     "ContinuedPast",
     "Strict",
-    "Protector"
+    "Protector",
+    "RebuiltMethods"
   ],
   "properties": {
     "ToolVersion": { "type": "string" },
@@ -75,10 +76,40 @@
     "Protector": {
       "description": "Which protector the run settled on, by the name a program uses, or \"none\". Said outright because more than one protector is recognized and the capability list alone does not tell two of them apart.",
       "type": "string"
+    },
+    "RebuiltMethods": {
+      "description": "The way into each body the tool built from a virtualized method rather than recovered. Null where the run built none.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/rebuiltMethod" }
     }
   },
   "additionalProperties": false,
   "$defs": {
+    "rebuiltMethod": {
+      "title": "What a body built from interpreter bytecode turned out to do",
+      "description": "A lifted body is faithful and hard to read: the interpreter's jump table instead of structured control flow, and every local an object because the machine's slots had no types. The framework calls leaving it were never obfuscated, so naming them is the way in. Everything here is named as the cleaned copy names it, this being written after renaming rather than before.",
+      "type": "object",
+      "required": ["Method", "Reaches", "Writes", "Reachable", "Instructions"],
+      "properties": {
+        "Method": { "type": "string" },
+        "Reaches": {
+          "description": "The members the body reaches, through whatever forwarders the protector left between it and them.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "Writes": {
+          "description": "The fields it assigns, which is where its work is left.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "Reachable": {
+          "description": "Whether anything in the cleaned copy calls it. Often nothing does, which is a result rather than a fault: recovery replaces the code that needed the method, so its caller becomes dead and is removed.",
+          "type": "boolean"
+        },
+        "Instructions": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "resource": {
       "title": "One embedded resource, as the run found it",
       "type": "object",

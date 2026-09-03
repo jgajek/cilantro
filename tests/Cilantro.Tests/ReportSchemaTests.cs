@@ -40,6 +40,7 @@ public sealed class ReportSchemaTests
         { "analysis.schema.json", "hostProfile", typeof(HostProfileReport) },
         { "analysis.schema.json", "hostFact", typeof(HostFactReport) },
         { "analysis.schema.json", "declarations", typeof(DeclarationReport) },
+        { "analysis.schema.json", "rebuiltMethod", typeof(RebuiltMethodReport) },
         { "blockers.schema.json", string.Empty, typeof(BlockerReport) },
         { "blockers.schema.json", "blocker", typeof(Blocker) },
         { "blockers.schema.json", "remedy", typeof(Remedy) },

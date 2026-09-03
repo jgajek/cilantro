@@ -154,8 +154,14 @@ internal sealed class ReadingMarker
     internal const string Namespace = "Cilantro";
     internal const string TypeName = "RebuiltFromReading";
 
-    /// <summary>What the attribute says, which is the whole of what a reader needs to know.</summary>
-    private const string Said =
+    /// <summary>What the attribute says first, whatever else is added to it later.</summary>
+    /// <remarks>
+    /// Kept separate because the message is written twice: once here, where the body goes in, and
+    /// once at the end of the run, where what the body reaches and what still calls it are finally
+    /// known. Both have to open with the same warning, and one copy of the words is how that stays
+    /// true.
+    /// </remarks>
+    internal const string Warning =
         "CILantro built this body from its reading of the interpreter's program. It is not " +
         "the original code and was not recovered from the file; see the run's report.";
 
@@ -202,7 +208,28 @@ internal sealed class ReadingMarker
     internal void Mark(MethodDef method)
     {
         ArgumentNullException.ThrowIfNull(method);
-        var argument = new CAArgument(method.Module.CorLibTypes.String, new UTF8String(Said));
+        var argument = new CAArgument(method.Module.CorLibTypes.String, new UTF8String(Warning));
         method.CustomAttributes.Add(new CustomAttribute(_constructor, [argument]));
+    }
+
+    /// <summary>
+    /// Replaces what an already-marked method's attribute says, leaving the attribute itself alone.
+    /// </summary>
+    /// <remarks>
+    /// The marker goes on when the body does, which is before cleanup and renaming have settled the
+    /// names and the callers the message wants to mention. Rather than delay the warning until those
+    /// are known — and risk a run that ends early leaving a built body with nothing said about it —
+    /// the warning goes on immediately and the rest is added to it here.
+    /// </remarks>
+    internal static void Redescribe(MethodDef method, string said)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        ArgumentNullException.ThrowIfNull(said);
+        var marker = method.CustomAttributes.FirstOrDefault(attribute =>
+            attribute.AttributeType?.Name.String == $"{TypeName}Attribute");
+        if (marker is null || marker.ConstructorArguments.Count != 1)
+            return;
+        marker.ConstructorArguments[0] =
+            new CAArgument(method.Module.CorLibTypes.String, new UTF8String(said));
     }
 }

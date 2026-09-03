@@ -69,7 +69,11 @@ public sealed class ControlFlowCompletionPass : DeobfuscationPass
     /// <summary>
     /// Runs the fold/delete fixed point for one method under a rollback transaction.
     /// </summary>
-    private static (int Folded, int Removed)? TryComplete(MethodDef method)
+    /// <remarks>
+    /// Reachable from outside the pass because a body the tool writes itself, late, wants the same
+    /// treatment as the ones that were in the file when this pass ran over the module.
+    /// </remarks>
+    internal static (int Folded, int Removed)? TryComplete(MethodDef method)
     {
         using var transaction = new BodyMutationTransaction(method);
         var folded = 0;

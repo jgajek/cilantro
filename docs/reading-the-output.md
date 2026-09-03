@@ -111,8 +111,79 @@ put back where the program expects them.
 **Protector types deleted.** Reactor's own types, removed after recovery proved
 they had nothing left to do. See "Why is Reactor's code still there?" below.
 
-**Obfuscated names replaced.** Reactor's generated names given readable
-placeholders. A `--strict` run leaves them alone unless you add `--rename`.
+**Obfuscated names replaced.** Reactor's generated names given readable ones.
+Counts types, methods, fields and namespaces together. A `--strict` run leaves
+them all alone unless you add `--rename`. What a name is replaced with depends on
+what could be established about the thing it names, and the three cases read
+differently on purpose:
+
+- A method whose body does one knowable thing is named after it.
+  `SymmetricAlgorithm_CreateDecryptor` is a method that casts its argument and
+  calls exactly that; `AlwaysTrue` is one of Reactor's opaque predicates, and the
+  name is the whole of what it does. These are worth looking for, because after
+  proxy restoration they are what the recovered call sites point at — a body that
+  reads as a hundred calls to `generatedMethod_0101` is a hundred calls to
+  `CreateDecryptor`.
+- A type is named for what kind of thing it is: `GeneratedDelegate_0075`,
+  `GeneratedStruct_0063`, `GeneratedAttribute_0004`. A field is named for what it
+  holds where that says more than a number, as in `int32Field_0047`.
+- Anything else keeps a numbered placeholder. A method that does several things
+  gets `generatedMethod_0075` rather than a name summarising one of them, because
+  a name describing part of a method reads as a description of all of it.
+
+Namespaces are renamed too, to `GeneratedNamespace_0000` and so on. Three kinds
+are left exactly as they are: one holding anything externally visible, because
+its name is a contract with whatever references the assembly; one an embedded
+resource is named after, because resource lookup goes by the declaring type's
+full name; and any name shared with either of those, so that a namespace and the
+namespaces nested inside it never disagree about their common prefix. A cleaned
+copy can therefore still show one or two original-looking namespaces, and those
+are the ones that could not be moved safely.
+
+Every replacement is recorded old-to-new in `NAME.renames.json`, namespaces
+under an `N:` prefix alongside `T:`, `M:` and `F:`, so a name in the cleaned copy
+can always be traced back to the one the protected file carried.
+
+## The REBUILT section
+
+Printed when the run wrote a body back from interpreter bytecode. It is the way
+into the hardest code in the cleaned copy:
+
+```
+  REBUILT   from the interpreter's own bytecode, so read them as a reading
+
+    GeneratedNamespace_0003.GeneratedType_0005::generatedMethod_0075
+      reaches   Activator.CreateInstance, Array.Reverse, Assembly.GetName,
+                AssemblyName.GetPublicKeyToken, BinaryReader.ReadBytes,
+                CryptoStream.FlushFinalBlock, SymmetricAlgorithm.CreateDecryptor,
+                new AesCryptoServiceProvider, new RijndaelManaged
+      writes    generatedField_0030, int32Field_0047
+      note      nothing in the cleaned copy calls this: recovery replaced the
+                code that used to, so its caller went with it
+```
+
+**reaches** is the list to read first, and often the only thing you need. A
+protector renames what it generates but cannot rename the framework, so the calls
+leaving a lifted body still say `SymmetricAlgorithm.CreateDecryptor` and
+`AssemblyName.GetPublicKeyToken` in full. Those names are fixed points, and the
+list above says what the method is for — an assembly-identity-keyed decryptor
+filling a table — before you have read a line of it. The list follows the small
+forwarders Reactor leaves between the code and the framework, so what is named is
+the framework member at the end of the chain rather than the generated method in
+front of it.
+
+**writes** is where the method leaves its work, which is what to search for next
+if you want to know who consumes it.
+
+**note** appears when nothing in the cleaned copy calls the method. That is the
+usual outcome and it is a result rather than a fault: recovery replaces the code
+that needed the method, so the caller becomes dead and cleanup removes it. The
+body is still there and still correct; nothing reaches it any more.
+
+The same information is in the report under `RebuiltMethods`, uncapped, and on
+the method itself in the `[RebuiltFromReading]` attribute, which dnSpyEx and
+ILSpy print directly above the body. All of it is written after renaming, so
+every name in it is the name you will find in the cleaned copy.
 
 ## The ASSUMED section
 
@@ -340,11 +411,25 @@ from a whole one until something tries to read it.
 
 ### The cleaned copy still has meaningless names
 
-Expected. Reactor deletes the original names rather than encrypting them, so
-they are not in the file and cannot be recovered. What a normal run substitutes is
-readable placeholders, which makes navigation easier but does not restore
-anything, and a `--strict` run does not substitute even those unless you add
-`--rename`.
+Partly expected. Reactor deletes the original names rather than encrypting them,
+so they are not in the file and cannot be recovered by any tool. Nothing will
+tell you what the author called a class.
+
+What a normal run substitutes is described under "Obfuscated names replaced"
+above. Some of it does carry meaning — a method named
+`SymmetricAlgorithm_CreateDecryptor` was read off its body, not guessed — and
+the rest is numbered placeholders that make navigation possible without claiming
+anything. A `--strict` run substitutes neither unless you add `--rename`.
+
+If the namespaces still look untouched, check whether they are the ones renaming
+refuses to move: a namespace holding an externally visible type, or one an
+embedded resource is named after. Those two are left alone deliberately, and
+`NAME.renames.json` shows which namespaces were renamed and which were not.
+
+Where names are absent, behaviour is not. The framework calls a method makes were
+never obfuscated, so reading the calls leaving a method tells you what it does
+even when nothing it is called tells you anything — which is the technique the
+`REBUILT` section applies automatically to the worst case.
 
 ### Why is Reactor's code still there?
 
@@ -435,13 +520,25 @@ is the weaker statement, made where the walk stopped somewhere: the code may
 only be past the place it stopped.
 
 Where the sample had methods turned into bytecode, a default run counts them
-under `RECOVERED` and points at the listings under `WROTE`:
+under `RECOVERED`, says what each one does under `REBUILT`, and points at the
+listings under `WROTE`:
 
 ```
     Methods rebuilt from VM opcodes   1 of 1
 
+  REBUILT   from the interpreter's own bytecode, so read them as a reading
+
+    GeneratedNamespace_0003.GeneratedType_0005::generatedMethod_0075
+      reaches   ... SymmetricAlgorithm.CreateDecryptor, new RijndaelManaged
+
     VM listings     1 in cilantro/a.virtualized
 ```
+
+The `REBUILT` section is described in full above, and it is the place to start on
+a rebuilt method. A lifted body is faithful and hard to read — the interpreter's
+jump table where structured control flow should be, and `object` for every local
+because the machine's slots had no types — so reading it from the top is the
+slowest way in. Read what it reaches instead.
 
 `--strict` and `--verbose` add the verdict of the check, and the part in
 brackets is then the part to read:

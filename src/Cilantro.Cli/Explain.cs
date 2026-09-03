@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Cilantro.Core;
 using Cilantro.Core.Interpretation;
 using Cilantro.Core.Recovery;
@@ -114,6 +115,7 @@ internal static class Explain
         Verdict(output, result.Success ? "Recovered" : "Failed");
         Protection(capabilities, protector, output);
         Recovered(result, output);
+        Rebuilt(report, output);
         if (detail)
             Assumed(report, output);
         if (detail || !result.Success)
@@ -313,6 +315,85 @@ internal static class Explain
     {
         if (value > 0)
             lines.Add((label, value.ToString("N0", CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// The way into each body the tool built rather than recovered.
+    /// </summary>
+    /// <remarks>
+    /// A lifted body is the hardest thing in the cleaned copy to read: the interpreter's jump table
+    /// where structured control flow should be, <c>object</c> for every local, and generated names
+    /// throughout. What makes it tractable is that the framework calls leaving it were never
+    /// obfuscated, so naming them says what the method is for in a line or two. That is printed on
+    /// an ordinary run rather than held back for <c>--verbose</c>, because it is not a caveat about
+    /// the recovery — it is the most useful thing the run has to say about the code it produced.
+    /// </remarks>
+    private static void Rebuilt(ArtifactReport report, TextWriter output)
+    {
+        if (report.RebuiltMethods is not { Count: > 0 } rebuilt)
+            return;
+
+        output.WriteLine("  REBUILT   from the interpreter's own bytecode, so read them as a reading");
+        output.WriteLine();
+        foreach (var method in rebuilt)
+        {
+            output.WriteLine($"    {Short(method.Method)}");
+            if (method.Reaches.Count != 0)
+                Wrapped(output, "reaches", method.Reaches);
+            if (method.Writes.Count != 0)
+                Wrapped(output, "writes", method.Writes);
+            if (!method.Reachable)
+            {
+                output.WriteLine(
+                    "      note      nothing in the cleaned copy calls this: recovery replaced the");
+                output.WriteLine(
+                    "                code that used to, so its caller went with it");
+            }
+
+            output.WriteLine();
+        }
+    }
+
+    /// <summary>Prints a long list of members over as many lines as it needs.</summary>
+    private static void Wrapped(TextWriter output, string label, IReadOnlyList<string> members)
+    {
+        const int Room = 62;
+        var line = new StringBuilder();
+        var first = true;
+        foreach (var member in members)
+        {
+            if (line.Length != 0 && line.Length + member.Length + 2 > Room)
+            {
+                output.WriteLine($"      {(first ? label.PadRight(8) : "        ")}  {line},");
+                line.Clear();
+                first = false;
+            }
+
+            if (line.Length != 0)
+                line.Append(", ");
+            line.Append(member);
+        }
+
+        if (line.Length != 0)
+            output.WriteLine($"      {(first ? label.PadRight(8) : "        ")}  {line}");
+    }
+
+    /// <summary>
+    /// A method's full name as a reader would say it: where to find it, and what it is called.
+    /// </summary>
+    /// <remarks>
+    /// dnlib spells a full name with the return type in front and the whole signature behind, which
+    /// is what a compiler needs and about four times what fits on the line. The namespace stays,
+    /// being the first thing to expand in a decompiler tree.
+    /// </remarks>
+    private static string Short(string fullName)
+    {
+        var name = fullName;
+        var space = name.IndexOf(' ', StringComparison.Ordinal);
+        if (space >= 0 && space < name.Length - 1)
+            name = name[(space + 1)..];
+        var arguments = name.IndexOf('(', StringComparison.Ordinal);
+        return arguments < 0 ? name : name[..arguments];
     }
 
     private static void Bootstrap(PipelineResult result, string home, TextWriter output)

@@ -189,10 +189,149 @@ public sealed class OptInCleanupRenameTests
         Assert.True(result.Changes >= 2);
         var host = context.Module.GetTypes().Single(type => type.Name.StartsWith("GeneratedType_"));
         Assert.Contains(host.Methods, method => method.Name.StartsWith("generatedMethod_"));
-        Assert.Contains(host.Fields, field => field.Name.StartsWith("generatedField_"));
+        // A field is named for what it holds where the type it holds says more than a number does.
+        Assert.Contains(host.Fields, field => field.Name.StartsWith("int32Field_"));
         // The readable public method keeps its own name even though its full name changed.
         Assert.Contains(host.Methods, method => method.Name == "DoWork");
         AssertWritesAndVerifies(context);
+    }
+
+    /// <summary>
+    /// The two shapes worth naming are named, and a body doing more than one thing is not: a
+    /// summary of part of a method reads as a description of the whole and misleads, where a number
+    /// claims nothing.
+    /// </summary>
+    [Fact]
+    public void AMethodDoingOneKnowableThingIsNamedForItAndOneDoingMoreIsNot()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = new TypeDefUser("Synthetic", "hQ3xZv8LmTp", module.CorLibTypes.Object.TypeDefOrRef)
+            {
+                Attributes = TypeAttributes.NotPublic | TypeAttributes.Class
+            };
+            module.Types.Add(type);
+            type.Methods.Add(Forwarder(module, "wPl4Mn7QbXr"));
+            type.Methods.Add(AlwaysTrue(module, "zK9tBn2VcYq"));
+            type.Methods.Add(DoesTwoThings(module, "rX5jFw8NdLb"));
+        });
+        context.SetFact("options.renameSymbols", true);
+
+        new SymbolRenamingPass().Run(context);
+
+        var type = context.Module.GetTypes().Single(item => item.Name.StartsWith("GeneratedType_"));
+        var names = type.Methods.Select(method => method.Name.String).ToArray();
+        Assert.Contains("GC_Collect", names);
+        Assert.Contains("AlwaysTrue", names);
+        Assert.Contains(names, name => name.StartsWith("generatedMethod_", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A namespace whose name the protector generated is renamed, because it is the first thing a
+    /// decompiler shows and leaving it made a recovered file look untouched. One that anything
+    /// outside the assembly could be naming is left exactly as it is.
+    /// </summary>
+    [Fact]
+    public void AGeneratedNamespaceIsRenamedAndAnExportedOneIsLeftAlone()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var hidden = new TypeDefUser(
+                "qV8kRt3XwNp", "Hidden", module.CorLibTypes.Object.TypeDefOrRef)
+            {
+                Attributes = TypeAttributes.NotPublic | TypeAttributes.Class
+            };
+            var exported = new TypeDefUser(
+                "bF7mZq2YsLd", "Exported", module.CorLibTypes.Object.TypeDefOrRef)
+            {
+                Attributes = TypeAttributes.Public | TypeAttributes.Class
+            };
+            module.Types.Add(hidden);
+            module.Types.Add(exported);
+        });
+        context.SetFact("options.renameSymbols", true);
+
+        new SymbolRenamingPass().Run(context);
+
+        var namespaces = context.Module.GetTypes()
+            .Where(type => !type.IsGlobalModuleType)
+            .Select(type => type.Namespace.String)
+            .ToArray();
+        Assert.Contains("GeneratedNamespace_0000", namespaces);
+        Assert.Contains("bF7mZq2YsLd", namespaces);
+        Assert.DoesNotContain("qV8kRt3XwNp", namespaces);
+    }
+
+    /// <summary>
+    /// A namespace an embedded resource is named after keeps its name: resource lookup goes by the
+    /// declaring type's full name, so moving the type breaks it at runtime and says nothing at
+    /// build time.
+    /// </summary>
+    [Fact]
+    public void ANamespaceAResourceIsNamedAfterIsLeftAlone()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = new TypeDefUser(
+                "wR4nHy6TbKz", "Resources", module.CorLibTypes.Object.TypeDefOrRef)
+            {
+                Attributes = TypeAttributes.NotPublic | TypeAttributes.Class
+            };
+            module.Types.Add(type);
+            module.Resources.Add(new EmbeddedResource(
+                "wR4nHy6TbKz.Resources.resources", new byte[] { 1, 2, 3 }));
+        });
+        context.SetFact("options.renameSymbols", true);
+
+        new SymbolRenamingPass().Run(context);
+
+        Assert.Contains(
+            "wR4nHy6TbKz",
+            context.Module.GetTypes().Select(type => type.Namespace.String));
+    }
+
+    private static MethodDefUser Forwarder(ModuleDef module, string name)
+    {
+        var method = NewVoidMethod(module, name, MethodAttributes.Assembly);
+        var collect = new MemberRefUser(
+            module,
+            "Collect",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            module.CorLibTypes.GetTypeRef("System", "GC"));
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(OpCodes.Call.ToInstruction(collect));
+        method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        return method;
+    }
+
+    private static MethodDefUser AlwaysTrue(ModuleDef module, string name)
+    {
+        var method = new MethodDefUser(name, MethodSig.CreateStatic(module.CorLibTypes.Boolean))
+        {
+            Attributes = MethodAttributes.Assembly | MethodAttributes.Static,
+            ImplAttributes = MethodImplAttributes.IL | MethodImplAttributes.Managed,
+            Body = new CilBody()
+        };
+        method.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+        method.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+        method.Body.Instructions.Add(OpCodes.Ceq.ToInstruction());
+        method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        return method;
+    }
+
+    private static MethodDefUser DoesTwoThings(ModuleDef module, string name)
+    {
+        var method = NewVoidMethod(module, name, MethodAttributes.Assembly);
+        var collect = new MemberRefUser(
+            module,
+            "Collect",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            module.CorLibTypes.GetTypeRef("System", "GC"));
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(OpCodes.Call.ToInstruction(collect));
+        method.Body.Instructions.Add(OpCodes.Call.ToInstruction(collect));
+        method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        return method;
     }
 
     private static void BuildRenamableModule(ModuleDefUser module)

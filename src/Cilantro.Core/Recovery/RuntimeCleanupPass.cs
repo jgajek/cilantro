@@ -63,7 +63,7 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         var reachability = ModuleReachability.Compute(
             context.Module,
             typeInitializersAlwaysRun: false,
-            Rebuilt(context));
+            RebuiltMethods.Of(context));
         var orphans = RecoveryOrphans.Of(context);
         var considered = context.Module.GetTypes()
             .Where(type => type != context.Module.GlobalType)
@@ -139,26 +139,6 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             $"Retained the rest: {retained}",
             attribution
         ]);
-    }
-
-    /// <summary>
-    /// The methods a rebuild wrote bodies into, resolved in the module cleanup is about to prune.
-    /// </summary>
-    private static IReadOnlyList<MethodDef> Rebuilt(ArtifactContext context)
-    {
-        if (!context.TryGetFact<IReadOnlySet<uint>>(
-                VirtualizationRebuildPass.RebuiltFact, out var tokens) ||
-            tokens is null)
-        {
-            return [];
-        }
-        return
-        [
-            .. tokens
-                .Select(token => context.Module.ResolveToken(token) as MethodDef)
-                .Where(method => method is not null)
-                .Select(method => method!)
-        ];
     }
 
     /// <summary>
