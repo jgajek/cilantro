@@ -34,7 +34,49 @@ public sealed class RunStatusTests
     }
 
     /// <summary>
-    /// A run that finished says so, and carries the manifest, so that a caller polling this file never
+    /// When the default report folder name is already a file beside the sample, the reports go
+    /// somewhere else rather than failing to create a directory over that file.
+    /// </summary>
+    /// <remarks>
+    /// The published Linux binary is itself named <c>cilantro</c>. Unpacking the release and running
+    /// a sample from the same directory used to fail immediately with "The file .../cilantro already
+    /// exists", which is .NET refusing to create a directory on top of the binary. The fallback is
+    /// only for the default: an explicit report directory that happens to be a file is still the
+    /// caller's mistake.
+    /// </remarks>
+    [Fact]
+    public void ReportsGoBesideTheBinaryWhenItsNameIsTheDefaultFolder()
+    {
+        var directory = Directory.CreateTempSubdirectory("cilantro-beside-binary");
+        try
+        {
+            var binary = Path.Combine(directory.FullName, RunStatus.ReportsFolder);
+            File.WriteAllBytes(binary, [0x7F, (byte)'E', (byte)'L', (byte)'F']);
+            var sample = Synthetic(directory.FullName);
+
+            var reports = RunStatus.DirectoryFor(sample, reportDirectory: null);
+
+            Assert.Equal(
+                Path.Combine(directory.FullName, RunStatus.ReportsFolderWhenTaken),
+                reports);
+            Assert.Equal(
+                Path.Combine(reports, "plain.status.json"),
+                RunStatus.PathFor(sample, reportDirectory: null));
+
+            // And a real run lands there rather than dying on CreateDirectory.
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true));
+            Assert.StartsWith(reports, result.AnalysisReportPath, StringComparison.Ordinal);
+            Assert.True(File.Exists(result.AnalysisReportPath));
+            Assert.True(File.Exists(binary), "the binary stand-in must be left alone");
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// A finished run says so, and carries the manifest, so that a caller polling this file never
     /// has to go and read a second one to find out what came of it.
     /// </summary>
     [Fact]

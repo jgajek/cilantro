@@ -24,7 +24,10 @@ dnSpyEx or ILSpy. A cleaned library keeps the `.dll` extension.
 | `suspicious.status.json` | Which pass is running and how far along, updated while the run goes. Written only with `--status`, for watching a long run from elsewhere |
 
 The folder is not named after the sample, so a directory of samples all report
-into one folder without colliding.
+into one folder without colliding. If a file named `cilantro` is already
+there — which is what happens when the published Linux binary sits beside the
+sample — the folder is named `cilantro.out` instead, because a directory cannot
+be created on top of a file.
 
 If something other than a person is reading this, `--json` prints one object
 naming all of the above, along with what stopped the run and what to declare

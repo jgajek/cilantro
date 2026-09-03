@@ -110,18 +110,44 @@ public sealed record RunStatus(
     public bool Ended => Phase is RunPhase.Finished or RunPhase.Failed or RunPhase.Cancelled;
 
     /// <summary>
+    /// The folder a run puts its reports in when nobody said otherwise, beside the input.
+    /// </summary>
+    public const string ReportsFolder = "cilantro";
+
+    /// <summary>
+    /// What that folder is called when <see cref="ReportsFolder"/> is already a file where the
+    /// sample sits — which is what happens when someone unpacks the tool next to the sample and
+    /// the binary is itself named <c>cilantro</c>.
+    /// </summary>
+    public const string ReportsFolderWhenTaken = "cilantro.out";
+
+    /// <summary>
     /// Where a run on this input with these options puts the things it writes.
     /// </summary>
     /// <remarks>
     /// The pipeline resolves the same folder from the same two arguments, and calls this to do it, so
     /// that a caller can work out where a run's output will be before starting it. Two copies of this
     /// convention would eventually name two different directories.
+    ///
+    /// The default is a folder named <see cref="ReportsFolder"/> beside the input. When that name
+    /// is already taken by a file — the usual case being the tool's own binary, which is published
+    /// as <c>cilantro</c> — the folder is <see cref="ReportsFolderWhenTaken"/> instead. Creating a
+    /// directory over a file is what .NET refuses with "already exists", and the refusal used to be
+    /// the first thing a Linux user saw when they ran the tool on a sample in the same directory
+    /// they unpacked it into. An explicit report directory is left alone: the caller named it.
     /// </remarks>
     public static string DirectoryFor(string inputPath, string? reportDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(inputPath);
-        return Path.GetFullPath(reportDirectory ??
-            Path.Combine(Path.GetDirectoryName(Path.GetFullPath(inputPath))!, "cilantro"));
+        if (reportDirectory is not null)
+            return Path.GetFullPath(reportDirectory);
+
+        var beside = Path.GetDirectoryName(Path.GetFullPath(inputPath))!;
+        var preferred = Path.Combine(beside, ReportsFolder);
+        return Path.GetFullPath(
+            File.Exists(preferred)
+                ? Path.Combine(beside, ReportsFolderWhenTaken)
+                : preferred);
     }
 
     /// <summary>Where a run on this input with these options writes its status.</summary>

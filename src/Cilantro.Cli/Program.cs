@@ -277,6 +277,8 @@ internal static class CilantroCommand
 
             That writes suspicious.cleaned.exe beside the input, plus a cilantro
             folder holding the full report and any files that were hidden inside.
+            If cilantro is already a file there — as when the tool itself sits
+            beside the sample — the folder is named cilantro.out instead.
 
             By default it does everything that makes the result easier to read: it renames
             the protector's generated symbols and, where a method is bytecode for an
