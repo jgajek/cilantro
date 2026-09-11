@@ -81,7 +81,14 @@ public sealed class PipelineTests
             Assert.Equal(115, result.Report.TypeCount);
             Assert.Equal(1039, result.Report.MethodCount);
             Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
-            Assert.Equal(1341, Pass(result, "cfg-dead-code").Changes);
+            // Every flattened method but one is straightened, and the jumps that used to go through
+            // a dispatcher now go where the dispatcher would have sent them.
+            Assert.Equal(356, result.Report.Recovery.DispatcherMethodsRestored);
+            Assert.Equal(357, result.Report.Recovery.DispatcherMethodCandidates);
+            // Down from 1341 before those jumps were made direct: what this pass used to normalize
+            // away was largely the scaffolding around the dispatchers, and the rewrite ahead of it
+            // now prunes that itself.
+            Assert.Equal(985, Pass(result, "cfg-dead-code").Changes);
             // Proxy restoration reaches every validated site because it runs before forwarder
             // redirection, which then finds little left to redirect beyond the wrappers that hide a
             // framework call behind an object-typed signature.

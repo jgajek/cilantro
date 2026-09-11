@@ -40,7 +40,7 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
         // Both are gathered before anything is renamed, so every old key is the name the file
         // shipped with rather than one a rename earlier in the list has already changed.
         var namespaces = NamespaceRenaming.Collect(context.Module);
-        var targets = CollectTargets(context.Module);
+        var targets = CollectTargets(context.Module, RebuiltMethods.Of(context));
         if (targets.Count == 0 && namespaces.Count == 0)
             return (PassStatus.Success, 0, ["No provably generated symbols were found."]);
 
@@ -93,9 +93,12 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
     /// Gathers every rename to perform, capturing each old key before any name is changed so the map
     /// and change records reflect a consistent pre-rename state.
     /// </summary>
-    private static List<RenameTarget> CollectTargets(ModuleDef module)
+    private static List<RenameTarget> CollectTargets(
+        ModuleDef module,
+        IReadOnlyList<MethodDef> rebuilt)
     {
         var targets = new List<RenameTarget>();
+        var fromVirtualization = rebuilt.Select(method => method.MDToken.Raw).ToHashSet();
         var types = module.GetTypes()
             .Where(type => type.Name != "<Module>")
             .OrderBy(type => type.MDToken.Raw)
@@ -138,7 +141,9 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
                     continue;
                 }
 
-                var behaviour = Does(method, module);
+                var behaviour = fromVirtualization.Contains(method.MDToken.Raw)
+                    ? Rebuilt(method, module)
+                    : Does(method, module);
                 targets.Add(new RenameTarget(
                     KeyFor(method),
                     method,
@@ -149,6 +154,72 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
 
         return targets;
     }
+
+    /// <summary>
+    /// Names a body built back from a virtualized method after the framework it provably reaches.
+    /// </summary>
+    /// <remarks>
+    /// These are the methods a reader most needs to find and the ones a number hides worst. A
+    /// rebuilt body is long, it is the only thing in the file that was read rather than recovered,
+    /// and what it does is usually the point of the sample — so <c>generatedMethod_0075</c> is the
+    /// name on the one method somebody opened the file to read.
+    ///
+    /// The name says two things and claims nothing beyond them: that the body was rebuilt from a
+    /// virtual machine rather than found, and which families of framework API it reaches. Both are
+    /// facts already established — the first by the rebuild, the second by the same walk that
+    /// writes the account onto the method. The families are deliberately coarse and the name stops
+    /// at two of them, because a name is not the place to say what a method is for: the account the
+    /// decompiler prints above it lists every member by name, and guessing a purpose in the
+    /// identifier would put an interpretation somewhere a reader cannot see it was one.
+    /// </remarks>
+    private static string? Rebuilt(MethodDef method, ModuleDef module)
+    {
+        var reaches = MethodBehaviour.Reached(method, module).Reaches;
+        if (reaches.Count == 0)
+            return "RebuiltFromVirtualMachine";
+
+        var families = Families
+            .Where(family => reaches.Any(reached =>
+                family.Members.Any(member =>
+                    reached.Contains(member, StringComparison.Ordinal))))
+            .Take(2)
+            .Select(family => family.Name)
+            .ToArray();
+        return families.Length == 0
+            ? "RebuiltFromVirtualMachine"
+            : $"RebuiltFromVirtualMachine{string.Concat(families)}";
+    }
+
+    /// <summary>
+    /// Coarse families of framework API, in the order a reader would want to be told about them.
+    /// Matching is on the type name a reached member is spelled with, which is what survives a
+    /// protector: it renames what it generates and cannot rename the framework.
+    /// </summary>
+    private static readonly (string Name, string[] Members)[] Families =
+    [
+        ("Cryptography", [
+            "Aes", "Rijndael", "DES", "RC2", "MD5", "SHA1", "SHA256", "SHA512", "RSA",
+            "CryptoStream", "CryptoConfig", "ICryptoTransform", "HashAlgorithm",
+            "SymmetricAlgorithm", "AsymmetricAlgorithm"
+        ]),
+        ("Network", [
+            "WebClient", "HttpClient", "WebRequest", "WebResponse", "Socket", "TcpClient",
+            "Dns", "HttpWebRequest"
+        ]),
+        ("Process", ["Process.", "new Process", "ProcessStartInfo"]),
+        ("Registry", ["Registry", "RegistryKey"]),
+        ("Reflection", [
+            "Assembly", "AppDomain", "Activator", "MethodInfo", "MethodBase", "ConstructorInfo",
+            "Module.", "Type.GetType", "ObjectHandle"
+        ]),
+        ("Files", [
+            "File.", "Directory", "FileStream", "FileInfo", "Path.", "DriveInfo"
+        ]),
+        ("Streams", [
+            "Stream", "BinaryReader", "BinaryWriter", "StreamReader", "StreamWriter",
+            "MemoryStream", "Encoding"
+        ])
+    ];
 
     /// <summary>
     /// Names a method after what its body does, where its body does one thing.

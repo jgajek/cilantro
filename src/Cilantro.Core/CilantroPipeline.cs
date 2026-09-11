@@ -276,7 +276,11 @@ public sealed record RecoveryReportMetrics(
     int VirtualOperationsWalked = 0,
     int VirtualDepthDisagreements = 0,
     int ConstantStringSites = 0,
-    int ProxyCallsRestored = 0);
+    int ProxyCallsRestored = 0,
+    int ControlFlowMethodsSimplified = 0,
+    int ConstantBranchesFolded = 0,
+    int DispatcherMethodsRestored = 0,
+    int DispatcherMethodCandidates = 0);
 
 /// <summary>Raised when an assembly offered to the interpreter cannot be trusted as given.</summary>
 public sealed class TrustedLibraryException : Exception
@@ -745,6 +749,10 @@ public sealed class CilantroPipeline
         // The body the rebuild just wrote has had none of the folding the rest of the module got,
         // every pass that does it having run while this method was still a stub. It gets it here.
         new RebuiltBodyCleanupPass(),
+        // Flattening is looked for once more here, at the end. Every pass above takes something out
+        // of the middle of a method body — a proxy call, a resolver call, a loader call — and until
+        // they have, a dispatcher does not look like one. See DispatcherRecheckPass.
+        new DispatcherRecheckPass(),
         new RuntimeCleanupPass(),
         new SymbolRenamingPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it
@@ -1087,7 +1095,11 @@ public sealed class CilantroPipeline
         context.TryGetFact<int>("proxy.restoredCallSites", out var proxyCallsRestored);
         context.TryGetFact<int>("resources.restoredBundles", out var resourcesRestored);
         context.TryGetFact<int>("cfg.unreachableInstructionsRemoved", out var unreachableRemoved);
+        context.TryGetFact<int>("cfg.methodsSimplified", out var controlFlowMethodsSimplified);
+        context.TryGetFact<int>("cfg.constantBranchesFolded", out var constantBranchesFolded);
         context.TryGetFact<int>("cfg.dispatcherEdgesRedirected", out var redirectedEdges);
+        context.TryGetFact<int>("cfg.dispatcherMethodsRewritten", out var dispatcherMethodsRestored);
+        context.TryGetFact<int>("cfg.dispatcherCandidates", out var dispatcherMethodCandidates);
         context.TryGetFact<int>("cleanup.removedTypeCount", out var runtimeTypesRemoved);
         context.TryGetFact<IReadOnlyDictionary<string, string>>("rename.map", out var renameMap);
         context.TryGetFact<int>("virtualization.operations", out var virtualOperations);
@@ -1138,7 +1150,11 @@ public sealed class CilantroPipeline
                 virtualWalked,
                 virtualDisagreements,
                 constantStringSites,
-                proxyCallsRestored),
+                proxyCallsRestored,
+                controlFlowMethodsSimplified,
+                constantBranchesFolded,
+                dispatcherMethodsRestored,
+                dispatcherMethodCandidates),
             verification.Passed,
             verification.Diagnostics,
             Consulted(environment?.Host),

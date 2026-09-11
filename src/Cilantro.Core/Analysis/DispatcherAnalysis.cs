@@ -95,6 +95,50 @@ public sealed record DispatcherRewritePlan(
     int InitialState,
     IReadOnlyList<DispatcherEdgeRewrite> Rewrites);
 
+/// <summary>Why an individual edge into a dispatcher was left going through it.</summary>
+public enum DispatcherEdgeDecline
+{
+    /// <summary>The assignment is not the last thing a block does before jumping away.</summary>
+    UntailedAssignment,
+
+    /// <summary>What the assignment stores could not be reduced to one constant.</summary>
+    UnprovenExpression,
+
+    /// <summary>The constant selects no case the switch declares.</summary>
+    StateOutsideRange,
+
+    /// <summary>A direct jump would enter or leave a try, filter or handler.</summary>
+    ExceptionRegion,
+
+    /// <summary>The block assigns the state more than once, so no one value leaves it.</summary>
+    RepeatedAssignment
+}
+
+/// <summary>
+/// The edges into a method's dispatchers that were proven one at a time, for a method the
+/// whole-method proof in <see cref="DispatcherRewritePlan"/> could not close.
+/// </summary>
+/// <param name="Dispatchers">How many dispatchers in the method were looked at.</param>
+/// <param name="Edges">How many edges into them were offered, proven or not.</param>
+public sealed record DispatcherPartialPlan(
+    MethodDef Method,
+    int Dispatchers,
+    int Edges,
+    IReadOnlyList<DispatcherEdgeRedirect> Rewrites,
+    IReadOnlyDictionary<DispatcherEdgeDecline, int> Declines)
+{
+    public int ResidualEdges => Edges - Rewrites.Count;
+}
+
+public sealed record DispatcherPartialResult(
+    DispatcherQualification Qualification,
+    DispatcherPartialPlan? Plan,
+    IReadOnlyList<string> Diagnostics)
+{
+    public bool IsQualified =>
+        Qualification == DispatcherQualification.Qualified && Plan is { Rewrites.Count: > 0 };
+}
+
 public sealed record DispatcherAnalysisResult(
     DispatcherQualification Qualification,
     DispatcherRewritePlan? Plan,
@@ -174,6 +218,300 @@ public sealed class DispatcherAnalyzer
                 rejected.Count == 0 ? ["No switch could be qualified."] : rejected)
         };
     }
+
+    /// <summary>
+    /// Proves what it can of a method the whole-method plan could not close, one edge at a time.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Analyze"/> proves a dispatcher out of existence: every ingress has to be a proven
+    /// constant assignment, the entry has to select one initial state, and the state may not be read
+    /// anywhere but the switch. Those conditions together let the assignments be erased, because
+    /// nothing is left that could observe the state. One unprovable ingress fails all of them, and on
+    /// real Reactor output that is the normal case — most flattened methods hold one assignment the
+    /// analyzer cannot reduce, and the method is preserved whole because of it.
+    ///
+    /// An edge on its own needs far less. A block that ends <c>&lt;constant&gt;; stloc L; br
+    /// DISPATCH</c> arrives at the dispatcher with <c>L</c> holding that constant, so the switch it
+    /// is about to perform has one known outcome, and jumping straight there instead is the same
+    /// thing. Nothing about the rest of the method enters that argument, so no other ingress and no
+    /// other reader of <c>L</c> has to be proven for it to hold.
+    ///
+    /// What makes it local is keeping the assignment. The whole-method plan drops it, which is only
+    /// sound once the dispatcher is unreachable; here the dispatcher stays, so the edge carries the
+    /// store itself (<see cref="DispatcherEdgeRedirect.RestoredStateLocal"/>) and leaves <c>L</c>
+    /// holding exactly what it would have. Every reader in the method, including the dispatcher on
+    /// the paths that still reach it, sees the value it saw before.
+    /// </remarks>
+    public DispatcherPartialResult AnalyzePartial(MethodDef method)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        if (!method.HasBody || method.Body.Instructions.Count == 0)
+            return PartialNotCandidate("Method has no CIL body.");
+        if (method.Body.Instructions.Count > options.MaximumInstructions)
+            return PartialAmbiguous($"Method exceeds the {options.MaximumInstructions} instruction limit.");
+
+        ControlFlowGraph graph;
+        try
+        {
+            graph = ControlFlowGraph.Build(method);
+        }
+        catch (Exception ex)
+        {
+            return PartialAmbiguous($"CFG construction failed: {ex.Message}");
+        }
+
+        var dispatchers = method.Body.Instructions
+            .Where(instruction => instruction.OpCode.Code == Code.Switch)
+            .Select(switchInstruction => (
+                Switch: switchInstruction,
+                Block: graph.BlockOf(switchInstruction),
+                Head: StateOf(method, graph, switchInstruction)))
+            .Where(item => item.Head is not null)
+            .Select(item => (item.Switch, item.Block, Head: item.Head!.Value))
+            .ToArray();
+        if (dispatchers.Length == 0)
+            return PartialNotCandidate("No switch block reads a state variable and switches on it.");
+
+        var rewrites = new List<DispatcherEdgeRedirect>();
+        var declines = new Dictionary<DispatcherEdgeDecline, int>();
+        var offered = 0;
+        // An instruction can only be rewritten once, and a block reaching two dispatchers would
+        // otherwise be planned twice over.
+        var claimed = new HashSet<Instruction>();
+
+        foreach (var (switchInstruction, dispatcher, head) in dispatchers)
+        {
+            var (state, bias) = head;
+            var cases = (IList<Instruction>)switchInstruction.Operand;
+            foreach (var source in dispatcher.Predecessors
+                         .Where(edge => edge.Kind != ControlFlowEdgeKind.Exception)
+                         .Select(edge => edge.Source)
+                         .Distinct())
+            {
+                if (ReferenceEquals(source, dispatcher))
+                    continue;
+                offered++;
+                if (TryPlanEdge(
+                        method, graph, source, dispatcher, switchInstruction, cases, state, bias,
+                        claimed, out var redirect, out var decline))
+                {
+                    rewrites.Add(redirect!);
+                    continue;
+                }
+
+                if (decline is { } reason)
+                    Decline(declines, reason);
+                else
+                    offered--;
+            }
+        }
+
+        if (rewrites.Count == 0)
+        {
+            return new DispatcherPartialResult(
+                DispatcherQualification.Ambiguous,
+                null,
+                ["No edge into a dispatcher could be proven on its own."]);
+        }
+
+        return new DispatcherPartialResult(
+            DispatcherQualification.Qualified,
+            new DispatcherPartialPlan(
+                method,
+                dispatchers.Length,
+                offered,
+                rewrites,
+                declines),
+            [$"Proved {rewrites.Count} of {offered} edges into {dispatchers.Length} dispatcher(s)."]);
+    }
+
+    /// <summary>
+    /// The local a switch dispatches on and the constant subtracted from it first, when the block
+    /// does nothing but read the local, bias it and switch.
+    /// </summary>
+    /// <remarks>
+    /// Reactor's dispatchers are rarely the bare <c>ldloc; switch</c> the whole-method proof looks
+    /// for. The states it numbers a method's blocks with do not start at zero, so the dispatcher
+    /// subtracts where they do start and switches on the difference: <c>ldloc L; ldc.i4 K; sub;
+    /// switch</c>. Reading that as no dispatcher at all is what left almost every flattened method
+    /// in a real module untouched, so the bias is carried out of here and applied to the constant an
+    /// edge assigns rather than being required to be absent.
+    ///
+    /// The same shape is what a C# compiler emits for a switch over a sparse enum, and this does
+    /// not try to tell the two apart. It does not have to: an edge is only rewritten when a block
+    /// assigns the state a constant and jumps straight here, which is a thing a flattener does and
+    /// ordinary code does not, and rewriting one is sound either way.
+    /// </remarks>
+    private static (Local? State, int Bias)? StateOf(
+        MethodDef method,
+        ControlFlowGraph graph,
+        Instruction switchInstruction)
+    {
+        if (switchInstruction.Operand is not IList<Instruction> cases || cases.Count < 2)
+            return null;
+
+        // The block has to hold the dispatcher and nothing else. An edge is redirected to a case
+        // rather than to the block, so anything else standing in the block is something the
+        // redirected path would no longer run.
+        var meaningful = graph.BlockOf(switchInstruction).Instructions
+            .Where(instruction => instruction.OpCode.Code != Code.Nop)
+            .ToArray();
+        if (!ReferenceEquals(meaningful[^1], switchInstruction))
+            return null;
+
+        // A dispatcher takes its state either from a variable it reads or from the stack, where
+        // whatever jumped here left it. Both are flatteners; only the handover differs.
+        var state = meaningful.Length > 1 ? GetLoadedLocal(method, meaningful[0]) : null;
+        if (state is not null && state.Type.ElementType != ElementType.I4)
+            return null;
+        var read = state is null ? 0 : 1;
+
+        if (meaningful.Length == read + 1)
+            return (state, 0);
+        if (meaningful.Length != read + 3 || !TryGetInt32Constant(meaningful[read], out var bias))
+            return null;
+
+        return meaningful[read + 1].OpCode.Code switch
+        {
+            Code.Sub => (state, bias),
+            Code.Add => (state, -bias),
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Proves one block's handover to a dispatcher, or says what stopped it.
+    /// </summary>
+    /// <param name="decline">
+    /// Why the edge was left alone, or <c>null</c> when the block does not hand over in a way this
+    /// rewrite has anything to say about, which is not a shortfall to report.
+    /// </param>
+    private bool TryPlanEdge(
+        MethodDef method,
+        ControlFlowGraph graph,
+        BasicBlock source,
+        BasicBlock dispatcher,
+        Instruction switchInstruction,
+        IList<Instruction> cases,
+        Local? state,
+        int bias,
+        HashSet<Instruction> claimed,
+        out DispatcherEdgeRedirect? redirect,
+        out DispatcherEdgeDecline? decline)
+    {
+        redirect = null;
+        decline = null;
+        var instructions = source.Instructions.ToArray();
+        var meaningful = instructions
+            .Where(instruction => instruction.OpCode.Code != Code.Nop)
+            .ToArray();
+        if (meaningful.Length == 0)
+            return false;
+
+        // Two ways a block hands over, and one instruction becomes the direct jump either way: the
+        // branch it ends with, or, where it just runs off its end into the dispatcher, the last
+        // instruction of the state expression itself.
+        var last = meaningful[^1];
+        var branches = last.OpCode.FlowControl == FlowControl.Branch &&
+            last.OpCode.Code is not (Code.Leave or Code.Leave_S) &&
+            last.Operand is Instruction target &&
+            ReferenceEquals(target, dispatcher.Instructions[0]);
+        if (!branches && !FallsInto(method, source, dispatcher))
+            return false;
+
+        // Where the state is a variable the block assigns, the assignment has to be the last thing
+        // it does, so that what the dispatcher reads is what this block computed.
+        var rewritten = last;
+        var expressionEnd = Array.IndexOf(instructions, last) - 1;
+        if (state is not null)
+        {
+            var store = branches ? (meaningful.Length > 1 ? meaningful[^2] : null) : last;
+            if (store is null || !ReferenceEquals(GetStoredLocal(method, store), state))
+            {
+                decline = DispatcherEdgeDecline.UntailedAssignment;
+                return false;
+            }
+
+            expressionEnd = Array.IndexOf(instructions, store) - 1;
+        }
+        else if (!branches)
+        {
+            // The block ends with the push the dispatcher pops, so that push becomes the jump.
+            expressionEnd = Array.IndexOf(instructions, last);
+        }
+
+        if (!claimed.Add(rewritten))
+        {
+            decline = null;
+            return false;
+        }
+
+        var budget = options.MaximumExpressionNodes;
+        var helperStack = new HashSet<MethodDef>();
+        if (expressionEnd < 0 ||
+            !TryEvaluateBackward(
+                method, instructions, expressionEnd, options.MaximumHelperDepth, helperStack,
+                ref budget, out var expressionStart, out var value))
+        {
+            decline = DispatcherEdgeDecline.UnprovenExpression;
+            return false;
+        }
+
+        // The dispatcher switches on the state less its bias, so that is the index the constant
+        // selects. A state outside the range is not an unproven edge: a switch whose operand names
+        // no case falls through to whatever follows it, so the destination is just as settled, and
+        // declining it would leave the dispatcher standing for edges whose outcome is known.
+        var selected = value - bias;
+        var chosen = selected >= 0 && selected < cases.Count
+            ? cases[selected]
+            : FallsThroughTo(method, switchInstruction);
+        if (chosen is null)
+        {
+            decline = DispatcherEdgeDecline.StateOutsideRange;
+            return false;
+        }
+
+        if (!graph.HaveIdenticalExceptionRegions(rewritten, chosen))
+        {
+            decline = DispatcherEdgeDecline.ExceptionRegion;
+            return false;
+        }
+
+        // Everything from the expression up to the instruction being repurposed goes, that being
+        // exactly what the direct jump no longer needs computed.
+        var erasedEnd = Array.IndexOf(instructions, rewritten) - 1;
+        redirect = new DispatcherEdgeRedirect(
+            rewritten,
+            chosen,
+            value,
+            erasedEnd < expressionStart
+                ? []
+                : instructions.Skip(expressionStart).Take(erasedEnd - expressionStart + 1).ToArray(),
+            state);
+        return true;
+    }
+
+    /// <summary>Where a switch goes when its operand names no case.</summary>
+    private static Instruction? FallsThroughTo(MethodDef method, Instruction switchInstruction)
+    {
+        var instructions = method.Body.Instructions;
+        var at = instructions.IndexOf(switchInstruction);
+        return at >= 0 && at + 1 < instructions.Count ? instructions[at + 1] : null;
+    }
+
+    /// <summary>Whether control leaves the block by running off its end into the dispatcher.</summary>
+    private static bool FallsInto(MethodDef method, BasicBlock block, BasicBlock dispatcher)
+    {
+        var instructions = method.Body.Instructions;
+        var last = instructions.IndexOf(block.Instructions[^1]);
+        return last >= 0 && last + 1 < instructions.Count &&
+            ReferenceEquals(instructions[last + 1], dispatcher.Instructions[0]);
+    }
+
+    private static void Decline(
+        Dictionary<DispatcherEdgeDecline, int> declines,
+        DispatcherEdgeDecline decline) =>
+        declines[decline] = declines.GetValueOrDefault(decline) + 1;
 
     private bool TryQualify(
         MethodDef method,
@@ -568,5 +906,11 @@ public sealed class DispatcherAnalyzer
         new(DispatcherQualification.NotCandidate, null, [diagnostic]);
 
     private static DispatcherAnalysisResult Ambiguous(string diagnostic) =>
+        new(DispatcherQualification.Ambiguous, null, [diagnostic]);
+
+    private static DispatcherPartialResult PartialNotCandidate(string diagnostic) =>
+        new(DispatcherQualification.NotCandidate, null, [diagnostic]);
+
+    private static DispatcherPartialResult PartialAmbiguous(string diagnostic) =>
         new(DispatcherQualification.Ambiguous, null, [diagnostic]);
 }

@@ -28,11 +28,19 @@ public sealed class VirtualBodyTests
     private const int EndFinally = 10;
 
     /// <summary>
-    /// The engine keeps every value as an object, so the body does too: a constant is boxed where
-    /// it is made and converted where it is used, and nothing is assumed about its width.
+    /// A value whose type every path agrees on is held as that type, so the body reads as the
+    /// arithmetic it is rather than as the packing around it.
     /// </summary>
+    /// <remarks>
+    /// The engine itself keeps everything as an object, and writing the body that way was faithful
+    /// but nearly unreadable: these five operations came out as eleven instructions, of which two
+    /// boxed, two called <c>Convert.ToInt32</c>, and two moved values into and out of a scratch
+    /// local so the one beneath the top could be reached. None of that was a guess being corrected
+    /// — the reading had already established that the operation makes an int32 — it was a fact the
+    /// body threw away before it was written.
+    /// </remarks>
     [Fact]
-    public void ValuesAreCarriedAsObjectsAndConvertedOnlyWhereTheyAreUsed()
+    public void ValuesAreHeldAsTheTypeEveryPathAgreesOn()
     {
         using var context = Module();
         var built = Build(context, [
@@ -46,12 +54,107 @@ public sealed class VirtualBodyTests
         Assert.Null(built.Refused);
         Assert.NotNull(built.Body);
         var said = Written(built.Body!);
-        Assert.Contains("ldc.i4 2, box System.Int32", said, StringComparison.Ordinal);
-        Assert.Contains("System.Convert::ToInt32", said, StringComparison.Ordinal);
-        Assert.Contains("add, box System.Int32, stloc", said, StringComparison.Ordinal);
+        Assert.Contains("ldc.i4 2, ldc.i4 3, add, stloc", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("box", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("System.Convert", said, StringComparison.Ordinal);
+        // The slot says what it holds, in its type and in its name, so a reader of the rebuilt
+        // method is not left converting an object to find out.
+        var slot = Assert.Single(built.Body!.Variables);
+        Assert.Equal("System.Int32", slot.Type.FullName);
+        Assert.Equal("Int32Slot0", slot.Name);
+    }
+
+    /// <summary>
+    /// A slot that holds two different kinds of thing is an object, which is what the engine had,
+    /// and every value going into it is boxed as before.
+    /// </summary>
+    /// <remarks>
+    /// This is the check that the typing claims nothing it has not established. One store puts a
+    /// number in the slot and the other puts whatever was in a slot nothing can name the contents
+    /// of, and nothing says those are the same kind of thing, so the slot stays as it was.
+    /// </remarks>
+    [Fact]
+    public void ASlotFedTwoDifferentKindsOfThingStaysAnObject()
+    {
+        using var context = Module();
+        var built = Build(context, [
+            (Push, new VirtualOperand.Number(7)),
+            (Store, new VirtualOperand.Number(0)),
+            (Load, new VirtualOperand.Number(1)),
+            (Store, new VirtualOperand.Number(0)),
+            (Return, new VirtualOperand.None())
+        ]);
+
+        Assert.Null(built.Refused);
         Assert.All(
             built.Body!.Variables,
             local => Assert.Equal("System.Object", local.Type.FullName));
+        Assert.Contains("box System.Int32", Written(built.Body!), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A slot holds what is written to it, whether or not the writing comes before the reading.
+    /// </summary>
+    /// <remarks>
+    /// Here slot 0 is read before its one store, and it is still a number. Requiring the store to
+    /// come first was tried and it cost almost everything: in a flattened program every block is
+    /// entered from the dispatcher, so as far as the control flow can tell any slot a block reads
+    /// at its start might not have been written yet, and thirteen slots came out as one. What the
+    /// looser rule gives up is bounded and small — the read here is the engine handing on a null
+    /// where a slot declared as a number hands on a zero — and the engine's own conversions turn
+    /// that null into the same zero at every use that converts it.
+    ///
+    /// A slot nothing writes at all is a different matter and stays an object, because an object
+    /// is all there is to declare it as.
+    /// </remarks>
+    [Fact]
+    public void ASlotHoldsWhatIsWrittenToItWhicheverComesFirst()
+    {
+        using var context = Module();
+        var built = Build(context, [
+            (Load, new VirtualOperand.Number(0)),
+            (Store, new VirtualOperand.Number(1)),
+            (Push, new VirtualOperand.Number(5)),
+            (Store, new VirtualOperand.Number(0)),
+            (Return, new VirtualOperand.None())
+        ]);
+
+        Assert.Null(built.Refused);
+        Assert.All(
+            built.Body!.Variables,
+            local => Assert.Equal("System.Int32", local.Type.FullName));
+        Assert.Equal(["Int32Slot0", "Int32Slot1"], built.Body!.Variables
+            .Select(local => local.Name).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// A slot nothing writes stays an object, and what reads it is made to convert.
+    /// </summary>
+    /// <remarks>
+    /// This is the shape that caught the walk out. A slot nothing writes claims nothing, and
+    /// claiming nothing is not the same as claiming an object: agreement is pushed backwards, so a
+    /// load claiming nothing took on whatever its reader wanted — a number, here, for the add —
+    /// while the body still declared the slot as the object it had nothing better to call it. The
+    /// load then put an object where the add had been promised a number, which no reader and no
+    /// verifier of the result would accept. So the slots are grounded before the types are used.
+    /// </remarks>
+    [Fact]
+    public void ASlotNothingWritesStaysAnObjectAndWhatReadsItConverts()
+    {
+        using var context = Module();
+        var built = Build(context, [
+            (Load, new VirtualOperand.Number(7)),
+            (Push, new VirtualOperand.Number(3)),
+            (Add, new VirtualOperand.None()),
+            (Store, new VirtualOperand.Number(0)),
+            (Return, new VirtualOperand.None())
+        ]);
+
+        Assert.Null(built.Refused);
+        var read = Assert.Single(built.Body!.Variables, local => local.Name == "slot7");
+        Assert.Equal("System.Object", read.Type.FullName);
+        Assert.Contains(
+            "System.Convert::ToInt32", Written(built.Body!), StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -61,7 +61,7 @@ public sealed record DispatcherMethodRewriteResult(
 /// neutered, because unreachable code is still checked and the dispatcher's arithmetic expects a
 /// state that is no longer pushed.
 /// </remarks>
-public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
+public class DispatcherDeobfuscationPass : DeobfuscationPass
 {
     private readonly DispatcherAnalyzer analyzer;
     private readonly ConfuserExDispatcherAnalyzer confuserExAnalyzer;
@@ -79,6 +79,17 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
 
     public override string Name => "dispatcher-deobfuscation";
     public override IReadOnlyCollection<string> Dependencies => ["control-flow-analysis"];
+
+    /// <summary>
+    /// Whether to finish each method the rewrite changed by folding the branches the redirects have
+    /// just made constant and deleting what nothing reaches any more.
+    /// </summary>
+    /// <remarks>
+    /// Off for the early run, which is followed by the passes that do this to the whole module
+    /// anyway. On for a run placed after them, where a redirected method would otherwise keep the
+    /// dispatcher scaffolding the redirect stranded and read no better for having been rewritten.
+    /// </remarks>
+    protected virtual bool CompletesControlFlow => false;
 
     public DispatcherMethodRewriteResult Rewrite(MethodDef method)
     {
@@ -167,6 +178,9 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
             .ToList();
         var diagnostics = new List<string>();
 
+        var partial = PlanPartial(context, methods, qualified, diagnostics);
+        planned.AddRange(partial.Planned);
+
         var confuserEx = PlanConfuserEx(context, methods, qualified, diagnostics);
         planned.AddRange(confuserEx.Planned);
 
@@ -224,15 +238,212 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
                 item.Transaction.Dispose();
         }
 
-        var ambiguous = candidates.Length - qualified.Length;
-        if (ambiguous != 0)
-            diagnostics.Add($"Preserved {ambiguous} ambiguous dispatcher-like methods.");
+        var rewritten = active.Select(item => item.Method).ToHashSet();
+        var preserved = candidates.Where(item => !rewritten.Contains(item.Method)).ToArray();
+        if (preserved.Length != 0)
+        {
+            diagnostics.Add($"Preserved {preserved.Length} ambiguous dispatcher-like methods.");
+            // Same reasoning as the ConfuserEx declines below: a count with no reason reads as an
+            // unexplained shortfall, where the reasons are what would have to change to go further.
+            foreach (var (reason, count) in Tally(preserved))
+                diagnostics.Add($"{count} of them: {reason}");
+        }
+
         var edges = active.Sum(item => item.Edges.Count);
-        context.SetFact("cfg.dispatcherEdgesRedirected", edges);
         diagnostics.Add($"Rewrote {active.Count} methods using {edges} edges.");
-        context.SetFact("cfg.dispatcherQualified", qualified.Length);
-        context.SetFact("cfg.dispatcherAmbiguous", ambiguous);
+        Complete(context, active.Select(item => item.Method), diagnostics);
+
+        // The rewrite runs more than once in a pipeline, before and after the passes that strip the
+        // junk hiding a dispatcher, so what it reports is the union over the runs rather than the
+        // last run's view. Methods are counted by token for that reason: a method both runs saw is
+        // one candidate, not two. Edges are summed instead, each being redirected at most once.
+        // Both flatteners count towards what was found, so a ConfuserEx run reports the same way a
+        // Reactor one does rather than reporting nothing.
+        var seenCandidates = Union(
+            context,
+            "cfg.dispatcherCandidateTokens",
+            candidates.Select(item => item.Method.MDToken.Raw)
+                .Concat(partial.Candidates)
+                .Concat(confuserEx.Candidates));
+        var seenRewritten = Union(
+            context,
+            "cfg.dispatcherRewrittenTokens",
+            active.Select(item => item.Method.MDToken.Raw));
+        var seenQualified = Union(
+            context,
+            "cfg.dispatcherQualifiedTokens",
+            qualified.Select(item => item.Method.MDToken.Raw));
+
+        context.SetFact("cfg.dispatcherEdgesRedirected", Add(context, "cfg.dispatcherEdgesRedirected", edges));
+        context.SetFact("cfg.dispatcherMethodsRewritten", seenRewritten.Count);
+        context.SetFact("cfg.dispatcherCandidates", seenCandidates.Count);
+        context.SetFact("cfg.dispatcherQualified", seenQualified.Count);
+        context.SetFact("cfg.dispatcherAmbiguous", seenCandidates.Except(seenRewritten).Count());
         return (PassStatus.Success, edges, diagnostics);
+    }
+
+    /// <summary>
+    /// Folds what the redirects made constant in the methods they changed. A redirect leaves the
+    /// dispatcher it bypassed standing, and the arithmetic feeding it unreachable, so a method is
+    /// only as readable as this makes it.
+    /// </summary>
+    private void Complete(
+        ArtifactContext context,
+        IEnumerable<MethodDef> rewritten,
+        List<string> diagnostics)
+    {
+        if (!CompletesControlFlow)
+            return;
+        var folded = 0;
+        var removed = 0;
+        var methods = 0;
+        foreach (var method in rewritten)
+        {
+            if (ControlFlowCompletionPass.TryComplete(method) is not { } outcome ||
+                (outcome.Folded == 0 && outcome.Removed == 0))
+            {
+                continue;
+            }
+
+            folded += outcome.Folded;
+            removed += outcome.Removed;
+            methods++;
+            context.AddChange(new ChangeRecord(
+                Name,
+                "complete-control-flow",
+                $"{method.MDToken} {method.FullName}",
+                $"Folded {outcome.Folded} constant branch(es) and removed {outcome.Removed} " +
+                "unreachable instruction(s) left by the redirects."));
+        }
+
+        if (methods == 0)
+            return;
+        context.SetFact("cfg.recheckConstantBranchesFolded", folded);
+        context.SetFact("cfg.recheckInstructionsRemoved", removed);
+        diagnostics.Add(
+            $"Folded {folded} branch(es) the redirects made constant and removed {removed} " +
+            $"instruction(s) nothing reaches, across {methods} of those methods.");
+    }
+
+    /// <summary>Adds this run's methods to the ones earlier runs of the rewrite saw.</summary>
+    private static HashSet<uint> Union(
+        ArtifactContext context,
+        string key,
+        IEnumerable<uint> tokens)
+    {
+        var seen = context.TryGetFact<IReadOnlySet<uint>>(key, out var earlier) && earlier is not null
+            ? new HashSet<uint>(earlier)
+            : [];
+        seen.UnionWith(tokens);
+        context.SetFact<IReadOnlySet<uint>>(key, seen);
+        return seen;
+    }
+
+    private static int Add(ArtifactContext context, string key, int value) =>
+        (context.TryGetFact<int>(key, out var earlier) ? earlier : 0) + value;
+
+    /// <summary>
+    /// Takes what can be taken from the methods the whole-method proof could not close, proving the
+    /// edges into their dispatchers one at a time. See
+    /// <see cref="DispatcherAnalyzer.AnalyzePartial"/> for why an edge needs so much less proof than
+    /// a method.
+    /// </summary>
+    private (List<(MethodDef Method, IReadOnlyList<DispatcherEdgeRedirect> Edges,
+        IReadOnlyList<DispatcherEntryRelocation> Relocations)> Planned,
+        IReadOnlyList<uint> Candidates) PlanPartial(
+            ArtifactContext context,
+            IReadOnlyList<MethodDef> methods,
+            IReadOnlyList<(MethodDef Method, DispatcherAnalysisResult Analysis)> qualified,
+            List<string> diagnostics)
+    {
+        var planned = new List<(MethodDef, IReadOnlyList<DispatcherEdgeRedirect>,
+            IReadOnlyList<DispatcherEntryRelocation>)>();
+        var skip = qualified.Select(item => item.Method).ToHashSet();
+        var declines = new Dictionary<DispatcherEdgeDecline, int>();
+        var seen = new List<uint>();
+        var rewritten = 0;
+        var residual = 0;
+        var whole = 0;
+        foreach (var method in methods.Where(method => !skip.Contains(method)))
+        {
+            var result = analyzer.AnalyzePartial(method);
+            if (result.Qualification == DispatcherQualification.NotCandidate)
+                continue;
+            seen.Add(method.MDToken.Raw);
+            if (result.Plan is { } counted)
+            {
+                foreach (var (decline, count) in counted.Declines)
+                    declines[decline] = declines.GetValueOrDefault(decline) + count;
+            }
+
+            if (!result.IsQualified)
+                continue;
+            rewritten++;
+            residual += result.Plan!.ResidualEdges;
+            if (result.Plan.ResidualEdges == 0)
+                whole++;
+            planned.Add((method, result.Plan.Rewrites, []));
+        }
+
+        if (rewritten == 0)
+            return (planned, seen);
+
+        var resolved = planned.Sum(item => item.Item2.Count);
+        diagnostics.Add(
+            $"Edge by edge: made {resolved} of {resolved + residual} dispatcher jump(s) direct " +
+            $"across {rewritten} method(s) no whole-method proof closed, {whole} of them completely.");
+        context.SetFact("cfg.partialDispatcherMethods", rewritten);
+        context.SetFact("cfg.partialDispatcherResidualEdges", residual);
+        foreach (var (decline, count) in declines.OrderByDescending(entry => entry.Value))
+            diagnostics.Add($"{count} jump(s) left going through a dispatcher: {Explain(decline)}");
+        return (planned, seen);
+    }
+
+    private static string Explain(DispatcherEdgeDecline decline) => decline switch
+    {
+        DispatcherEdgeDecline.UntailedAssignment =>
+            "the state is assigned somewhere other than immediately before the jump, so the value " +
+            "arriving at the dispatcher is not the one the block computed",
+        DispatcherEdgeDecline.UnprovenExpression =>
+            "what the state was assigned did not reduce to a single constant",
+        DispatcherEdgeDecline.StateOutsideRange =>
+            "the constant selects no case the switch declares",
+        DispatcherEdgeDecline.ExceptionRegion =>
+            "a direct jump would enter or leave a try, filter or handler",
+        DispatcherEdgeDecline.RepeatedAssignment =>
+            "the block assigns the state more than once, so no one value leaves it",
+        _ => decline.ToString()
+    };
+
+    /// <summary>
+    /// Groups the preserved methods by what stopped each of them, with the offset each reason was
+    /// reported at dropped so that the same obstacle in different methods counts as one reason.
+    /// </summary>
+    private static IEnumerable<(string Reason, int Count)> Tally(
+        IEnumerable<(MethodDef Method, DispatcherAnalysisResult Analysis)> preserved)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var item in preserved)
+        {
+            foreach (var reason in item.Analysis.Diagnostics.Select(Strip).Distinct(
+                         StringComparer.Ordinal))
+            {
+                counts[reason] = counts.GetValueOrDefault(reason) + 1;
+            }
+        }
+
+        return counts
+            .OrderByDescending(entry => entry.Value)
+            .ThenBy(entry => entry.Key, StringComparer.Ordinal)
+            .Select(entry => (entry.Key, entry.Value));
+    }
+
+    private static string Strip(string diagnostic)
+    {
+        var separator = diagnostic.IndexOf(": ", StringComparison.Ordinal);
+        return separator > 0 && diagnostic.StartsWith("IL_", StringComparison.Ordinal)
+            ? diagnostic[(separator + 2)..]
+            : diagnostic;
     }
 
     /// <summary>
@@ -241,7 +452,8 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
     /// <see cref="DispatcherAnalyzer"/> proves, so it gets its own analyzer and the same rewrite.
     /// </summary>
     private (List<(MethodDef Method, IReadOnlyList<DispatcherEdgeRedirect> Edges,
-        IReadOnlyList<DispatcherEntryRelocation> Relocations)> Planned, int Residual)
+        IReadOnlyList<DispatcherEntryRelocation> Relocations)> Planned, int Residual,
+        IReadOnlyList<uint> Candidates)
         PlanConfuserEx(
             ArtifactContext context,
             IReadOnlyList<MethodDef> methods,
@@ -253,7 +465,7 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
         if (!context.TryGetFact<ConfuserExStructureFacts>("confuserex.structure", out var facts) ||
             facts is null || !facts.IsConfuserExProtected)
         {
-            return (planned, 0);
+            return (planned, 0, []);
         }
 
         var skip = alreadyPlanned.Select(item => item.Method).ToHashSet();
@@ -264,11 +476,13 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
         var dispatchers = 0;
         var stored = 0;
         var declines = new Dictionary<ConfuserExEdgeDecline, int>();
+        var seen = new List<uint>();
         foreach (var method in methods.Where(method => !skip.Contains(method)))
         {
             var result = confuserExAnalyzer.Analyze(method);
             if (result.Qualification == DispatcherQualification.NotCandidate)
                 continue;
+            seen.Add(method.MDToken.Raw);
             if (result.Plan is { } counted)
             {
                 foreach (var (decline, count) in counted.Declines)
@@ -291,7 +505,7 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
         }
 
         if (flattened == 0 && declined == 0)
-            return (planned, 0);
+            return (planned, 0, seen);
 
         var resolved = planned.Sum(item => item.Item2.Count);
         var relocated = planned.Sum(item => item.Item3.Count);
@@ -314,7 +528,7 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
             diagnostics.Add($"{count} edge(s) left alone: {Explain(decline)}");
         context.SetFact("cfg.confuserExDispatcherMethods", flattened);
         context.SetFact("cfg.confuserExDispatcherResidualEdges", residual);
-        return (planned, residual);
+        return (planned, residual, seen);
     }
 
     private static string Explain(ConfuserExEdgeDecline decline) => decline switch
@@ -471,4 +685,37 @@ public sealed class DispatcherDeobfuscationPass : DeobfuscationPass
             instruction.Operand = null;
         }
     }
+}
+
+/// <summary>
+/// The same rewrite again, at the end of the run, once every pass that takes something out of a
+/// method body has taken it.
+/// </summary>
+/// <remarks>
+/// A dispatcher is recognized by its shape: a block that does nothing but read a state variable and
+/// switch on it, entered from blocks that do nothing after assigning that state but jump to it.
+/// Reactor does not emit that shape, and neither does the module in the middle of a run. The block
+/// holding the switch also holds a call to a proxy that has not been redirected yet, or a resolver
+/// call where a string will be; the blocks assigning the state carry the same between the
+/// assignment and the jump. Every one of those makes the block hold more than the shape allows.
+///
+/// So the early run sees almost nothing. On one real payload it found 44 candidates where the
+/// cleaned copy of that module has over 900 dispatchers standing in plain sight, and on another it
+/// found 27 against 663. What closes the gap is not a weaker proof but a later one: proxy
+/// redirection, string recovery, token recovery and loader elision each remove an instruction from
+/// the middle of these blocks, and none of them can run first, because what they need is recovered
+/// by the passes ahead of them.
+///
+/// The rewrite is therefore asked twice rather than moved. The early run stays where it is, being
+/// early enough to simplify what the passes after it have to read; this one runs last, where the
+/// shape it looks for is finally the shape the module has, and finishes each method it changes
+/// rather than leaving the bypassed dispatcher standing in it.
+/// </remarks>
+public sealed class DispatcherRecheckPass : DispatcherDeobfuscationPass
+{
+    public override string Name => "dispatcher-recheck";
+
+    public override IReadOnlyCollection<string> Dependencies => ["rebuilt-body-cleanup"];
+
+    protected override bool CompletesControlFlow => true;
 }

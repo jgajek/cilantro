@@ -282,7 +282,7 @@ internal static class Explain
         if (virtualized > 0 || result.RebuiltMethods > 0)
         {
             var found = Math.Max(virtualized, result.RebuiltMethods);
-            lines.Add(("Methods rebuilt from VM opcodes",
+            lines.Add(("Methods devirtualized",
                 $"{result.RebuiltMethods:N0} of {found:N0}"));
         }
 
@@ -296,6 +296,14 @@ internal static class Explain
         Add(lines, "Proxy calls restored", recovery.ProxyCallsRestored);
         Add(lines, "Hidden calls resolved", recovery.TokensRestored);
         Add(lines, "Hidden true/false values resolved", recovery.BooleansRecovered);
+        Add(lines, "Methods with control flow simplified", recovery.ControlFlowMethodsSimplified);
+        Add(lines, "Constant branches resolved", recovery.ConstantBranchesFolded);
+        if (recovery.DispatcherMethodCandidates > 0)
+        {
+            lines.Add(("Flattened methods restored",
+                $"{recovery.DispatcherMethodsRestored:N0} of " +
+                $"{recovery.DispatcherMethodCandidates:N0} candidates"));
+        }
         Add(lines, "Junk instructions removed", recovery.UnreachableInstructionsRemoved);
         Add(lines, "Encrypted resources restored", recovery.ResourcesRestored);
         Add(lines, "Protector types deleted", recovery.RuntimeTypesRemoved);
@@ -333,19 +341,26 @@ internal static class Explain
         if (report.RebuiltMethods is not { Count: > 0 } rebuilt)
             return;
 
-        output.WriteLine("  REBUILT   from the interpreter's own bytecode, so read them as a reading");
+        output.WriteLine("  DEVIRTUALIZED METHODS");
+        output.WriteLine();
+        output.WriteLine(
+            "    CILantro converted methods protected by code virtualization into readable");
+        output.WriteLine(
+            "    .NET code. These are reconstructions from the virtual machine's instructions,");
+        output.WriteLine(
+            "    not the original method bodies.");
         output.WriteLine();
         foreach (var method in rebuilt)
         {
             output.WriteLine($"    {Short(method.Method)}");
             if (method.Reaches.Count != 0)
-                Wrapped(output, "reaches", method.Reaches);
+                Wrapped(output, "uses", method.Reaches);
             if (method.Writes.Count != 0)
-                Wrapped(output, "writes", method.Writes);
+                Wrapped(output, "changes", method.Writes);
             if (!method.Reachable)
             {
                 output.WriteLine(
-                    "      note      nothing in the cleaned copy calls this: recovery replaced the");
+                    "      status    nothing in the cleaned copy calls this: recovery replaced the");
                 output.WriteLine(
                     "                code that used to, so its caller went with it");
             }
@@ -443,7 +458,15 @@ internal static class Explain
         {
             var folder = Near(Path.GetDirectoryName(result.ExtractedPayloadPaths[0])!, home);
             output.WriteLine(
-                $"    Hidden files    {result.ExtractedPayloadPaths.Count} in {folder}");
+                $"    Extracted files {result.ExtractedPayloadPaths.Count} in {folder}");
+            foreach (var payload in result.Report.Payloads.Where(item => item.WrittenTo is not null))
+            {
+                output.WriteLine(
+                    $"      {Path.GetFileName(payload.WrittenTo!)} ({Size(payload.PayloadLength)})");
+                output.WriteLine($"        Assembly    {payload.AssemblyName}");
+                output.WriteLine($"        SHA-256     {payload.PayloadSha256}");
+                output.WriteLine($"        From        {payload.SourceResource}");
+            }
         }
 
         if (result.VirtualProgramPaths.Count > 0)

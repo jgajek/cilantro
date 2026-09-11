@@ -222,6 +222,589 @@ public static class VirtualLift
         return lines;
     }
 
+    /// <summary>
+    /// What a place in a program holds: a value of a named type, an object, or nothing settled yet.
+    /// </summary>
+    /// <remarks>
+    /// The engine keeps everything as an object, and a body written that way is faithful but nearly
+    /// unreadable: a number put in a slot is boxed on the way in and converted on the way out, so a
+    /// jump table over a state reads as <c>switch (Convert.ToInt32(obj))</c> and adding two numbers
+    /// reads as four instructions of packing around one that adds. The type is not a guess in either
+    /// case — the reading already established that the operation makes an int32 — it was simply
+    /// thrown away by the time the body was written.
+    ///
+    /// So it is carried instead. A type is claimed only where every path agrees on it; two paths
+    /// meeting with different types leave an object, which is what the engine had and what the
+    /// earlier body wrote everywhere.
+    /// </remarks>
+    /// <param name="Settled">Whether anything has reached this place at all.</param>
+    /// <param name="Held">
+    /// The type the place holds as itself, or null for an object, which covers both a reference and
+    /// a value the engine boxed.
+    /// </param>
+    public readonly record struct VirtualKind(bool Settled, string? Held)
+    {
+        /// <summary>Nothing has reached here yet, so nothing is claimed.</summary>
+        public static VirtualKind Unreached => default;
+
+        /// <summary>Boxed or a reference, which is what the engine holds everything as.</summary>
+        public static VirtualKind Boxed => new(true, null);
+
+        /// <summary>A value of the named type, held as itself.</summary>
+        public static VirtualKind Value(string type) => new(true, type);
+
+        /// <summary>What two paths arriving here agree on.</summary>
+        public VirtualKind Meeting(VirtualKind other)
+        {
+            if (!Settled)
+                return other;
+            if (!other.Settled)
+                return this;
+            return string.Equals(Held, other.Held, StringComparison.Ordinal) ? this : Boxed;
+        }
+    }
+
+    /// <summary>
+    /// What every place in a program holds, for a body that would rather hold a number as a number.
+    /// </summary>
+    /// <param name="Entering">The stack where each operation begins, bottom of the stack first.</param>
+    /// <param name="Leaving">
+    /// What the program wants of the value an operation makes. It differs from the type the
+    /// operation naturally makes wherever the value meets one of another type further on, and that
+    /// is the one place a box still has to be written.
+    /// </param>
+    /// <param name="Slots">The slots that hold a value of one type throughout, and which.</param>
+    /// <param name="Types">The type each name stands for, so a body can write it.</param>
+    /// <param name="Refused">
+    /// Why nothing was settled, where nothing was. A body is still written in that case, holding
+    /// everything as an object the way the engine did, so this is not a failure — but it is the
+    /// difference between a readable rebuilt method and an unreadable one, and a run that hits it
+    /// should say so rather than quietly hand over the worse of the two.
+    /// </param>
+    public sealed record Typing(
+        IReadOnlyDictionary<int, IReadOnlyList<VirtualKind>> Entering,
+        IReadOnlyDictionary<int, VirtualKind> Leaving,
+        IReadOnlyDictionary<int, TypeSig> Slots,
+        IReadOnlyDictionary<string, TypeSig> Types,
+        string? Refused = null,
+        int Distrusted = 0)
+    {
+        /// <summary>
+        /// Nothing settled, which asks a body to hold everything as an object exactly as before.
+        /// </summary>
+        public static Typing None(string why) => new(
+            new Dictionary<int, IReadOnlyList<VirtualKind>>(),
+            new Dictionary<int, VirtualKind>(),
+            new Dictionary<int, TypeSig>(),
+            new Dictionary<string, TypeSig>(StringComparer.Ordinal),
+            why);
+    }
+
+    /// <summary>
+    /// Works out what each place in a program holds, from what the operations were read as.
+    /// </summary>
+    /// <remarks>
+    /// This is an ordinary forward walk to a fixed point, with one turn that is worth spelling out.
+    /// The usual direction is enough to say what arrives somewhere: a place holds what every path
+    /// into it holds, and an int32 meeting a string is an object. But a body has to be written, and
+    /// a body cannot hand two different things to one jump. An operation whose table sends the path
+    /// to three hundred places has to leave the stack in one shape, so if any one of those places is
+    /// reached from somewhere else carrying an object, all three hundred take an object.
+    ///
+    /// So agreement is pushed backwards as well as forwards. What the program wants of a value is
+    /// the sum of what everything it can reach wants, and that flows back through the operation that
+    /// made it and on to the operations that fed it. Both directions only ever widen a type towards
+    /// an object, so the walk still settles, and it settles on the one assignment a body can be
+    /// written from.
+    ///
+    /// A slot's type comes from what is written to it, and not from whether it is written before it
+    /// is read. That distinction is worth stating because the other choice was tried first and it
+    /// cost almost everything: in a flattened program every block is entered from the dispatcher, so
+    /// as far as the control flow can tell, any slot a block reads at its start might not have been
+    /// written yet, and thirteen slots came out as one. What the looser rule gives up is small and
+    /// bounded — a slot declared as a number reads zero where the engine's object slot read null —
+    /// and the engine's own conversions turn that null into the same zero at every use that converts
+    /// it. A body built from a reading was never a proof of anything, and this is a reading that
+    /// says what the slot holds instead of leaving a reader to work it out at every use.
+    ///
+    /// A slot nothing writes is a separate matter and has to be said out loud rather than left
+    /// unsaid, which is what the grounding below is for. Saying nothing about such a slot is not
+    /// neutral once agreement is pushed backwards: a load of it would take on whatever its readers
+    /// wanted, while the body has nothing to declare the slot as but an object, and the two do not
+    /// meet.
+    /// </remarks>
+    public static Typing Types(
+        VirtualProgram program, ModuleDef module, MethodDef stub, IReadOnlyList<Line> lines)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        ArgumentNullException.ThrowIfNull(module);
+        ArgumentNullException.ThrowIfNull(stub);
+        ArgumentNullException.ThrowIfNull(lines);
+
+        var named = new Dictionary<string, TypeSig>(StringComparer.Ordinal);
+
+        // Only the edges between two operations the walk reached are worth anything: an operation
+        // it gave no depth is written as a throw, so it hands nothing on, and nothing that arrives
+        // at one means anything either.
+        var after = new Dictionary<int, List<int>>();
+        foreach (var line in lines)
+        {
+            if (line.Depth is null || Terminal(program, program.Instructions[line.Index]))
+                continue;
+            var name = program.Operations.GetValueOrDefault(
+                program.Instructions[line.Index].Opcode)?.Name;
+            var going = new List<int>();
+            if (Falls(name) && line.Index + 1 < lines.Count && lines[line.Index + 1].Depth is not null)
+                going.Add(line.Index + 1);
+            if (Leaps(name) && line.Targets is { } targets)
+            {
+                going.AddRange(targets.Where(target =>
+                    target >= 0 && target < lines.Count && lines[target].Depth is not null));
+            }
+            if (going.Count > 0)
+                after[line.Index] = going;
+        }
+
+        // A place no walked operation hands the path to is a place the walk started from: the first
+        // operation, and every handler the guarded regions were read as. What arrives at one of
+        // those is whatever threw, so nothing is claimed about it.
+        var reached = after.Values.SelectMany(going => going).ToHashSet();
+        var entering = new Dictionary<int, VirtualKind[]>();
+        foreach (var line in lines)
+        {
+            if (line.Depth is not { } depth)
+                continue;
+            var stack = new VirtualKind[depth];
+            if (!reached.Contains(line.Index))
+                Array.Fill(stack, VirtualKind.Boxed);
+            entering[line.Index] = stack;
+        }
+
+        var slots = Slotted(lines);
+        if (slots is null)
+            return Typing.None("an operation read as a slot access names no slot");
+
+        var leaving = new Dictionary<int, VirtualKind>();
+        var distrusted = new HashSet<int>();
+        for (var settling = 0; ; settling++)
+        {
+            for (var round = 0; round <= Rounds; round++)
+            {
+                if (round == Rounds)
+                    return Typing.None($"the types did not settle after {Rounds} rounds");
+                var moved = false;
+                foreach (var line in lines)
+                {
+                    if (!entering.TryGetValue(line.Index, out var stack))
+                        continue;
+                    if (!after.TryGetValue(line.Index, out var going))
+                        continue;
+                    if (Effect(line, module) is not var (pops, pushes))
+                    {
+                        return Typing.None(
+                            $"nothing says what operation {line.Index} " +
+                            $"({line.Mnemonic ?? "unread"}) takes and leaves");
+                    }
+                    if (pops > stack.Length || (pushes > 1 && line.Mnemonic != "dup"))
+                    {
+                        // What the operation was read as does not fit where the walk has it. Nothing
+                        // is claimed about it or about anywhere it goes, and the rest of the program
+                        // carries on being typed around it.
+                        if (Distrust(line, stack, going, entering, leaving))
+                            moved = true;
+                        distrusted.Add(line.Index);
+                        continue;
+                    }
+
+                    var kept = stack.Length - pops;
+                    var made = pushes == 0
+                        ? VirtualKind.Unreached
+                        : Produces(program, line, module, stub, stack, slots, named);
+
+                    // What everything downstream wants of this operation's work, which is what it has
+                    // to leave: one shape for every place the path can go from here.
+                    var wanted = made;
+                    var mismatched = false;
+                    foreach (var target in going)
+                    {
+                        var arriving = entering[target];
+                        if (arriving.Length != kept + pushes)
+                        {
+                            // The same disagreement, seen from the edge rather than the operation:
+                            // the stack the operation leaves is not the depth the walk arrives at
+                            // the next one with, so one of the two readings is wrong and neither is
+                            // built on.
+                            mismatched = true;
+                            break;
+                        }
+                        for (var at = 0; at < kept; at++)
+                        {
+                            if (Raise(ref stack[at], arriving[at]))
+                                moved = true;
+                        }
+                        for (var at = kept; at < arriving.Length; at++)
+                            wanted = wanted.Meeting(arriving[at]);
+                    }
+                    if (mismatched)
+                    {
+                        if (Distrust(line, stack, going, entering, leaving))
+                            moved = true;
+                        distrusted.Add(line.Index);
+                        continue;
+                    }
+                    if (pushes > 0)
+                    {
+                        var was = leaving.GetValueOrDefault(line.Index);
+                        var now = was.Meeting(wanted);
+                        if (now != was)
+                        {
+                            leaving[line.Index] = now;
+                            moved = true;
+                        }
+                    }
+
+                    foreach (var target in going)
+                    {
+                        var arriving = entering[target];
+                        for (var at = 0; at < kept; at++)
+                        {
+                            if (Raise(ref arriving[at], stack[at]))
+                                moved = true;
+                        }
+                        for (var at = kept; at < arriving.Length; at++)
+                        {
+                            if (Raise(ref arriving[at], wanted))
+                                moved = true;
+                        }
+                    }
+
+                    if (line.Mnemonic == "stloc" &&
+                        line.Operand is VirtualOperand.Number stored &&
+                        slots.TryGetValue((int)stored.Value, out var slot))
+                    {
+                        var now = slot.Meeting(stack[^1]);
+                        if (now != slot)
+                        {
+                            slots[(int)stored.Value] = now;
+                            moved = true;
+                        }
+                    }
+                }
+                if (!moved)
+                    break;
+            }
+
+            // A slot nothing the walk reached ever wrote is a slot the body declares as an object,
+            // because that is all there is to declare it as. Until that is said, a load of one
+            // claims nothing at all, and claiming nothing is not neutral here: the walk pushes
+            // agreement backwards, so a load that claims nothing takes on whatever its readers
+            // wanted, and the body ends up loading an object where a number was promised. So the
+            // slots are grounded and the walk settles again over what that changed. It only ever
+            // widens, so there is a bounded number of times round.
+            if (settling == Settlings)
+                return Typing.None($"the slots did not ground after {Settlings} settlings");
+            var grounded = false;
+            foreach (var slot in slots.Where(slot => !slot.Value.Settled).Select(slot => slot.Key)
+                .ToList())
+            {
+                slots[slot] = VirtualKind.Boxed;
+                grounded = true;
+            }
+            if (!grounded)
+                break;
+        }
+
+        // A place nothing ever reached holds an object, which claims the least and is what the
+        // engine held. The same goes for a value nothing downstream ever asked for.
+        foreach (var stack in entering.Values)
+        {
+            for (var at = 0; at < stack.Length; at++)
+            {
+                if (!stack[at].Settled)
+                    stack[at] = VirtualKind.Boxed;
+            }
+        }
+
+        return new Typing(
+            entering.ToDictionary(
+                place => place.Key, place => (IReadOnlyList<VirtualKind>)place.Value),
+            leaving.ToDictionary(
+                place => place.Key,
+                place => place.Value.Settled ? place.Value : VirtualKind.Boxed),
+            slots
+                .Where(slot => slot.Value.Held is { } held && named.ContainsKey(held))
+                .ToDictionary(slot => slot.Key, slot => named[slot.Value.Held!]),
+            named,
+            Distrusted: distrusted.Count);
+    }
+
+    /// <summary>
+    /// Gives up on one operation and its neighbours without giving up on the program.
+    /// </summary>
+    /// <remarks>
+    /// Everywhere the operation touches goes back to holding an object, which is what the engine
+    /// held and what the untyped body wrote. Widening rather than refusing is what keeps the rest
+    /// of the method readable: one contradictory operation in four thousand used to cost the whole
+    /// program its types, and these programs have one.
+    /// </remarks>
+    private static bool Distrust(
+        Line line,
+        VirtualKind[] stack,
+        List<int> going,
+        Dictionary<int, VirtualKind[]> entering,
+        Dictionary<int, VirtualKind> leaving)
+    {
+        var moved = false;
+        for (var at = 0; at < stack.Length; at++)
+        {
+            if (Raise(ref stack[at], VirtualKind.Boxed))
+                moved = true;
+        }
+        if (Doubt(going, entering))
+            moved = true;
+        if (leaving.GetValueOrDefault(line.Index) != VirtualKind.Boxed)
+        {
+            leaving[line.Index] = VirtualKind.Boxed;
+            moved = true;
+        }
+        return moved;
+    }
+
+    /// <summary>Puts everywhere the path can go from somewhere back to holding objects.</summary>
+    private static bool Doubt(List<int> going, Dictionary<int, VirtualKind[]> entering)
+    {
+        var moved = false;
+        foreach (var arriving in going.Select(target => entering[target]))
+        {
+            for (var at = 0; at < arriving.Length; at++)
+            {
+                if (Raise(ref arriving[at], VirtualKind.Boxed))
+                    moved = true;
+            }
+        }
+        return moved;
+    }
+
+    /// <summary>How many times to settle and ground the slots before giving up on doing so.</summary>
+    private const int Settlings = 4;
+
+    /// <summary>How many times to go round before deciding the walk is not settling.</summary>
+    private const int Rounds = 64;
+
+    /// <summary>
+    /// What an operation takes and leaves, read off what it was established to be.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not the arity the trials measured. Some operations were never measured at all —
+    /// their effect was worked out from the depths around them — and one of those anywhere in a
+    /// program would leave the whole program untyped, which is what happened: a single unmeasured
+    /// array read cost an entire method its types. What is used instead is the arity of the IL the
+    /// operation was read as, which is the same thing the body is about to write, so the two cannot
+    /// disagree. Where they would have, the walk says so: the stack ends up a different depth from
+    /// the one the reading arrived at, and that operation and its neighbours are left untyped.
+    /// </remarks>
+    private static (int Pops, int Pushes)? Effect(Line line, ModuleDef module) => line.Mnemonic switch
+    {
+        "nop" or "br" => (0, 0),
+        "ldnull" or "ldc.i4" or "ldc.i8" or "ldstr" or "ldloc" or "ldarg" or "ldsfld" or "ldtoken"
+            => (0, 1),
+        "dup" => (1, 2),
+        "pop" or "stloc" or "starg" or "stsfld" or "switch" => (1, 0),
+        "ldfld" or "ldlen" or "newarr" or "neg" or "not" => (1, 1),
+        "stfld" => (2, 0),
+        "ldelem" => (2, 1),
+        "stelem" => (3, 0),
+        "add" or "sub" or "mul" or "div" or "rem" or "and" or "or" or "xor" or "shl" or "shr" or
+            "ceq" or "cgt" or "clt" => (2, 1),
+        "br.cond" => (line.Condition is "brtrue" or "brfalse" ? 1 : 2, 0),
+        "call" or "newobj" => Signature(line, module),
+        var name when name?.StartsWith("conv.", StringComparison.Ordinal) == true => (1, 1),
+        _ => line.Pops is { } pops && line.Pushes is { } pushes ? (pops, pushes) : null
+    };
+
+    private static (int Pops, int Pushes)? Signature(Line line, ModuleDef module) =>
+        line.Operand is VirtualOperand.Number number &&
+        Called(number.Value, module) is { MethodSig: { } signature } called
+            ? Takes(called, signature)
+            : null;
+
+    private static bool Raise(ref VirtualKind place, VirtualKind arriving)
+    {
+        var met = place.Meeting(arriving);
+        if (met == place)
+            return false;
+        place = met;
+        return true;
+    }
+
+    /// <summary>The slots the program uses, with nothing claimed about any of them yet.</summary>
+    private static Dictionary<int, VirtualKind>? Slotted(IReadOnlyList<Line> lines)
+    {
+        var used = new HashSet<int>();
+        foreach (var line in lines)
+        {
+            if (line.Mnemonic is not ("ldloc" or "stloc"))
+                continue;
+            if (line.Operand is not VirtualOperand.Number number ||
+                number.Value is < 0 or > Slots)
+            {
+                // An operation read as a slot access that names no slot cannot be written at all,
+                // so there is no body to type.
+                return null;
+            }
+            used.Add((int)number.Value);
+        }
+        return used.ToDictionary(slot => slot, _ => VirtualKind.Unreached);
+    }
+
+    /// <summary>How many slots to believe in, past which the operand is not a slot at all.</summary>
+    private const int Slots = 512;
+
+    /// <summary>The type an operation naturally makes, before anything asks for it as an object.</summary>
+    private static VirtualKind Produces(
+        VirtualProgram program,
+        Line line,
+        ModuleDef module,
+        MethodDef stub,
+        VirtualKind[] entering,
+        Dictionary<int, VirtualKind> slots,
+        Dictionary<string, TypeSig> named)
+    {
+        switch (line.Mnemonic)
+        {
+            case "ldc.i4":
+                return Of(module.CorLibTypes.Int32, named);
+            case "ldc.i8":
+                return Of(module.CorLibTypes.Int64, named);
+            case "ldlen":
+            case "ceq":
+            case "cgt":
+            case "clt":
+                return Of(module.CorLibTypes.Int32, named);
+            case "add":
+            case "sub":
+            case "mul":
+            case "div":
+            case "rem":
+            case "and":
+            case "or":
+            case "xor":
+            case "shl":
+            case "shr":
+            case "neg":
+            case "not":
+                return Of(
+                    Wide(program, line) ? module.CorLibTypes.Int64 : module.CorLibTypes.Int32,
+                    named);
+            case "dup":
+                return entering.Length > 0 ? entering[^1] : VirtualKind.Boxed;
+            case "ldloc":
+                return line.Operand is VirtualOperand.Number slot &&
+                    slots.TryGetValue((int)slot.Value, out var held)
+                        ? held
+                        : VirtualKind.Boxed;
+            case "ldarg":
+                return line.Operand is VirtualOperand.Number index &&
+                    index.Value >= 0 && index.Value < stub.Parameters.Count
+                        ? Of(stub.Parameters[(int)index.Value].Type, named)
+                        : VirtualKind.Boxed;
+            case "ldsfld":
+            case "ldfld":
+                return line.Operand is VirtualOperand.Number field &&
+                    Resolved(field.Value, module) is IField { FieldSig.Type: { } holds }
+                        ? Of(holds, named)
+                        : VirtualKind.Boxed;
+            case "ldtoken":
+                return Resolved(
+                    (line.Operand as VirtualOperand.Number)?.Value ?? 0, module) switch
+                {
+                    ITypeDefOrRef => Of(Handle(module, "RuntimeTypeHandle"), named),
+                    IField => Of(Handle(module, "RuntimeFieldHandle"), named),
+                    IMethod => Of(Handle(module, "RuntimeMethodHandle"), named),
+                    _ => VirtualKind.Boxed
+                };
+            case "call":
+                return line.Operand is VirtualOperand.Number called &&
+                    Resolved(called.Value, module) is IMethod { MethodSig: { } signature }
+                        ? Of(Returned(signature), named)
+                        : VirtualKind.Boxed;
+            case "newobj":
+                return line.Operand is VirtualOperand.Number made &&
+                    Resolved(made.Value, module) is IMethod { DeclaringType: { } owner } &&
+                    owner.IsValueType
+                        ? Of(owner.ToTypeSig(), named)
+                        : VirtualKind.Boxed;
+            case var conversion when conversion?.StartsWith("conv.", StringComparison.Ordinal) == true:
+                return Of(Converted(module, conversion), named);
+            default:
+                return VirtualKind.Boxed;
+        }
+    }
+
+    /// <remarks>
+    /// A generic method's own type parameter is no type to hold a value as, so a call that answers
+    /// with one leaves an object. The body puts the instantiation's arguments in where it writes
+    /// the call, which is a conversion it would have written anyway.
+    /// </remarks>
+    private static TypeSig? Returned(MethodSig signature) =>
+        signature.RetType.ElementType == ElementType.Void ? null : signature.RetType;
+
+    /// <summary>The width a conversion was read at, as a type.</summary>
+    internal static TypeSig? Converted(ModuleDef module, string mnemonic) => mnemonic switch
+    {
+        "conv.i1" => module.CorLibTypes.SByte,
+        "conv.u1" => module.CorLibTypes.Byte,
+        "conv.i2" => module.CorLibTypes.Int16,
+        "conv.u2" => module.CorLibTypes.UInt16,
+        "conv.i4" => module.CorLibTypes.Int32,
+        "conv.u4" => module.CorLibTypes.UInt32,
+        "conv.i8" => module.CorLibTypes.Int64,
+        "conv.u8" => module.CorLibTypes.UInt64,
+        _ => null
+    };
+
+    /// <summary>One of the runtime's own handles, as a value type this module can name.</summary>
+    internal static TypeSig Handle(ModuleDef module, string named) =>
+        new ValueTypeSig(module.CorLibTypes.GetTypeRef("System", named));
+
+    /// <summary>Whether an operation was established to work at sixty-four bits.</summary>
+    internal static bool Wide(VirtualProgram program, Line line) =>
+        program.Operations.TryGetValue(program.Instructions[line.Index].Opcode, out var known) &&
+        (known.Pushed ?? known.Popped) is "System.Int64" or "System.UInt64";
+
+    /// <summary>
+    /// A type as a kind: itself where a value of it can be held as one, an object otherwise.
+    /// </summary>
+    private static VirtualKind Of(TypeSig? type, Dictionary<string, TypeSig> named)
+    {
+        if (type is null ||
+            type.ElementType == ElementType.Void ||
+            !type.IsValueType ||
+            type.IsGenericParameter ||
+            type.IsByRef ||
+            type.IsPointer)
+        {
+            return VirtualKind.Boxed;
+        }
+        var name = type.FullName;
+        named.TryAdd(name, type);
+        return VirtualKind.Value(name);
+    }
+
+    private static IMDTokenProvider? Resolved(long value, ModuleDef module)
+    {
+        if (value is < int.MinValue or > int.MaxValue)
+            return null;
+        try
+        {
+            return module.ResolveToken((int)value);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>What a reading of a program came to, in the numbers a gate can be set on.</summary>
     /// <param name="Operations">How many operations the program has.</param>
     /// <param name="Read">How many of them were read as IL.</param>

@@ -502,7 +502,7 @@ When that happens the summary says so on the line that reports the building:
 
 ```
     Built back      1 method(s) in the cleaned copy, marked [RebuiltFromReading] (they unpacked the same payload as the original)
-                      GNswBvhgmV: 2935 operation(s) became 8997 instruction(s) over 13 slot(s), every value carried as an object. 14 of them are places nothing reaches and throw instead.
+                      GNswBvhgmV: 2935 operation(s) became 5269 instruction(s) over 13 slot(s), 5 of them holding one settled type rather than an object. 14 of them are places nothing reaches and throw instead.
                       Checked by running it: with the built bodies in place of the stubs, the module unpacks SHA-256 1db4e9c40d83bb79 and SHA-256 e4e746f968a3ec89 — byte for byte what it unpacks as it shipped — and a built body was entered 1 time(s) doing it.
 ```
 

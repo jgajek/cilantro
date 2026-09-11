@@ -87,7 +87,7 @@
   "$defs": {
     "rebuiltMethod": {
       "title": "What a body built from interpreter bytecode turned out to do",
-      "description": "A lifted body is faithful and hard to read: the interpreter's jump table instead of structured control flow, and every local an object because the machine's slots had no types. The framework calls leaving it were never obfuscated, so naming them is the way in. Everything here is named as the cleaned copy names it, this being written after renaming rather than before.",
+      "description": "A lifted body is faithful, and faithful to a private instruction format is a long way from readable. The machine's slots had no types, so a slot is declared as whatever the program writes to it where every path agrees and as an object where they do not. The framework calls leaving the body were never obfuscated, so naming them is the way in. Everything here is named as the cleaned copy names it, this being written after renaming rather than before.",
       "type": "object",
       "required": ["Method", "Reaches", "Writes", "Reachable", "Instructions"],
       "properties": {
@@ -205,7 +205,11 @@
         "VirtualOperationsWalked",
         "VirtualDepthDisagreements",
         "ConstantStringSites",
-        "ProxyCallsRestored"
+        "ProxyCallsRestored",
+        "ControlFlowMethodsSimplified",
+        "ConstantBranchesFolded",
+        "DispatcherMethodsRestored",
+        "DispatcherMethodCandidates"
       ],
       "properties": {
         "RestoredMethodBodies": { "type": "integer", "minimum": 0 },
@@ -241,6 +245,26 @@
         "ConstantStringSites": { "type": "integer", "minimum": 0 },
         "ProxyCallsRestored": {
           "description": "Call sites that loaded a delegate from a protector lookup table, rewritten to call the target method directly.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "ControlFlowMethodsSimplified": {
+          "description": "Methods in which constant branches were folded or unreachable instructions were removed.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "ConstantBranchesFolded": {
+          "description": "Branches whose outcome was proven constant and replaced with their destination.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "DispatcherMethodsRestored": {
+          "description": "Candidate flattened methods whose dispatcher edges were safely replaced with direct control flow.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "DispatcherMethodCandidates": {
+          "description": "Methods with dispatcher-like control flow considered for unflattening, including ambiguous candidates preserved unchanged.",
           "type": "integer",
           "minimum": 0
         }

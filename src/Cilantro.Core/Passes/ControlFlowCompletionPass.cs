@@ -59,6 +59,7 @@ public sealed class ControlFlowCompletionPass : DeobfuscationPass
 
         context.SetFact("cfg.constantBranchesFolded", foldedTotal);
         context.SetFact("cfg.unreachableInstructionsRemoved", removedTotal);
+        context.SetFact("cfg.methodsSimplified", rewrittenMethods);
         return (PassStatus.Success, foldedTotal + removedTotal,
         [
             $"Folded {foldedTotal} constant branch(es) and removed {removedTotal} unreachable " +

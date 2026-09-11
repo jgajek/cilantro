@@ -53,6 +53,24 @@ a rebuilt body was cross-checked — is printed only under `--strict` or
 Printing them on an ordinary successful run is what made a finished recovery
 look like a failure.
 
+Files extracted from the input are named individually under `WROTE`:
+
+```
+  WROTE
+
+    Cleaned copy    cilantro/suspicious.cleaned.exe
+    Extracted files 2 in cilantro/suspicious.payloads
+      Zebekeadu.dll (90.5 KB)
+        Assembly    Zebekeadu
+        SHA-256     417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd
+        From        KyVgypcyOSoGANSpXe::uMqwgnxr1
+```
+
+Those lines report only what extraction established: the written filename,
+managed assembly name, size, content hash, and source resource. They do not
+assign a malware family or claim whether a file is a loader, support library,
+or final payload. Those conclusions require analysis outside this tool.
+
 ```
   RECOVERED
 
@@ -60,6 +78,9 @@ look like a failure.
     Strings decrypted              163 of 163
     Proxy calls restored           412
     Hidden calls resolved          17
+    Methods with control flow simplified   266
+    Constant branches resolved             216
+    Flattened methods restored             350 of 351 candidates
     Junk instructions removed      1,942
     Encrypted resources restored   1
     Protector types deleted        12
@@ -72,11 +93,12 @@ if it does not, no cleaned copy is written, because a partially decrypted
 assembly is misleading rather than useful. The line is omitted when the sample
 did not encrypt method bodies at all.
 
-**Methods rebuilt from VM opcodes — `n` of `m`.** How many virtualized methods
-were written back as IL in the cleaned copy, out of how many the protector
-turned into interpreter bytecode. These were never encrypted IL; they were a
-custom instruction set, and the bodies in the cleaned copy are the tool's
-reading of that. `m` is also the number of listings under `VM listings`.
+**Methods devirtualized — `n` of `m`.** How many virtualized methods were
+converted into readable .NET code in the cleaned copy, out of how many the
+protector turned into instructions for its private virtual machine. These were
+never encrypted IL; they were a custom instruction set, and the bodies in the
+cleaned copy are the tool's reconstruction of that. `m` is also the number of
+listings under `VM listings`.
 
 **Strings decrypted — `n` of `m`.** Recovered string sites out of sites found.
 Also all-or-nothing: either every site is proven and replaced, or none are, so
@@ -101,6 +123,32 @@ of working cross-references in your decompiler.
 
 **Hidden true/false values resolved.** Reactor can encrypt booleans the way it
 encrypts strings. Only appears when the sample used it.
+
+**Methods with control flow simplified.** Methods in which the run proved and
+removed at least one fake branch or unreachable instruction. This is broader
+than full unflattening: a method can become substantially clearer without
+having a dispatcher.
+
+**Constant branches resolved.** Branches whose outcome was proven in advance
+and replaced with the destination they always take.
+
+**Flattened methods restored — `n` of `m` candidates.** Dispatcher-like methods
+whose indirect state-machine edges were safely replaced with direct control
+flow. `m` says candidates rather than methods found because some shapes are
+ambiguous: they resemble flattening but cannot be proved to be flattened.
+Those are preserved unchanged rather than guessed at.
+
+A method counts here if any of its jumps into a dispatcher were made direct, not
+only if all of them were, because the two are proved separately. A whole method
+is provable when every way into its dispatcher is a block assigning the state a
+constant and nothing else reads it; a single jump is provable on much less,
+since a block that assigns the state and then jumps arrives with the state
+already known regardless of what the other jumps do. Most real flattened methods
+have a few jumps that fail the check — a state computed from an argument, a
+handover across an exception boundary — and the rest that pass are still worth
+taking. The dispatcher stays in place for whatever still needs it, and the
+methods that end up with jumps left over are named under `--verbose`, with the
+reason each one was left.
 
 **Junk instructions removed.** Instructions proven unreachable once the fake
 conditions were folded away. Large numbers are normal.
@@ -127,6 +175,16 @@ differently on purpose:
 - A type is named for what kind of thing it is: `GeneratedDelegate_0075`,
   `GeneratedStruct_0063`, `GeneratedAttribute_0004`. A field is named for what it
   holds where that says more than a number, as in `int32Field_0047`.
+- A method rebuilt from the protector's virtual machine is named
+  `RebuiltFromVirtualMachine`, followed by up to two areas of the framework it
+  provably reaches: `RebuiltFromVirtualMachineCryptographyReflection`. These are
+  the longest and least readable methods in a cleaned copy and the ones a reader
+  most often opened the file for, so a number is the worst thing to call them.
+  The name claims only the two things that were established — that the body is a
+  reconstruction, and which framework it touches — and deliberately stops short
+  of naming a purpose, because a guess at one in the identifier would be read
+  everywhere the method is called as though it had been proved. What it actually
+  calls is listed under `DEVIRTUALIZED METHODS`.
 - Anything else keeps a numbered placeholder. A method that does several things
   gets `generatedMethod_0075` rather than a name summarising one of them, because
   a name describing part of a method reads as a description of all of it.
@@ -144,25 +202,30 @@ Every replacement is recorded old-to-new in `NAME.renames.json`, namespaces
 under an `N:` prefix alongside `T:`, `M:` and `F:`, so a name in the cleaned copy
 can always be traced back to the one the protected file carried.
 
-## The REBUILT section
+## The DEVIRTUALIZED METHODS section
 
-Printed when the run wrote a body back from interpreter bytecode. It is the way
+Printed when the run devirtualized methods: converted code virtualization's
+private virtual-machine instructions into readable .NET code. It is the way
 into the hardest code in the cleaned copy:
 
 ```
-  REBUILT   from the interpreter's own bytecode, so read them as a reading
+  DEVIRTUALIZED METHODS
+
+    CILantro converted methods protected by code virtualization into readable
+    .NET code. These are reconstructions from the virtual machine's instructions,
+    not the original method bodies.
 
     GeneratedNamespace_0003.GeneratedType_0005::generatedMethod_0075
-      reaches   Activator.CreateInstance, Array.Reverse, Assembly.GetName,
+      uses      Activator.CreateInstance, Array.Reverse, Assembly.GetName,
                 AssemblyName.GetPublicKeyToken, BinaryReader.ReadBytes,
                 CryptoStream.FlushFinalBlock, SymmetricAlgorithm.CreateDecryptor,
                 new AesCryptoServiceProvider, new RijndaelManaged
-      writes    generatedField_0030, int32Field_0047
-      note      nothing in the cleaned copy calls this: recovery replaced the
+      changes   generatedField_0030, int32Field_0047
+      status    nothing in the cleaned copy calls this: recovery replaced the
                 code that used to, so its caller went with it
 ```
 
-**reaches** is the list to read first, and often the only thing you need. A
+**uses** is the list to read first, and often the only thing you need. A
 protector renames what it generates but cannot rename the framework, so the calls
 leaving a lifted body still say `SymmetricAlgorithm.CreateDecryptor` and
 `AssemblyName.GetPublicKeyToken` in full. Those names are fixed points, and the
@@ -172,10 +235,10 @@ forwarders Reactor leaves between the code and the framework, so what is named i
 the framework member at the end of the chain rather than the generated method in
 front of it.
 
-**writes** is where the method leaves its work, which is what to search for next
+**changes** is where the method leaves its work, which is what to search for next
 if you want to know who consumes it.
 
-**note** appears when nothing in the cleaned copy calls the method. That is the
+**status** appears when nothing in the cleaned copy calls the method. That is the
 usual outcome and it is a result rather than a fault: recovery replaces the code
 that needed the method, so the caller becomes dead and cleanup removes it. The
 body is still there and still correct; nothing reaches it any more.
@@ -429,7 +492,7 @@ embedded resource is named after. Those two are left alone deliberately, and
 Where names are absent, behaviour is not. The framework calls a method makes were
 never obfuscated, so reading the calls leaving a method tells you what it does
 even when nothing it is called tells you anything — which is the technique the
-`REBUILT` section applies automatically to the worst case.
+`DEVIRTUALIZED METHODS` section applies automatically to the worst case.
 
 ### Why is Reactor's code still there?
 
@@ -519,26 +582,49 @@ the protector emitted it and never uses it. `operation(s) no path arrives at`
 is the weaker statement, made where the walk stopped somewhere: the code may
 only be past the place it stopped.
 
-Where the sample had methods turned into bytecode, a default run counts them
-under `RECOVERED`, says what each one does under `REBUILT`, and points at the
-listings under `WROTE`:
+Where the sample had methods turned into private instructions, a default run
+counts them under `RECOVERED`, explains each one under `DEVIRTUALIZED METHODS`,
+and points at the listings under `WROTE`:
 
 ```
-    Methods rebuilt from VM opcodes   1 of 1
+    Methods devirtualized   1 of 1
 
-  REBUILT   from the interpreter's own bytecode, so read them as a reading
+  DEVIRTUALIZED METHODS
+
+    CILantro converted methods protected by code virtualization into readable
+    .NET code. These are reconstructions from the virtual machine's instructions,
+    not the original method bodies.
 
     GeneratedNamespace_0003.GeneratedType_0005::generatedMethod_0075
-      reaches   ... SymmetricAlgorithm.CreateDecryptor, new RijndaelManaged
+      uses      ... SymmetricAlgorithm.CreateDecryptor, new RijndaelManaged
 
     VM listings     1 in cilantro/a.virtualized
 ```
 
-The `REBUILT` section is described in full above, and it is the place to start on
-a rebuilt method. A lifted body is faithful and hard to read — the interpreter's
-jump table where structured control flow should be, and `object` for every local
-because the machine's slots had no types — so reading it from the top is the
-slowest way in. Read what it reaches instead.
+The `DEVIRTUALIZED METHODS` section is described in full above, and it is the
+place to start on a translated method. Read what it uses before reading the body
+itself: the body is faithful, and faithful to a private instruction format is
+still a long way from the method someone wrote.
+
+The locals are worth knowing about before you meet them. The engine's format had
+no types — every value it handled was boxed, and every use of one converted it
+back — so a body built straight from it declared `object` for every local and
+wrote `Convert.ToInt32` at every use. CILantro instead works out what each of
+the engine's slots holds, from what the program writes to it, and declares the
+slot as that where every path agrees:
+
+```
+    int num = 305;                   // rather than  object obj = 305;
+    switch (num3)                    // rather than  switch (Convert.ToInt32(value))
+    int num4 = 67 + 27;              // rather than  Convert.ToInt32(v3) + Convert.ToInt32(v2)
+```
+
+A slot two paths disagree about, and a slot nothing writes, stay `object`, and
+their uses still convert; the build notes in the report say how many of each a
+body came out with. The gain is not only cosmetic — the dispatcher stage reads a
+state variable, and a state variable it can read is one holding a number, so a
+rebuilt body's own jump table is usually rewritten into ordinary control flow
+now rather than left standing.
 
 `--strict` and `--verbose` add the verdict of the check, and the part in
 brackets is then the part to read:

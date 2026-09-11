@@ -153,6 +153,36 @@ public sealed class RebuiltBodyReadabilityTests
         Assert.Contains("Nothing in the cleaned copy calls it", said, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A rebuilt body is named for the framework it reaches rather than numbered. It is the method
+    /// a reader opened the file for and the longest thing in it, so <c>generatedMethod_0075</c> is
+    /// the worst place in the assembly for a number.
+    /// </summary>
+    [Fact]
+    public void ARebuiltBodyIsNamedForTheFrameworkItReaches()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            host.Attributes = TypeAttributes.Public | TypeAttributes.Class;
+            var forwarder = Forwards(module, "xQ7mZ2pR", "System.Security.Cryptography", "Aes",
+                "Create");
+            host.Methods.Add(forwarder);
+            host.Methods.Add(Reaches(module, "aB3dE4fG", forwarder));
+        });
+        Mark(context, "aB3dE4fG");
+        context.SetFact("options.renameSymbols", true);
+
+        new SymbolRenamingPass().Run(context);
+
+        var renamed = context.Module.GetTypes().SelectMany(type => type.Methods)
+            .Select(method => method.Name.String)
+            .ToArray();
+        Assert.Contains("RebuiltFromVirtualMachineCryptography", renamed);
+        // The forwarder beside it is still named for the one member it calls, as before.
+        Assert.Contains("Aes_Create", renamed);
+    }
+
     private static IReadOnlyList<RebuiltMethodReport> Digest(ArtifactContext context) =>
         context.TryGetFact<IReadOnlyList<RebuiltMethodReport>>(
             RebuiltBodyDigestPass.DigestFact, out var digest) && digest is not null

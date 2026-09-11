@@ -67,15 +67,58 @@ public sealed class ExplainTests
         var page = Shown(result, sample);
 
         Assert.Contains("RESULT   Recovered", page, StringComparison.Ordinal);
-        Assert.Contains("Methods rebuilt from VM opcodes", page, StringComparison.Ordinal);
+        Assert.Contains("Methods devirtualized", page, StringComparison.Ordinal);
         Assert.Contains("1 of 1", page, StringComparison.Ordinal);
+        Assert.Contains("DEVIRTUALIZED METHODS", page, StringComparison.Ordinal);
+        Assert.Contains(
+            "methods protected by code virtualization into readable",
+            page,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "reconstructions from the virtual machine's instructions",
+            page,
+            StringComparison.Ordinal);
+        Assert.Contains("not the original method bodies", page, StringComparison.Ordinal);
+        Assert.Contains("uses      Activator.CreateInstance", page, StringComparison.Ordinal);
+        Assert.Contains("changes   ", page, StringComparison.Ordinal);
+        Assert.Contains("status    nothing in the cleaned copy calls this", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("  REBUILT", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("METHODS MADE READABLE", page, StringComparison.Ordinal);
         Assert.DoesNotContain("Method bodies decrypted", page, StringComparison.Ordinal);
         Assert.Contains("Proxy calls restored", page, StringComparison.Ordinal);
         Assert.Contains("1,230", page, StringComparison.Ordinal);
         Assert.DoesNotContain("Hidden calls resolved", page, StringComparison.Ordinal);
+        Assert.Contains("Methods with control flow simplified", page, StringComparison.Ordinal);
+        Assert.Contains("266", page, StringComparison.Ordinal);
+        Assert.Contains("Constant branches resolved", page, StringComparison.Ordinal);
+        Assert.Contains("216", page, StringComparison.Ordinal);
+        // Was 0 of 3 while the rewrite only looked for dispatchers reading a variable. Reactor
+        // hands most of its dispatchers their state on the evaluation stack instead, and counting
+        // those is what turned a line saying nothing was straightened into one saying almost
+        // everything was.
+        Assert.Contains("Flattened methods restored", page, StringComparison.Ordinal);
+        // One more candidate and one more restored than while a rebuilt body carried its state in
+        // a slot declared as an object: the dispatcher rewrite reads a state variable, and it can
+        // only read one that holds a number.
+        Assert.Contains("351 of 352 candidates", page, StringComparison.Ordinal);
         Assert.Contains("VM listings", page, StringComparison.Ordinal);
         Assert.DoesNotContain("Hidden code", page, StringComparison.Ordinal);
         Assert.Contains("Cleaned copy", page, StringComparison.Ordinal);
+        Assert.Contains("Extracted files 2", page, StringComparison.Ordinal);
+        Assert.Contains("Zebekeadu.dll (90.5 KB)", page, StringComparison.Ordinal);
+        Assert.Contains("Assembly    Zebekeadu", page, StringComparison.Ordinal);
+        Assert.Contains(
+            "SHA-256     417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd",
+            page,
+            StringComparison.Ordinal);
+        Assert.Contains("From        KyVgypcyOSoGANSpXe::uMqwgnxr1", page, StringComparison.Ordinal);
+        Assert.Contains(
+            "nkXbYoyJhFlJ5QXl4A.CZFLvot6mL92Di9HnX.dll (51 KB)",
+            page,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("PureRAT", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("final payload", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("support library", page, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Open the cleaned copy", page, StringComparison.Ordinal);
         Assert.DoesNotContain("Failed", page, StringComparison.Ordinal);
         Assert.DoesNotContain("triage", page, StringComparison.OrdinalIgnoreCase);
