@@ -183,6 +183,79 @@ public sealed class CorpusTests
         }
     }
 
+    /// <summary>
+    /// No attribute in the cleaned copy may name a constructor that is no longer there.
+    /// </summary>
+    /// <remarks>
+    /// Wearing an attribute is a use of its type that no signature and no instruction mentions, and
+    /// the scan deciding which types to delete was told about the ones types and methods wear but
+    /// not about the ones fields, properties, events and parameters wear. So a type written nowhere
+    /// but on a single field was judged unreachable and removed, and the row wearing it stayed
+    /// behind naming a constructor at rid zero.
+    ///
+    /// The cost of that is out of all proportion to the one declaration involved. A decompiler
+    /// resolving attributes to print a field gives up on the entire file when one will not resolve,
+    /// so a single dangling row cost the reader every method of the type holding the field —
+    /// which on the reactor7 probe was the type holding the devirtualized body, the one thing the
+    /// whole run exists to produce. It went unnoticed because what is missing from the output is a
+    /// file that was never written, and the run reports nothing wrong: the module loads, and it
+    /// verifies.
+    /// </remarks>
+    [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
+    public void NoAttributeInTheCleanedCopyNamesAConstructorThatIsGone()
+    {
+        var sample = Checkout.Sample("rsDatabase.protected.dll");
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.AttributeTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.dll");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            Assert.True(result.Success);
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(outputPath);
+            var dangling = new List<string>();
+            foreach (var type in cleaned.GetTypes())
+            {
+                Inspect(type.CustomAttributes, type.FullName);
+                foreach (var field in type.Fields)
+                    Inspect(field.CustomAttributes, field.FullName);
+                foreach (var property in type.Properties)
+                    Inspect(property.CustomAttributes, property.FullName);
+                foreach (var @event in type.Events)
+                    Inspect(@event.CustomAttributes, @event.FullName);
+                foreach (var method in type.Methods)
+                {
+                    Inspect(method.CustomAttributes, method.FullName);
+                    foreach (var parameter in method.ParamDefs)
+                        Inspect(parameter.CustomAttributes, $"{method.FullName} parameter");
+                }
+            }
+
+            Assert.True(
+                dangling.Count == 0,
+                $"{dangling.Count} attribute(s) name a constructor that is gone: " +
+                string.Join(", ", dangling.Take(5)));
+
+            void Inspect(IEnumerable<dnlib.DotNet.CustomAttribute> attributes, string worn)
+            {
+                foreach (var attribute in attributes)
+                {
+                    if (attribute.Constructor is null)
+                        dangling.Add(worn);
+                }
+            }
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
     [SampleFact]
     [Trait(Cost.Key, Cost.High)]
     public void ReactorSevenNecroBitFrameworkBodiesAreStaticallyRecovered()

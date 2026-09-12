@@ -387,7 +387,17 @@ then lose their interpreter:
 | | before | after |
 |---|---|---|
 | `Qbjuef.exe` | 43,389 lines, 5,383 jumps | **6,184 lines, 449 jumps** |
-| `reactor7-probe-net48.full` | 37,730 lines, 4,748 jumps | **1,439 lines, 94 jumps** |
+| `reactor7-probe-net48.full` | 37,730 lines, 4,748 jumps | **6,284 lines, 106 jumps** |
+
+The second of those figures was for a long time reported as 1,439 lines, which
+was the same output with the devirtualized body missing from it. A type of the
+original program was being deleted as unreachable — the scan deciding what to
+remove counted the attributes types and methods wear but not the ones fields
+wear, so a type worn by nothing else went — and the attribute left behind named
+a constructor that was gone. A decompiler resolving attributes to print a field
+abandons the whole file when one will not resolve, and the file it abandoned
+here was the one holding the rebuilt method. Nothing reported it: the module
+loads, and it verifies.
 
 The largest surviving file of the first goes from 1,643 lines and 213 jumps to
 942 and 91, and what is left of it reads as the event accessors it always was,

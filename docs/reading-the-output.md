@@ -529,6 +529,17 @@ only when recovery can account for why it has no use left, rather than deleting
 whatever looks like it belongs to the protector. Leftovers are counted in the
 `runtime-cleanup` diagnostics under `--verbose`.
 
+Erring the other way costs more than a leftover would. Wearing an attribute is a
+use of its type that no signature and no instruction mentions, and the scan
+deciding what to delete has to be told about it separately for each kind of
+declaration that can wear one. It was told about types and methods but not about
+fields, so an attribute type worn by one field and nothing else was judged
+unreachable and removed — an attribute belonging to the original program, not to
+the protector. What the reader lost was not that declaration but every method of
+the type holding the field: a decompiler resolving attributes to print a field
+gives up on the whole file when one names a constructor that is gone. On the
+reactor7 probe that file was the one holding the devirtualized body.
+
 If you would rather keep all of it — for building detection signatures, say —
 use `--keep-runtime`.
 

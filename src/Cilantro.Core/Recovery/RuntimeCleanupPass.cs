@@ -278,6 +278,7 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             foreach (var attribute in type.CustomAttributes)
                 Note(attribute.Constructor);
             foreach (var member in type.Methods.Cast<IHasCustomAttribute>()
+                         .Concat(type.Methods.SelectMany(method => method.ParamDefs))
                          .Concat(type.Fields).Concat(type.Properties).Concat(type.Events))
             {
                 foreach (var attribute in member.CustomAttributes)
@@ -445,6 +446,20 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                 NoteSig(property.PropertySig?.RetType);
             foreach (var method in type.Methods)
                 InspectMethod(method, Note, NoteSig);
+
+            // An attribute is a use of its type that no signature and no instruction mentions, so a
+            // type only ever written as one is reachable in a way this scan has to be told about.
+            // Types and methods were; fields, properties and events were not, and neither were
+            // parameters. A single attribute worn by one field was enough to have its type judged
+            // unreachable and deleted, and the row wearing it left behind naming nothing — which
+            // costs the reader not the attribute but every method of the type that carries the
+            // field, ILSpy abandoning a whole file rather than one declaration it cannot resolve.
+            foreach (var member in type.Fields.Cast<IHasCustomAttribute>()
+                         .Concat(type.Properties).Concat(type.Events))
+            {
+                foreach (var attribute in member.CustomAttributes)
+                    Note(attribute.AttributeType);
+            }
         }
 
         return found;
@@ -462,6 +477,9 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
 
         foreach (var attribute in method.CustomAttributes)
             note(attribute.AttributeType);
+        foreach (var parameter in method.ParamDefs)
+            foreach (var attribute in parameter.CustomAttributes)
+                note(attribute.AttributeType);
         foreach (var overridden in method.Overrides)
             note(overridden.MethodDeclaration?.DeclaringType);
 
