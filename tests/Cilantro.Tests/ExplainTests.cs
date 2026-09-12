@@ -98,7 +98,11 @@ public sealed class ExplainTests
         // Both of these count two runs of the fold rather than one, the second reaching the methods
         // whose predicates read state the interpreter assigned and nothing named until its program
         // was written out as IL. That is 23 further methods and 77 further branches here.
-        Assert.Contains("289", page, StringComparison.Ordinal);
+        //
+        // Was 289 before values worked out and then thrown away were removed as well. The 12 added
+        // are methods holding nothing else worth simplifying: their whole content was arithmetic
+        // over constants whose result went to a local nothing reads.
+        Assert.Contains("301", page, StringComparison.Ordinal);
         Assert.Contains("Constant branches resolved", page, StringComparison.Ordinal);
         // 64 of these are owed to a reference deciding a branch as surely as an integer does, being
         // true exactly when it is not null, and this file puts a null constant in front of one

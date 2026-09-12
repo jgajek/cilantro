@@ -93,7 +93,8 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             for (var round = 0; round < MaximumRounds; round++)
             {
                 var foldedThisRound = FoldConstantBranches(method);
-                var removedThisRound = RemoveUnreachable(method);
+                var discardedThisRound = RemoveDiscardedValues(method);
+                var removedThisRound = RemoveUnreachable(method) + discardedThisRound;
                 folded += foldedThisRound;
                 removed += removedThisRound;
                 if (foldedThisRound == 0 && removedThisRound == 0)
@@ -133,11 +134,13 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     private static int FoldConstantBranches(MethodDef method)
     {
         var instructions = method.Body.Instructions;
+        var entered = EntryPoints(method);
         var folded = 0;
         for (var index = 1; index < instructions.Count; index++)
         {
             var branch = instructions[index];
-            var producer = instructions[index - 1];
+            if (Feeding(instructions, entered, index) is not { } producer)
+                continue;
             var numbered = producer.IsLdcI4();
             if (!numbered && producer.OpCode.Code != Code.Ldnull)
                 continue;
@@ -191,6 +194,213 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             instruction.OpCode = OpCodes.Nop;
             instruction.Operand = null;
         }
+    }
+
+    /// <summary>
+    /// Neutralizes values that are worked out and then thrown away.
+    /// </summary>
+    /// <remarks>
+    /// Two things leave these behind. Reactor computes numbers it never uses, so that the arithmetic
+    /// has to be read before it can be dismissed. And this tool keeps the store of a dispatcher's
+    /// state when it makes one of that dispatcher's edges direct, because the state is still read by
+    /// the switch the edge no longer goes through; once every edge is direct and the switch is gone,
+    /// the store has no reader left and stands in the body as an assignment to a local nothing
+    /// consults.
+    ///
+    /// Neither survives as something a reader can dismiss at a glance. A local nobody reads is
+    /// printed as a named variable holding a number, indistinguishable from state that matters, and
+    /// a discarded computation is printed as a discard of an expression. On the corpus libraries
+    /// these outnumbered every other kind of leftover: against unprotected originals carrying two
+    /// apiece, the cleaned copies carried one hundred and forty-four, two hundred and seventy-one,
+    /// and two hundred and ninety-seven.
+    ///
+    /// What is removed has to be free of consequence, so only the pure part is walked: constants,
+    /// reads of locals and arguments, and the arithmetic over them. A call, a field read or a load
+    /// through a pointer stops the walk wherever it appears in the expression, and then nothing is
+    /// removed at all.
+    /// </remarks>
+    private static int RemoveDiscardedValues(MethodDef method)
+    {
+        var instructions = method.Body.Instructions;
+        var entered = EntryPoints(method);
+        var read = ReadLocals(method);
+        var removed = 0;
+        for (var index = 1; index < instructions.Count; index++)
+        {
+            var consumer = instructions[index];
+            var discards = consumer.OpCode.Code == Code.Pop ||
+                (consumer.IsStloc() && consumer.GetLocal(method.Body.Variables) is { } local &&
+                    !read.Contains(local.Index));
+            if (!discards)
+                continue;
+            if (Peel(instructions, entered, index) is not { } expression)
+                continue;
+            foreach (var instruction in expression)
+            {
+                instruction.OpCode = OpCodes.Nop;
+                instruction.Operand = null;
+            }
+
+            consumer.OpCode = OpCodes.Nop;
+            consumer.Operand = null;
+            removed += expression.Count + 1;
+        }
+
+        return removed;
+    }
+
+    /// <summary>Which locals are read somewhere, by index, addresses taken counting as reads.</summary>
+    private static HashSet<int> ReadLocals(MethodDef method)
+    {
+        var read = new HashSet<int>();
+        foreach (var instruction in method.Body.Instructions)
+        {
+            if (!instruction.IsLdloc() && instruction.OpCode.Code is not (Code.Ldloca or Code.Ldloca_S))
+                continue;
+            if (instruction.GetLocal(method.Body.Variables) is { } local)
+                read.Add(local.Index);
+        }
+
+        return read;
+    }
+
+    /// <summary>
+    /// The instructions working out the single value consumed at <paramref name="index"/>, or
+    /// nothing if any of them could matter for a reason other than the value.
+    /// </summary>
+    private static List<Instruction>? Peel(
+        IList<Instruction> instructions,
+        Dictionary<Instruction, int> entered,
+        int index)
+    {
+        var expression = new List<Instruction>();
+        var wanted = 1;
+        var at = index;
+        while (wanted > 0)
+        {
+            if (Feeding(instructions, entered, at) is not { } producer)
+                return null;
+            if (!Pure(producer.OpCode.Code))
+                return null;
+            var pushes = producer.OpCode.StackBehaviourPush == StackBehaviour.Push0 ? 0 : 1;
+            if (pushes == 0)
+                return null;
+            wanted = wanted - pushes + Consumed(producer.OpCode.StackBehaviourPop);
+            expression.Add(producer);
+            at = instructions.IndexOf(producer);
+        }
+
+        return expression;
+
+        static int Consumed(StackBehaviour behaviour) => behaviour switch
+        {
+            StackBehaviour.Pop0 => 0,
+            StackBehaviour.Pop1 or StackBehaviour.Popi => 1,
+            _ => 2
+        };
+    }
+
+    /// <summary>
+    /// Whether an instruction does nothing but work out a value from constants, locals and arguments.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately short. A field read can run a type initializer, a load through a pointer can
+    /// fault, a conversion that checks its range can throw, and a call can do anything; none of
+    /// them is removable merely because what it produced was dropped.
+    /// </remarks>
+    private static bool Pure(Code code) => code is
+        Code.Ldc_I4 or Code.Ldc_I4_S or Code.Ldc_I4_0 or Code.Ldc_I4_1 or Code.Ldc_I4_2 or
+        Code.Ldc_I4_3 or Code.Ldc_I4_4 or Code.Ldc_I4_5 or Code.Ldc_I4_6 or Code.Ldc_I4_7 or
+        Code.Ldc_I4_8 or Code.Ldc_I4_M1 or Code.Ldc_I8 or Code.Ldc_R4 or Code.Ldc_R8 or
+        Code.Ldnull or Code.Ldstr or
+        Code.Ldloc or Code.Ldloc_S or Code.Ldloc_0 or Code.Ldloc_1 or Code.Ldloc_2 or Code.Ldloc_3 or
+        Code.Ldarg or Code.Ldarg_S or Code.Ldarg_0 or Code.Ldarg_1 or Code.Ldarg_2 or Code.Ldarg_3 or
+        Code.Add or Code.Sub or Code.Mul or Code.And or Code.Or or Code.Xor or
+        Code.Shl or Code.Shr or Code.Shr_Un or Code.Neg or Code.Not;
+
+    /// <summary>
+    /// Which instructions can be arrived at other than by falling into them.
+    /// </summary>
+    /// <remarks>
+    /// Walking backwards from a consumer to whatever pushed what it consumes is only sound while
+    /// there is one way in. Anything a branch, a switch case or an exception clause can arrive at
+    /// may be arrived at holding something else, and what the instruction before it left behind
+    /// says nothing about that.
+    /// </remarks>
+    private static Dictionary<Instruction, int> EntryPoints(MethodDef method)
+    {
+        var entered = new Dictionary<Instruction, int>();
+        foreach (var instruction in method.Body.Instructions)
+        {
+            if (instruction.Operand is Instruction target)
+                Enter(target);
+            else if (instruction.Operand is IList<Instruction> targets)
+                foreach (var branched in targets)
+                    Enter(branched);
+        }
+
+        foreach (var boundary in CollectExceptionBoundaries(method))
+            Enter(boundary);
+        return entered;
+
+        void Enter(Instruction at) => entered[at] = entered.GetValueOrDefault(at) + 1;
+    }
+
+    /// <summary>
+    /// The instruction whose push reaches the one at <paramref name="index"/>, looked for past the
+    /// padding left by earlier rewrites.
+    /// </summary>
+    /// <remarks>
+    /// A fold neutralizes what it consumes rather than deleting it, and the dispatcher rewrite does
+    /// the same to the state store and the read of it, so by the time this runs the constant and
+    /// the branch it decides are routinely several instructions apart with nothing between them but
+    /// padding and a jump straight to the next instruction. Insisting the two be adjacent therefore
+    /// stopped finding exactly the branches the rest of the run had done the work to expose: the
+    /// switch a bypassed dispatcher leaves standing over a constant nobody reads, which is an empty
+    /// method body written as a switch on zero.
+    ///
+    /// The jump is followed because a jump whose target is the very next thing to be walked is not
+    /// a choice about anything; what matters is only that nothing else arrives there, which is
+    /// checked for every instruction stepped over.
+    /// </remarks>
+    private static Instruction? Feeding(
+        IList<Instruction> instructions,
+        Dictionary<Instruction, int> entered,
+        int index)
+    {
+        // The consumer and everything stepped over on the way back to the push.
+        var path = new List<Instruction> { instructions[index] };
+        var at = index;
+        while (at > 0)
+        {
+            var previous = instructions[at - 1];
+            var padding = previous.OpCode.Code == Code.Nop;
+            var straight = previous.OpCode.Code is Code.Br or Code.Br_S &&
+                previous.Operand is Instruction jumped && jumped == instructions[at];
+            if (!padding && !straight)
+                break;
+            path.Add(previous);
+            at--;
+        }
+
+        if (at == 0)
+            return null;
+
+        // Nothing from outside may arrive anywhere along it, an exception boundary included: a
+        // second way in is a second thing the stack could be holding.
+        foreach (var step in path)
+        {
+            var arrivals = entered.GetValueOrDefault(step);
+            if (arrivals == 0)
+                continue;
+            var fromInside = path.Count(other =>
+                other.Operand is Instruction one ? one == step :
+                other.Operand is IList<Instruction> many && many.Contains(step));
+            if (arrivals > fromInside)
+                return null;
+        }
+
+        return instructions[at - 1];
     }
 
     /// <summary>

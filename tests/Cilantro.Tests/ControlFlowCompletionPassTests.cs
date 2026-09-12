@@ -95,8 +95,88 @@ public sealed class ControlFlowCompletionPassTests
         {
             var host = SyntheticContext.AddType(module, "Host");
             var method = NewVoidMethod(module);
+            var kept = new Local(module.CorLibTypes.Int32);
+            var also = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(kept);
+            method.Body.Variables.Add(also);
             var instructions = method.Body.Instructions;
             instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+            instructions.Add(Instruction.Create(OpCodes.Stloc, kept));
+            instructions.Add(Instruction.Create(OpCodes.Ldloc, kept));
+            instructions.Add(Instruction.Create(OpCodes.Stloc, also));
+            instructions.Add(Instruction.Create(OpCodes.Ldloc, also));
+            instructions.Add(Instruction.Create(OpCodes.Stloc, kept));
+            instructions.Add(Instruction.Create(OpCodes.Ret));
+            host.Methods.Add(method);
+        });
+
+        var result = new ControlFlowCompletionPass().Run(context);
+        var method = SingleBodyMethod(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(0, result.Changes);
+        Assert.Equal(7, method.Body.Instructions.Count);
+    }
+
+    /// <summary>
+    /// A value thrown away is removed along with the arithmetic that worked it out.
+    /// </summary>
+    /// <remarks>
+    /// Reactor computes numbers nothing uses, and this tool leaves the store of a dispatcher's
+    /// state behind when it makes one of that dispatcher's edges direct. Both end up as a value
+    /// produced and dropped, and neither is dismissable at a glance by a reader: one prints as a
+    /// discarded expression, the other as a named local holding a number.
+    /// </remarks>
+    [Fact]
+    public void RemovesAValueWorkedOutAndThrownAway()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            var method = NewVoidMethod(module);
+            var unread = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(unread);
+            var instructions = method.Body.Instructions;
+            instructions.Add(Instruction.Create(OpCodes.Ldc_I4, 0x306B51E));
+            instructions.Add(Instruction.Create(OpCodes.Ldc_I4, 0x306B178));
+            instructions.Add(Instruction.Create(OpCodes.Xor));
+            instructions.Add(Instruction.Create(OpCodes.Stloc, unread));
+            instructions.Add(Instruction.Create(OpCodes.Ret));
+            host.Methods.Add(method);
+        });
+
+        var result = new ControlFlowCompletionPass().Run(context);
+        var method = SingleBodyMethod(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(4, result.Changes);
+        Assert.Equal(
+            OpCodes.Ret,
+            Assert.Single(method.Body.Instructions, item => item.OpCode != OpCodes.Nop).OpCode);
+    }
+
+    /// <summary>
+    /// A discarded value is left alone when working it out could matter for another reason.
+    /// </summary>
+    /// <remarks>
+    /// Reading a static field can run a type initializer, which is a consequence the discard of
+    /// its result says nothing about. The same goes for a call, a load through a pointer and a
+    /// conversion that checks its range, so the walk stops at all of them.
+    /// </remarks>
+    [Fact]
+    public void KeepsADiscardedValueWhoseWorkingOutCouldMatter()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            var watched = new FieldDefUser(
+                "Watched",
+                new FieldSig(module.CorLibTypes.Int32),
+                FieldAttributes.Public | FieldAttributes.Static);
+            host.Fields.Add(watched);
+            var method = NewVoidMethod(module);
+            var instructions = method.Body.Instructions;
+            instructions.Add(Instruction.Create(OpCodes.Ldsfld, watched));
             instructions.Add(Instruction.Create(OpCodes.Pop));
             instructions.Add(Instruction.Create(OpCodes.Ret));
             host.Methods.Add(method);
@@ -144,7 +224,9 @@ public sealed class ControlFlowCompletionPassTests
         var method = SingleBodyMethod(context);
 
         Assert.Equal(PassStatus.Success, result.Status);
-        Assert.Equal(2, result.Changes);
+        // Two unreachable instructions after the handler, and the constant pushed and dropped
+        // inside the guarded region, which is two more.
+        Assert.Equal(4, result.Changes);
         var handler = Assert.Single(method.Body.ExceptionHandlers);
         Assert.Contains(handler.TryStart, method.Body.Instructions);
         Assert.Contains(handler.TryEnd, method.Body.Instructions);

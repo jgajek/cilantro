@@ -179,7 +179,26 @@ methods — the one jump whose survival keeps a constructor reading as a switch
 over a state variable instead of as four assignments and two conditions.
 
 **Junk instructions removed.** Instructions proven unreachable once the fake
-conditions were folded away. Large numbers are normal.
+conditions were folded away, together with values worked out and then thrown
+away. Large numbers are normal.
+
+The second kind has two sources. Reactor computes numbers nothing uses, so that
+the arithmetic has to be read before it can be dismissed. And making a
+dispatcher's edge direct leaves the store of its state behind, because the
+switch the edge no longer goes through still reads it; once every edge is direct
+and the switch is gone, that store has no reader left. Neither is dismissable at
+a glance, which is why they are removed rather than counted: a local nobody
+reads prints as a named variable holding a number, indistinguishable from state
+that matters, and a dropped computation prints as a discarded expression. On the
+three corpus libraries there were 144, 271 and 297 of them against unprotected
+originals carrying two apiece, and removing them took one library's `goto` count
+to nil and turned constructors whose whole content was a switch on zero back
+into the empty constructors they are.
+
+Only the part that cannot matter for another reason is removed: constants, reads
+of locals and arguments, and the arithmetic over them. A call, a field read — a
+static one can run a type initializer — or a load through a pointer stops the
+walk, and then nothing is removed at all.
 
 **Encrypted resources restored.** The application's own resources, decrypted and
 put back where the program expects them.
