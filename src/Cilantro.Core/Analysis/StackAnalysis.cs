@@ -50,7 +50,13 @@ public static class EvaluationStackAnalyzer
                 diagnostics.Add($"IL_{instruction.Offset:X4}: stack underflow.");
                 continue;
             }
-            var outgoing = incoming - pops + pushes;
+
+            // Leaving a protected region empties the stack rather than taking a fixed number of
+            // values off it (ECMA-335 III.3.55), so what the target is entered with is nothing,
+            // whatever stood here. Carrying the depth across instead reports every ordinary
+            // try/catch whose guarded expression was mid-evaluation as a method whose paths
+            // disagree.
+            var outgoing = Empties(instruction.OpCode) ? 0 : incoming - pops + pushes;
             maximum = Math.Max(maximum, outgoing);
             foreach (var successor in Successors(instructions, indices, instruction))
                 work.Enqueue((successor, outgoing));
@@ -60,6 +66,10 @@ public static class EvaluationStackAnalyzer
             diagnostics.Add($"Stack analysis exceeded its {budget} instruction budget.");
         return new StackAnalysisResult(diagnostics.Count == 0, maximum, diagnostics);
     }
+
+    /// <summary>Whether the instruction empties the evaluation stack instead of drawing on it.</summary>
+    private static bool Empties(OpCode opcode) =>
+        opcode.StackBehaviourPop == StackBehaviour.PopAll;
 
     private static (int Pops, int Pushes) GetStackDelta(MethodDef owner, Instruction instruction)
     {
@@ -92,7 +102,15 @@ public static class EvaluationStackAnalyzer
             StackBehaviour.Popref_pop1 or StackBehaviour.Popref_popi => 2,
         StackBehaviour.Popi_popi_popi or StackBehaviour.Popref_popi_popi or
             StackBehaviour.Popref_popi_popi8 or StackBehaviour.Popref_popi_popr4 or
-            StackBehaviour.Popref_popi_popr8 or StackBehaviour.Popref_popi_popref => 3,
+            StackBehaviour.Popref_popi_popr8 or StackBehaviour.Popref_popi_popref or
+            // stelem, which was reaching the fall-through below and so was taken to leave the
+            // array, the index and the value all where they were. Every store into an array in
+            // every method thereby raised the depth by three, and the loop around it read as a
+            // path arriving at its own head three values deeper than the path into it.
+            StackBehaviour.Popref_popi_pop1 => 3,
+        // Nothing else draws a fixed number of values off the stack: what is left is the two
+        // behaviours that depend on something other than the opcode, both handled above — a call's
+        // signature, and emptying the stack on the way out of a protected region.
         _ => 0
     };
 
