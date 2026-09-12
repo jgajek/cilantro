@@ -97,8 +97,24 @@ did not encrypt method bodies at all.
 converted into readable .NET code in the cleaned copy, out of how many the
 protector turned into instructions for its private virtual machine. These were
 never encrypted IL; they were a custom instruction set, and the bodies in the
-cleaned copy are the tool's reconstruction of that. `m` is also the number of
-listings under `VM listings`.
+cleaned copy are the tool's reconstruction of that.
+
+**Interpreter programs found elsewhere — `n`, listed but not rebuilt.** A
+protector is free to run one of its programs from the middle of a method that
+also does ordinary work, and Reactor does. Such a program is not a method that
+failed to be devirtualized — there is no body to put anything into, because the
+method is not the program — so it is counted here instead of raising the
+denominator on the line above. It still gets a listing under `VM listings`, so
+`VM listings` counts these as well as the rebuilt ones.
+
+This line is worth reading closely on a Reactor file, because the program it
+usually names is the one a type initializer runs to assign the state that every
+opaque predicate in the module tests. That is also why the flattening survives:
+no instruction in the file writes those fields, so searching for what writes
+them finds nothing, and yet they are not the zeroes that absence would suggest.
+The interpreter assigns them through code it builds while it runs, which is
+nowhere in the file to be found. Until that program is given meaning, the
+predicates stay undecided and the dispatchers stay standing.
 
 **Strings decrypted — `n` of `m`.** Recovered string sites out of sites found.
 Also all-or-nothing: either every site is proven and replaced, or none are, so
@@ -504,6 +520,22 @@ whatever looks like it belongs to the protector. Leftovers are counted in the
 If you would rather keep all of it — for building detection signatures, say —
 use `--keep-runtime`.
 
+One diagnostic there is worth recognising, because it explains a large amount of
+surviving code at once:
+
+> Every virtual method whose shape a call here matches was kept, because this
+> module can get behind the question of which types can have instances: …
+
+A virtual method can only be called on an instance of the type declaring it, so
+one whose type nothing ever constructs is ordinarily dropped — which is what
+lets a whole interpreter go, its types being constructed only by itself. Where
+the module can make an instance without naming its type, through `Activator` or
+reflection or code it builds as it runs, there is no type such an instance could
+not be of, and the question has no answer worth giving; the diagnostic names the
+call that made it unanswerable. Expect more of the protector's code to remain in
+that case, and see [devirtualization.md](devirtualization.md) for what is and is
+not treated as getting behind the question.
+
 ### The methods are decrypted but still unreadable
 
 Check whether the summary reported code virtualization. If it did, those methods
@@ -587,7 +619,8 @@ counts them under `RECOVERED`, explains each one under `DEVIRTUALIZED METHODS`,
 and points at the listings under `WROTE`:
 
 ```
-    Methods devirtualized   1 of 1
+    Methods devirtualized                  1 of 1
+    Interpreter programs found elsewhere   1, listed but not rebuilt
 
   DEVIRTUALIZED METHODS
 

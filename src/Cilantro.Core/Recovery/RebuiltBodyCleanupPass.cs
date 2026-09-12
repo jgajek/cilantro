@@ -106,26 +106,25 @@ public sealed class RebuiltBodyCleanupPass : DeobfuscationPass
     }
 }
 
-/// <summary>The methods a run wrote a body into, resolved back from the tokens it recorded.</summary>
+/// <summary>The methods a run wrote a body into, found by the marker it put on each.</summary>
+/// <remarks>
+/// The marker is the key rather than the token because one of these methods may not have a token:
+/// a program the interpreter was asked to run from a method that does other work is given a method
+/// of its own, and a method made here has no row until the file is written. Its body is a reading
+/// like any other and wants the same tidying and the same digest, so it has to be findable.
+/// </remarks>
 internal static class RebuiltMethods
 {
     internal static IReadOnlyList<MethodDef> Of(ArtifactContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (!context.TryGetFact<IReadOnlySet<uint>>(
-                VirtualizationRebuildPass.RebuiltFact, out var tokens) ||
-            tokens is null)
-        {
-            return [];
-        }
-
         return
         [
-            .. tokens
-                .OrderBy(token => token)
-                .Select(token => context.Module.ResolveToken(token) as MethodDef)
-                .Where(method => method is not null)
-                .Select(method => method!)
+            .. context.Module.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Where(ReadingMarker.Marks)
+                .OrderBy(method => method.MDToken.Raw)
+                .ThenBy(method => method.FullName, StringComparer.Ordinal)
         ];
     }
 }

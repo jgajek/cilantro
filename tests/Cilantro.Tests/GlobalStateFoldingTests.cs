@@ -227,6 +227,106 @@ public sealed class GlobalStateFoldingTests
         Assert.Equal(0, result.Changes);
     }
 
+    [Fact]
+    public void FieldWrittenOnlyByAMethodATypeInitializerCallsIsWriteOnce()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            var field = AddStaticInt(type, "state");
+
+            // The shape a lifted program has: the initializer calls it, and nothing else does. It
+            // is the reason asking for the fold again after the lift is worth anything.
+            var assign = new MethodDefUser(
+                "LiftedProgram1",
+                MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL,
+                MethodAttributes.Assembly | MethodAttributes.Static)
+            {
+                Body = new CilBody()
+            };
+            assign.Body.Instructions.Add(OpCodes.Ldc_I4.ToInstruction(42));
+            assign.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(field));
+            assign.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            type.Methods.Add(assign);
+
+            var initializer = new MethodDefUser(
+                ".cctor",
+                MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL,
+                MethodAttributes.Private | MethodAttributes.Static |
+                    MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
+            {
+                Body = new CilBody()
+            };
+            initializer.Body.Instructions.Add(OpCodes.Call.ToInstruction(assign));
+            initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            type.Methods.Add(initializer);
+        });
+
+        var safety = FieldWriteSafety.Analyze(context.Module);
+
+        Assert.Null(safety.Refusal);
+        Assert.True(safety.IsWriteOnceDuringInitialization(FieldToken(context, "state")));
+    }
+
+    [Fact]
+    public void TheRecheckReportsNothingFoundRatherThanAnUnsupportedModule()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            var field = AddStaticInt(type, "state");
+            AddInitializer(module, type, field);
+            AddReachableReflectiveWrite(module, type);
+        });
+        context.SetFact(
+            "globals.state",
+            new CapturedGlobalState(
+                new Dictionary<uint, int>(),
+                new Dictionary<uint, int> { [FieldToken(context, "state")] = 42 }));
+
+        var first = new GlobalPredicateFoldingPass().Run(context);
+        var again = new GlobalPredicateRecheckPass().Run(context);
+
+        // Asked once, being unable to fold is the answer and a strict run may refuse the file over
+        // it. Asked again afterwards it is the ordinary case, and treating it as a shortfall would
+        // withhold a complete result because a second attempt found no more than the first.
+        Assert.Equal(PassStatus.Unsupported, first.Status);
+        Assert.Equal(PassStatus.Success, again.Status);
+        Assert.Equal(0, again.Changes);
+        Assert.Contains(
+            again.Diagnostics,
+            said => said.Contains("reflectively after initialization", StringComparison.Ordinal));
+    }
+
+    /// <summary>A reflective write that can run after initialization, refusing the analysis.</summary>
+    private static void AddReachableReflectiveWrite(ModuleDefUser module, TypeDef type)
+    {
+        var setValue = new MemberRefUser(
+            module,
+            "SetValue",
+            MethodSig.CreateInstance(
+                module.CorLibTypes.Void, module.CorLibTypes.Object, module.CorLibTypes.Object),
+            new TypeRefUser(
+                module, "System.Reflection", "FieldInfo", module.CorLibTypes.AssemblyRef));
+        var writer = new MethodDefUser(
+            "WriteAnything",
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Assembly | MethodAttributes.Static)
+        {
+            Body = new CilBody()
+        };
+        writer.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+        writer.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+        writer.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+        writer.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(setValue));
+        writer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        type.Methods.Add(writer);
+        AddPublicCaller(module, writer);
+    }
+
     /// <summary>
     /// Gives <paramref name="target"/> a way to run, by calling it from the assembly's public surface.
     /// </summary>

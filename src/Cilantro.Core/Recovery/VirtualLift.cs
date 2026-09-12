@@ -605,6 +605,24 @@ public static class VirtualLift
     /// </remarks>
     private static (int Pops, int Pushes)? Effect(Line line, ModuleDef module) => line.Mnemonic switch
     {
+        "br.cond" => (line.Condition is "brtrue" or "brfalse" ? 1 : 2, 0),
+        "call" or "newobj" => Signature(line, module),
+        _ => Fixed(line.Mnemonic) ??
+            (line.Pops is { } pops && line.Pushes is { } pushes ? (pops, pushes) : null)
+    };
+
+    /// <summary>
+    /// What an operation takes and leaves, so far as the mnemonic it was read as settles that on
+    /// its own.
+    /// </summary>
+    /// <remarks>
+    /// Every mnemonic here has one arity in every program there is, which is what lets the same
+    /// table answer for the typing walk and the depth walk both. The ones left out are the ones a
+    /// mnemonic does not settle: a conditional jump takes one value or two depending on the
+    /// comparison, and a call takes whatever the method it names takes.
+    /// </remarks>
+    private static (int Pops, int Pushes)? Fixed(string? mnemonic) => mnemonic switch
+    {
         "nop" or "br" => (0, 0),
         "ldnull" or "ldc.i4" or "ldc.i8" or "ldstr" or "ldloc" or "ldarg" or "ldsfld" or "ldtoken"
             => (0, 1),
@@ -616,10 +634,8 @@ public static class VirtualLift
         "stelem" => (3, 0),
         "add" or "sub" or "mul" or "div" or "rem" or "and" or "or" or "xor" or "shl" or "shr" or
             "ceq" or "cgt" or "clt" => (2, 1),
-        "br.cond" => (line.Condition is "brtrue" or "brfalse" ? 1 : 2, 0),
-        "call" or "newobj" => Signature(line, module),
         var name when name?.StartsWith("conv.", StringComparison.Ordinal) == true => (1, 1),
-        _ => line.Pops is { } pops && line.Pushes is { } pushes ? (pops, pushes) : null
+        _ => null
     };
 
     private static (int Pops, int Pushes)? Signature(Line line, ModuleDef module) =>
@@ -1140,8 +1156,15 @@ public static class VirtualLift
                 known.Name is not ("calls the method it names" or
                 "makes a new object with the constructor it names"))
             {
+                // Where the trials did not measure it, the mnemonic it was read as still settles
+                // what it takes and leaves. Without this an operation named but unmeasured has no
+                // arity at all, and the walk stops at it — on three samples here, at a store of a
+                // static field two operations in, which left the remaining eight hundred and fifty
+                // operations of a program that reads perfectly as IL with no path arriving at them.
                 if (known.Measured)
                     found[instruction.Index] = (known.Pops, known.Pushes);
+                else if (Fixed(Mnemonic(program, instruction, module, calling)) is { } read)
+                    found[instruction.Index] = read;
                 continue;
             }
             if (instruction.Operand is not VirtualOperand.Number number ||

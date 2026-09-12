@@ -60,11 +60,21 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         // method is typically one nothing calls by name, so the ordinary reading has it dead, and
         // deleting the very body the run was asked to produce — along with the helpers its code
         // calls — is not cleanup.
-        var reachability = ModuleReachability.Compute(
+        // A virtual method is kept only where an instance of its type can exist. Without that, a
+        // protector's interpreter is held alive by its own constructors: nothing reaches them, so
+        // nothing makes one of its types, and yet their virtual methods go on matching the shape of
+        // calls that surviving code makes. The narrower reading refuses itself on a module that can
+        // make an instance without naming its type, so asking for it here costs nothing where it
+        // cannot be had.
+        var reachability = ModuleReachability.ComputeWithInstances(
             context.Module,
             typeInitializersAlwaysRun: false,
             RebuiltMethods.Of(context));
         var orphans = RecoveryOrphans.Of(context);
+        var refused = reachability.InstanceRefusal is { } why
+            ? $"Every virtual method whose shape a call here matches was kept, because this " +
+                $"module can get behind the question of which types can have instances: {why}."
+            : null;
         var considered = context.Module.GetTypes()
             .Where(type => type != context.Module.GlobalType)
             .ToArray();
@@ -117,7 +127,8 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                 deadTypes.Count == 0
                     ? $"No type was proven unreachable; {retained}"
                     : $"All {deadTypes.Count} unreachable type(s) are still referenced.",
-                attribution
+                attribution,
+                .. refused is null ? Array.Empty<string>() : [refused]
             ]);
         }
 
@@ -137,7 +148,8 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             $"Removed {removedTypeCount} unreachable type(s) ({removedMethodTokens.Count} methods " +
             $"in total, of which {removedMethodCount} were dead methods of surviving types).",
             $"Retained the rest: {retained}",
-            attribution
+            attribution,
+            .. refused is null ? Array.Empty<string>() : [refused]
         ]);
     }
 

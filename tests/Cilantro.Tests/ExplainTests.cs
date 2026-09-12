@@ -69,6 +69,12 @@ public sealed class ExplainTests
         Assert.Contains("RESULT   Recovered", page, StringComparison.Ordinal);
         Assert.Contains("Methods devirtualized", page, StringComparison.Ordinal);
         Assert.Contains("1 of 1", page, StringComparison.Ordinal);
+        // The second program this file holds is run by a type initializer that does other work, so
+        // it is counted here and not as a method that failed to be devirtualized.
+        Assert.Contains(
+            "Interpreter programs found elsewhere   1, listed but not rebuilt",
+            page,
+            StringComparison.Ordinal);
         Assert.Contains("DEVIRTUALIZED METHODS", page, StringComparison.Ordinal);
         Assert.Contains(
             "methods protected by code virtualization into readable",
@@ -89,9 +95,15 @@ public sealed class ExplainTests
         Assert.Contains("1,230", page, StringComparison.Ordinal);
         Assert.DoesNotContain("Hidden calls resolved", page, StringComparison.Ordinal);
         Assert.Contains("Methods with control flow simplified", page, StringComparison.Ordinal);
-        Assert.Contains("266", page, StringComparison.Ordinal);
+        // Both of these count two runs of the fold rather than one, the second reaching the methods
+        // whose predicates read state the interpreter assigned and nothing named until its program
+        // was written out as IL. That is 23 further methods and 77 further branches here.
+        Assert.Contains("289", page, StringComparison.Ordinal);
         Assert.Contains("Constant branches resolved", page, StringComparison.Ordinal);
-        Assert.Contains("216", page, StringComparison.Ordinal);
+        // 64 of these are owed to a reference deciding a branch as surely as an integer does, being
+        // true exactly when it is not null, and this file puts a null constant in front of one
+        // often.
+        Assert.Contains("357", page, StringComparison.Ordinal);
         // Was 0 of 3 while the rewrite only looked for dispatchers reading a variable. Reactor
         // hands most of its dispatchers their state on the evaluation stack instead, and counting
         // those is what turned a line saying nothing was straightened into one saying almost

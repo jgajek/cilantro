@@ -194,6 +194,24 @@ public sealed class VirtualBodyTests
         Assert.Null(built.Refused);
         Assert.Contains("nothing reaches", string.Join(" ", built.Notes), StringComparison.Ordinal);
         Assert.Contains("ldnull, throw", Written(built.Body!), StringComparison.Ordinal);
+        // Counted as well as written, because a body to be run rather than read is refused over it:
+        // an operation nothing arrives at is work the body would drop instead of doing.
+        Assert.Equal(1, built.Unreached);
+    }
+
+    [Fact]
+    public void AReadingThatArrivesEverywhereLeavesNothingUnreached()
+    {
+        using var context = Module();
+        var built = Build(context, [
+            (Push, new VirtualOperand.Number(1)),
+            (Store, new VirtualOperand.Number(0)),
+            (Return, new VirtualOperand.None())
+        ]);
+
+        Assert.Null(built.Refused);
+        Assert.Equal(0, built.Unreached);
+        Assert.Equal(0, built.Distrusted);
     }
 
     /// <summary>

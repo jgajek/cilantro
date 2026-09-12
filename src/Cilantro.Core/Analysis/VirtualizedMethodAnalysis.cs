@@ -13,6 +13,21 @@ public sealed record VirtualizedMethod(
     int ArgumentCount);
 
 /// <summary>
+/// Somewhere the interpreter is asked to run one of its programs, and which program that is.
+/// </summary>
+/// <param name="Replaced">
+/// Whether the whole of the calling method is this call, which is what makes it a stub whose body
+/// can be built back. Where it is false the program is run as part of a method that does other
+/// work, so the program is still there to be read but the method is not the program.
+/// </param>
+public sealed record VirtualInvocation(
+    MethodDef Caller,
+    Instruction Call,
+    IMethod Entry,
+    int ProgramId,
+    bool Replaced);
+
+/// <summary>
 /// Finds methods a code virtualizer emptied, by the shape of what it left behind.
 /// </summary>
 /// <remarks>
@@ -51,6 +66,114 @@ public static class VirtualizedMethodDetector
             .OrderBy(item => item.ProgramId)
             .ToArray();
     }
+
+    /// <summary>
+    /// Every place the interpreter is asked to run a program, once one stub has shown which method
+    /// the interpreter is entered by.
+    /// </summary>
+    /// <remarks>
+    /// Matching the stub shape answers which methods are nothing but a program, and that is the
+    /// question worth asking first, because only those methods can have a body built back into
+    /// them. It is not the same question as which programs the file contains, and taking it for
+    /// that under-reports: a protector is free to run a program from the middle of a method that
+    /// does other work, and Reactor does, initializing the state its opaque predicates read from a
+    /// program run by a static constructor. That call is wrapped in the same flattened control flow
+    /// as everything else, so no shape match will ever find it.
+    ///
+    /// Once a single stub has been matched, the interpreter's entry is known, and then the calls to
+    /// it can simply be counted. That needs nothing of the calling method's shape, which is the
+    /// point: it finds the programs run from methods no shape describes. The entry has to be
+    /// learned from a stub first, since what makes a method an interpreter is that something enters
+    /// it that way.
+    /// </remarks>
+    public static IReadOnlyList<VirtualInvocation> Invocations(
+        ModuleDef module,
+        IReadOnlyList<VirtualizedMethod> stubs)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        ArgumentNullException.ThrowIfNull(stubs);
+        var entries = stubs
+            .GroupBy(stub => stub.Entry.MDToken.Raw)
+            .ToDictionary(group => group.Key, group => group.First().Entry);
+        if (entries.Count == 0)
+            return [];
+
+        var replaced = stubs.Select(stub => stub.Stub).ToHashSet();
+        var found = new List<VirtualInvocation>();
+        foreach (var method in module.GetTypes().SelectMany(type => type.Methods))
+        {
+            if (!method.HasBody)
+                continue;
+            var instructions = method.Body.Instructions;
+            for (var at = 0; at < instructions.Count; at++)
+            {
+                var call = instructions[at];
+                if (call.OpCode.Code is not (Code.Call or Code.Callvirt) ||
+                    call.Operand is not IMethod called ||
+                    !entries.TryGetValue(called.MDToken.Raw, out var entry) ||
+                    Identifier(instructions, at, called) is not { } program)
+                {
+                    continue;
+                }
+                found.Add(new VirtualInvocation(
+                    method, call, entry, program, replaced.Contains(method)));
+            }
+        }
+        return found
+            .OrderBy(item => item.ProgramId)
+            .ThenBy(item => item.Caller.MDToken.Raw)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Which program a call asks for, or <see langword="null"/> where the call site does not say so
+    /// plainly that counting can tell.
+    /// </summary>
+    /// <remarks>
+    /// Arguments are pushed in order, so the push belonging to the parameter that names the program
+    /// can be found by counting back from the call. Only pushes that take nothing from the stack
+    /// and leave one value on it are counted, because anything else breaks the correspondence
+    /// between pushes counted and parameters passed, and a program number arrived at by guessing
+    /// would be worse than admitting the call site was not read.
+    /// </remarks>
+    private static int? Identifier(IList<Instruction> instructions, int at, IMethod called)
+    {
+        if (called.MethodSig is not { } signature)
+            return null;
+        var offset = signature.HasThis ? 1 : 0;
+        var slots = signature.Params.Count + offset;
+        var naming = -1;
+        for (var index = 0; index < signature.Params.Count; index++)
+        {
+            if (signature.Params[index].RemovePinnedAndModifiers()?.ElementType != ElementType.I4)
+                continue;
+            if (naming >= 0)
+                return null;
+            naming = index + offset;
+        }
+        if (naming < 0 || at < slots)
+            return null;
+
+        for (var slot = 0; slot < slots; slot++)
+        {
+            if (!Leaves(instructions[at - slots + slot]))
+                return null;
+        }
+        var read = 0;
+        return TryReadInt32([instructions[at - slots + naming]], ref read, out var value)
+            ? value
+            : null;
+    }
+
+    /// <summary>Whether this instruction takes nothing from the stack and leaves one thing on it.</summary>
+    private static bool Leaves(Instruction instruction) =>
+        instruction.IsLdcI4() ||
+        instruction.OpCode.Code is Code.Ldnull or Code.Ldstr or Code.Ldc_I8 or Code.Ldc_R4 or
+            Code.Ldc_R8 or Code.Ldtoken or Code.Ldftn or Code.Ldsfld or Code.Ldsflda or
+            Code.Ldloc or Code.Ldloc_0 or Code.Ldloc_1 or Code.Ldloc_2 or Code.Ldloc_3 or
+            Code.Ldloc_S or Code.Ldloca or Code.Ldloca_S or Code.Ldarg or Code.Ldarg_0 or
+            Code.Ldarg_1 or Code.Ldarg_2 or Code.Ldarg_3 or Code.Ldarg_S or Code.Ldarga or
+            Code.Ldarga_S;
 
     private static VirtualizedMethod? TryMatch(MethodDef method)
     {

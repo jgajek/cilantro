@@ -83,6 +83,10 @@ public static class RewritePolicy
 /// virtualized method back marks it with an attribute of its own, and the type carrying that
 /// attribute is a declaration the input did not have; saying so here is what keeps every other
 /// unexpected addition a failure.
+///
+/// Added methods are declared as a number where removed ones are declared by token, the difference
+/// being that a removed method had a row and an added one does not yet. There is no token to name
+/// until the writer assigns one, so what can be declared is how many there are.
 /// </remarks>
 public sealed record RewriteAllowance(
     IReadOnlySet<string>? AddedResources = null,
@@ -93,7 +97,7 @@ public sealed record RewriteAllowance(
     int RemovedTypeCount = 0,
     int RemovedFieldCount = 0,
     IReadOnlySet<string>? AddedPublicApi = null,
-    IReadOnlySet<uint>? AddedMethodTokens = null,
+    int AddedMethodCount = 0,
     int AddedTypeCount = 0)
 {
     public static RewriteAllowance None { get; } = new();
@@ -110,8 +114,6 @@ public sealed record RewriteAllowance(
         RenamedPublicApi ?? System.Collections.Immutable.ImmutableDictionary<string, string>.Empty;
     public IReadOnlySet<uint> RemovedMethodTokenSet =>
         RemovedMethodTokens ?? System.Collections.Immutable.ImmutableHashSet<uint>.Empty;
-    public IReadOnlySet<uint> AddedMethodTokenSet =>
-        AddedMethodTokens ?? System.Collections.Immutable.ImmutableHashSet<uint>.Empty;
 }
 
 public sealed record ArtifactIdentitySnapshot(
@@ -240,13 +242,19 @@ public sealed record ArtifactStructuralSnapshot(
     {
         var types = module.GetTypes().ToArray();
         var methods = types.SelectMany(type => type.Methods).ToArray();
+
+        // A method made in memory has no row yet, and the token it reports is the absence of one
+        // rather than a value: every such method reports the same. They are counted but not keyed,
+        // there being nothing in an earlier snapshot for a method that did not yet exist to be
+        // compared against, and any two of them would otherwise collide with each other.
+        var written = methods.Where(method => method.MDToken.Rid != 0).ToArray();
         return new ArtifactStructuralSnapshot(
             types.Length,
             methods.Length,
             types.Sum(type => type.Fields.Count),
             module.Resources.Count,
-            methods.ToDictionary(method => method.MDToken.Raw, method => (uint)method.RVA),
-            methods.ToDictionary(
+            written.ToDictionary(method => method.MDToken.Raw, method => (uint)method.RVA),
+            written.ToDictionary(
                 method => method.MDToken.Raw,
                 method => method.HasBody ? method.Body.Instructions.Count : -1));
     }

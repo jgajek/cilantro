@@ -106,6 +106,103 @@ public sealed class ModuleReachabilityTests : IDisposable
     }
 
     [Fact]
+    public void AVirtualMethodOfATypeNothingConstructsCannotBeCalled()
+    {
+        using var context = SyntheticContext.Build(module => Shapes(module, construct: false));
+
+        var narrowed = ModuleReachability.ComputeWithInstances(
+            context.Module, typeInitializersAlwaysRun: true);
+
+        Assert.Null(narrowed.InstanceRefusal);
+        // Only the shape of the call reaches this one, Circle deriving from nothing the call names,
+        // and a call arrives on an instance that nothing here makes.
+        Assert.False(narrowed.IsReachable(OnCircle(context)));
+        // Which is the whole of the difference: the wider reading keeps it on the shape alone.
+        Assert.True(ModuleReachability.Compute(context.Module).IsReachable(OnCircle(context)));
+    }
+
+    [Fact]
+    public void AVirtualMethodIsCalledOnceSomethingConstructsItsType()
+    {
+        using var context = SyntheticContext.Build(module => Shapes(module, construct: true));
+
+        var narrowed = ModuleReachability.ComputeWithInstances(
+            context.Module, typeInitializersAlwaysRun: true);
+
+        Assert.Null(narrowed.InstanceRefusal);
+        Assert.True(narrowed.IsReachable(OnCircle(context)));
+    }
+
+    [Fact]
+    public void NoVirtualMethodIsDroppedWhereAnInstanceCanBeMadeWithoutNamingItsType()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var api = Shapes(module, construct: false);
+            var made = new MemberRefUser(
+                module,
+                "CreateInstance",
+                MethodSig.CreateStatic(module.CorLibTypes.Object, module.CorLibTypes.String),
+                module.CorLibTypes.GetTypeRef("System", "Activator"));
+            var body = api.Methods.Single(method => method.Name == "Run").Body.Instructions;
+            body.Insert(0, OpCodes.Ldstr.ToInstruction("whichever type this turns out to name"));
+            body.Insert(1, OpCodes.Call.ToInstruction(made));
+            body.Insert(2, OpCodes.Pop.ToInstruction());
+            api.Methods.Single(method => method.Name == "Run").Body.MaxStack = 8;
+        });
+
+        var narrowed = ModuleReachability.ComputeWithInstances(
+            context.Module, typeInitializersAlwaysRun: true);
+
+        Assert.NotNull(narrowed.InstanceRefusal);
+        Assert.Contains("without naming its type", narrowed.InstanceRefusal, StringComparison.Ordinal);
+        // Refused whole rather than narrowly: there is no type the unnamed instance could not be of.
+        Assert.True(narrowed.IsReachable(OnCircle(context)));
+    }
+
+    /// <summary>
+    /// A virtual call whose shape one type's method matches, that type being constructed or not.
+    /// </summary>
+    private static TypeDefUser Shapes(ModuleDefUser module, bool construct)
+    {
+        var api = SyntheticContext.AddType(module, "Api");
+        api.Attributes = TypeAttributes.Public | TypeAttributes.Class;
+
+        var baseType = SyntheticContext.AddType(module, "Shape");
+        var declared = AddMethod(
+            baseType, "Draw", MethodAttributes.Public | MethodAttributes.Virtual, isStatic: false);
+
+        // Deliberately not derived from the type the call names, so nothing but the shape of the
+        // call reaches it. This is the interpreter's shape: methods a call could satisfy, on types
+        // the call could never be holding.
+        var other = SyntheticContext.AddType(module, "Circle");
+        AddMethod(other, "Draw", MethodAttributes.Public | MethodAttributes.Virtual, isStatic: false);
+        var constructor = AddMethod(
+            other, ".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName |
+                MethodAttributes.RTSpecialName,
+            isStatic: false);
+
+        var entry = AddMethod(api, "Run", MethodAttributes.Public | MethodAttributes.Static);
+        var body = entry.Body.Instructions;
+        var at = 0;
+        if (construct)
+        {
+            body.Insert(at++, OpCodes.Newobj.ToInstruction(constructor));
+            body.Insert(at++, OpCodes.Pop.ToInstruction());
+        }
+        // It answers with nothing, so nothing is taken off after it.
+        body.Insert(at++, OpCodes.Ldnull.ToInstruction());
+        body.Insert(at, OpCodes.Callvirt.ToInstruction(declared));
+        return api;
+    }
+
+    /// <summary>The method only the shape of the call reaches.</summary>
+    private static MethodDef OnCircle(Core.ArtifactContext context) => context.Module.GetTypes()
+        .Single(type => type.Name == "Circle")
+        .Methods.Single(method => method.Name == "Draw");
+
+    [Fact]
     public void LoadingATypeHandleExposesItToReflectionWithoutRunningIt()
     {
         using var context = SyntheticContext.Build(module =>

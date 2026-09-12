@@ -22,7 +22,7 @@ namespace Cilantro.Core.Passes;
 /// its own transaction and rolled back unless structural verification passes, so a method this pass
 /// cannot prove safe is preserved exactly as it was.
 /// </remarks>
-public sealed class ControlFlowCompletionPass : DeobfuscationPass
+public class ControlFlowCompletionPass : DeobfuscationPass
 {
     private const int MaximumRounds = 16;
 
@@ -57,14 +57,23 @@ public sealed class ControlFlowCompletionPass : DeobfuscationPass
             }
         }
 
-        context.SetFact("cfg.constantBranchesFolded", foldedTotal);
-        context.SetFact("cfg.unreachableInstructionsRemoved", removedTotal);
-        context.SetFact("cfg.methodsSimplified", rewrittenMethods);
+        // Added to rather than assigned, because this pass is asked twice and the summary is about
+        // the run. What the second pass finds is the remainder the first could not have reached, so
+        // reporting it on its own would tell the analyst that less was simplified than was.
+        Accumulate("cfg.constantBranchesFolded", foldedTotal);
+        Accumulate("cfg.unreachableInstructionsRemoved", removedTotal);
+        Accumulate("cfg.methodsSimplified", rewrittenMethods);
         return (PassStatus.Success, foldedTotal + removedTotal,
         [
             $"Folded {foldedTotal} constant branch(es) and removed {removedTotal} unreachable " +
             $"instruction(s) across {rewrittenMethods} method(s)."
         ]);
+
+        void Accumulate(string fact, int found)
+        {
+            context.TryGetFact<int>(fact, out var already);
+            context.SetFact(fact, already + found);
+        }
     }
 
     /// <summary>
@@ -113,10 +122,13 @@ public sealed class ControlFlowCompletionPass : DeobfuscationPass
     /// Rewrites conditional branches whose single-operand condition is a proven constant.
     /// </summary>
     /// <remarks>
-    /// Only the leaf shapes are handled: a boolean branch preceded immediately by an integer
-    /// constant, and a switch preceded immediately by one. These are exactly the opaque-predicate
+    /// Only the leaf shapes are handled: a boolean branch preceded immediately by a constant, and
+    /// a switch preceded immediately by an integer one. These are exactly the opaque-predicate
     /// forms Reactor emits, and each rewrite is stack-neutral because the constant the branch would
     /// have consumed is removed with it.
+    ///
+    /// A null constant decides a boolean branch as surely as a zero does, a reference being true
+    /// exactly when it is not null. It cannot decide a switch, carrying no case number.
     /// </remarks>
     private static int FoldConstantBranches(MethodDef method)
     {
@@ -126,9 +138,10 @@ public sealed class ControlFlowCompletionPass : DeobfuscationPass
         {
             var branch = instructions[index];
             var producer = instructions[index - 1];
-            if (!producer.IsLdcI4())
+            var numbered = producer.IsLdcI4();
+            if (!numbered && producer.OpCode.Code != Code.Ldnull)
                 continue;
-            var value = producer.GetLdcI4Value();
+            var value = numbered ? producer.GetLdcI4Value() : 0;
             switch (branch.OpCode.Code)
             {
                 case Code.Brtrue or Code.Brtrue_S when branch.Operand is Instruction trueTarget:
@@ -141,7 +154,7 @@ public sealed class ControlFlowCompletionPass : DeobfuscationPass
                     Retarget(branch, value == 0, falseTarget);
                     folded++;
                     break;
-                case Code.Switch when branch.Operand is IList<Instruction> cases:
+                case Code.Switch when numbered && branch.Operand is IList<Instruction> cases:
                     Neutralize(producer);
                     if (value >= 0 && value < cases.Count)
                     {
@@ -260,4 +273,29 @@ public sealed class ControlFlowCompletionPass : DeobfuscationPass
             return present.Contains(boundary);
         }
     }
+}
+
+/// <summary>
+/// Folds the constant branches that only became constant once the loader's state was folded into
+/// the methods reading it.
+/// </summary>
+/// <remarks>
+/// An opaque predicate collapses in two steps, and until now only the first could happen late. The
+/// read of the loader's state becomes a literal, and then the branch on that literal becomes a jump
+/// or nothing at all. The early run of this pass does both, but where the loader is virtualized the
+/// first step waits on the interpreter's program being written out as IL, which happens long after.
+/// Without a second run the module is left holding ninety-one branches on literals — <c>if (0 == 0)</c>
+/// spelled out in the decompiler's output, which is a worse thing to hand an analyst than the field
+/// read it replaced, that at least having looked like it meant something.
+///
+/// It runs before the last look for flattening rather than after, because folding these is what
+/// makes the shape underneath them visible: a state assignment followed by an unconditional jump to
+/// the switch is a flattener edge, and the same thing with a branch on a literal in between is not
+/// anything the dispatcher pass will recognise.
+/// </remarks>
+public sealed class ControlFlowRecompletionPass : ControlFlowCompletionPass
+{
+    public override string Name => "control-flow-recompletion";
+
+    public override IReadOnlyCollection<string> Dependencies => ["global-predicate-recheck"];
 }

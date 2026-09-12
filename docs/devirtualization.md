@@ -154,6 +154,260 @@ The match has to be exact. A stub that does any work of its own is not reported,
 because then the interpreter is not the whole method and saying it was would
 overstate what was found.
 
+That answers which methods *are* a program, which is the right question for
+deciding what a body can be built into. It is not the same question as which
+programs the file *contains*, and for a while CILantro reported the first as
+though it were the second. A protector can run a program from the middle of a
+method that does other work, and Reactor does: the program that assigns the
+state its opaque predicates read is run by a type initializer, wrapped in the
+same flattened control flow as everything else, so no shape match will ever
+find it.
+
+Once one stub has been matched the interpreter's entry is known, and then the
+calls to it can simply be counted, which needs nothing of the calling method's
+shape. CILantro does this after the delegate proxies resolve to direct calls,
+reads the program number off each call site where the call site states it
+plainly, and lists every program it finds. Programs run from a method that does
+other work are listed but not rebuilt, and reported on their own line rather
+than as methods that failed.
+
+On the samples here that second program is 942 operations, and the engine
+performs all 942 of them — where the rebuilt method's own program stalls after
+six. Its first operation writes the singleton field that every dispatcher in
+the module tests. That is the missing piece in a puzzle that otherwise looks
+solvable: nothing in the file writes those fields, so a search for their writers
+comes back empty, and it is tempting to read them as the zeroes and nulls the
+runtime left. They are not. The interpreter assigns them through code it builds
+while it runs, which is nowhere in the file. This is why CILantro refuses to
+read a field as unwritten on any module that reaches
+`System.Reflection.Emit` — and why undoing the flattening properly means giving
+this program meaning first, not reasoning about the fields it writes.
+
+Such a program can be given a method of its own, with the call that ran it
+pointed there instead, which is what `lift-virtualized-program` does. It is not
+written into the method that ran it, because that method is not the program and
+writing it there would lose the rest of what the method does. Three things have
+to hold for the redirect to be a swap rather than a rewrite: the program takes
+no arguments, the values pushed for the engine call are plain pushes, and the
+result is discarded. Where any of them fails the program stays listed and
+unbuilt.
+
+A body written into a stub nothing calls is read and not run, so a reading that
+is wrong in places is still worth putting there. A lifted body is different: it
+is what a type initializer does instead of asking the engine, and what it
+assigns is what the rest of the module goes on. So the lift asks two things of
+the reading that writing into a stub does not.
+
+It has to be self-consistent: no operation may leave the stack a depth the walk
+does not arrive at the next operation with. And it has to have reached the
+program at all. An operation the walk never arrived at is written as a throw,
+which in a body that is read says honestly how far the reading got, and in a body
+that is run says the reverse — this is the work the engine used to do, so a body
+that performs none of it does not replace that work, it drops it, and leaves the
+rest of the module running on state nothing assigned. Neither verification nor a
+reader would notice: the body is well-formed and the throws are unreachable.
+
+The second of those is worth recording, because adding it found a real defect and
+the defect turned out to be one line of table lookup.
+
+Three of the four samples here produced a reading that arrived at **2 of some 850
+operations** and was self-consistent about the two, so the coverage requirement
+was the only thing that refused them. Before it existed they were lifted anyway,
+the engine went, and the output fell from 37,730 lines to 1,110 — which looked
+like the best result of the set and was worth nothing, the type initializer it
+left behind assigning none of the hundred-odd fields the program assigned.
+
+What stopped those walks was not the program. All 852 operations read as IL
+perfectly, and the walk stopped two in, at a store of a static field. The depth
+walk took an operation's arity only from what the trials had measured, and where
+they had measured nothing it had nothing — even for a mnemonic like `stsfld`,
+which takes one value and leaves none in every program there has ever been. The
+typing walk had always read arity off the mnemonic instead, and its own comment
+explains why that is the better source: it is the same arity the body is about to
+write, so the two cannot disagree. The depth walk simply never used it. Both use
+it now, and all four samples reach every operation of their program.
+
+So the coverage requirement currently refuses nothing, which is the point of it.
+It exists to make the difference between a program that was read and a program
+that was not into something the tool notices, rather than something that shows up
+as a suspiciously good number.
+
+Getting there took three readings that the first pass at this did not have, and
+each is worth recording because each was one operation standing between a
+942-operation program and a body:
+
+- **An operation whose operand names a constructor and which leaves one value is
+  a `newobj`.** The trials could not say so, because they hand the operation
+  operands of their own and what a token of theirs resolves to decides what they
+  watch it leave; they reported a reference as an `Int32`. Read from the
+  program's own operands it settles, a constructor returning void: an operation
+  that merely called one would leave nothing.
+- **A reading of an operation belongs to every program in the file, not to the
+  one that made it.** The engine dispatches on numbers assigned once when the
+  protector built the file, so an operation means the same thing throughout, and
+  a program whose trials could not make it run can be told what another
+  program's could. Two of the thirteen operations in the program above are read
+  this way and no other.
+- **An operation that leaves nothing and whose operand names an instance field
+  is writing that field.** This was the one that mattered. It had been read as
+  discarding what it took — which is what a write outside the engine looks like
+  from inside it — and a discard takes one value where a write of an instance
+  field takes two. That one-value difference was the whole of the reading's
+  inconsistency: 126 operations disagreed with their neighbours about the depth
+  of the stack, and naming the write correctly left none.
+
+## What the lift is for
+
+Once the last call to the engine is gone, the engine is dead code, and cleanup
+deletes a type where it is unreachable and something recovery did accounts for
+its being so. Both halves needed work.
+
+The second was easy and had simply never been said: the calls to the engine went
+one at a time, and while any remained there was nothing to claim. Once the last
+is gone the claim is plain, and the pass makes it — every call to the engine was
+replaced by this run, so the engine and what it calls have lost their purpose.
+
+The first was harder, and the reason is worth knowing because it has nothing to
+do with virtualization. A virtual call is matched to candidates by name and
+signature, which keeps alive every method in the module that could satisfy a
+call of that shape. For ordinary code that costs a little cleanup. For an
+interpreter it costs everything: its forty-six nested types are constructed only
+by its own code — 678 `newobj` sites, every one of them inside the nest — so
+once nothing reaches that code, nothing constructs them. And yet their virtual
+methods went on matching signatures that surviving code calls, so the whole
+interpreter was held alive by calls that could never arrive at it.
+
+So a candidate is now kept only once something reachable can make an instance of
+the type declaring it, which is what a virtual call needs in order to arrive.
+Making one is reaching a `newobj` of it or of anything derived from it, taking
+its handle, or its being visible outside the assembly — and it is a fixed point,
+since constructing a type reaches its methods and those may construct more.
+
+That reading is refused whole where the module can get behind it, which is where
+anything reachable can make an instance without naming its type: `Activator`,
+`ConstructorInfo.Invoke`, uninitialized-object routes, or code built while it
+runs that can also be entered. There being no type such an instance could not
+be of, there is no narrower answer to give. Two things are deliberately *not*
+grounds to refuse:
+
+- **A construction that names what it makes.** These files reach for a cipher
+  out of the framework through `Activator.CreateInstance(assembly, type)` with
+  both names as literals. It names both, and the assembly is not this one, so it
+  makes nothing declared here.
+- **Invoking a method reflectively**, though it runs a body this reading cannot
+  follow. The body is either this module's — and deleting it for being
+  unreachable is a risk the pass already takes wherever it deletes anything — or
+  another assembly's, in which case what it can reach of this one is governed by
+  what is visible outside it and what has been handed to reflection, both of
+  which are already asked. Refusing here on a ground the surrounding deletion
+  does not apply would be stricter about which methods a type keeps than about
+  whether the type survives at all.
+
+Building code while it runs *is* grounds, but only once that code can be
+entered. The protector generates thunks to fill the delegate fields of its
+proxies; once the proxies are resolved to direct calls, nothing reachable invokes
+those delegates on most files, so no thunk can run and the question is answerable
+after all.
+
+Where a thunk can still be entered the refusal stands, and it is worth knowing
+that this is not a precaution. The assumption behind it — that generated code
+could construct anything — is not a worst case here but a description. Reactor's
+thunk builder emits, among a hundred other opcodes:
+
+```
+iLGenerator.Emit(OpCodes.Newobj, P_0 as ConstructorInfo);
+```
+
+The constructor is a parameter, so which type it makes is settled at run time by
+whoever called the builder. It also emits `Box`, `Unbox`, and `Sizeof` against
+types arriving the same way. So on a file where that builder can be entered there
+genuinely is no type an instance could not exist of, and no narrower answer to
+give than refusing.
+
+Two of the samples here are in that position: their CoreCLR builds reach the
+thunk builder from the method-decryption bootstrap, which the entry type's own
+initializer calls, and that path invokes a module-declared delegate. Their
+interpreters are orphaned in fact — nothing references the entry point they were
+called through — and they are kept anyway, for about forty-eight thousand lines
+apiece. Closing that gap is not a matter of sharpening this reading. It would
+mean establishing what the built code does, and the built code is assembled from
+`ConstructorInfo` values that arrive as arguments.
+
+## What the lift is also for
+
+Deleting the engine is the larger half of what the lift buys, but not the only
+half. Reactor roots a singleton in a static field, fills a hundred and twenty-six
+integer fields of it from the loader, and then guards flattened control flow all
+over the module on those fields. Folding those guards needs two things, and the
+missing one was not the values.
+
+The values were never the difficulty. Interpretation proves them on the first
+run — all hundred and twenty-six — because the machine that reads the loader
+reads the interpreter too and watches the assignments go past. What it cannot say
+is that the values will still be there later, and that is a separate question,
+answered from the module rather than from the run: a field holds what
+initialization left in it only if every instruction that writes it lies in the
+one-shot initialization window.
+
+Where the loader is virtualized there is no such instruction to find. The writes
+are the engine's, performed out of a table, and no `stfld` anywhere in the module
+names the field they land in. So the field is not judged unsafe — it is invisible
+to the judgement, and its proven value goes unused. On `Qbjuef.exe` four fields
+had writers the early pass could see, and not one of the four was ever read,
+which is the whole of what the fold accomplished: nothing.
+
+The lifted body supplies exactly what was missing. It assigns those fields with
+ordinary instructions that name them, from a method reached only by a type
+initializer, so the write-safety proof closes on its own terms without being
+weakened. Asked again afterwards, it accepts all 131 fields and rejects none,
+folding 91 reads across 30 methods.
+
+That leaves the other half of each predicate standing — a branch on a literal,
+`if (0 == 0)` spelled out in the decompiler's output, which is a worse thing to
+hand an analyst than the field read it replaced, since that at least looked like
+it meant something. So constant-branch folding is asked again too, immediately
+after, and before the last look for flattening rather than after it: a state
+assignment followed by an unconditional jump to a switch is a flattener edge, and
+the same thing with a branch on a literal in between is not anything the
+dispatcher pass will recognise. It folds 77 branches, deletes 141 unreachable
+instructions, and the dispatcher pass that follows then finds 54 flattened
+methods where it had found 38.
+
+Both re-runs are the same move as the late look for flattening, and for the same
+reason: not a weaker proof the second time, but a later one, asked where what it
+needs has finally been recovered. Neither can be moved rather than repeated,
+since the early run is what makes the module legible enough for the passes
+between them to do their work.
+
+## What it comes to
+
+Four samples lift a program, every one of them reading all of it. Two of those
+then lose their interpreter:
+
+| | before | after |
+|---|---|---|
+| `Qbjuef.exe` | 43,389 lines, 5,383 jumps | **6,224 lines, 453 jumps** |
+| `reactor7-probe-net48.full` | 37,730 lines, 4,748 jumps | **1,439 lines, 94 jumps** |
+
+The largest surviving file of the first goes from 1,643 lines and 213 jumps to
+942 and 91, and what is left of it reads as the event accessors it always was,
+`Interlocked.CompareExchange` loop and all.
+
+The other two lift their program and keep their interpreter, because they build
+code while they run and can enter it, so the narrowed reachability reading refuses
+itself and every virtual method whose shape a call matches stays. Their output is
+materially unchanged — slightly larger, in fact, the lifted body being added
+without anything being taken away. That is the refusal doing what it is for, and
+it is the honest state of those two files rather than a step still to take: what
+would have to change is not the lift but what can be proven about a module that
+writes its own code.
+
+It is worth being plain about what each step is owed. The reachability narrowing
+helps seventeen samples find more to delete and costs nothing on the fourteen
+that refuse it. The loader-state fold reaches five. The lift reaches four, and
+deleting an interpreter reaches two. None of the thirty-three fails verification,
+and none is left holding a branch on a literal.
+
 ### 2. Get the program out — by running the protector's own decoder
 
 The obvious approach is to find the bytes and parse them. CILantro does not

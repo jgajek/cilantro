@@ -112,9 +112,10 @@ public sealed class VirtualizationRebuildTests
         context.SetFact("options.removeRuntime", true);
         foreach (var name in new[] { "Helper", "AlsoOrphaned", "WasVirtualized" })
             RecoveryOrphans.Declare(context, Find(context, name));
-        context.SetFact<IReadOnlySet<uint>>(
-            VirtualizationRebuildPass.RebuiltFact,
-            new HashSet<uint> { Find(context, "WasVirtualized").MDToken.Raw });
+        // Marked rather than named by token, which is how cleanup finds a body the run wrote: one
+        // of them may be a method the run made, and a method with no row yet has no token to be
+        // found by.
+        ReadingMarker.Add(context.Module).Mark(Find(context, "WasVirtualized"));
 
         new RuntimeCleanupPass().Run(context);
 

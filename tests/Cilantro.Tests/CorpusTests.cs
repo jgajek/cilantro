@@ -367,6 +367,23 @@ public sealed class CorpusTests
                 rebuilt.CustomAttributes,
                 attribute => attribute.TypeFullName.Contains("RebuiltFromReading"));
 
+            // The program a type initializer ran through the engine got a method of its own, which
+            // it only does where the walk arrived at every one of its operations: a body that would
+            // run is refused unless the reading reached all of the work it replaces. This walk
+            // stopped two operations in until the depth walk was given the arity a mnemonic settles
+            // on its own, and the method was absent altogether.
+            var lifted = cleaned.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Single(method => method.Name.StartsWith("LiftedProgram", StringComparison.Ordinal));
+            Assert.NotNull(lifted.Body);
+            Assert.True(
+                lifted.Body.Instructions.Count > 1000,
+                "the lifted program should hold all 852 of its operations, not " +
+                $"{lifted.Body.Instructions.Count} instructions' worth");
+            Assert.DoesNotContain(
+                lifted.Body.Instructions,
+                instruction => instruction.OpCode == dnlib.DotNet.Emit.OpCodes.Throw);
+
             // The recovered plaintext is the probe's own planted strings, present at the call sites
             // the resolver used to hide. Their presence in the cleaned copy is the byte-level proof
             // that the table was read correctly rather than merely that some count came out right.
@@ -468,10 +485,15 @@ public sealed class CorpusTests
             // The virtualized method holds real IL where it shipped as a stub, marked as the reading
             // it is, with all six of its guarded regions written back: five catch clauses and the
             // one finally the engine ended with its own operation.
+            // Two methods carry a body built from a reading: this one, and the method given to the
+            // program a type initializer ran through the engine. That one is named for what it
+            // holds, which is how the method this is about is told from it.
             var rebuilt = cleaned.GetTypes()
                 .SelectMany(type => type.Methods)
-                .Single(method => method.HasBody && method.CustomAttributes.Any(
-                    attribute => attribute.TypeFullName.Contains("RebuiltFromReading")));
+                .Single(method => method.HasBody &&
+                    !method.Name.StartsWith("LiftedProgram", StringComparison.Ordinal) &&
+                    method.CustomAttributes.Any(
+                        attribute => attribute.TypeFullName.Contains("RebuiltFromReading")));
             Assert.NotNull(rebuilt.Body);
             Assert.True(rebuilt.Body.Instructions.Count > 100);
             Assert.Equal(6, rebuilt.Body.ExceptionHandlers.Count);

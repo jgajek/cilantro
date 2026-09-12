@@ -605,6 +605,13 @@ public sealed record PipelineOptions(
     /// Whether this run builds the virtualized methods back into code in the cleaned copy.
     /// </summary>
     public bool Devirtualizes => Devirtualize ?? !Strict;
+
+    /// <summary>
+    /// Whether this run reads a field nothing writes as the value it therefore holds. Reflection
+    /// can name a field without the module showing which, so this is a reading and a strict run
+    /// does not draw it.
+    /// </summary>
+    public bool FoldsUnwrittenState => !Strict;
 }
 
 public sealed record PipelineResult(
@@ -617,6 +624,12 @@ public sealed record PipelineResult(
 {
     /// <summary>Listings of the programs behind virtualized methods, two files per method.</summary>
     public IReadOnlyList<string> VirtualProgramPaths { get; init; } = [];
+
+    /// <summary>
+    /// Programs the interpreter is asked to run from a method that does work of its own, so no
+    /// method stands for the program and no body can be built into one.
+    /// </summary>
+    public int ProgramsRunElsewhere { get; init; }
 
     /// <summary>How many methods the protector turned into interpreter bytecode.</summary>
     public int VirtualizedMethods { get; init; }
@@ -695,6 +708,9 @@ public sealed class CilantroPipeline
         new StringTableRecoveryPass(),
         new BooleanRecoveryPass(),
         new AntiTamperNeutralizationPass(),
+        // Bodies are all present by now, which is what makes the search for a field's writers
+        // mean anything: a method still holding encrypted bytes could have held the write.
+        new UnwrittenFieldFoldingPass(),
         new ConstantPredicatePass(),
         // Loader-initialized state is folded before the control-flow passes, because turning its
         // reads into constants is what makes Reactor's guards look like the constant branches those
@@ -749,6 +765,14 @@ public sealed class CilantroPipeline
         // The body the rebuild just wrote has had none of the folding the rest of the module got,
         // every pass that does it having run while this method was still a stub. It gets it here.
         new RebuiltBodyCleanupPass(),
+        // The loader's own state can be folded now and could not be before. Its values were proven
+        // on the first run, but the writes were the engine's and named no field, so nothing could be
+        // said about whether they were the last ones. The body just written says it.
+        new GlobalPredicateRecheckPass(),
+        // And the branches that fold left standing on literals are folded, which is both half of
+        // the predicate the analyst would otherwise be handed and the thing hiding the flattening
+        // the pass below looks for.
+        new ControlFlowRecompletionPass(),
         // Flattening is looked for once more here, at the end. Every pass above takes something out
         // of the middle of a method body — a proxy call, a resolver call, a loader call — and until
         // they have, a dispatcher does not look like one. See DispatcherRecheckPass.
@@ -851,6 +875,7 @@ public sealed class CilantroPipeline
         // the result easier to read, and a strict one leaves the assembly as close to what it can
         // prove as it can.
         context.SetFact("options.renameSymbols", options.Renames);
+        context.SetFact("options.foldUnwrittenState", options.FoldsUnwrittenState);
         // A run asked only to say what is there builds nothing, so it does not pay for the building
         // or for the run that checks it.
         context.SetFact("options.devirtualize", options.Devirtualizes && !options.AnalyzeOnly);
@@ -957,6 +982,11 @@ public sealed class CilantroPipeline
         var payloadPaths = WritePayloads(context, reportDirectory, stem);
         var renameMapPath = WriteRenameMap(context, reportDirectory, stem);
         var virtualProgramPaths = WriteVirtualPrograms(context, reportDirectory, stem);
+        var programsRunElsewhere =
+            context.TryGetFact<IReadOnlyList<VirtualProgram>>(
+                "virtualization.otherPrograms", out var runElsewhere) && runElsewhere is not null
+                ? runElsewhere.Count
+                : 0;
 
         // Emission happens before the report is written so that a module which verifies in memory
         // but not once serialized is explained rather than silently withheld. Round-tripping is the
@@ -1053,7 +1083,9 @@ public sealed class CilantroPipeline
         {
             VirtualProgramPaths = virtualProgramPaths,
             VirtualizedMethods = virtualProgramPaths
-                .Count(path => path.EndsWith(".vmprogram.txt", StringComparison.Ordinal)),
+                .Count(path => path.EndsWith(".vmprogram.txt", StringComparison.Ordinal)) -
+                programsRunElsewhere,
+            ProgramsRunElsewhere = programsRunElsewhere,
             BlockerReportPath = blockersPath,
             ConfigReportPath = configPath,
             RenameMapPath = renameMapPath,
@@ -1348,13 +1380,16 @@ public sealed class CilantroPipeline
         string reportDirectory,
         string stem)
     {
-        if (!context.TryGetFact<IReadOnlyList<VirtualProgram>>(
-                "virtualization.programs", out var programs) ||
-            programs is null ||
-            programs.Count == 0)
-        {
+        context.TryGetFact<IReadOnlyList<VirtualProgram>>(
+            "virtualization.programs", out var stubbed);
+        // A program run from a method that does other work is listed alongside the rest. Nothing
+        // can be built back into such a method, but the listing is read to find out what a method
+        // does, and that question does not depend on the method being nothing but the program.
+        context.TryGetFact<IReadOnlyList<VirtualProgram>>(
+            "virtualization.otherPrograms", out var elsewhere);
+        var programs = (IReadOnlyList<VirtualProgram>)[.. stubbed ?? [], .. elsewhere ?? []];
+        if (programs.Count == 0)
             return [];
-        }
 
         var directory = Path.Combine(reportDirectory, $"{stem}.virtualized");
         Directory.CreateDirectory(directory);
@@ -1424,15 +1459,15 @@ public sealed class CilantroPipeline
         context.TryGetFact<int>("cleanup.removedFieldCount", out var removedFieldCount);
         context.TryGetFact<IReadOnlySet<string>>("rename.removedPublicApi", out var renameRemovedApi);
         context.TryGetFact<IReadOnlySet<string>>("rename.addedPublicApi", out var renameAddedApi);
-        context.TryGetFact<IReadOnlySet<uint>>(
-            VirtualizationRebuildPass.AddedMethodsFact, out var addedMethods);
+        context.TryGetFact<int>(
+            VirtualizationRebuildPass.AddedMethodsFact, out var addedMethodCount);
         context.TryGetFact<int>(VirtualizationRebuildPass.AddedTypesFact, out var addedTypeCount);
 
         var removedApi = Union(cleanupRemovedApi, renameRemovedApi);
         var addedApi = renameAddedApi;
         if (removedResources is null && addedResources is null && removedApi is null &&
             addedApi is null && removedMethods is null && removedTypeCount == 0 &&
-            removedFieldCount == 0 && addedMethods is null && addedTypeCount == 0)
+            removedFieldCount == 0 && addedMethodCount == 0 && addedTypeCount == 0)
         {
             return RewriteAllowance.None;
         }
@@ -1445,7 +1480,7 @@ public sealed class CilantroPipeline
             RemovedTypeCount: removedTypeCount,
             RemovedFieldCount: removedFieldCount,
             AddedPublicApi: addedApi,
-            AddedMethodTokens: addedMethods,
+            AddedMethodCount: addedMethodCount,
             AddedTypeCount: addedTypeCount);
     }
 
@@ -2575,13 +2610,12 @@ public static class AssemblyVerifier
             var effective = allowance ?? RewriteAllowance.None;
             var current = ArtifactStructuralSnapshot.Capture(module);
             var removedMethods = effective.RemovedMethodTokenSet;
-            var addedMethods = effective.AddedMethodTokenSet;
             var resourceDelta = effective.AddedResourceSet.Count - effective.RemovedResourceSet.Count;
             var typeDelta = effective.AddedTypeCount - effective.RemovedTypeCount;
             if (current.TypeCount != originalStructure.TypeCount + typeDelta)
                 diagnostics.Add("Type count changed during rewriting.");
             if (current.MethodCount !=
-                originalStructure.MethodCount - removedMethods.Count + addedMethods.Count)
+                originalStructure.MethodCount - removedMethods.Count + effective.AddedMethodCount)
             {
                 diagnostics.Add("Method count changed during rewriting.");
             }
@@ -2590,8 +2624,7 @@ public static class AssemblyVerifier
             if (current.ResourceCount != originalStructure.ResourceCount + resourceDelta)
                 diagnostics.Add("Resource count changed during rewriting.");
             if (!MethodTokensMatch(
-                    originalStructure.MethodRvas.Keys, current.MethodRvas.Keys,
-                    removedMethods, addedMethods))
+                    originalStructure.MethodRvas.Keys, current.MethodRvas.Keys, removedMethods))
             {
                 diagnostics.Add("Method token set changed during rewriting.");
             }
@@ -2601,24 +2634,22 @@ public static class AssemblyVerifier
     }
 
     /// <summary>
-    /// Confirms the surviving method tokens are exactly the original set, less what was declared
-    /// removed and plus what was declared added.
+    /// Confirms the methods that had a row are exactly the original set less what was declared
+    /// removed.
     /// </summary>
     /// <remarks>
-    /// A method the run added has no token yet: the writer assigns one, and until then dnlib reads
-    /// it as the zero row of the method table. That is what the snapshot sees, so it is what the
-    /// declaration names, and one addition is as far as this goes — two would be the same token
-    /// twice and the snapshot would refuse to record them.
+    /// Methods the run added are absent from both sides and are checked by their number instead.
+    /// A method built here has no row until the writer gives it one, so it has no token to be
+    /// compared by — every one of them reads as the zero row of the method table, which is why
+    /// naming them was only ever possible while there was one.
     /// </remarks>
     private static bool MethodTokensMatch(
         IEnumerable<uint> original,
         IEnumerable<uint> current,
-        IReadOnlySet<uint> removed,
-        IReadOnlySet<uint> added)
+        IReadOnlySet<uint> removed)
     {
         var expected = new HashSet<uint>(original);
         expected.ExceptWith(removed);
-        expected.UnionWith(added);
         return expected.SetEquals(current);
     }
 

@@ -132,6 +132,102 @@ public sealed class VirtualizedMethodDetectionTests
         return module;
     }
 
+    /// <summary>
+    /// A program run from a method that does work of its own is still a program the file holds.
+    /// </summary>
+    /// <remarks>
+    /// This is the gap the stub shape leaves, and on a Reactor file it is not a small one: the
+    /// program that assigns the state every opaque predicate reads is run from a type initializer
+    /// wrapped in the same flattened control flow as everything else. Counting the stubs answers
+    /// which methods are nothing but a program, which is the right question for deciding what a
+    /// body can be built into and the wrong one for deciding what the file contains.
+    /// </remarks>
+    [Fact]
+    public void AProgramRunFromAMethodThatDoesOtherWorkIsFoundEvenThoughNoStubStandsForIt()
+    {
+        var module = NewModule();
+        var entry = AddEntry(module);
+        AddStub(module, "Hidden", entry, programId: 0, arguments: 1);
+        AddBusyCaller(module, "Initializer", entry, programId: 1);
+
+        var stubs = VirtualizedMethodDetector.Detect(module);
+        var invocations = VirtualizedMethodDetector.Invocations(module, stubs);
+
+        Assert.Single(stubs);
+        Assert.Equal([0, 1], invocations.Select(item => item.ProgramId));
+        Assert.Equal([true, false], invocations.Select(item => item.Replaced));
+        Assert.Equal("Initializer", invocations[1].Caller.Name);
+    }
+
+    /// <summary>
+    /// What makes a method an interpreter is that a stub enters it that way, so with no stub
+    /// matched there is no entry to count calls to.
+    /// </summary>
+    [Fact]
+    public void NoProgramIsFoundWhereNoStubHasShownWhichMethodTheInterpreterIs()
+    {
+        var module = NewModule();
+        var entry = AddEntry(module);
+        AddBusyCaller(module, "Initializer", entry, programId: 1);
+
+        Assert.Empty(VirtualizedMethodDetector.Invocations(module, []));
+    }
+
+    /// <summary>
+    /// A call site that does not say plainly which program it wants is not read as wanting one.
+    /// </summary>
+    [Fact]
+    public void ACallThatDoesNotNameItsProgramWithAConstantIsNotReported()
+    {
+        var module = NewModule();
+        var entry = AddEntry(module);
+        AddStub(module, "Hidden", entry, programId: 0, arguments: 1);
+        var busy = AddBusyCaller(module, "Computed", entry, programId: 1);
+        // The constant becomes a sum, which is still one value on the stack but no longer one the
+        // call site states.
+        var instructions = busy.Body.Instructions;
+        var at = instructions.IndexOf(instructions.First(item => item.OpCode == OpCodes.Ldc_I4));
+        instructions.Insert(at + 1, OpCodes.Ldc_I4_1.ToInstruction());
+        instructions.Insert(at + 2, OpCodes.Add.ToInstruction());
+
+        var stubs = VirtualizedMethodDetector.Detect(module);
+
+        Assert.Equal([0], VirtualizedMethodDetector.Invocations(module, stubs)
+            .Select(item => item.ProgramId));
+    }
+
+    private static MethodDefUser AddBusyCaller(
+        ModuleDefUser module,
+        string name,
+        IMethod entry,
+        int programId)
+    {
+        var caller = new MethodDefUser(
+            name,
+            MethodSig.CreateStatic(module.CorLibTypes.Void),
+            MethodImplAttributes.IL,
+            MethodAttributes.Public | MethodAttributes.Static)
+        {
+            Body = new CilBody()
+        };
+        var packed = new Local(new SZArraySig(module.CorLibTypes.Object));
+        caller.Body.Variables.Add(packed);
+        var body = caller.Body.Instructions;
+        // It takes no arguments to pack, which is by itself enough for the shape match to decline:
+        // a method with no parameters cannot be one whose parameters an interpreter was handed.
+        body.Add(OpCodes.Ldc_I4_0.ToInstruction());
+        body.Add(OpCodes.Newarr.ToInstruction(module.CorLibTypes.Object.TypeDefOrRef));
+        body.Add(OpCodes.Stloc.ToInstruction(packed));
+        body.Add(OpCodes.Ldc_I4.ToInstruction(programId));
+        body.Add(OpCodes.Ldloc.ToInstruction(packed));
+        body.Add(OpCodes.Ldnull.ToInstruction());
+        body.Add(OpCodes.Call.ToInstruction(entry));
+        body.Add(OpCodes.Pop.ToInstruction());
+        body.Add(OpCodes.Ret.ToInstruction());
+        module.Types[0].Methods.Add(caller);
+        return caller;
+    }
+
     private static MethodDefUser AddEntry(ModuleDefUser module)
     {
         var entry = new MethodDefUser(

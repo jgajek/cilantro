@@ -286,6 +286,16 @@ internal static class Explain
                 $"{result.RebuiltMethods:N0} of {found:N0}"));
         }
 
+        // Counted apart from the line above rather than raising its denominator, because these are
+        // not methods that failed to be devirtualized. The interpreter is asked to run them from a
+        // method that does other work, so there is no body to put anything into, and listing them
+        // beside the rebuilt ones would read as a shortfall instead of as more of the file found.
+        if (result.ProgramsRunElsewhere > 0)
+        {
+            lines.Add(("Interpreter programs found elsewhere",
+                $"{result.ProgramsRunElsewhere:N0}, listed but not rebuilt"));
+        }
+
         if (recovery.StringCallSites > 0)
         {
             lines.Add(("Strings decrypted",
@@ -472,8 +482,11 @@ internal static class Explain
         if (result.VirtualProgramPaths.Count > 0)
         {
             var folder = Near(Path.GetDirectoryName(result.VirtualProgramPaths[0])!, home);
+            // Every program read back has a listing, including the ones no method stands for, so
+            // this counts the listings rather than the methods that were rebuilt from them.
             output.WriteLine(
-                $"    VM listings     {result.VirtualizedMethods} in {folder}");
+                $"    VM listings     " +
+                $"{result.VirtualizedMethods + result.ProgramsRunElsewhere} in {folder}");
         }
 
         if (result.RebuiltMethods > 0 &&

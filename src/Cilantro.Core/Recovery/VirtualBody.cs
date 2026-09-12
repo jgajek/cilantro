@@ -31,7 +31,25 @@ namespace Cilantro.Core.Recovery;
 public static class VirtualBody
 {
     /// <summary>What came of trying to build a body: one of a body or a reason there is none.</summary>
-    public sealed record Attempt(CilBody? Body, string? Refused, IReadOnlyList<string> Notes);
+    /// <param name="Distrusted">
+    /// How many operations the reading is wrong about somewhere around, being those that leave the
+    /// stack a depth the walk does not arrive at the next operation with. A body with any of these
+    /// is still worth writing where it is read rather than run — it says what the program does
+    /// nearly everywhere — but it is not a body to put in the way of execution.
+    /// </param>
+    /// <param name="Unreached">
+    /// How many operations the walk never arrived at, and which therefore stand in the body as a
+    /// throw rather than as anything the program does. Where the body is read this is an honest
+    /// account of how far the reading got. Where it is run it is the opposite of one: a program
+    /// whose operations were not reached is a program this body does not perform, and putting it in
+    /// the way of execution would quietly replace the work with nothing.
+    /// </param>
+    public sealed record Attempt(
+        CilBody? Body,
+        string? Refused,
+        IReadOnlyList<string> Notes,
+        int Distrusted = 0,
+        int Unreached = 0);
 
     /// <summary>
     /// Builds the body a program stands for, in terms of the module it is to be written into.
@@ -223,7 +241,7 @@ public static class VirtualBody
                 (_guards.Count == 0
                     ? string.Empty
                     : $" {_guards.Count} guarded region(s) became handlers."));
-            return new Attempt(_body, null, _notes);
+            return new Attempt(_body, null, _notes, _typing.Distrusted, dead);
         }
 
         /// <summary>Where a range of operations ends, as the instruction after the last of them.</summary>

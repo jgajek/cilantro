@@ -23,7 +23,7 @@ namespace Cilantro.Core.Recovery;
 /// these keeps all of its reads. The pass also refuses entirely when the module can write fields
 /// reflectively, because no call-graph argument bounds that.
 /// </remarks>
-public sealed class GlobalPredicateFoldingPass : DeobfuscationPass
+public class GlobalPredicateFoldingPass : DeobfuscationPass
 {
     public override string Name => "global-predicate-folding";
     public override IReadOnlyCollection<string> Dependencies => ["global-state-capture"];
@@ -37,6 +37,19 @@ public sealed class GlobalPredicateFoldingPass : DeobfuscationPass
     /// </remarks>
     public override bool GatesEmission => false;
 
+    /// <summary>
+    /// Whether being unable to fold is worth reporting as an unsupported module rather than as a
+    /// run that found nothing more to do.
+    /// </summary>
+    /// <remarks>
+    /// Asked for the first time, being unable to fold is the answer to the question, and a strict
+    /// run is entitled to treat it as a stage that did not fully succeed. Asked again later it is
+    /// not: whatever fold was available has already been taken, and the second asking exists only
+    /// to catch what became possible in between. Finding that nothing did is the ordinary case, and
+    /// calling it a shortfall would withhold a complete result over the absence of a bonus.
+    /// </remarks>
+    protected virtual bool RefusingIsUnsupported => true;
+
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
         ArtifactContext context)
     {
@@ -45,7 +58,12 @@ public sealed class GlobalPredicateFoldingPass : DeobfuscationPass
 
         var safety = FieldWriteSafety.Analyze(context.Module);
         if (safety.Refusal is not null)
-            return (PassStatus.Unsupported, 0, [safety.Refusal, "No read site was modified."]);
+        {
+            return (
+                RefusingIsUnsupported ? PassStatus.Unsupported : PassStatus.Success,
+                0,
+                [safety.Refusal, "No read site was modified."]);
+        }
 
         var instance = state.InstanceFields
             .Where(entry => safety.IsWriteOnceDuringInitialization(entry.Key))
@@ -230,4 +248,40 @@ public sealed class GlobalPredicateFoldingPass : DeobfuscationPass
                 entryPoints.Add(boundary);
         }
     }
+}
+
+/// <summary>
+/// Folds the reads of loader-initialized state that could not be folded until the method
+/// initializing it was written out as IL.
+/// </summary>
+/// <remarks>
+/// The values were never the difficulty. Interpretation proves them on the first run, all hundred
+/// and twenty-six of them on one real payload, because the machine that reads the loader reads the
+/// interpreter too and watches the assignments go by. What it cannot do is say the values will still
+/// be there later, and that is a separate question answered from the module rather than from the
+/// run: a field holds what initialization left in it only if every instruction that writes it lies
+/// in the one-shot initialization window.
+///
+/// Where the loader is virtualized there is no such instruction to find. The writes are performed by
+/// the engine, out of a table, and no <c>stfld</c> anywhere in the module names the field they land
+/// in — so the field is not judged unsafe, it is invisible to the judgement, and its proven value
+/// goes unused. On that payload four fields had writers the early run could see and none of the four
+/// was ever read, which is the whole of what the fold accomplished: nothing.
+///
+/// Lifting the program supplies exactly what was missing. The read-back body assigns those fields
+/// with ordinary instructions that name them, from a method reached only by a type initializer, so
+/// the write-safety proof closes on its own terms without being weakened. Asking for the fold again
+/// afterwards is therefore not a second attempt at the same thing but the first attempt at which
+/// the question is answerable.
+///
+/// It runs before the last look for flattening, since a folded predicate is a constant branch, and
+/// what that reveals is a dispatcher edge going somewhere fixed.
+/// </remarks>
+public sealed class GlobalPredicateRecheckPass : GlobalPredicateFoldingPass
+{
+    public override string Name => "global-predicate-recheck";
+
+    public override IReadOnlyCollection<string> Dependencies => ["rebuilt-body-cleanup"];
+
+    protected override bool RefusingIsUnsupported => false;
 }

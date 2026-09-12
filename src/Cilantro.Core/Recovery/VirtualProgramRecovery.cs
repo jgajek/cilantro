@@ -748,6 +748,22 @@ public static class VirtualProgramRecovery
             operations[opcode] = operation with { Name = "writes the static field it names" };
         }
 
+        // An operation that leaves nothing and whose every operand names an instance field is
+        // writing that field. It is measured taking one value where a write of an instance field
+        // takes two, and that is the trials' doing rather than the operation's: the operand they
+        // hand it names no field, so the engine's handler never reaches past the value for the
+        // object to put it in. Read from the operands the program carries there is nothing else it
+        // can be, an operation that merely discarded a value having no use for a field at all.
+        //
+        // This overrides the reading that had it discarding, which is the same sighting told from
+        // the engine's side: a value leaves the engine's stack and does not come back, and from
+        // there that is all a write of a field outside the engine looks like.
+        foreach (var (opcode, operation) in operations)
+        {
+            if (Writes(program, module, opcode, operation))
+                operations[opcode] = operation with { Name = "writes the field it names" };
+        }
+
         // A jump whose operand is a table of places in this program chooses among them by the value
         // it takes, which is a switch rather than a two-way condition. This overrides the reading
         // that saw its operand reach the engine's position: both come from the same sighting, and a
@@ -775,6 +791,18 @@ public static class VirtualProgramRecovery
         {
             if (Makes(program, module, opcode, operation) is { } made)
                 operations[opcode] = operation with { Name = made };
+        }
+
+        // An operation that leaves one value and whose operand names a constructor is constructing
+        // that type. The trials cannot say so: they hand the operation operands of their own, and
+        // what a token of theirs resolves to decides what the operation leaves, so the type they
+        // watched it leave is theirs and not the program's. Read from the program's own operands it
+        // settles, because a constructor returns void — an operation that merely called one would
+        // leave nothing, and this one leaves something.
+        foreach (var (opcode, operation) in operations)
+        {
+            if (Constructs(program, module, opcode, operation) is { } constructed)
+                operations[opcode] = operation with { Name = constructed };
         }
 
         // An operation that reads an element cannot be measured where wrapping what it read throws
@@ -827,6 +855,183 @@ public static class VirtualProgramRecovery
             string.Equals(Named(module, (int)number.Value), element, StringComparison.Ordinal))
                 ? "makes an array of the type it names"
                 : null;
+    }
+
+    /// <summary>
+    /// The programs of one module, each holding the best reading any of them made of every
+    /// operation it uses.
+    /// </summary>
+    /// <param name="programs">The programs read back from one module, in any order.</param>
+    /// <param name="module">The module they were read from, whose tokens their operands name.</param>
+    /// <param name="gained">How many readings were taken from another program in total.</param>
+    /// <remarks>
+    /// The engine's opcode numbering is assigned once per build, so an operation means the same
+    /// thing in every program of the same file. A reading is therefore transferable, and where one
+    /// program's trials could not make an operation run while another's could, the one that could
+    /// answers for both.
+    ///
+    /// Two things are kept from the program being given a reading rather than taken from the one
+    /// that made it, both being about the program and not the operation: what the surrounding code
+    /// forces the operation to do to the stack, and how long the table it was seen fetching from
+    /// was. A reading whose whole content is that table's length is not shared at all — the length
+    /// is what tells an argument from a local, and two programs are two methods with frames of
+    /// different sizes, so carrying such a reading across would name the wrong table.
+    ///
+    /// What is offered is each program's settled reading rather than the one its trials came back
+    /// with, because several of the readings worth sharing are only reached by settling: an
+    /// operation is read as making an array, or as calling what its operand names, from the
+    /// operands the program carries rather than from watching it run. Those readings are about the
+    /// operation and travel like the rest — it is only the establishing of them that needed a
+    /// program whose operands would show it.
+    /// </remarks>
+    public static IReadOnlyList<VirtualProgram> Shared(
+        IReadOnlyList<VirtualProgram> programs,
+        ModuleDef module,
+        out int gained)
+    {
+        ArgumentNullException.ThrowIfNull(programs);
+        ArgumentNullException.ThrowIfNull(module);
+        gained = 0;
+        if (programs.Count < 2)
+            return programs;
+
+        var best = new Dictionary<int, VirtualOperation>();
+        foreach (var operation in programs.SelectMany(
+            program => Settled(program, module).Values))
+        {
+            if (Frameless(operation) &&
+                (!best.TryGetValue(operation.Opcode, out var known) ||
+                    Strength(operation) > Strength(known)))
+            {
+                best[operation.Opcode] = operation;
+            }
+        }
+
+        var shared = new List<VirtualProgram>(programs.Count);
+        foreach (var program in programs)
+        {
+            var operations = program.Operations.ToDictionary(entry => entry.Key, entry => entry.Value);
+            var taken = 0;
+            foreach (var opcode in program.Instructions.Select(one => one.Opcode).Distinct())
+            {
+                if (!best.TryGetValue(opcode, out var answer))
+                    continue;
+                var held = operations.GetValueOrDefault(opcode);
+                if (held is not null && Strength(held) >= Strength(answer))
+                    continue;
+                operations[opcode] = answer with { Net = held?.Net, Holding = held?.Holding };
+                taken++;
+            }
+            gained += taken;
+            shared.Add(taken == 0 ? program : program with { Operations = operations });
+        }
+        return shared;
+    }
+
+    /// <summary>How much a reading of an operation says, for choosing between two of them.</summary>
+    /// <remarks>
+    /// A name that says no more than what kind of value was left ranks between a real name and none
+    /// at all, which is what it is worth: the listing can print it and no body can be written from
+    /// it. An unmeasured reading that names the operation still outranks a measured one that does
+    /// not, the name being the part anything downstream can use.
+    /// </remarks>
+    private static int Strength(VirtualOperation operation) => operation.Name switch
+    {
+        null => operation.Measured ? 1 : 0,
+        var name when name == operation.Leaving => 2,
+        _ => 3
+    };
+
+    /// <summary>
+    /// Whether a reading is about the operation rather than about the frame of the program it was
+    /// read from.
+    /// </summary>
+    private static bool Frameless(VirtualOperation operation) => operation.Name is not (
+        "loads what its operand indexes" or "stores where its operand indexes" or
+        "loads the argument it indexes" or "stores into the argument it indexes");
+
+    /// <summary>
+    /// Whether an operation writes the instance field its operand names, read from the operands the
+    /// program carries.
+    /// </summary>
+    /// <remarks>
+    /// The only reading this displaces is the one that had the operation discarding what it took,
+    /// and nothing is lost by displacing it: a write is a discard as the engine sees it, so the two
+    /// are the same sighting and the field is the part of it the engine could not see.
+    /// </remarks>
+    private static bool Writes(
+        VirtualProgram program,
+        ModuleDef module,
+        int opcode,
+        VirtualOperation operation)
+    {
+        if (operation is { Measured: true, Pushes: not 0 } ||
+            (operation.Identified && operation.Name != "discards what it takes"))
+        {
+            return false;
+        }
+        var carried = program.Instructions.Where(one => one.Opcode == opcode).ToList();
+        return carried.Count > 0 && carried.TrueForAll(one =>
+            one.Operand is VirtualOperand.Number number &&
+            number.Value is >= int.MinValue and <= int.MaxValue &&
+            Field(module, (int)number.Value) is { IsStatic: false });
+    }
+
+    /// <summary>
+    /// Whether an operation constructs the type whose constructor its operand names, read from the
+    /// operands the program carries.
+    /// </summary>
+    /// <remarks>
+    /// One value out is all this has to go on for the stack, and on its own it says nothing. What
+    /// settles it is what the operand names together with the count: a constructor answers with
+    /// nothing, so calling one leaves the stack shorter and no value behind, and an operation that
+    /// names a constructor and yet leaves a value is making the object rather than calling the
+    /// constructor on one that exists. The arity is asked to agree as well, the values taken being
+    /// the arguments the constructor declares, which a token naming a constructor by coincidence
+    /// would have no reason to match.
+    /// </remarks>
+    private static string? Constructs(
+        VirtualProgram program,
+        ModuleDef module,
+        int opcode,
+        VirtualOperation operation)
+    {
+        // A name that says no more than what kind of value was left is the last resort taken when
+        // nothing else read the operation, and is what this is here to better. Treating it as a
+        // name would leave the operation described by the type the trials' own operand gave it.
+        if (operation is { Measured: true, Pushes: not 1 } ||
+            (operation.Identified && operation.Name != operation.Leaving))
+        {
+            return null;
+        }
+        var carried = program.Instructions.Where(one => one.Opcode == opcode).ToList();
+        return carried.Count > 0 && carried.TrueForAll(one =>
+            one.Operand is VirtualOperand.Number number &&
+            number.Value is >= int.MinValue and <= int.MaxValue &&
+            Constructing(module, (int)number.Value) is { } arguments &&
+            (operation.Measured ? arguments == operation.Pops : operation.Net == 1 - arguments))
+                ? "makes a new object with the constructor it names"
+                : null;
+    }
+
+    /// <summary>
+    /// How many arguments the constructor a token names takes, or <see langword="null"/> where it
+    /// names anything else.
+    /// </summary>
+    private static int? Constructing(ModuleDef module, int token)
+    {
+        try
+        {
+            return module.ResolveToken(token) is IMethod method &&
+                method.Name == ".ctor" &&
+                method.MethodSig is { HasThis: true } signature
+                    ? signature.Params.Count
+                    : null;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The full name of the type a token names, where it names one.</summary>
