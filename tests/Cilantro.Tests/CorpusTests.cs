@@ -122,6 +122,67 @@ public sealed class CorpusTests
         }
     }
 
+    /// <summary>
+    /// The late dispatcher rewrite has to leave behind no edge its own analyzer could still prove.
+    /// </summary>
+    /// <remarks>
+    /// Redirecting an edge is itself one of the things that makes a dispatcher recognizable, the
+    /// shape looked for being a block that holds nothing but the state read and the switch: a
+    /// redirect erases the arithmetic behind one assignment and the fold behind it deletes what
+    /// nothing reaches any more, so blocks end up shorter than they were and one that stood a
+    /// single instruction too long to match now matches. Asked once, the rewrite therefore stops
+    /// short of what it can do — on this module it stopped with thirty-two provable edges standing,
+    /// which was thirteen method bodies still reading as a switch over a state variable, including
+    /// constructors whose whole content was four field assignments and two conditions.
+    ///
+    /// So the check is not a count but the absence of a remainder: whatever the analyzer can prove,
+    /// the run it is part of has to have already taken.
+    /// </remarks>
+    [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
+    public void TheLateDispatcherRewriteLeavesNoEdgeItCouldStillProve()
+    {
+        var sample = Checkout.Sample("Reason.PAC.dll");
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.DispatcherRoundTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.dll");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            Assert.True(result.Success);
+            var recheck = Assert.Single(
+                result.Report.Passes,
+                pass => pass.Pass == "dispatcher-recheck");
+            Assert.Equal(PassStatus.Success, recheck.Status);
+            Assert.Contains(
+                recheck.Diagnostics,
+                said => said.Contains("Asked again until a round found nothing", StringComparison.Ordinal));
+
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(outputPath);
+            var analyzer = new DispatcherAnalyzer();
+            var left = cleaned.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Where(method => method.HasBody)
+                .Where(method =>
+                    analyzer.Analyze(method).IsQualified || analyzer.AnalyzePartial(method).IsQualified)
+                .Select(method => method.FullName)
+                .ToArray();
+
+            Assert.True(
+                left.Length == 0,
+                $"{left.Length} method(s) still hold a provable dispatcher edge: " +
+                string.Join(", ", left.Take(5)));
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
     [SampleFact]
     [Trait(Cost.Key, Cost.High)]
     public void ReactorSevenNecroBitFrameworkBodiesAreStaticallyRecovered()

@@ -386,7 +386,7 @@ then lose their interpreter:
 
 | | before | after |
 |---|---|---|
-| `Qbjuef.exe` | 43,389 lines, 5,383 jumps | **6,224 lines, 453 jumps** |
+| `Qbjuef.exe` | 43,389 lines, 5,383 jumps | **6,184 lines, 449 jumps** |
 | `reactor7-probe-net48.full` | 37,730 lines, 4,748 jumps | **1,439 lines, 94 jumps** |
 
 The largest surviving file of the first goes from 1,643 lines and 213 jumps to

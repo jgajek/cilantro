@@ -166,6 +166,18 @@ taking. The dispatcher stays in place for whatever still needs it, and the
 methods that end up with jumps left over are named under `--verbose`, with the
 reason each one was left.
 
+The count can exceed what one pass over the module could find, because the late
+run repeats until a round comes back empty. Making an edge direct is itself one
+of the things that makes the next dispatcher recognizable: the shape being
+looked for is a block holding nothing but the state read and the switch, and
+every redirect erases the arithmetic behind an assignment while the fold behind
+it deletes what nothing reaches any more. Both leave blocks shorter, so a block
+that stood one instruction too long to match now matches. On three real
+libraries the rounds after the first found a third of all the edges between
+them, and what they reached were mostly the entry edges of otherwise-clean
+methods — the one jump whose survival keeps a constructor reading as a switch
+over a state variable instead of as four assignments and two conditions.
+
 **Junk instructions removed.** Instructions proven unreachable once the fake
 conditions were folded away. Large numbers are normal.
 

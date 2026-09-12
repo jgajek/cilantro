@@ -91,6 +91,28 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
     /// </remarks>
     protected virtual bool CompletesControlFlow => false;
 
+    /// <summary>
+    /// How many times to look for dispatchers before stopping, each round starting from whatever
+    /// the one before it left.
+    /// </summary>
+    /// <remarks>
+    /// A single round does not find everything there is to find, because redirecting an edge is
+    /// itself one of the things that makes a dispatcher recognizable. The shape looked for is a
+    /// block holding nothing but the state read and the switch, entered from blocks that do nothing
+    /// after assigning the state but jump to it. Every redirect erases the arithmetic behind an
+    /// assignment, and the fold that follows deletes what nothing reaches any more; both leave
+    /// blocks shorter than they were, so a block that stood one instruction too long to match now
+    /// matches.
+    ///
+    /// This is not a small remainder. On three real modules the run that reported itself finished
+    /// left thirty-two, twenty-one and twenty-six edges standing that the same analyzer proves on
+    /// the very next pass over the same IL, with nothing having changed in between but what the run
+    /// itself did. Those are the entry edges of methods whose dispatchers would otherwise survive
+    /// whole, which is the difference between a method that reads as code and one that reads as a
+    /// switch over a state variable.
+    /// </remarks>
+    protected virtual int Rounds => 1;
+
     public DispatcherMethodRewriteResult Rewrite(MethodDef method)
     {
         var analysis = analyzer.Analyze(method);
@@ -157,6 +179,47 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
     }
 
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
+        ArtifactContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var said = new List<string>();
+        var total = 0;
+        var later = 0;
+        var rounds = 0;
+        for (var round = 0; round < Math.Max(1, Rounds); round++)
+        {
+            var (status, changes, diagnostics) = ExecuteRound(context);
+            if (status == PassStatus.Failed)
+            {
+                said.AddRange(diagnostics);
+                return (status, total, said);
+            }
+
+            // The first round's account is the one worth keeping whole. The rounds after it repeat
+            // its shape over a remainder, and reporting each of them in full would bury it.
+            if (round == 0)
+                said.AddRange(diagnostics);
+            else
+                later += changes;
+
+            total += changes;
+            rounds = round + 1;
+            if (changes == 0)
+                break;
+        }
+
+        if (later > 0)
+        {
+            said.Add(
+                $"Asked again until a round found nothing: {later} further edge(s) over " +
+                $"{rounds - 1} more round(s), each one made provable by the redirects and folds of " +
+                "the round before it.");
+        }
+
+        return (PassStatus.Success, total, said);
+    }
+
+    private (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) ExecuteRound(
         ArtifactContext context)
     {
         var methods = context.Module.GetTypes()
@@ -318,8 +381,12 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
 
         if (methods == 0)
             return;
-        context.SetFact("cfg.recheckConstantBranchesFolded", folded);
-        context.SetFact("cfg.recheckInstructionsRemoved", removed);
+        // Added to, not assigned: this runs once per round, and each round folds what the round
+        // before it made foldable.
+        context.SetFact(
+            "cfg.recheckConstantBranchesFolded", Add(context, "cfg.recheckConstantBranchesFolded", folded));
+        context.SetFact(
+            "cfg.recheckInstructionsRemoved", Add(context, "cfg.recheckInstructionsRemoved", removed));
         diagnostics.Add(
             $"Folded {folded} branch(es) the redirects made constant and removed {removed} " +
             $"instruction(s) nothing reaches, across {methods} of those methods.");
@@ -361,6 +428,7 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
         var skip = qualified.Select(item => item.Method).ToHashSet();
         var declines = new Dictionary<DispatcherEdgeDecline, int>();
         var seen = new List<uint>();
+        var changed = new List<uint>();
         var rewritten = 0;
         var residual = 0;
         var whole = 0;
@@ -379,6 +447,7 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
             if (!result.IsQualified)
                 continue;
             rewritten++;
+            changed.Add(method.MDToken.Raw);
             residual += result.Plan!.ResidualEdges;
             if (result.Plan.ResidualEdges == 0)
                 whole++;
@@ -392,7 +461,12 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
         diagnostics.Add(
             $"Edge by edge: made {resolved} of {resolved + residual} dispatcher jump(s) direct " +
             $"across {rewritten} method(s) no whole-method proof closed, {whole} of them completely.");
-        context.SetFact("cfg.partialDispatcherMethods", rewritten);
+        // Counted by token, because the rewrite is asked in rounds and a method a later round
+        // reaches again is one method, not two. The residual is the last round's on purpose: it is
+        // what is still standing, not a total of what was standing at each attempt.
+        context.SetFact(
+            "cfg.partialDispatcherMethods",
+            Union(context, "cfg.partialDispatcherMethodTokens", changed).Count);
         context.SetFact("cfg.partialDispatcherResidualEdges", residual);
         foreach (var (decline, count) in declines.OrderByDescending(entry => entry.Value))
             diagnostics.Add($"{count} jump(s) left going through a dispatcher: {Explain(decline)}");
@@ -718,4 +792,17 @@ public sealed class DispatcherRecheckPass : DispatcherDeobfuscationPass
     public override IReadOnlyCollection<string> Dependencies => ["rebuilt-body-cleanup"];
 
     protected override bool CompletesControlFlow => true;
+
+    /// <summary>
+    /// Asked until a round finds nothing, which on real modules is three or four rounds. The bound
+    /// is a stop, not an expectation: rounds are cheap once there is nothing left to prove, the
+    /// analysis being the same walk either way, and the loop leaves as soon as one comes back
+    /// empty.
+    /// </summary>
+    /// <remarks>
+    /// Only the late run iterates. The early one is followed by the whole-module control-flow
+    /// passes and then by this, so anything its own redirects make newly provable is picked up
+    /// here anyway, and rounds there would cost a walk of every method to reach the same place.
+    /// </remarks>
+    protected override int Rounds => 8;
 }
