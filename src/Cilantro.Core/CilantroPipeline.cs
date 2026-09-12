@@ -2476,9 +2476,12 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         context.TryGetFact<int>("strings.replacedSites", out var restoredBefore);
         context.SetFact("strings.callSites", countedBefore + callSiteCount);
         context.SetFact("strings.replacedSites", restoredBefore + replacements.Count);
-        // Every call the resolver and its aliases existed to serve is now an ldstr, which leaves
-        // the decoding machinery behind them with nothing to decode either.
-        RecoveryOrphans.DeclareSubtree(context, aliases);
+        // Every call the resolver and its aliases existed to serve is now an ldstr. The getter
+        // is not the decoding machinery: the table it reads is filled by a sibling initializer,
+        // and the cipher and reader behind both live on the same type. Naming only the methods
+        // that lost their callers left that type standing, unattributed, which is the bulk of
+        // what a strings-only build then still asked the reader to page through.
+        RecoveryOrphans.DeclareOwningTypes(context, aliases);
         return (PassStatus.Success, replacements.Count,
             [$"Atomically restored all {replacements.Count} proven string sites."]);
     }

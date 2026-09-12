@@ -18,7 +18,7 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class PipelineTests
 {
-    public static TheoryData<string, string, string, int, string, int> Samples => new()
+    public static TheoryData<string, string, string, int, string, int, int, int, int> Samples => new()
     {
         {
             "embedded_dotnet_Mlfhntkcvb.exe",
@@ -26,7 +26,10 @@ public sealed class PipelineTests
             "7fa1a9d74dad14fd686ad7b2e794111d1093de3fefe97c51d1908e44586d04de",
             485376,
             "81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a",
-            858112
+            858112,
+            111,
+            951,
+            263
         },
         {
             "embedded_dotnet_Qafcakg.exe",
@@ -34,7 +37,10 @@ public sealed class PipelineTests
             "1db4e9c40d83bb790b89963888fd9a112b1d2467f7194dc55b6c35e14e443429",
             86528,
             "e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2",
-            154112
+            154112,
+            112,
+            955,
+            262
         }
     };
 
@@ -47,7 +53,10 @@ public sealed class PipelineTests
         string expectedPayloadHash,
         int expectedPayloadLength,
         string expectedFinalHash,
-        int expectedFinalLength)
+        int expectedFinalLength,
+        int expectedTypeCount,
+        int expectedMethodCount,
+        int expectedRemovedTypes)
     {
         var sample = FindSample(filename);
         var reportDirectory = CreateTemporaryDirectory();
@@ -74,12 +83,12 @@ public sealed class PipelineTests
             // a high-entropy blob.
             Assert.Equal(6, result.Report.ResourceCount);
             // Down from the 374 types and 2126 methods the input carries: what remains is the
-            // program plus whatever recovery could not attribute to the protector. The methods are
-            // sixteen fewer than when the bundle went unread, because reattaching what it held is what
-            // makes the resolve hook moot, and an elided subscription takes the machinery behind it
-            // out of reach of anything that still runs.
-            Assert.Equal(115, result.Report.TypeCount);
-            Assert.Equal(1039, result.Report.MethodCount);
+            // program plus whatever recovery could not attribute to the protector. Replacing every
+            // string site now names the decryptor's own type, not just the getter, so a few more
+            // types go than when only the getter was recorded. The two fixtures no longer agree
+            // exactly, because each build's table initializer reaches a slightly different set.
+            Assert.Equal(expectedTypeCount, result.Report.TypeCount);
+            Assert.Equal(expectedMethodCount, result.Report.MethodCount);
             Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
             // Every flattened method but one is straightened, and the jumps that used to go through
             // a dispatcher now go where the dispatcher would have sent them.
@@ -136,7 +145,7 @@ public sealed class PipelineTests
                 .Where(name => !survivors.Contains(name))
                 .ToArray();
             Assert.Equal(original.GetTypes().Count() - cleaned.GetTypes().Count(), removed.Length);
-            Assert.Equal(259, removed.Length);
+            Assert.Equal(expectedRemovedTypes, removed.Length);
         }
         finally
         {

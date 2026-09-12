@@ -548,6 +548,15 @@ only when recovery can account for why it has no use left, rather than deleting
 whatever looks like it belongs to the protector. Leftovers are counted in the
 `runtime-cleanup` diagnostics under `--verbose`.
 
+Replacing every protected-string site is one of those accounts. The getter that
+was called is not the decryptor: the table it reads is filled by a sibling
+initializer, and the cipher and reader behind both live on the same type.
+Naming only the methods that lost their callers used to leave that type
+standing, which on a strings-only build was most of the leftover output. The
+type is named now, so it goes with the sites. A hook the program still calls —
+the control-flow initializer `Main` still reaches — is a different leftover and
+stays until something accounts for it.
+
 Erring the other way costs more than a leftover would. Wearing an attribute is a
 use of its type that no signature and no instruction mentions, and the scan
 deciding what to delete has to be told about it separately for each kind of

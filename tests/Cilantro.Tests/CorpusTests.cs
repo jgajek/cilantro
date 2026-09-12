@@ -256,6 +256,63 @@ public sealed class CorpusTests
         }
     }
 
+    /// <summary>
+    /// Replacing every protected-string site has to account for the decryptor, not just the
+    /// getter that was called.
+    /// </summary>
+    /// <remarks>
+    /// The getter is a thin method on a type that also holds the initializer that filled the
+    /// table and the cipher that both use. Naming only the methods that lost their callers left
+    /// the rest of that type — and everything it calls — unattributed, so cleanup stripped the
+    /// getter and kept the type. On this sample that was most of the output: every string site
+    /// had already been replaced, and the decryptor still accounted for hundreds of lines and
+    /// the majority of the remaining jumps.
+    ///
+    /// The check is that a type of that size does not survive. A hook the program still calls
+    /// is a different leftover and is allowed to stay.
+    /// </remarks>
+    [SampleFact]
+    [Trait(Cost.Key, Cost.High)]
+    public void ReplacedStringSitesAccountForTheDecryptor()
+    {
+        var sample = Checkout.Sample("reactor7-probe-net48.strings.exe");
+        var outputDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"Cilantro.StringRuntimeTests.{Guid.NewGuid():N}");
+        var outputPath = Path.Combine(outputDirectory, "cleaned.exe");
+        try
+        {
+            var result = new CilantroPipeline().Run(sample, new PipelineOptions(
+                OutputPath: outputPath,
+                ReportDirectory: outputDirectory));
+
+            Assert.True(result.Success);
+            Assert.Equal(result.Report.Recovery.StringCallSites, result.Report.Recovery.ReplacedStringSites);
+            Assert.True(result.Report.Recovery.ReplacedStringSites > 0);
+
+            var cleanup = Assert.Single(result.Report.Passes, pass => pass.Pass == "runtime-cleanup");
+            Assert.Equal(PassStatus.Success, cleanup.Status);
+            Assert.Contains(
+                cleanup.Diagnostics,
+                said => said.StartsWith("Removed ", StringComparison.Ordinal) &&
+                    said.Contains("unreachable type", StringComparison.Ordinal));
+
+            using var cleaned = dnlib.DotNet.ModuleDefMD.Load(outputPath);
+            var bulky = cleaned.GetTypes()
+                .Where(type => type.DeclaringType is null && type.Methods.Count >= 20)
+                .Select(type => $"{type.FullName} ({type.Methods.Count} methods)")
+                .ToArray();
+            Assert.True(
+                bulky.Length == 0,
+                "A decryptor-sized type survived after every string site was replaced: " +
+                string.Join(", ", bulky));
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, true);
+        }
+    }
+
     [SampleFact]
     [Trait(Cost.Key, Cost.High)]
     public void ReactorSevenNecroBitFrameworkBodiesAreStaticallyRecovered()
