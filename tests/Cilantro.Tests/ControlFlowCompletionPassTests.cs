@@ -1,6 +1,7 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Cilantro.Core;
+using Cilantro.Core.Analysis;
 using Cilantro.Core.Passes;
 
 namespace Cilantro.Tests;
@@ -234,6 +235,65 @@ public sealed class ControlFlowCompletionPassTests
         Assert.Contains(handler.HandlerEnd, method.Body.Instructions);
         Assert.DoesNotContain(method.Body.Instructions,
             instruction => instruction.IsLdcI4() && instruction.GetLdcI4Value() == 9);
+    }
+
+    /// <summary>
+    /// A switch reached only by a jump from below it still folds, and the block it leaves behind
+    /// is one a forward scan can name the stack at.
+    /// </summary>
+    /// <remarks>
+    /// Walking back through the layout finds the push that feeds a switch only while the two are
+    /// laid out in the order they run in. A dispatcher inside a handler is not: the block that
+    /// assigns the state sits after the switch that reads it, so the state arrives by a jump
+    /// backwards and the walk used to stop at the start of the block and fold nothing.
+    ///
+    /// What was left is worse than an unfolded switch. The block holding the switch is entered
+    /// only by that backward jump, and the jump arrives with the state still on the stack, which
+    /// ECMA-335 III.1.7.5 forbids: a block nothing falls into and only a backward branch reaches
+    /// has to be entered with an empty stack, so that one forward pass can say what the stack
+    /// holds everywhere. Nothing in the tool was asking, and the bodies it wrote were the
+    /// unverifiable kind — nine findings across the three corpus libraries, in methods as ordinary
+    /// as <c>Crypto::AesCbcEncrypt</c>, where the unprotected originals have none. Folding the
+    /// switch takes the state off the stack and the constraint is met by consequence.
+    /// </remarks>
+    [Fact]
+    public void FoldsASwitchWhoseStateArrivesByAJumpFromBelowIt()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            var method = NewVoidMethod(module);
+            var instructions = method.Body.Instructions;
+            var end = Instruction.Create(OpCodes.Ret);
+            var dispatch = Instruction.Create(OpCodes.Switch, new[] { end });
+            var body = Instruction.Create(OpCodes.Nop);
+
+            // The switch is jumped over, so nothing falls into it and the only way in is the jump
+            // from below, which arrives holding the state.
+            instructions.Add(Instruction.Create(OpCodes.Br, body));
+            instructions.Add(dispatch);
+            instructions.Add(Instruction.Create(OpCodes.Br, end));
+            instructions.Add(body);
+            instructions.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+            instructions.Add(Instruction.Create(OpCodes.Br, dispatch));
+            instructions.Add(end);
+            host.Methods.Add(method);
+        });
+
+        var result = new ControlFlowCompletionPass().Run(context);
+        var method = SingleBodyMethod(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.DoesNotContain(
+            method.Body.Instructions,
+            instruction => instruction.OpCode == OpCodes.Switch);
+
+        // Nothing is left pushing the state the switch used to read, which is what the backward
+        // branch would otherwise arrive holding.
+        Assert.DoesNotContain(method.Body.Instructions, instruction => instruction.IsLdcI4());
+        Assert.True(
+            EvaluationStackAnalyzer.Analyze(method) is { Valid: true },
+            string.Join("; ", EvaluationStackAnalyzer.Analyze(method).Diagnostics));
     }
 
     private static MethodDefUser NewVoidMethod(ModuleDef module) =>

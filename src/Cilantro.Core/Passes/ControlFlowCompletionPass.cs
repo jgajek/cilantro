@@ -362,6 +362,13 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// The jump is followed because a jump whose target is the very next thing to be walked is not
     /// a choice about anything; what matters is only that nothing else arrives there, which is
     /// checked for every instruction stepped over.
+    ///
+    /// Walking backwards through the layout is not the same as walking backwards through the
+    /// program, and where the two part company the layout is the wrong one to follow. A block
+    /// nothing falls into is entered by jumping to it, and the jump can sit anywhere — including
+    /// after the block, which is where the state assignment of a dispatcher inside a handler ends
+    /// up. So where exactly one jump arrives and it is unconditional, the walk carries on from
+    /// wherever that jump is, the stack it leaves being the stack the block begins with.
     /// </remarks>
     private static Instruction? Feeding(
         IList<Instruction> instructions,
@@ -371,20 +378,29 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         // The consumer and everything stepped over on the way back to the push.
         var path = new List<Instruction> { instructions[index] };
         var at = index;
-        while (at > 0)
+        for (var hops = 0; ; hops++)
         {
-            var previous = instructions[at - 1];
-            var padding = previous.OpCode.Code == Code.Nop;
-            var straight = previous.OpCode.Code is Code.Br or Code.Br_S &&
-                previous.Operand is Instruction jumped && jumped == instructions[at];
-            if (!padding && !straight)
-                break;
-            path.Add(previous);
-            at--;
-        }
+            while (at > 0)
+            {
+                var previous = instructions[at - 1];
+                var padding = previous.OpCode.Code == Code.Nop;
+                var straight = previous.OpCode.Code is Code.Br or Code.Br_S &&
+                    previous.Operand is Instruction jumped && jumped == instructions[at];
+                if (!padding && !straight)
+                    break;
+                path.Add(previous);
+                at--;
+            }
 
-        if (at == 0)
-            return null;
+            if (at == 0)
+                return null;
+            if (Falls(instructions[at - 1].OpCode))
+                break;
+            if (hops == Hops || Arriving(instructions, entered, instructions[at]) is not { } jump)
+                return null;
+            path.Add(jump);
+            at = instructions.IndexOf(jump);
+        }
 
         // Nothing from outside may arrive anywhere along it, an exception boundary included: a
         // second way in is a second thing the stack could be holding.
@@ -401,6 +417,45 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         }
 
         return instructions[at - 1];
+    }
+
+    /// <summary>How many jumps the walk will follow before giving up on reaching a push.</summary>
+    private const int Hops = 4;
+
+    /// <summary>Whether the path can run from an instruction into the one laid out after it.</summary>
+    private static bool Falls(OpCode opcode) => opcode.FlowControl is not (
+        FlowControl.Branch or FlowControl.Return or FlowControl.Throw);
+
+    /// <summary>
+    /// The one jump that arrives somewhere, where there is one and it is unconditional.
+    /// </summary>
+    /// <remarks>
+    /// Anything else and the block has more than one stack it can begin with, or begins with one
+    /// this cannot name: a conditional jump arrives having popped what it tested, and a switch
+    /// case arrives having popped the number that chose it, neither of which is what the
+    /// instruction before the jump left behind.
+    /// </remarks>
+    private static Instruction? Arriving(
+        IList<Instruction> instructions,
+        Dictionary<Instruction, int> entered,
+        Instruction target)
+    {
+        if (entered.GetValueOrDefault(target) != 1)
+            return null;
+        Instruction? only = null;
+        foreach (var instruction in instructions)
+        {
+            var names = instruction.Operand is Instruction one
+                ? one == target
+                : instruction.Operand is IList<Instruction> many && many.Contains(target);
+            if (!names)
+                continue;
+            if (only is not null)
+                return null;
+            only = instruction;
+        }
+
+        return only?.OpCode.Code is Code.Br or Code.Br_S ? only : null;
     }
 
     /// <summary>

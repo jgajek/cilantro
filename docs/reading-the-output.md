@@ -200,6 +200,24 @@ of locals and arguments, and the arithmetic over them. A call, a field read — 
 static one can run a type initializer — or a load through a pointer stops the
 walk, and then nothing is removed at all.
 
+Finding the constant that feeds a switch means walking back from the switch to
+whatever pushed it, and for a long time that walk followed the order the
+instructions are laid out in. That is the same order they run in often enough to
+look right. Inside a handler it is not: Reactor puts the block that assigns the
+dispatcher's state after the switch that reads it, so the state arrives by a
+jump backwards, and the walk stopped at the top of the block having found
+nothing. Ten switches stood in one corpus library on that account, and now none
+does.
+
+They were worse than unfolded. A block nothing falls into, reached only by a
+backward branch, has to be entered with an empty stack — ECMA-335 III.1.7.5, so
+that one forward pass through a method can say what the stack holds everywhere —
+and these were entered holding the state. ILVerify says so; nothing in this tool
+was asking, which is the more interesting half of the story and is taken up in
+`devirtualization.md`. The walk now follows the jump instead of the layout, on
+the conditions that make a jump as good as falling in: exactly one arrives,
+it is unconditional, and nothing reaches anything stepped over on the way.
+
 **Encrypted resources restored.** The application's own resources, decrypted and
 put back where the program expects them.
 

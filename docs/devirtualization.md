@@ -428,13 +428,33 @@ deleting an interpreter reaches two. None of the thirty-three fails the tool's
 own verification, and none is left holding a branch on a literal.
 
 That verification is the reload-and-shape check described above, and it should
-not be read as the stronger claim. The rebuilt bodies are not IL-verifiable and
-are not written to be: holding every value as an object means calling an
-instance method on one without a cast, which is 28 `StackUnexpected` findings on
-the reactor7 probe and the deliberate trade for a body a reader can follow.
-What that stage cannot be allowed to hide is a body whose stack contradicts
-itself, which is a defect rather than a trade, and which nothing in the tool was
-asking about until the contradiction started throwing instead.
+not be read as the stronger claim. Asking ILVerify the stronger question is
+worth the trouble, and the way to ask it is differentially: verify the protected
+input and the cleaned output a method at a time — a method at a time because
+ILVerify's own importer throws on some of what Reactor emits — and then ask not
+how many findings the output has but which methods the run newly broke. The
+absolute count answers the wrong question, because Reactor's own IL is not
+verifiable either; on these three libraries the protected inputs carry 202, 205
+and 186 findings, and the runs clear 154, 160 and 142 methods of them.
+
+Against that baseline the outputs newly broke six methods, one, and fifteen, all
+of them one error: `BackwardBranch`, a block nothing falls into that only a
+backward branch reaches, entered with something still on the stack, which
+ECMA-335 III.1.7.5 forbids so that a single forward pass can say what the stack
+holds everywhere. The methods were ordinary — `Crypto::AesCbcEncrypt`,
+`AbstractPacLogger::TrySend`, `FilePacLogger::StopFlushTimer` — and the
+unprotected original of that library verifies clean, so this was the tool's own
+doing and not something inherited. It was also the tool's own doing to leave a
+literal switch standing: the two were one defect, described where the fold is.
+All three libraries now verify with nothing at all, and the newly-broken count
+is zero.
+
+Two kinds of finding remain on the virtualized probes, and only one is a trade.
+The rebuilt bodies hold every value as an object, so they call instance methods
+on one without a cast, and `StackUnexpected` is what that costs; it buys a body
+a reader can follow and it is not going away. A residue of `BackwardBranch`
+survives there too, in bodies reached through the NecroBit layer rather than
+these libraries' plain flattening, and that one is debt rather than a trade.
 
 ### 2. Get the program out — by running the protector's own decoder
 
