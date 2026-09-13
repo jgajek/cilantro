@@ -148,6 +148,7 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
                 0,
                 ["Pre-rewrite stack analysis is not valid; method was preserved."]);
 
+        var wasUnnameable = ForwardScan.Unnameable(method);
         using var transaction = transactions.Begin(method);
         try
         {
@@ -161,6 +162,14 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
                     DispatcherQualification.Ambiguous,
                     0,
                     ["Rewritten stack analysis failed; method was rolled back."]);
+            }
+            if (ForwardScan.Unnameable(method) > wasUnnameable)
+            {
+                transaction.Rollback();
+                return new DispatcherMethodRewriteResult(
+                    DispatcherQualification.Ambiguous,
+                    0,
+                    [Stranded]);
             }
             transaction.Commit();
             return new DispatcherMethodRewriteResult(
@@ -249,6 +258,7 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
 
         var active = new List<(MethodDef Method, IReadOnlyList<DispatcherEdgeRedirect> Edges,
             IDispatcherBodyTransaction Transaction)>();
+        var stranded = new List<IDispatcherBodyTransaction>();
 
         try
         {
@@ -261,6 +271,7 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
                     continue;
                 }
 
+                var wasUnnameable = ForwardScan.Unnameable(item.Method);
                 var transaction = transactions.Begin(item.Method);
                 active.Add((item.Method, item.Edges, transaction));
                 Apply(item.Method, item.Edges, item.Relocations, transaction);
@@ -268,6 +279,16 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
                 if (!EvaluationStackAnalyzer.Analyze(item.Method).Valid)
                     throw new InvalidOperationException(
                         $"{item.Method.FullName}: post-rewrite stack analysis failed.");
+
+                // Declining one method, rather than failing the round: the other methods planned
+                // beside it are unaffected by what this one's dispatcher is entered holding.
+                if (ForwardScan.Unnameable(item.Method) > wasUnnameable)
+                {
+                    transaction.Rollback();
+                    active.RemoveAt(active.Count - 1);
+                    stranded.Add(transaction);
+                    diagnostics.Add($"{item.Method.FullName}: {Stranded}");
+                }
             }
 
             var verification = AssemblyVerifier.Verify(context.Module);
@@ -299,6 +320,8 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
         {
             foreach (var item in active)
                 item.Transaction.Dispose();
+            foreach (var transaction in stranded)
+                transaction.Dispose();
         }
 
         var rewritten = active.Select(item => item.Method).ToHashSet();
@@ -604,6 +627,21 @@ public class DispatcherDeobfuscationPass : DeobfuscationPass
         context.SetFact("cfg.confuserExDispatcherResidualEdges", residual);
         return (planned, residual, seen);
     }
+
+    /// <summary>
+    /// Why a method whose edges all check out is still left as it was.
+    /// </summary>
+    /// <remarks>
+    /// Redirecting an edge takes away a way into the dispatcher, and the one it takes away is the
+    /// one above it. Where the edges left behind are the ones that hand the state over on the
+    /// evaluation stack, the dispatcher is afterwards reached only from below with a value pushed,
+    /// which no single forward pass through the instructions can account for (ECMA-335 III.1.7.5).
+    /// The rewrite is correct instruction by instruction and the paths still agree on every depth;
+    /// what it loses is the fall-in that told a verifier what the depth was.
+    /// </remarks>
+    private const string Stranded =
+        "redirecting its edges would leave the dispatcher reached only from below it with the " +
+        "state still on the stack, which a single forward scan cannot account for; preserved.";
 
     private static string Explain(ConfuserExEdgeDecline decline) => decline switch
     {

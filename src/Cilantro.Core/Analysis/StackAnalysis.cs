@@ -6,7 +6,20 @@ namespace Cilantro.Core.Analysis;
 public sealed record StackAnalysisResult(
     bool Valid,
     int MaximumDepth,
-    IReadOnlyList<string> Diagnostics);
+    IReadOnlyList<string> Diagnostics)
+{
+    /// <summary>
+    /// What the stack holds on arrival at each instruction the walk reached.
+    /// </summary>
+    /// <remarks>
+    /// Carried out of the walk rather than recomputed by callers that need to ask about one place
+    /// in a method: whether a block only a backward branch reaches is entered holding anything is
+    /// a question about a depth, and ECMA-335 III.1.7.5 makes the answer the difference between IL
+    /// a verifier accepts and IL it does not.
+    /// </remarks>
+    public IReadOnlyDictionary<Instruction, int> Depths { get; init; } =
+        new Dictionary<Instruction, int>();
+}
 
 public static class EvaluationStackAnalyzer
 {
@@ -64,7 +77,10 @@ public static class EvaluationStackAnalyzer
 
         if (steps >= budget)
             diagnostics.Add($"Stack analysis exceeded its {budget} instruction budget.");
-        return new StackAnalysisResult(diagnostics.Count == 0, maximum, diagnostics);
+        return new StackAnalysisResult(diagnostics.Count == 0, maximum, diagnostics)
+        {
+            Depths = depths
+        };
     }
 
     /// <summary>Whether the instruction empties the evaluation stack instead of drawing on it.</summary>

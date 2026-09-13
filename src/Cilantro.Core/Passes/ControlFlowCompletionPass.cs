@@ -1,5 +1,6 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Cilantro.Core.Analysis;
 using Cilantro.Core.Verification;
 
 namespace Cilantro.Core.Passes;
@@ -88,11 +89,12 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         using var transaction = new BodyMutationTransaction(method);
         var folded = 0;
         var removed = 0;
+        var wasUnnameable = ForwardScan.Unnameable(method);
         try
         {
             for (var round = 0; round < MaximumRounds; round++)
             {
-                var foldedThisRound = FoldConstantBranches(method);
+                var foldedThisRound = FoldConstantLocals(method) + FoldConstantBranches(method);
                 var discardedThisRound = RemoveDiscardedValues(method);
                 var removedThisRound = RemoveUnreachable(method) + discardedThisRound;
                 folded += foldedThisRound;
@@ -108,6 +110,9 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             method.Body.OptimizeBranches();
             if (!IsStructurallySound(method))
                 throw new InvalidOperationException("Rewrite left the method body structurally invalid.");
+            if (ForwardScan.Unnameable(method) > wasUnnameable)
+                throw new InvalidOperationException(
+                    "Rewrite left more blocks whose stack a forward scan cannot name.");
             transaction.Commit();
             return (folded, removed);
         }
@@ -123,13 +128,19 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// Rewrites conditional branches whose single-operand condition is a proven constant.
     /// </summary>
     /// <remarks>
-    /// Only the leaf shapes are handled: a boolean branch preceded immediately by a constant, and
-    /// a switch preceded immediately by an integer one. These are exactly the opaque-predicate
-    /// forms Reactor emits, and each rewrite is stack-neutral because the constant the branch would
-    /// have consumed is removed with it.
+    /// Only the leaf shapes are handled: a boolean branch over one constant, a switch over one
+    /// integer, and a comparison branch over two. These are exactly the opaque-predicate forms
+    /// Reactor emits, and each rewrite is stack-neutral because the constants the branch would have
+    /// consumed are removed with it.
     ///
     /// A null constant decides a boolean branch as surely as a zero does, a reference being true
     /// exactly when it is not null. It cannot decide a switch, carrying no case number.
+    ///
+    /// The comparison branches are what a dispatcher's last edge hides behind once its state is
+    /// known: the state is compared against the number standing for one block, and the answer
+    /// decides whether the loop goes round again. They are also the one shape here that needs two
+    /// constants rather than one, so the walk back runs twice, the second time from wherever the
+    /// first stopped.
     /// </remarks>
     private static int FoldConstantBranches(MethodDef method)
     {
@@ -155,6 +166,20 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                 case Code.Brfalse or Code.Brfalse_S when branch.Operand is Instruction falseTarget:
                     Neutralize(producer);
                     Retarget(branch, value == 0, falseTarget);
+                    folded++;
+                    break;
+                case Code.Beq or Code.Beq_S or Code.Bne_Un or Code.Bne_Un_S or
+                    Code.Bge or Code.Bge_S or Code.Bge_Un or Code.Bge_Un_S or
+                    Code.Bgt or Code.Bgt_S or Code.Bgt_Un or Code.Bgt_Un_S or
+                    Code.Ble or Code.Ble_S or Code.Ble_Un or Code.Ble_Un_S or
+                    Code.Blt or Code.Blt_S or Code.Blt_Un or Code.Blt_Un_S
+                    when numbered && branch.Operand is Instruction comparedTarget &&
+                        Feeding(instructions, entered, instructions.IndexOf(producer)) is
+                            { } compared && compared.IsLdcI4():
+                    var decided = Compares(branch.OpCode.Code, compared.GetLdcI4Value(), value);
+                    Neutralize(producer);
+                    Neutralize(compared);
+                    Retarget(branch, decided, comparedTarget);
                     folded++;
                     break;
                 case Code.Switch when numbered && branch.Operand is IList<Instruction> cases:
@@ -193,6 +218,179 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         {
             instruction.OpCode = OpCodes.Nop;
             instruction.Operand = null;
+        }
+    }
+
+    /// <summary>Whether a comparison branch over two known numbers is taken.</summary>
+    private static bool Compares(Code code, int left, int right) => code switch
+    {
+        Code.Beq or Code.Beq_S => left == right,
+        Code.Bne_Un or Code.Bne_Un_S => left != right,
+        Code.Bge or Code.Bge_S => left >= right,
+        Code.Bgt or Code.Bgt_S => left > right,
+        Code.Ble or Code.Ble_S => left <= right,
+        Code.Blt or Code.Blt_S => left < right,
+        Code.Bge_Un or Code.Bge_Un_S => (uint)left >= (uint)right,
+        Code.Bgt_Un or Code.Bgt_Un_S => (uint)left > (uint)right,
+        Code.Ble_Un or Code.Ble_Un_S => (uint)left <= (uint)right,
+        Code.Blt_Un or Code.Blt_Un_S => (uint)left < (uint)right,
+        _ => throw new InvalidOperationException($"{code} does not compare two numbers.")
+    };
+
+    /// <summary>
+    /// Replaces reads of a local that holds one number everywhere it is read with that number.
+    /// </summary>
+    /// <remarks>
+    /// What is left of a dispatcher once its edges are direct is a local assigned a number once
+    /// and a loop that compares the local against the numbers standing for its blocks. The switch
+    /// over it no longer decides anything and neither do the comparisons, but nothing here could
+    /// say so, because saying so means knowing what the local holds and the reads are reached
+    /// round a back edge rather than fallen into. Knowing it needs no reasoning about the loop:
+    /// there is one assignment, and the number it assigns is written into the instruction before
+    /// it.
+    ///
+    /// The care is in the reads, not the assignment. A read the assignment has not run before
+    /// sees whatever the local was initialized to instead, so every read has to be behind the
+    /// assignment on every path there is — which is asked by walking the method with the
+    /// assignment walled off and requiring that the walk reach no read at all.
+    /// </remarks>
+    private static int FoldConstantLocals(MethodDef method)
+    {
+        var constants = ConstantLocals(method);
+        if (constants.Count == 0)
+            return 0;
+        var variables = method.Body.Variables;
+        var folded = 0;
+        foreach (var instruction in method.Body.Instructions)
+        {
+            if (!instruction.IsLdloc())
+                continue;
+            if (instruction.GetLocal(variables) is not { } local ||
+                !constants.TryGetValue(local, out var value))
+                continue;
+            instruction.OpCode = OpCodes.Ldc_I4;
+            instruction.Operand = value;
+            folded++;
+        }
+
+        return folded;
+    }
+
+    /// <summary>The locals that hold one known number at every read, and the number.</summary>
+    private static Dictionary<Local, int> ConstantLocals(MethodDef method)
+    {
+        var instructions = method.Body.Instructions;
+        var variables = method.Body.Variables;
+        var entered = EntryPoints(method);
+        var constants = new Dictionary<Local, int>();
+        foreach (var local in variables)
+        {
+            // An address taken is a way of writing the local that reading the instructions
+            // cannot account for.
+            if (instructions.Any(instruction =>
+                    instruction.OpCode.Code is Code.Ldloca or Code.Ldloca_S &&
+                    instruction.GetLocal(variables) == local))
+                continue;
+
+            Instruction? store = null;
+            var stored = 0;
+            var reads = new List<Instruction>();
+            foreach (var instruction in instructions)
+            {
+                if (instruction.GetLocal(variables) != local)
+                    continue;
+                if (instruction.IsStloc())
+                {
+                    store = instruction;
+                    stored++;
+                }
+                else if (instruction.IsLdloc())
+                {
+                    reads.Add(instruction);
+                }
+            }
+
+            if (stored != 1 || store is null || reads.Count == 0)
+                continue;
+            if (Feeding(instructions, entered, instructions.IndexOf(store)) is not { } producer ||
+                !producer.IsLdcI4())
+                continue;
+            if (!StoredBeforeEveryRead(method, store, reads))
+                continue;
+            constants[local] = producer.GetLdcI4Value();
+        }
+
+        return constants;
+    }
+
+    /// <summary>
+    /// Whether every read of a local is somewhere the one assignment to it has already run.
+    /// </summary>
+    /// <remarks>
+    /// Asked by walking the method from every way into it — the entry and each exception clause —
+    /// with the assignment treated as a wall. Anything the walk still arrives at is arrived at
+    /// without the assignment having run, so a read among them is a read of the local's initial
+    /// value and the number the assignment writes is not the answer everywhere.
+    /// </remarks>
+    private static bool StoredBeforeEveryRead(
+        MethodDef method,
+        Instruction store,
+        IReadOnlyCollection<Instruction> reads)
+    {
+        var instructions = method.Body.Instructions;
+        if (instructions.Count == 0)
+            return false;
+        var index = new Dictionary<Instruction, int>();
+        for (var at = 0; at < instructions.Count; at++)
+            index[instructions[at]] = at;
+
+        var seen = new HashSet<Instruction>();
+        var work = new Stack<Instruction>();
+        work.Push(instructions[0]);
+        foreach (var handler in method.Body.ExceptionHandlers)
+        {
+            if (handler.TryStart is not null) work.Push(handler.TryStart);
+            if (handler.HandlerStart is not null) work.Push(handler.HandlerStart);
+            if (handler.FilterStart is not null) work.Push(handler.FilterStart);
+        }
+
+        while (work.Count != 0)
+        {
+            var current = work.Pop();
+            if (current == store || !seen.Add(current))
+                continue;
+            if (reads.Contains(current))
+                return false;
+            switch (current.OpCode.FlowControl)
+            {
+                case FlowControl.Branch:
+                    if (current.Operand is Instruction jumped)
+                        work.Push(jumped);
+                    break;
+                case FlowControl.Cond_Branch:
+                    if (current.Operand is Instruction target)
+                        work.Push(target);
+                    if (current.Operand is IList<Instruction> targets)
+                        foreach (var one in targets)
+                            work.Push(one);
+                    Onward(current);
+                    break;
+                case FlowControl.Return:
+                case FlowControl.Throw:
+                    break;
+                default:
+                    Onward(current);
+                    break;
+            }
+        }
+
+        return true;
+
+        void Onward(Instruction from)
+        {
+            var next = index[from] + 1;
+            if (next < instructions.Count)
+                work.Push(instructions[next]);
         }
     }
 

@@ -218,6 +218,15 @@ was asking, which is the more interesting half of the story and is taken up in
 the conditions that make a jump as good as falling in: exactly one arrives,
 it is unconditional, and nothing reaches anything stepped over on the way.
 
+The walk also reads a state out of the variable holding it, where the variable is
+assigned one number and that assignment has run before every read of it. That is
+what a flattened method is left as once its edges are direct: a state nothing
+writes again, and a loop comparing it against the numbers standing for blocks
+that no longer exist. Neither the switch nor the comparisons decide anything, and
+nothing could say so while the number lived in a variable and the reads were
+reached round a back edge. On one sample this took the methods simplified from
+301 to 344 and the branches folded from 357 to 666.
+
 **Encrypted resources restored.** The application's own resources, decrypted and
 put back where the program expects them.
 

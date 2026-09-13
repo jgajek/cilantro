@@ -110,6 +110,73 @@ public sealed class DispatcherDeobfuscationTests
             ReferenceEquals(edge.Target.First, handlerStart));
     }
 
+    /// <summary>
+    /// Reactor's commonest dispatcher is entered from above and from below, both times with the
+    /// state pushed. Redirecting the edge above takes away the way in a verifier learns the depth
+    /// from, and leaves the switch reached only from below holding a value — correct, and
+    /// unverifiable.
+    /// </summary>
+    /// <remarks>
+    /// Found on a real payload, where it turned nothing into two hundred methods a verifier
+    /// rejected. The rewrite itself had been right about every instruction it touched, and every
+    /// path through the method still agreed about every depth; what it had stopped being was
+    /// something a single forward pass through the instructions could account for.
+    /// </remarks>
+    [Fact]
+    public void PreservesADispatcherWhoseOtherWayInHandsTheStateOverOnTheStack()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            var method = new MethodDefUser(
+                "Flattened",
+                MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Int32),
+                dnlib.DotNet.MethodAttributes.Public | dnlib.DotNet.MethodAttributes.Static)
+            {
+                Body = new CilBody()
+            };
+            host.Methods.Add(method);
+
+            var instructions = method.Body.Instructions;
+            var assign = Instruction.Create(OpCodes.Ldc_I4_1);
+            var done = Instruction.Create(OpCodes.Ret);
+            var work = Instruction.Create(OpCodes.Ldc_I4_3);
+            var dispatch = Instruction.Create(OpCodes.Switch, new[] { done, work });
+
+            // Falls into the dispatcher with the state pushed, which is the edge the rewrite proves.
+            instructions.Add(Instruction.Create(OpCodes.Br, assign));
+            instructions.Add(assign);
+            instructions.Add(dispatch);
+            instructions.Add(Instruction.Create(OpCodes.Br, done));
+            instructions.Add(done);
+
+            // And back into it from below with the next state pushed for the switch to pop, which
+            // is what makes the switch's depth on the way in one rather than nothing.
+            instructions.Add(work);
+            instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+            instructions.Add(Instruction.Create(OpCodes.Brfalse, dispatch));
+            instructions.Add(Instruction.Create(OpCodes.Pop));
+            instructions.Add(Instruction.Create(OpCodes.Br, done));
+        });
+
+        var method = context.Module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Single(candidate => candidate.Name == "Flattened");
+        Assert.Equal(0, ForwardScan.Unnameable(method));
+        Assert.True(new DispatcherAnalyzer().AnalyzePartial(method).IsQualified);
+
+        var result = new DispatcherDeobfuscationPass().Run(context);
+
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(
+            result.Diagnostics,
+            said => said.Contains("forward scan", StringComparison.Ordinal));
+        Assert.Contains(
+            method.Body.Instructions,
+            instruction => instruction.OpCode == OpCodes.Switch);
+        Assert.Equal(0, ForwardScan.Unnameable(method));
+    }
+
     private static DispatcherFixture CreateDispatcher(bool useHelper)
     {
         var module = new ModuleDefUser("dispatcher.dll") { Kind = ModuleKind.Dll };

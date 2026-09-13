@@ -1025,6 +1025,16 @@ holding a dispatcher of either protector's shape and is pinned at 77 and 91; it 
 less than the edge count under this contract, because a dispatcher survives if any one
 of its method's edges does, and 51 and 66 methods have every edge proven.
 
+The relocation above is what a whole-dispatcher plan does. Where the plan is a
+single edge proved on its own, the dispatcher keeps its state on the stack, and a
+dispatcher entered only from below is exactly what the paragraph before warns of:
+the fall-in the forward path came from is the edge that was redirected. The rewrite
+therefore counts the blocks a single forward pass cannot name the stack at, before
+and after itself, and preserves any method where its own work would add one. The
+count has to not grow rather than be zero, since a protected method arrives with
+these already and refusing to touch such a method gives up every edge in it. The
+guard is per method, so the others planned beside it are unaffected.
+
 Mild reference proxies are inside this contract by way of the forwarder redirection
 written for Reactor, which substitutes a pass-through method's target at its call
 sites whoever generated it; ConfuserEx's `newobj` forwarders are recognised there

@@ -102,12 +102,17 @@ public sealed class ExplainTests
         // Was 289 before values worked out and then thrown away were removed as well. The 12 added
         // are methods holding nothing else worth simplifying: their whole content was arithmetic
         // over constants whose result went to a local nothing reads.
-        Assert.Contains("301", page, StringComparison.Ordinal);
+        //
+        // Then 301 to 344, and the branches from 357 to 666, on reading a dispatcher's state out
+        // of the local it was assigned to once rather than only out of the instruction in front of
+        // the branch. What that reaches is the shape a flattened method is left in after its edges
+        // are made direct: a state nothing writes again and a loop of comparisons against it.
+        Assert.Contains("344", page, StringComparison.Ordinal);
         Assert.Contains("Constant branches resolved", page, StringComparison.Ordinal);
         // 64 of these are owed to a reference deciding a branch as surely as an integer does, being
         // true exactly when it is not null, and this file puts a null constant in front of one
         // often.
-        Assert.Contains("357", page, StringComparison.Ordinal);
+        Assert.Contains("666", page, StringComparison.Ordinal);
         // Was 0 of 3 while the rewrite only looked for dispatchers reading a variable. Reactor
         // hands most of its dispatchers their state on the evaluation stack instead, and counting
         // those is what turned a line saying nothing was straightened into one saying almost

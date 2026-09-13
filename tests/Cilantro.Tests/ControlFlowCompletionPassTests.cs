@@ -296,6 +296,68 @@ public sealed class ControlFlowCompletionPassTests
             string.Join("; ", EvaluationStackAnalyzer.Analyze(method).Diagnostics));
     }
 
+    /// <summary>
+    /// A dispatcher whose state is assigned once collapses, loop and switch and comparison alike.
+    /// </summary>
+    /// <remarks>
+    /// This is the shape a dispatcher is left in once its edges are direct: a local assigned a
+    /// number, a switch over the local that no longer picks anything, and a comparison of the
+    /// local against the number for one block deciding whether the loop goes round. Nothing could
+    /// fold any of it while the local was opaque, and the reads are reached round a back edge, so
+    /// no walk back through the layout reaches the assignment either. The whole of this method is
+    /// one field store.
+    /// </remarks>
+    [Fact]
+    public void CollapsesADispatcherWhoseStateIsAssignedOnce()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            var method = NewVoidMethod(module);
+            var state = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(state);
+            var instructions = method.Body.Instructions;
+
+            var store = Instruction.Create(OpCodes.Stloc, state);
+            var read = Instruction.Create(OpCodes.Ldloc, state);
+            var done = Instruction.Create(OpCodes.Ret);
+            var work = Instruction.Create(OpCodes.Nop);
+
+            instructions.Add(Instruction.Create(OpCodes.Br, work));
+            instructions.Add(store);
+            instructions.Add(read);
+            instructions.Add(Instruction.Create(OpCodes.Switch, new[] { work }));
+            instructions.Add(Instruction.Create(OpCodes.Ldloc, state));
+            instructions.Add(Instruction.Create(OpCodes.Ldc_I4, 9));
+            instructions.Add(Instruction.Create(OpCodes.Beq, done));
+            instructions.Add(Instruction.Create(OpCodes.Ldloc, state));
+            instructions.Add(Instruction.Create(OpCodes.Ldc_I4, 989));
+            instructions.Add(Instruction.Create(OpCodes.Beq, read));
+            instructions.Add(Instruction.Create(OpCodes.Br, done));
+            instructions.Add(work);
+            instructions.Add(Instruction.Create(OpCodes.Ldc_I4, 9));
+            instructions.Add(Instruction.Create(OpCodes.Br, store));
+            instructions.Add(done);
+            host.Methods.Add(method);
+        });
+
+        var result = new ControlFlowCompletionPass().Run(context);
+        var method = SingleBodyMethod(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        var left = method.Body.Instructions
+            .Where(instruction => instruction.OpCode != OpCodes.Nop)
+            .ToArray();
+
+        // Nothing reads the state, nothing switches on it, and nothing compares it.
+        Assert.DoesNotContain(left, instruction => instruction.IsLdloc() || instruction.IsStloc());
+        Assert.DoesNotContain(left, instruction => instruction.OpCode == OpCodes.Switch);
+        Assert.DoesNotContain(left, instruction => instruction.OpCode == OpCodes.Beq);
+        Assert.True(
+            EvaluationStackAnalyzer.Analyze(method) is { Valid: true },
+            string.Join("; ", EvaluationStackAnalyzer.Analyze(method).Diagnostics));
+    }
+
     private static MethodDefUser NewVoidMethod(ModuleDef module) =>
         new("Method", MethodSig.CreateStatic(module.CorLibTypes.Void))
         {

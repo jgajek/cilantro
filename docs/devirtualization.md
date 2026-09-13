@@ -449,12 +449,27 @@ literal switch standing: the two were one defect, described where the fold is.
 All three libraries now verify with nothing at all, and the newly-broken count
 is zero.
 
-Two kinds of finding remain on the virtualized probes, and only one is a trade.
-The rebuilt bodies hold every value as an object, so they call instance methods
-on one without a cast, and `StackUnexpected` is what that costs; it buys a body
-a reader can follow and it is not going away. A residue of `BackwardBranch`
-survives there too, in bodies reached through the NecroBit layer rather than
-these libraries' plain flattening, and that one is debt rather than a trade.
+A residue of `BackwardBranch` survived on the virtualized probes for a while
+after that, and it turned out to be a second defect with the same shape at the
+other end of the run. Reactor's commonest dispatcher is entered twice with the
+state pushed on the evaluation stack rather than stored: from the block above it,
+and from a block below it going round again. The switch pops the state on the way
+in either way, so the block is entered one deep, and it is legal as the protector
+leaves it, because the fall-in from above is where a forward pass learns that
+depth. Redirecting the edge from above takes that fall-in away and leaves the
+switch reached only from below, still one deep — a rewrite correct instruction by
+instruction, whose every path still agrees about every depth, and which no single
+forward pass can account for. On one payload it did this to two hundred methods.
+
+The rewrite now counts those blocks before and after itself and preserves any
+method where its own work would add one, which is the same guard the fold uses
+and for the same reason. `BackwardBranch` is at zero on every sample here.
+
+What remains on the virtualized probes is the trade rather than debt. The rebuilt
+bodies hold every value as an object, so they call instance methods on one
+without a cast, and `StackUnexpected` is what that costs: 25 methods on the
+largest probe, against 377 findings in the protected input and 400 in the output.
+It buys a body a reader can follow and it is not going away.
 
 ### 2. Get the program out — by running the protector's own decoder
 
