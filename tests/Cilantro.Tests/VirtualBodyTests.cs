@@ -28,6 +28,13 @@ public sealed class VirtualBodyTests
     private const int EndFinally = 10;
 
     /// <summary>
+    /// An operation measured to take one value and read as the IL for taking two, which is the
+    /// reading contradicting itself about the operation without contradicting itself about where
+    /// the path goes.
+    /// </summary>
+    private const int Contradictory = 11;
+
+    /// <summary>
     /// A value whose type every path agrees on is held as that type, so the body reads as the
     /// arithmetic it is rather than as the packing around it.
     /// </summary>
@@ -197,6 +204,49 @@ public sealed class VirtualBodyTests
         // Counted as well as written, because a body to be run rather than read is refused over it:
         // an operation nothing arrives at is work the body would drop instead of doing.
         Assert.Equal(1, built.Unreached);
+    }
+
+    /// <summary>
+    /// An operation the reading contradicts itself around throws, rather than being written as
+    /// read into a body whose stack then disagrees with itself.
+    /// </summary>
+    /// <remarks>
+    /// The contradiction is between the arity the operation was measured at, which is what the
+    /// depth walk carried forward, and the arity of the IL it was read as, which is what the body
+    /// would write. Writing it as read put both readings into one method: the instructions leave
+    /// one depth and the walk has everything after them at another, so two paths meet at a depth
+    /// they do not agree on. Nothing catches that — the module loads and it verifies — but a
+    /// decompiler reading such a method says so and then guesses, and the guess is what an analyst
+    /// reads. Throwing keeps the one operation the reading cannot place from costing the reader the
+    /// method around it, which on the reactor7 probe was 314 dispatcher jumps that could not be
+    /// made direct while the body's stack was in dispute.
+    /// </remarks>
+    [Fact]
+    public void AnOperationTheReadingContradictsItselfAroundThrowsRatherThanDisputingTheStack()
+    {
+        using var context = Module();
+        var built = Build(context, [
+            (Push, new VirtualOperand.Number(1)),
+            (Push, new VirtualOperand.Number(2)),
+            (Contradictory, new VirtualOperand.None()),
+            (Return, new VirtualOperand.None())
+        ]);
+
+        Assert.Null(built.Refused);
+        Assert.Equal(1, built.Distrusted);
+        Assert.Contains(
+            "stands in the body as a throw",
+            string.Join(" ", built.Notes),
+            StringComparison.Ordinal);
+        Assert.Contains("ldnull, throw", Written(built.Body!), StringComparison.Ordinal);
+
+        // The point of the throw, and the thing that was wrong before it: whatever the reading of
+        // the one operation was, the method written out of it has one depth at every place two
+        // paths meet.
+        var stub = Stub(context);
+        stub.Body = built.Body!;
+        var walked = EvaluationStackAnalyzer.Analyze(stub);
+        Assert.True(walked.Valid, string.Join("; ", walked.Diagnostics));
     }
 
     [Fact]
@@ -489,7 +539,8 @@ public sealed class VirtualBodyTests
                 [Add] = new(Add, 2, 1, "add"),
                 [Throw] = new(Throw, 1, 0, VirtualSemantics.Throwing),
                 [Return] = new(Return, 1, 0, "returns the value it takes"),
-                [Mystery] = new(Mystery, 1, 1, null)
+                [Mystery] = new(Mystery, 1, 1, null),
+                [Contradictory] = new(Contradictory, 1, 1, "add")
             },
             TargetIsOperand = new HashSet<int> { Jump }
         };

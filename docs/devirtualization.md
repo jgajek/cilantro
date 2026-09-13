@@ -387,7 +387,16 @@ then lose their interpreter:
 | | before | after |
 |---|---|---|
 | `Qbjuef.exe` | 43,389 lines, 5,383 jumps | **6,184 lines, 449 jumps** |
-| `reactor7-probe-net48.full` | 37,730 lines, 4,748 jumps | **6,284 lines, 106 jumps** |
+| `reactor7-probe-net48.full` | 37,730 lines, 4,748 jumps | **5,548 lines, 419 jumps** |
+
+The jump count of the second is the one figure here that reads worse than it is,
+and it is worth saying why rather than quoting a kinder number. A dispatcher edge
+made direct becomes a `goto case 255`, which the count counts. The same edge left
+indirect is a `num33 = 255` and a `continue`, which it does not, so an edge only
+enters the count once it says where it goes. There were 260 of the indirect shape
+in this method and there are none now: nothing was added, the transfers that were
+already there stopped being spelled as an assignment to a state variable the
+reader has to trace. The 328 lines that went are those assignments.
 
 The second of those figures was for a long time reported as 1,439 lines, which
 was the same output with the devirtualized body missing from it. A type of the
@@ -677,6 +686,23 @@ right in 2,934 places out of 2,935 runs the wrong code, and nothing in the file
 tells a reader which place it was. And an operation the stack walk never arrives
 at is written as a `throw`, because there is no stack for it to work on and any
 lowering would be a story about one.
+
+A third kind of operation gets the same `throw`, for a reason that took a while
+to see. The depth walk carries forward the arity an operation was measured at;
+the body writes the IL the operation was read as, which has an arity of its own.
+Almost always they are the same number. Where they are not, the reading
+contradicts itself about that operation, and writing it as read puts both halves
+of the contradiction into one method: the instructions leave one depth and
+everything after them is written at another, so two paths meet somewhere at a
+depth they do not agree on. Nothing catches that. The module loads and it
+verifies, because verification takes each path as it finds it. What notices is a
+decompiler, which says so in three comment lines at the top of the method and
+then renders it anyway, on a guess — and the guess is what an analyst reads. The
+cost is not the one operation. It is that the flattening pass asks whether a
+method's stack is consistent before it will touch it, so a single operation in
+four thousand left 314 dispatcher jumps in this method going through a state
+variable rather than saying where they went. Throwing at the contradiction gives
+up the operation and keeps the method.
 
 ### Try and catch, which live outside the operations
 

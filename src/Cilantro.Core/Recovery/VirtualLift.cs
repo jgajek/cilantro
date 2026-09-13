@@ -275,6 +275,12 @@ public static class VirtualLift
     /// </param>
     /// <param name="Slots">The slots that hold a value of one type throughout, and which.</param>
     /// <param name="Types">The type each name stands for, so a body can write it.</param>
+    /// <param name="Distrusted">
+    /// The operations the reading is wrong about somewhere around, being those that leave the stack
+    /// a depth the walk does not arrive at the next operation with. Which ones they are and not
+    /// merely how many, because a body cannot write an operation whose effect contradicts the
+    /// depths it is being written between.
+    /// </param>
     /// <param name="Refused">
     /// Why nothing was settled, where nothing was. A body is still written in that case, holding
     /// everything as an object the way the engine did, so this is not a failure — but it is the
@@ -286,8 +292,8 @@ public static class VirtualLift
         IReadOnlyDictionary<int, VirtualKind> Leaving,
         IReadOnlyDictionary<int, TypeSig> Slots,
         IReadOnlyDictionary<string, TypeSig> Types,
-        string? Refused = null,
-        int Distrusted = 0)
+        IReadOnlySet<int> Distrusted,
+        string? Refused = null)
     {
         /// <summary>
         /// Nothing settled, which asks a body to hold everything as an object exactly as before.
@@ -297,6 +303,7 @@ public static class VirtualLift
             new Dictionary<int, VirtualKind>(),
             new Dictionary<int, TypeSig>(),
             new Dictionary<string, TypeSig>(StringComparer.Ordinal),
+            new HashSet<int>(),
             why);
     }
 
@@ -535,7 +542,7 @@ public static class VirtualLift
                 .Where(slot => slot.Value.Held is { } held && named.ContainsKey(held))
                 .ToDictionary(slot => slot.Key, slot => named[slot.Value.Held!]),
             named,
-            Distrusted: distrusted.Count);
+            distrusted);
     }
 
     /// <summary>

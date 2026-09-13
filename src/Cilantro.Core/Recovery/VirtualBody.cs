@@ -33,9 +33,12 @@ public static class VirtualBody
     /// <summary>What came of trying to build a body: one of a body or a reason there is none.</summary>
     /// <param name="Distrusted">
     /// How many operations the reading is wrong about somewhere around, being those that leave the
-    /// stack a depth the walk does not arrive at the next operation with. A body with any of these
-    /// is still worth writing where it is read rather than run — it says what the program does
-    /// nearly everywhere — but it is not a body to put in the way of execution.
+    /// stack a depth the walk does not arrive at the next operation with. Each stands in the body
+    /// as a throw, for the same reason an operation the walk never arrived at does: there is no
+    /// writing an operation whose effect contradicts the depths it would be written between. A
+    /// body with any of these is still worth writing where it is read rather than run — it says
+    /// what the program does nearly everywhere — but it is not a body to put in the way of
+    /// execution.
     /// </param>
     /// <param name="Unreached">
     /// How many operations the walk never arrived at, and which therefore stand in the body as a
@@ -151,6 +154,7 @@ public static class VirtualBody
             _typing = VirtualLift.Types(program, module, _stub, lines);
 
             var dead = 0;
+            var contradicted = 0;
             foreach (var line in lines)
             {
                 var start = _body.Instructions.Count;
@@ -163,6 +167,21 @@ public static class VirtualBody
                     Add(OpCodes.Ldnull);
                     Add(OpCodes.Throw);
                     dead++;
+                }
+                else if (_typing.Distrusted.Contains(line.Index))
+                {
+                    // The walk arrives here at one depth and has the operation leaving a different
+                    // one than it arrives at the next with, so what this was read as and what the
+                    // depths around it say cannot both be right. Writing it as read anyway used to
+                    // put the contradiction into the body: the instructions leave a depth the join
+                    // after them is entered at by every other path at another, and a method whose
+                    // stack merges disagree is one a decompiler reads by guessing and a reader
+                    // cannot trust a line of. So the same thing goes here as where the walk never
+                    // arrived — a throw, which takes the depth it is given, hands nothing on, and
+                    // leaves every other path into that join agreeing with itself.
+                    Add(OpCodes.Ldnull);
+                    Add(OpCodes.Throw);
+                    contradicted++;
                 }
                 else if (Lower(line) is { } refusal)
                 {
@@ -221,12 +240,13 @@ public static class VirtualBody
             _body.UpdateInstructionOffsets();
             if (_typing.Refused is { } unsettled)
                 _notes.Add($"Every value is held as an object, {unsettled}.");
-            else if (_typing.Distrusted > 0)
+            else if (contradicted > 0)
             {
                 _notes.Add(
-                    $"{_typing.Distrusted} operation(s) leave the stack a different depth from the " +
-                    "one the walk arrives at the next operation with, so one of the readings around " +
-                    "each is wrong and nothing there is held as anything but an object.");
+                    $"{contradicted} operation(s) leave the stack a different depth from the one " +
+                    "the walk arrives at the next operation with, so one of the readings around " +
+                    "each is wrong and each stands in the body as a throw rather than as code " +
+                    "built on the contradiction.");
             }
             var typed = _slots.Count(slot => _typing.Slots.ContainsKey(slot.Key));
             _notes.Add(
@@ -241,7 +261,7 @@ public static class VirtualBody
                 (_guards.Count == 0
                     ? string.Empty
                     : $" {_guards.Count} guarded region(s) became handlers."));
-            return new Attempt(_body, null, _notes, _typing.Distrusted, dead);
+            return new Attempt(_body, null, _notes, contradicted, dead);
         }
 
         /// <summary>Where a range of operations ends, as the instruction after the last of them.</summary>
