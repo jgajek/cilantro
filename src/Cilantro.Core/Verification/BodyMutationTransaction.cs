@@ -167,19 +167,27 @@ public sealed class MethodBodySnapshot
                     .ToArray());
         }
 
+        /// <remarks>
+        /// The instructions and locals put back are the very objects that were there, with their
+        /// opcodes and operands restored, rather than copies of them. Anything outside the body
+        /// holding on to one — a pass that noted a call site to come back to later — is holding the
+        /// same instruction afterwards as before, which is what "restored" has to mean if a rollback
+        /// somewhere else in the run is not to quietly invalidate it.
+        /// </remarks>
         public void RestoreInto(CilBody body)
         {
             body.Variables.Clear();
             foreach (var local in locals)
-                body.Variables.Add(local.Create());
+                body.Variables.Add(local.Restore());
 
             body.Instructions.Clear();
             foreach (var instruction in instructions)
-                body.Instructions.Add(new Instruction(instruction.OpCode, null));
+                body.Instructions.Add(instruction.Instance);
 
             for (var index = 0; index < instructions.Length; index++)
             {
-                body.Instructions[index].Operand = instructions[index].Operand.Restore(
+                instructions[index].Instance.OpCode = instructions[index].OpCode;
+                instructions[index].Instance.Operand = instructions[index].Operand.Restore(
                     body.Instructions,
                     body.Variables);
             }
@@ -197,21 +205,32 @@ public sealed class MethodBodySnapshot
         }
     }
 
-    private sealed record LocalState(TypeSig Type, string? Name, dnlib.DotNet.Pdb.PdbLocalAttributes Attributes)
+    private sealed record LocalState(
+        Local Instance,
+        TypeSig Type,
+        string? Name,
+        dnlib.DotNet.Pdb.PdbLocalAttributes Attributes)
     {
         public static LocalState Capture(Local local) =>
-            new(local.Type, local.Name, local.Attributes);
+            new(local, local.Type, local.Name, local.Attributes);
 
-        public Local Create() => new(Type, Name) { Attributes = Attributes };
+        public Local Restore()
+        {
+            Instance.Type = Type;
+            Instance.Name = Name;
+            Instance.Attributes = Attributes;
+            return Instance;
+        }
     }
 
-    private sealed record InstructionState(OpCode OpCode, OperandState Operand)
+    private sealed record InstructionState(Instruction Instance, OpCode OpCode, OperandState Operand)
     {
         public static InstructionState Capture(
             Instruction instruction,
             IReadOnlyDictionary<Instruction, int> instructionIndices,
             IReadOnlyDictionary<Local, int> localIndices) =>
             new(
+                instruction,
                 instruction.OpCode,
                 OperandState.Capture(instruction.Operand, instructionIndices, localIndices));
     }

@@ -40,6 +40,39 @@ public sealed class BodyMutationTransactionTests
         Assert.Equal(0x11000001U, method.Body.LocalVarSigTok);
     }
 
+    /// <summary>
+    /// A rollback puts the instructions and locals back, not copies of them.
+    /// </summary>
+    /// <remarks>
+    /// A pass that notes a call site to come back to later — the conversions the bypassed proxy
+    /// adapters were doing are emitted at the end of the run, on sites found in the middle of it —
+    /// holds the instruction itself. Rebuilding the body out of new objects on the way back would
+    /// leave every one of those notes pointing at something no method contains, and the passes that
+    /// roll back are the ones that visit a method and find nothing to do, which is most of them:
+    /// 2,182 of one payload's 2,198 noted sites went that way before this held.
+    /// </remarks>
+    [Fact]
+    public void RollbackPutsTheInstructionsAndLocalsBackRatherThanCopiesOfThem()
+    {
+        using var module = new ModuleDefUser("transaction.dll");
+        var method = CreateMethod(module);
+        var instructions = method.Body.Instructions.ToArray();
+        var locals = method.Body.Variables.ToArray();
+        var noted = instructions[3];
+
+        using var transaction = new BodyMutationTransaction(method);
+        method.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Nop));
+        method.Body.Instructions[4].OpCode = OpCodes.Nop;
+        method.Body.Variables.Add(new Local(module.CorLibTypes.Int32));
+
+        transaction.Rollback();
+
+        Assert.Equal(instructions, method.Body.Instructions);
+        Assert.Equal(locals, method.Body.Variables);
+        Assert.Contains(noted, method.Body.Instructions);
+        Assert.Equal(instructions[3].OpCode, noted.OpCode);
+    }
+
     [Fact]
     public void RollbackRemapsBranchesSwitchesLocalsAndHandlerBoundaries()
     {

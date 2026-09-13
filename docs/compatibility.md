@@ -357,6 +357,25 @@ identity. Each fixture has 2,643 validated sites, and all of them are rewritten:
 proxy restoration runs before forwarder redirection, so no site has already been
 turned into a direct call by the time it looks.
 
+The adapter's signature is not the target's, though. Reactor writes its adapters
+against `object` and widens the signatures of the methods that call them to match,
+so the adapter is doing a conversion the direct call is not; on the largest
+payload here that is true of 2,198 of 4,562 sites, and dropping it is what
+`StackUnexpected` reports. The conversion the adapter was doing is emitted in
+front of the direct call — a `castclass` where the target wants a reference, an
+`unbox.any` where it wants a value, a `box` where it is the target's own parameter
+that is the `object`, and temporaries where the argument that needs converting is
+not the one on top of the stack. A value-type receiver arriving by reference is
+the calling convention rather than a disagreement, and is left alone. A site whose
+parameters cannot be lined up one for one keeps its adapter, which reads worse and
+verifies the same as the protector left it.
+
+Those conversions are emitted at the end of the run rather than where they are
+worked out. A `stloc` between a call's arguments and the call is a shape the
+passes downstream read through — the interpreter that reads the module's string
+table stops at the first thing it cannot model — and 2,198 sites of one payload
+are on paths that reading takes.
+
 The generic strategy locates a resource whose length equals eight bytes per
 proxy field, extracts candidate stream constants from the token-resolver IL,
 and accepts a pair only when every decoded field and method token resolves and

@@ -12,6 +12,7 @@ using Cilantro.Core.Interpretation;
 using Cilantro.Core.Native;
 using Cilantro.Core.Passes;
 using Cilantro.Core.Pipeline;
+using Cilantro.Core.Proxy;
 using Cilantro.Core.Recovery;
 using Cilantro.Core.Strings;
 using Cilantro.Core.Verification;
@@ -777,6 +778,10 @@ public sealed class CilantroPipeline
         // of the middle of a method body — a proxy call, a resolver call, a loader call — and until
         // they have, a dispatcher does not look like one. See DispatcherRecheckPass.
         new DispatcherRecheckPass(),
+
+        // Last of the passes that change IL: the conversions the bypassed proxy adapters were
+        // doing go in once nothing else is going to read the bodies they go into.
+        new ProxyNarrowingPass(),
         new RuntimeCleanupPass(),
         new SymbolRenamingPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it
@@ -2173,6 +2178,9 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         }
 
         var changes = 0;
+        var widened = 0;
+        var declined = 0;
+        var narrowings = new List<ProxyNarrowingSite>();
         var bypassedAdapters = new HashSet<MethodDef>();
         foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
         {
@@ -2193,10 +2201,27 @@ public sealed class DelegateProxyPass : DeobfuscationPass
                     continue;
                 }
 
+                if (ProxyArgumentNarrowing.Plan(adapter, target) is not { } narrowing)
+                {
+                    declined++;
+                    continue;
+                }
+
                 fieldLoad.OpCode = OpCodes.Nop;
                 fieldLoad.Operand = null;
                 adapterCall.OpCode = binding.CallVirtual ? OpCodes.Callvirt : OpCodes.Call;
                 adapterCall.Operand = target;
+
+                // The conversion is left for the end of the run. Emitting it here would put a
+                // `stloc` between the arguments and the call of two thousand sites, and the passes
+                // that read this IL afterwards — the interpreter most of all — read the shape as
+                // well as the meaning.
+                if (narrowing.Conversions.Count != 0)
+                {
+                    narrowings.Add(new ProxyNarrowingSite(method, adapterCall, narrowing));
+                    widened++;
+                }
+
                 context.AddChange(new ChangeRecord(
                     Name,
                     "restore-proxy-call",
@@ -2204,7 +2229,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
                     $"{field.MDToken} -> 0x{binding.TargetToken:X8} ({adapterCall.OpCode.Name})"));
                 changes++;
                 bypassedAdapters.Add(adapter);
-                index++;
+                index = instructions.IndexOf(adapterCall);
             }
         }
 
@@ -2213,17 +2238,33 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         RecoveryOrphans.DeclareSubtree(context, bypassedAdapters);
         context.SetFact("proxy.bindings", bindings);
         context.SetFact("proxy.restoredCallSites", changes);
+        context.SetFact("proxy.narrowings", (IReadOnlyList<ProxyNarrowingSite>)narrowings);
         context.AddEvidence(new Evidence(
             "proxy-map",
             $"Decoded and validated {bindings.Count} field-to-method bindings.",
             mapSource,
             1.0));
-        return (PassStatus.Success, changes,
-        [
+        var said = new List<string>
+        {
             $"Decoded {bindings.Count} proxy bindings.",
             $"Restored {changes} direct call sites.",
             $"Profile source: {profileSource}."
-        ]);
+        };
+        if (widened != 0)
+        {
+            said.Add(
+                $"{widened} of the sites had an argument the adapter and its target disagreed " +
+                "about, and the conversion the adapter was doing is put back in front of the " +
+                "direct call at the end of the run.");
+        }
+        if (declined != 0)
+        {
+            said.Add(
+                $"{declined} site(s) were left dispatching through their adapter, its parameters " +
+                "not lining up with the target's in a way a conversion could reconcile.");
+        }
+
+        return (PassStatus.Success, changes, said);
     }
 
     /// <summary>

@@ -465,11 +465,46 @@ The rewrite now counts those blocks before and after itself and preserves any
 method where its own work would add one, which is the same guard the fold uses
 and for the same reason. `BackwardBranch` is at zero on every sample here.
 
-What remains on the virtualized probes is the trade rather than debt. The rebuilt
-bodies hold every value as an object, so they call instance methods on one
-without a cast, and `StackUnexpected` is what that costs: 25 methods on the
-largest probe, against 377 findings in the protected input and 400 in the output.
-It buys a body a reader can follow and it is not going away.
+What remained after that was `StackUnexpected` on 25 methods of the largest
+probe, and it was a third defect rather than a cost of anything. Only one method
+of that file is a rebuilt body; the 25 are ordinary ones, and what they have in
+common is a bypassed delegate proxy.
+
+Reactor's proxies are written against `object`, and the methods that call them
+have their own signatures widened to match: a call to `ILGenerator::Emit(OpCode)`
+reaches an adapter declared `XheaEjYKBi(object, OpCode, Proxy)` from a method
+whose own first parameter is an `object` too. That is verifiable as it stands,
+because the delegate behind the adapter has the real signature and the conversion
+happens on the way in. Replacing the adapter call with a direct one takes the
+conversion away with it, and the direct call is then handed an `object` where it
+wants an `ILGenerator`. It runs — the value really is one — and no verifier
+accepts it.
+
+So the conversion is emitted where the adapter was doing it, on 2,198 of one
+payload's 4,562 restored sites. A `castclass` throws exactly where the delegate's
+own invocation would have thrown, which makes this a substitution rather than an
+assumption, and the widening runs both ways: where it is the target's own
+parameter that is the `object`, a reference needs nothing and a value needs a box.
+Where the argument the target wants is deeper on the stack than the top, the
+arguments above it go into temporaries and come straight back, which is the only
+way to reach it.
+
+Two details of that were worth more than they look. Reactor routes value-type
+receivers through their adapters by reference, as the calling convention requires
+— `Int32::ToString` arrives as `aYCW3qx8tR(int32&, Proxy)` — and reading that as
+a disagreement rather than as the convention refused 17 sites of one probe and
+took its recovered string call sites from 26 to none. And the conversions cannot
+be emitted where they are worked out: a `stloc` between the arguments and the
+call is a shape the passes downstream read through, and the interpreter that
+reads the module's string table stops at the first thing it cannot model. They go
+in at the end of the run instead, once nothing is going to read those bodies
+again except a verifier and a decompiler.
+
+The largest probe now newly breaks five methods rather than 25, and carries 281
+findings against the protected input's 377. Three of the five are the same
+`PathStackDepth`: a `br` that a redirect pointed at a case block without taking
+the state push in front of it away, which CILantro's own stack analysis rejects
+in the file it wrote. That one is open.
 
 ### 2. Get the program out — by running the protector's own decoder
 

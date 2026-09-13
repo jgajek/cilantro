@@ -90,6 +90,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         var folded = 0;
         var removed = 0;
         var wasUnnameable = ForwardScan.Unnameable(method);
+        var wasDisputed = EvaluationStackAnalyzer.Analyze(method).Diagnostics.Count;
         try
         {
             for (var round = 0; round < MaximumRounds; round++)
@@ -113,6 +114,15 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             if (ForwardScan.Unnameable(method) > wasUnnameable)
                 throw new InvalidOperationException(
                     "Rewrite left more blocks whose stack a forward scan cannot name.");
+
+            // The shape check above says the branches and boundaries land somewhere; it says
+            // nothing about what the stack holds when they do. A fold that deletes the arm which
+            // consumed a value leaves the value where it was, and the block the other arm reaches
+            // is then entered at two different depths depending on the path — which every reader of
+            // this body downstream, decompiler and verifier alike, is entitled to reject.
+            if (EvaluationStackAnalyzer.Analyze(method).Diagnostics.Count > wasDisputed)
+                throw new InvalidOperationException(
+                    "Rewrite left more places where the paths into a block disagree about the stack.");
             transaction.Commit();
             return (folded, removed);
         }
