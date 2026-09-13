@@ -38,6 +38,8 @@ public static class PipelinePlanner
         "delegate-proxy-analysis",
         "string-recovery",
         "method-inlining",
+        "proxy-argument-narrowing",
+        "stack-handoff",
         "resource-hook-elision",
         "runtime-cleanup",
         "symbol-renaming"

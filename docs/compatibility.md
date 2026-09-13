@@ -1068,6 +1068,9 @@ Before emission, the tool checks:
 
 - all branch and switch targets belong to their method;
 - every short branch still reaches its target;
+- every method's stack depth is workable out in one pass over its instructions,
+  which is what the metadata writer needs to compute a max stack and what
+  ECMA-335 III.1.7.5 asks for;
 - exception-region boundaries belong to their method;
 - no reachable call has an invalid operand;
 - public API, resource names, entry point, and strong-name state are preserved;
@@ -1088,10 +1091,18 @@ the writer said "short branch is too far away" and emitted the truncated
 displacement, and a run that discarded what the writer reported did not pass it on.
 
 What the writer reports is now kept and put in the report, whether or not the
-emission is withheld over it. Not all of it is the run's doing — Reactor's own
-bodies draw 79 complaints about max stack from one payload, and refusing a run
-over what the protector left would withhold every sample — but a complaint nobody
-records is a complaint nobody reads.
+emission is withheld over it, because a complaint nobody records is a complaint
+nobody reads. The first thing recording it produced was 79 complaints about max
+stack from one payload, set aside as what the protector left. Measuring said
+otherwise: dnlib works out the max stack of every method of every protected input
+in the corpus and could not for 79 methods of one output and a handful of each of
+the others, all of them the run's own doing. The complaint is a body no single
+forward pass over the instructions can name the depths of (ECMA-335 III.1.7.5) —
+which is what folding a dispatcher's entry edge leaves behind, and which the writer
+answers by keeping whatever max stack the body arrived with rather than by
+refusing. `StackHandoffPass` now moves the handed-over state into a local at the
+end of the run, and the corpus emits nothing the writer cannot work out; the test
+suite pins that at zero for output and input alike.
 
 The writer preserves metadata tokens and writes atomically. End-to-end tests
 also assert deterministic binary output, entry-point preservation, fixture

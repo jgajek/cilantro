@@ -781,8 +781,11 @@ public sealed class CilantroPipeline
         new DispatcherRecheckPass(),
 
         // Last of the passes that change IL: the conversions the bypassed proxy adapters were
-        // doing go in once nothing else is going to read the bodies they go into.
+        // doing go in once nothing else is going to read the bodies they go into, and the state the
+        // folded dispatchers were handed on the stack goes into a local once no pass is going to
+        // fold another edge and strand another head.
         new ProxyNarrowingPass(),
+        new StackHandoffPass(),
         new RuntimeCleanupPass(),
         new SymbolRenamingPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it

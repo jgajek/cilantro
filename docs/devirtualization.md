@@ -524,10 +524,11 @@ Nobody heard it, because the run installed a logger that discards what the write
 reports.
 
 Both halves of that are now closed. What the writer says is recorded in the
-report, whether or not the emission is withheld over it — Reactor's own bodies
-draw 79 max-stack complaints from one payload, which is not the run's doing and
-not grounds for refusing a run, but a complaint nobody records is a complaint
-nobody reads. And the distances are settled on the way out, in `BranchForms`,
+report, whether or not the emission is withheld over it, because a complaint
+nobody records is a complaint nobody reads — and the first thing recording them
+produced was 79 max-stack complaints about one payload, set aside at the time as
+Reactor's own doing. They were not; see below. And the distances are settled on
+the way out, in `BranchForms`,
 because a distance depends on every edit between two points rather than on the
 edit being made, so no pass can be asked to keep track of it as it goes. Long
 forms always reach; going back to short where the distance now allows it leaves
@@ -555,9 +556,56 @@ except where the assembly hands its internals to a friend, which can name all of
 it, and where the older and broader reading is the right one. The pass asks the
 gate that question rather than answering it again, so the two cannot drift.
 
-That took two more fields on this payload and closed both findings. The largest
-probe now carries 275 findings against the protected input's 377, worsens nothing,
-and newly breaks one method: an `ExpectedArray` on a body the verifier could not
+That took two more fields on this payload and closed both findings.
+
+That left the 79 max-stack complaints, written down and left alone on the reading
+that Reactor's bodies had always drawn them. Measuring rather than assuming took
+five minutes and said the opposite: dnlib can work out the max stack of every
+method of every protected input in the corpus, and could not for 79 methods of one
+output and 3 to 7 of each of the others. All of them were the run's.
+
+The reason it took so long to look is that the complaint is answered rather than
+raised. dnlib works out a max stack the way ECMA-335 III.1.7.5 says it must be
+workable-out — one pass over the instructions in order, carrying the depth
+forward, resetting after a jump or a return, comparing wherever an earlier branch
+has already named a depth — and where that pass cannot get through a body, the
+writer keeps whatever max stack the body arrived with. That fallback is why these
+run and why ILVerify, which walks the edges instead, reads them without complaint:
+the inherited number happens to be large enough. Nothing says it will stay large
+enough for a rewrite that needs more stack than the protector's body did, and
+nothing would say so if it stopped.
+
+Every one of the sites was the same shape, which is the shape §1 above describes:
+a dispatcher head whose state arrives on the stack, reached only from below,
+because folding the entry edge took away the fall-in that named the depth. So the
+guard this document credits with taking `BackwardBranch` to zero was doing its job
+and doing it by refusal, and the refusal was expensive: made faithful to the
+writer's own pass, it took seven in ten of the redirected dispatcher edges on
+every sample. It was also self-defeating. The fold it refused is the fold that
+would have gone on to remove the dispatcher altogether, so the guard was
+preserving the very heads it was declining to strand — with the guard gone, the
+three non-virtualized samples have no such heads left to repair at all, dead code
+left behind on the largest payload falls from 7,367 instructions to 106, and every
+other flattening count rises.
+
+What replaces it is the repair a compiler would have made in the first place. The
+value goes into a local: the block that hands it over stores it, the head reads it
+back, and every edge in then arrives holding nothing, which a forward pass names
+without being told. A conditional branch cannot reach under its own condition to
+store what is beneath it, so the store goes on the far side of the branch and the
+path that does not take it jumps over — which also keeps every inserted
+instruction where the edge already was, and so inside whatever protected region
+that edge was already crossing. A block appended after the last instruction would
+be outside every clause that runs to the end of the method, and a `br` out of a
+`try` is not IL. 352 blocks of 300 methods of the largest payload go through this;
+the other three samples need none.
+
+The corpus now emits nothing whose max stack the writer cannot work out, which is
+pinned in `IlVerificationTests` beside the ILVerify readings, and asked of the
+protected input in the same test so that the day a sample arrives already carrying
+them is a day the number moves rather than a day the gate is wrong. The largest
+probe carries 266 findings against the protected input's 377, worsens nothing, and
+newly breaks one method: an `ExpectedArray` on a body the verifier could not
 import from the protected input at all, so there is no before to compare it with.
 
 ### 2. Get the program out — by running the protector's own decoder

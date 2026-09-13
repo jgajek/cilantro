@@ -1,5 +1,6 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Cilantro.Core;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Passes;
 
@@ -114,18 +115,65 @@ public sealed class DispatcherDeobfuscationTests
     /// Reactor's commonest dispatcher is entered from above and from below, both times with the
     /// state pushed. Redirecting the edge above takes away the way in a verifier learns the depth
     /// from, and leaves the switch reached only from below holding a value — correct, and
-    /// unverifiable.
+    /// unverifiable until the state is moved off the stack.
     /// </summary>
     /// <remarks>
     /// Found on a real payload, where it turned nothing into two hundred methods a verifier
-    /// rejected. The rewrite itself had been right about every instruction it touched, and every
-    /// path through the method still agreed about every depth; what it had stopped being was
-    /// something a single forward pass through the instructions could account for.
+    /// rejected. Refusing the rewrite was tried first and cost about seven in ten of the redirected
+    /// edges across the corpus, because the fold that strands one dispatcher is the fold that would
+    /// have gone on to remove it. So the rewrite happens and <see cref="StackHandoffPass"/> repairs
+    /// the depth afterwards; this pins the debt it takes on.
     /// </remarks>
     [Fact]
-    public void PreservesADispatcherWhoseOtherWayInHandsTheStateOverOnTheStack()
+    public void RedirectsADispatcherEvenWhereThatLeavesTheStateHandedOverOnTheStack()
     {
-        using var context = SyntheticContext.Build(module =>
+        using var context = HandsTheStateOverOnTheStack();
+        var method = context.Module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Single(candidate => candidate.Name == "Flattened");
+        Assert.Equal(0, ForwardScan.Unnameable(method));
+        Assert.True(new DispatcherAnalyzer().AnalyzePartial(method).IsQualified);
+
+        var result = new DispatcherDeobfuscationPass().Run(context);
+
+        Assert.Equal(1, result.Changes);
+        Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
+        Assert.Single(ForwardScan.Unnamed(method));
+    }
+
+    /// <summary>
+    /// And the repair: the state goes into a local, so the switch is reached holding nothing and a
+    /// single forward pass names every depth again.
+    /// </summary>
+    [Fact]
+    public void PutsIntoALocalTheStateTheRedirectLeftOnTheStack()
+    {
+        using var context = HandsTheStateOverOnTheStack();
+        var method = context.Module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Single(candidate => candidate.Name == "Flattened");
+        var locals = method.Body.Variables.Count;
+        new DispatcherDeobfuscationPass().Run(context);
+
+        var result = new StackHandoffPass().Run(context);
+
+        Assert.Equal(1, result.Changes);
+        Assert.Equal(0, ForwardScan.Unnameable(method));
+        Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
+        Assert.Equal(locals + 1, method.Body.Variables.Count);
+        Assert.True(method.Body.InitLocals);
+
+        // The switch reads what it switches on, which is the shape a reader can follow and the one
+        // the protector took out.
+        var dispatch = method.Body.Instructions.Single(
+            instruction => instruction.OpCode == OpCodes.Switch);
+        var before = method.Body.Instructions[method.Body.Instructions.IndexOf(dispatch) - 1];
+        Assert.Equal(Code.Ldloc, before.OpCode.Code);
+    }
+
+    private static ArtifactContext HandsTheStateOverOnTheStack()
+    {
+        return SyntheticContext.Build(module =>
         {
             var host = SyntheticContext.AddType(module, "Host");
             var method = new MethodDefUser(
@@ -158,23 +206,6 @@ public sealed class DispatcherDeobfuscationTests
             instructions.Add(Instruction.Create(OpCodes.Pop));
             instructions.Add(Instruction.Create(OpCodes.Br, done));
         });
-
-        var method = context.Module.GetTypes()
-            .SelectMany(type => type.Methods)
-            .Single(candidate => candidate.Name == "Flattened");
-        Assert.Equal(0, ForwardScan.Unnameable(method));
-        Assert.True(new DispatcherAnalyzer().AnalyzePartial(method).IsQualified);
-
-        var result = new DispatcherDeobfuscationPass().Run(context);
-
-        Assert.Equal(0, result.Changes);
-        Assert.Contains(
-            result.Diagnostics,
-            said => said.Contains("forward scan", StringComparison.Ordinal));
-        Assert.Contains(
-            method.Body.Instructions,
-            instruction => instruction.OpCode == OpCodes.Switch);
-        Assert.Equal(0, ForwardScan.Unnameable(method));
     }
 
     private static DispatcherFixture CreateDispatcher(bool useHelper)

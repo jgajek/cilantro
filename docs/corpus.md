@@ -284,7 +284,7 @@ newly broken the verifier could not read from the input at all, which is a class
 its own because a body the importer refused has no before to compare with.
 
 Three of the four outputs verify with nothing at all. The virtualized payload
-carries 275 findings against its input's 377, worsens nothing, and newly breaks one
+carries 266 findings against its input's 377, worsens nothing, and newly breaks one
 method — an `ExpectedArray` on a body the verifier could not import from the input
 in the first place.
 
@@ -294,6 +294,18 @@ classes reached emitted files of this corpus while every other gate in the suite
 stayed green, and each was found by reading these differences rather than by any
 test. Two of them, `BackwardBranch` and `PathStackDepth`, are named in the test as
 well, so their return fails with their own name on it.
+
+The same test asks one thing ILVerify does not. ECMA-335 III.1.7.5 wants the stack
+depth workable out in a single pass over the instructions in order; ILVerify walks
+the edges instead and reads bodies that fail the stricter reading without complaint.
+dnlib's metadata writer makes exactly that pass to work out a method's max stack,
+and where it cannot get through a body it keeps whatever max stack the body arrived
+with — so the only reader that asks is one that answers itself, quietly, and stops
+being right the moment a rewrite needs more stack than the protected body did. The
+test runs that calculation over the output and the input and holds both to zero
+methods it cannot get through. 79 methods of one output failed it for as long as
+nothing asked; every protected input in the corpus passes it, which is what makes
+the pin for the input worth having rather than a formality.
 
 The reference assemblies ILVerify needs to resolve a .NET Framework sample's
 references come from `Microsoft.NETFramework.ReferenceAssemblies.net48`, restored

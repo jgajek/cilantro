@@ -107,12 +107,17 @@ public sealed class ExplainTests
         // of the local it was assigned to once rather than only out of the instruction in front of
         // the branch. What that reaches is the shape a flattened method is left in after its edges
         // are made direct: a state nothing writes again and a loop of comparisons against it.
-        Assert.Contains("344", page, StringComparison.Ordinal);
+        //
+        // Then 344 to 379 and 666 to 776, on no longer refusing a fold that leaves a dispatcher
+        // head reached only from below with its state on the stack. The refusal was there because
+        // such a head is unverifiable, and it cost these folds along with the ones they would have
+        // gone on to make; the state is moved into a local at the end of the run instead.
+        Assert.Contains("379", page, StringComparison.Ordinal);
         Assert.Contains("Constant branches resolved", page, StringComparison.Ordinal);
         // 64 of these are owed to a reference deciding a branch as surely as an integer does, being
         // true exactly when it is not null, and this file puts a null constant in front of one
         // often.
-        Assert.Contains("666", page, StringComparison.Ordinal);
+        Assert.Contains("776", page, StringComparison.Ordinal);
         // Was 0 of 3 while the rewrite only looked for dispatchers reading a variable. Reactor
         // hands most of its dispatchers their state on the evaluation stack instead, and counting
         // those is what turned a line saying nothing was straightened into one saying almost

@@ -48,7 +48,7 @@ public sealed class IlVerificationTests
         // The virtualized payload, and the only one with anything left. Its one new finding is an
         // ExpectedArray on a method the verifier could not import from the protected input at all,
         // so there is no before to compare it with and nothing the run can be said to have broken.
-        new Expected("Mlfhntkcvb.payload.Lqcuzgc.dll", Was: 377, Is: 275, Broken: 1, Worsened: 0,
+        new Expected("Mlfhntkcvb.payload.Lqcuzgc.dll", Was: 377, Is: 266, Broken: 1, Worsened: 0,
             Unreadable: 1),
 
         // The three non-virtualized Reactor 6 builds come out clean, which is worth stating plainly:
@@ -104,11 +104,37 @@ public sealed class IlVerificationTests
             // meeting at a depth they disagree on, which is what a truncated short branch produced.
             Assert.DoesNotContain("BackwardBranch", difference.Is.Codes);
             Assert.DoesNotContain("PathStackDepth", difference.Is.Codes);
+
+            // And a class this verifier does not report at all. ILVerify reads a body whose depths
+            // only a walk over the edges can work out without complaint; the metadata writer, which
+            // makes one pass over the instructions in order, cannot, and answers by writing whatever
+            // max stack the protected body arrived with. Every sample here arrives with none of
+            // these and left with dozens for as long as nothing asked.
+            Assert.Empty(Unscannable(result.OutputPath));
+            Assert.Empty(Unscannable(sample));
         }
         finally
         {
             if (Directory.Exists(outputDirectory))
                 Directory.Delete(outputDirectory, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// The methods of a file whose max stack the metadata writer cannot work out, which is the same
+    /// question ECMA-335 III.1.7.5 asks and the only reader that asks it of what CILantro emits.
+    /// </summary>
+    private static string[] Unscannable(string path)
+    {
+        using var module = dnlib.DotNet.ModuleDefMD.Load(path);
+        return module.GetTypes()
+            .SelectMany(type => type.Methods)
+            .Where(method => method.Body is { Instructions.Count: > 0 } body &&
+                             !dnlib.DotNet.Writer.MaxStackCalculator.GetMaxStack(
+                                 body.Instructions,
+                                 body.ExceptionHandlers,
+                                 out _))
+            .Select(method => method.FullName)
+            .ToArray();
     }
 }

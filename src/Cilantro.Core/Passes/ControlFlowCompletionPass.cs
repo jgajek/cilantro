@@ -89,7 +89,6 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         using var transaction = new BodyMutationTransaction(method);
         var folded = 0;
         var removed = 0;
-        var wasUnnameable = ForwardScan.Unnameable(method);
         var wasDisputed = EvaluationStackAnalyzer.Analyze(method).Diagnostics.Count;
         try
         {
@@ -111,9 +110,10 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             method.Body.OptimizeBranches();
             if (!IsStructurallySound(method))
                 throw new InvalidOperationException("Rewrite left the method body structurally invalid.");
-            if (ForwardScan.Unnameable(method) > wasUnnameable)
-                throw new InvalidOperationException(
-                    "Rewrite left more blocks whose stack a forward scan cannot name.");
+            // Folding an entry edge can leave a dispatcher head that only a branch from below
+            // reaches, which no single forward pass can name the stack at. That is not a reason to
+            // keep the dispatcher: refusing the fold costs about seven in ten of them across the
+            // corpus. StackHandoffPass moves the state into a local at the end of the run instead.
 
             // The shape check above says the branches and boundaries land somewhere; it says
             // nothing about what the stack holds when they do. A fold that deletes the arm which
