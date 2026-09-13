@@ -45,14 +45,10 @@ public sealed class IlVerificationTests
 
     public static TheoryData<Expected> Samples =>
     [
-        // The virtualized payload, and the only one with anything left. What is new is an
-        // ExpectedArray on a method the verifier could not import from the protected input, and one
-        // method that reports two findings where the input reported one: Reactor passes an
-        // object-typed field to File::WriteAllBytes and to Assembly::LoadFile, both of which want a
-        // string. The input does the same thing through an adapter that also declares String, so it
-        // was equally unverifiable there; it went unreported because ILVerify abandons a block at
-        // its first error, and the block it abandoned is the one this run fixed.
-        new Expected("Mlfhntkcvb.payload.Lqcuzgc.dll", Was: 377, Is: 277, Broken: 1, Worsened: 1,
+        // The virtualized payload, and the only one with anything left. Its one new finding is an
+        // ExpectedArray on a method the verifier could not import from the protected input at all,
+        // so there is no before to compare it with and nothing the run can be said to have broken.
+        new Expected("Mlfhntkcvb.payload.Lqcuzgc.dll", Was: 377, Is: 275, Broken: 1, Worsened: 0,
             Unreadable: 1),
 
         // The three non-virtualized Reactor 6 builds come out clean, which is worth stating plainly:

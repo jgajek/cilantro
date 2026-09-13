@@ -83,8 +83,19 @@ public sealed class TypeRestorationPass : DeobfuscationPass
             [$"Restored concrete types to {promotions.Count} object-typed field(s)."]);
     }
 
+    /// <summary>
+    /// A field whose declaration can be changed without the identity gate being at stake.
+    /// </summary>
+    /// <remarks>
+    /// The question is asked of the gate rather than answered again here, because a field this pass
+    /// thought private and the gate thought public would be refused on every run and the message
+    /// would be about an API change rather than about the disagreement. Reactor puts the locals of a
+    /// rewritten method into a nested class and declares all of them public, so which reading is
+    /// used decides real fields: one written once from <c>Path::Combine</c> and read only where a
+    /// <c>string</c> is wanted sits on such a class.
+    /// </remarks>
     private static bool IsObjectTypedNonPublicField(FieldDef field) =>
-        !field.IsPublic &&
+        !ArtifactIdentitySnapshot.InPublicApi(field) &&
         !field.IsLiteral &&
         field.FieldSig?.Type.ElementType == ElementType.Object;
 

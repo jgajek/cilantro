@@ -1071,6 +1071,9 @@ Before emission, the tool checks:
 - exception-region boundaries belong to their method;
 - no reachable call has an invalid operand;
 - public API, resource names, entry point, and strong-name state are preserved;
+  where the public API is what something outside the assembly could name, so a
+  public member of a type nothing outside can reach is not part of it — unless the
+  assembly grants a friend access to its internals, in which case all of it is;
 - every pass is complete (partial and unsupported recovery always block output);
 - the emitted file reloads and passes the same structural verification.
 

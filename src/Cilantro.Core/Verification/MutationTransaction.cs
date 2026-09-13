@@ -132,6 +132,8 @@ public sealed record ArtifactIdentitySnapshot(
     /// </remarks>
     public static IEnumerable<string> PublicApiEntries(TypeDef type)
     {
+        if (!Reachable(type))
+            yield break;
         if (type.IsPublic || type.IsNestedPublic)
             yield return $"T:{type.FullName}";
         foreach (var method in type.Methods.Where(method => method.IsPublic))
@@ -146,6 +148,43 @@ public sealed record ArtifactIdentitySnapshot(
     }
 
     public static string PublicApiEntry(MethodDef method) => $"M:{method.FullName}";
+
+    /// <summary>
+    /// Whether this field is one of the entries a snapshot records.
+    /// </summary>
+    /// <remarks>
+    /// Asked by the passes that would change a field's declaration, so that what they leave alone
+    /// and what this records are the same set rather than two readings of one rule.
+    /// </remarks>
+    public static bool InPublicApi(FieldDef field) =>
+        field.IsPublic && Reachable(field.DeclaringType);
+
+    /// <summary>
+    /// Whether anything outside the assembly could reach into this type.
+    /// </summary>
+    /// <remarks>
+    /// The declared access of a member is only half of it. A public field of a type nobody outside
+    /// can name is not something anybody outside can bind to, so it is not part of the surface this
+    /// gate exists to protect, and treating it as one refuses recovery that costs nothing: Reactor
+    /// puts the locals of a rewritten method into a nested class and declares every one of them
+    /// public, on classes no other assembly can so much as name.
+    ///
+    /// Unless the assembly hands its internals to a friend, in which case they can name all of it
+    /// and the older, broader reading is the right one. This narrows the recorded surface and never
+    /// widens it, so an assembly with an <c>InternalsVisibleTo</c> is treated exactly as before.
+    /// </remarks>
+    private static bool Reachable(TypeDef type) => Friendly(type.Module) || Nameable(type);
+
+    private static bool Nameable(TypeDef type) =>
+        type.DeclaringType is not { } enclosing
+            ? type.IsPublic
+            : (type.IsNestedPublic || type.IsNestedFamily || type.IsNestedFamilyOrAssembly) &&
+                Nameable(enclosing);
+
+    private static bool Friendly(ModuleDef? module) =>
+        module?.Assembly?.CustomAttributes.Any(attribute =>
+            attribute.TypeFullName ==
+                "System.Runtime.CompilerServices.InternalsVisibleToAttribute") == true;
 
     public static ArtifactIdentitySnapshot Capture(ModuleDef module)
     {

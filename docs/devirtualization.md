@@ -534,20 +534,31 @@ forms always reach; going back to short where the distance now allows it leaves
 the encoding of every body that was already right exactly as it was. 36 methods
 of that payload needed it, and none of the three non-virtualized samples did.
 
-The largest probe now carries 277 findings against the protected input's 377, and
-newly breaks one method: an `ExpectedArray` on a method the verifier could not
-import from the protected input at all, so there is no before to compare it to.
-One further method reports two findings where the input reported one, and that is
-an artifact of how ILVerify reads a method rather than a regression. Reactor
-passes an `object`-typed field to `File::WriteAllBytes` and to
-`Assembly::LoadFile`, both of which want a `string`; the protected input does the
-same thing through an adapter that also declares `String`, so it was equally
-unverifiable there. It went unreported because ILVerify abandons a block at its
-first error, and the block it abandoned — the one this run fixed — is the one
-every case block downstream is reached through. The field is written once, from
-`Path::Combine`, and read only where a `string` is wanted, so restoring its type
-would close it; type restoration runs before the proxies are bypassed, which is
-where the evidence for that becomes legible.
+One method then reported two findings where the input reported one, which read at
+first like a regression and was not. Reactor passes an `object`-typed field to
+`File::WriteAllBytes` and to `Assembly::LoadFile`, both of which want a `string`;
+the protected input does the same thing through an adapter that also declares
+`String`, so it was equally unverifiable there. It went unreported because
+ILVerify abandons a block at its first error, and the block it abandoned — the one
+this run fixed — is the one every case block downstream is reached through.
+
+The field is written once, from `Path::Combine`, and read only where a `string` is
+wanted, so type restoration should have had it. What declined it was the rule for
+which fields the pass may touch: it skipped anything declared public, to keep the
+identity gate out of the question, and Reactor puts the locals of a rewritten
+method into a nested class with every one of them declared public. Nothing outside
+the assembly can name that class, so nothing outside it can bind to those fields
+either, and treating them as a public surface refused recovery that costs nothing.
+The identity snapshot now reads a member's reachability rather than its declared
+access alone, and asks it of the whole chain of types the member sits inside —
+except where the assembly hands its internals to a friend, which can name all of
+it, and where the older and broader reading is the right one. The pass asks the
+gate that question rather than answering it again, so the two cannot drift.
+
+That took two more fields on this payload and closed both findings. The largest
+probe now carries 275 findings against the protected input's 377, worsens nothing,
+and newly breaks one method: an `ExpectedArray` on a body the verifier could not
+import from the protected input at all, so there is no before to compare it with.
 
 ### 2. Get the program out — by running the protector's own decoder
 

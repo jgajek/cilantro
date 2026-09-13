@@ -284,11 +284,9 @@ newly broken the verifier could not read from the input at all, which is a class
 its own because a body the importer refused has no before to compare with.
 
 Three of the four outputs verify with nothing at all. The virtualized payload
-carries 277 findings against its input's 377, newly breaking one method — an
-`ExpectedArray` on a body the verifier could not import from the input — and one
-further method reports two findings where the input reported one, which is Reactor
-passing an `object`-typed field where a `string` is wanted, equally unverifiable in
-the input and hidden there because ILVerify abandons a block at its first error.
+carries 275 findings against its input's 377, worsens nothing, and newly breaks one
+method — an `ExpectedArray` on a body the verifier could not import from the input
+in the first place.
 
 The pins are equalities rather than ceilings, so an improvement fails the gate too
 and has to be written down. That is the point of them: three separate defect
