@@ -1067,11 +1067,28 @@ using them emits with them intact.
 Before emission, the tool checks:
 
 - all branch and switch targets belong to their method;
+- every short branch still reaches its target;
 - exception-region boundaries belong to their method;
 - no reachable call has an invalid operand;
 - public API, resource names, entry point, and strong-name state are preserved;
 - every pass is complete (partial and unsupported recovery always block output);
 - the emitted file reloads and passes the same structural verification.
+
+The second of those is a distance rather than a property of the branch, so it is
+the one check no pass can make as it goes: a short branch carries its displacement
+in a signed byte, and instructions added anywhere between a branch and its target
+can put that target out of reach without touching the branch. It is settled on the
+way out, by writing the long form and then going back to short where the distance
+allows — which leaves every body whose branches already reached encoded exactly as
+it was. Leaving it unsettled cost three methods of one payload their control flow:
+the writer said "short branch is too far away" and emitted the truncated
+displacement, and a run that discarded what the writer reported did not pass it on.
+
+What the writer reports is now kept and put in the report, whether or not the
+emission is withheld over it. Not all of it is the run's doing — Reactor's own
+bodies draw 79 complaints about max stack from one payload, and refusing a run
+over what the protector left would withhold every sample — but a complaint nobody
+records is a complaint nobody reads.
 
 The writer preserves metadata tokens and writes atomically. End-to-end tests
 also assert deterministic binary output, entry-point preservation, fixture

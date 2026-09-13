@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -1010,9 +1011,36 @@ public sealed class CilantroPipeline
 
         if (canEmit)
         {
+            var reformed = BranchForms.Reach(context.Module);
             var expectedShape = ModuleShape.Capture(context.Module);
-            WriteModule(context.Module, outputPath, preserveTokens);
+            var complaints = WriteModule(context.Module, outputPath, preserveTokens);
             var outputVerification = AssemblyVerifier.VerifyRoundTrip(outputPath, expectedShape);
+
+            // Said whether or not the emission is withheld over it. The writer complains about the
+            // max stack of bodies Reactor wrote, which is what Reactor left rather than what the run
+            // did, so a run is not refused for it — but a complaint nobody records is a complaint
+            // nobody reads, and the last one to go unread cost three methods of a payload their
+            // control flow.
+            string[] emission =
+            [
+                .. reformed == 0
+                    ? Array.Empty<string>()
+                    : [$"Re-formed the branches of {reformed} method(s) whose short forms no " +
+                       "longer reached their targets."],
+                .. complaints.Select(said => $"The metadata writer reported: {said}")
+            ];
+            if (emission.Length != 0)
+            {
+                verification = verification with
+                {
+                    Diagnostics = [.. verification.Diagnostics, .. emission]
+                };
+                outputVerification = outputVerification with
+                {
+                    Diagnostics = [.. outputVerification.Diagnostics, .. emission]
+                };
+            }
+
             if (!outputVerification.Passed)
             {
                 File.Delete(outputPath);
@@ -1418,12 +1446,28 @@ public sealed class CilantroPipeline
         return paths;
     }
 
-    private static void WriteModule(ModuleDef module, string outputPath, bool preserveTokens)
+    /// <summary>
+    /// Serializes the module, and reports what the writer complained about on the way.
+    /// </summary>
+    /// <remarks>
+    /// The writer knows things about the bodies it is given that nothing else in the run does, and
+    /// the one that matters is whether a branch still reaches its target in the form it is written
+    /// in. A `br.s` carries a signed byte, so a pass that makes a body longer between a branch and
+    /// the target behind it can put that target out of reach; the writer then says "short branch is
+    /// too far away" and emits a jump to whatever the truncated displacement lands on. Silencing it
+    /// — which is what a no-throw logger does — turns that into a file that loads, decompiles and
+    /// goes somewhere else. Three methods of one payload left this way before anyone was listening.
+    /// </remarks>
+    private static IReadOnlyList<string> WriteModule(
+        ModuleDef module,
+        string outputPath,
+        bool preserveTokens)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        var complaints = new WriterComplaints();
         var writerOptions = new ModuleWriterOptions(module)
         {
-            Logger = DummyLogger.NoThrowInstance
+            Logger = complaints
         };
         if (preserveTokens)
         {
@@ -1442,6 +1486,31 @@ public sealed class CilantroPipeline
             {
                 File.Delete(temporaryPath);
             }
+        }
+
+        return complaints.Errors;
+    }
+
+    /// <summary>
+    /// Keeps what the metadata writer reported instead of discarding it.
+    /// </summary>
+    private sealed class WriterComplaints : ILogger
+    {
+        private readonly List<string> errors = [];
+
+        public IReadOnlyList<string> Errors => errors;
+
+        public bool IgnoresEvent(LoggerEvent loggerEvent) => loggerEvent != LoggerEvent.Error;
+
+        public void Log(object? sender, LoggerEvent loggerEvent, string format, params object?[] args)
+        {
+            if (loggerEvent != LoggerEvent.Error)
+                return;
+            var said = args.Length == 0
+                ? format
+                : string.Format(CultureInfo.InvariantCulture, format, args);
+            if (!errors.Contains(said, StringComparer.Ordinal))
+                errors.Add(said);
         }
     }
 

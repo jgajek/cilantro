@@ -71,6 +71,10 @@ public sealed class ProxyNarrowingPass : DeobfuscationPass
                 transaction.Rollback();
                 continue;
             }
+
+            // This makes bodies longer, which can put the target of a short branch out of a signed
+            // byte's reach. Whose job that is to notice is BranchForms, on the way out, because it
+            // is not only this pass that grows a body.
             if (EvaluationStackAnalyzer.Analyze(method).Diagnostics.Count > wasDisputed)
             {
                 transaction.Rollback();

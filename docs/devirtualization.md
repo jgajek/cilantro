@@ -500,11 +500,43 @@ reads the module's string table stops at the first thing it cannot model. They g
 in at the end of the run instead, once nothing is going to read those bodies
 again except a verifier and a decompiler.
 
-The largest probe now newly breaks five methods rather than 25, and carries 281
-findings against the protected input's 377. Three of the five are the same
-`PathStackDepth`: a `br` that a redirect pointed at a case block without taking
-the state push in front of it away, which CILantro's own stack analysis rejects
-in the file it wrote. That one is open.
+Emitting them made three other methods of that probe unverifiable, and the reason
+turned out to have nothing to do with types. A short branch carries its
+displacement in a signed byte, so it reaches 127 bytes forward and 128 back;
+sixteen bytes of temporaries between a `br.s` and the dispatcher head behind it
+put that head out of reach. The distance is not a property of the branch, so
+nothing about the branch changed and no analysis of the body found anything wrong
+— CILantro's own stack analysis accepted all three. The metadata writer knew,
+said "short branch is too far away", and wrote the truncated displacement anyway,
+which jumped one instruction forward instead of a hundred and thirty-six back.
+Nobody heard it, because the run installed a logger that discards what the writer
+reports.
+
+Both halves of that are now closed. What the writer says is recorded in the
+report, whether or not the emission is withheld over it — Reactor's own bodies
+draw 79 max-stack complaints from one payload, which is not the run's doing and
+not grounds for refusing a run, but a complaint nobody records is a complaint
+nobody reads. And the distances are settled on the way out, in `BranchForms`,
+because a distance depends on every edit between two points rather than on the
+edit being made, so no pass can be asked to keep track of it as it goes. Long
+forms always reach; going back to short where the distance now allows it leaves
+the encoding of every body that was already right exactly as it was. 36 methods
+of that payload needed it, and none of the three non-virtualized samples did.
+
+The largest probe now carries 277 findings against the protected input's 377, and
+newly breaks one method: an `ExpectedArray` on a method the verifier could not
+import from the protected input at all, so there is no before to compare it to.
+One further method reports two findings where the input reported one, and that is
+an artifact of how ILVerify reads a method rather than a regression. Reactor
+passes an `object`-typed field to `File::WriteAllBytes` and to
+`Assembly::LoadFile`, both of which want a `string`; the protected input does the
+same thing through an adapter that also declares `String`, so it was equally
+unverifiable there. It went unreported because ILVerify abandons a block at its
+first error, and the block it abandoned — the one this run fixed — is the one
+every case block downstream is reached through. The field is written once, from
+`Path::Combine`, and read only where a `string` is wanted, so restoring its type
+would close it; type restoration runs before the proxies are bypassed, which is
+where the evidence for that becomes legible.
 
 ### 2. Get the program out — by running the protector's own decoder
 
