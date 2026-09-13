@@ -424,8 +424,17 @@ writes its own code.
 It is worth being plain about what each step is owed. The reachability narrowing
 helps seventeen samples find more to delete and costs nothing on the fourteen
 that refuse it. The loader-state fold reaches five. The lift reaches four, and
-deleting an interpreter reaches two. None of the thirty-three fails verification,
-and none is left holding a branch on a literal.
+deleting an interpreter reaches two. None of the thirty-three fails the tool's
+own verification, and none is left holding a branch on a literal.
+
+That verification is the reload-and-shape check described above, and it should
+not be read as the stronger claim. The rebuilt bodies are not IL-verifiable and
+are not written to be: holding every value as an object means calling an
+instance method on one without a cast, which is 28 `StackUnexpected` findings on
+the reactor7 probe and the deliberate trade for a body a reader can follow.
+What that stage cannot be allowed to hide is a body whose stack contradicts
+itself, which is a defect rather than a trade, and which nothing in the tool was
+asking about until the contradiction started throwing instead.
 
 ### 2. Get the program out — by running the protector's own decoder
 
@@ -694,11 +703,20 @@ Almost always they are the same number. Where they are not, the reading
 contradicts itself about that operation, and writing it as read puts both halves
 of the contradiction into one method: the instructions leave one depth and
 everything after them is written at another, so two paths meet somewhere at a
-depth they do not agree on. Nothing catches that. The module loads and it
-verifies, because verification takes each path as it finds it. What notices is a
-decompiler, which says so in three comment lines at the top of the method and
-then renders it anyway, on a guess — and the guess is what an analyst reads. The
-cost is not the one operation. It is that the flattening pass asks whether a
+depth they do not agree on.
+
+The tool's own verification stage does not catch that, and it is worth being
+exact about why, because the stage is easy to read as more than it is: it
+reloads the file it wrote and checks that the members it holds are the members
+that were in memory. A body whose stack contradicts itself survives both. An IL
+verifier is a different question and does catch it — ILVerify named this one
+twice, `PathStackDepth` at the join and `BackwardBranch` for the jump into it —
+so the honest account is that the defect was reportable all along and nothing in
+the tool was asking. A decompiler notices too, says so in three comment lines at
+the top of the method, and then renders it anyway on a guess, which is the part
+an analyst reads.
+
+The cost is not the one operation. It is that the flattening pass asks whether a
 method's stack is consistent before it will touch it, so a single operation in
 four thousand left 314 dispatcher jumps in this method going through a state
 variable rather than saying where they went. Throwing at the contradiction gives
