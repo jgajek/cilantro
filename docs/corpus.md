@@ -265,6 +265,45 @@ A checkout that has samples but not the one a test names fails rather than skips
 That is a corpus that has drifted from the suite, which is worth hearing about,
 where a wholly absent corpus is a choice the repository made.
 
+## What ECMA-335 says about the cleaned copies
+
+The tool's own verification asks whether the members of the file it wrote are the
+members that were in memory, and whether branch targets and handler boundaries
+belong to their methods. That is a narrower question than whether the IL is legal,
+and bodies have passed it while breaking rules ECMA-335 states plainly. Microsoft's
+ILVerify reads ECMA-335, so `IlVerificationTests` runs it over four samples — the
+three non-virtualized Reactor 6 libraries and the virtualized Reactor 6 payload —
+and holds the results to pinned numbers.
+
+It is asked differentially, because Reactor's own output does not verify: these
+inputs carry 202, 186, 205 and 377 findings before CILantro touches them, so no run
+could claim a clean output and a gate demanding one would be a gate nobody passes.
+What is pinned instead is the comparison — what the input carries, what the output
+carries, how many methods were newly broken, how many worsened, and how many of the
+newly broken the verifier could not read from the input at all, which is a class of
+its own because a body the importer refused has no before to compare with.
+
+Three of the four outputs verify with nothing at all. The virtualized payload
+carries 277 findings against its input's 377, newly breaking one method — an
+`ExpectedArray` on a body the verifier could not import from the input — and one
+further method reports two findings where the input reported one, which is Reactor
+passing an `object`-typed field where a `string` is wanted, equally unverifiable in
+the input and hidden there because ILVerify abandons a block at its first error.
+
+The pins are equalities rather than ceilings, so an improvement fails the gate too
+and has to be written down. That is the point of them: three separate defect
+classes reached emitted files of this corpus while every other gate in the suite
+stayed green, and each was found by reading these differences rather than by any
+test. Two of them, `BackwardBranch` and `PathStackDepth`, are named in the test as
+well, so their return fails with their own name on it.
+
+The reference assemblies ILVerify needs to resolve a .NET Framework sample's
+references come from `Microsoft.NETFramework.ReferenceAssemblies.net48`, restored
+like any other package. They are 133 MB, so they are read where restore put them
+rather than copied beside the tests, and the path is baked into the test assembly
+at build time — a path found by searching at run time differs between machines, and
+a gate that reads differently on two machines is not a gate.
+
 ## What the suite costs
 
 Where the samples are present the suite takes several minutes, and about a dozen
@@ -284,6 +323,7 @@ whole-sample tests account for all but a few seconds of it:
 | `CorpusTests.ReactorSevenNecroBitCoreClrBodiesAreStaticallyRecovered` | Reactor 7.5 net8 and net10 |
 | `CorpusTests.ReactorSevenVirtualizedFullBuildIsFullyRecovered` | one Reactor 7.5 net48 full build |
 | `CorpusTests.ReactorSevenCoreClrFullBuildIsFullyRecovered` | Reactor 7.5 net8 and net10 full builds |
+| `IlVerificationTests.TheCleanedCopyBreaksNothing...` | four samples, verified against ECMA-335 |
 
 They are described by work rather than by seconds because the seconds are not a
 property of the test: the same sample recovery has been measured at 108 seconds

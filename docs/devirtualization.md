@@ -437,6 +437,17 @@ absolute count answers the wrong question, because Reactor's own IL is not
 verifiable either; on these three libraries the protected inputs carry 202, 205
 and 186 findings, and the runs clear 154, 160 and 142 methods of them.
 
+That question is now asked by the suite rather than by hand. `IlVerificationTests`
+runs each of four samples and pins what the comparison says exactly — what the
+input carries, what the output carries, how many methods were newly broken, how
+many worsened, and how many of the newly broken the verifier could not read from
+the input at all — and names `BackwardBranch` and `PathStackDepth` so that either
+one's return fails with its own name on it. The numbers are equalities rather than
+ceilings, which means an improvement fails here too and has to be written down.
+That is deliberate: three separate defect classes reached the emitted files of
+this corpus while every other gate in the suite stayed green, and every one of
+them was found by reading these differences.
+
 Against that baseline the outputs newly broke six methods, one, and fifteen, all
 of them one error: `BackwardBranch`, a block nothing falls into that only a
 backward branch reaches, entered with something still on the stack, which

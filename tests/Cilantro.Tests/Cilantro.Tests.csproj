@@ -10,9 +10,29 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="dnlib" Version="4.5.0" />
+    <PackageReference Include="Microsoft.ILVerification" Version="10.0.11" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <!--
+    The corpus is measured against ECMA-335 by Microsoft's own verifier, which needs the framework
+    the samples were built against to resolve their references. The reference assemblies are 133 MB,
+    so they are read where restore put them rather than copied beside the tests, and the path is
+    baked in at build time: a path found by searching at run time is a path that differs between
+    machines, and a gate that reads differently on two machines is not a gate. Nothing about the
+    package may reach the compilation — these are .NET Framework 4.8 assemblies and this is net10.0
+    — so every asset of it is excluded and only the path is taken.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3"
+                      GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="Cilantro.ReferenceAssemblies.net48"
+                      Value="$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8" />
   </ItemGroup>
 
   <ItemGroup>
