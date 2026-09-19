@@ -24,13 +24,18 @@ public sealed class RunStatusTests
     [Fact]
     public void TheStatusIsNamedTheSameWayByTheCallerAndTheRun()
     {
+        var root = Path.Combine(Path.GetFullPath(Path.GetTempPath()), $"cilantro-status-paths-{Guid.NewGuid():N}");
+        var samples = Path.Combine(root, "samples");
+        var reports = Path.Combine(root, "reports");
+        var sample = Path.Combine(samples, "sample.exe");
+
         Assert.Equal(
-            Path.Combine("/reports", "sample.status.json"),
-            RunStatus.PathFor("/samples/sample.exe", "/reports"));
+            Path.Combine(reports, "sample.status.json"),
+            RunStatus.PathFor(sample, reports));
         // Told nowhere, a run puts its reports in a folder beside the input, and this goes with them.
         Assert.Equal(
-            Path.Combine("/samples", "cilantro", "sample.status.json"),
-            RunStatus.PathFor("/samples/sample.exe", null));
+            Path.Combine(samples, "cilantro", "sample.status.json"),
+            RunStatus.PathFor(sample, null));
     }
 
     /// <summary>

@@ -100,9 +100,7 @@ public sealed class BooleanRecoveryPass : DeobfuscationPass
             evaluated[offset] = first;
         }
 
-        var transactions = offsets.Select(item => item.Method)
-            .Distinct()
-            .ToDictionary(method => method, method => new BodyMutationTransaction(method));
+        using var transactions = new BodyMutationBatch(offsets.Select(item => item.Method));
         try
         {
             foreach (var site in offsets)
@@ -128,21 +126,14 @@ public sealed class BooleanRecoveryPass : DeobfuscationPass
                 context.Module, context.OriginalIdentity, context.OriginalStructure);
             if (!verification.Passed)
                 throw new InvalidOperationException(string.Join("; ", verification.Diagnostics));
-            foreach (var transaction in transactions.Values)
-                transaction.Commit();
+            transactions.Commit();
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException)
         {
-            foreach (var transaction in transactions.Values)
-                transaction.Rollback();
+            transactions.Rollback();
             return (PassStatus.Failed, 0,
                 [$"Atomic boolean rewrite was rolled back: {exception.Message}"]);
-        }
-        finally
-        {
-            foreach (var transaction in transactions.Values)
-                transaction.Dispose();
         }
 
         foreach (var site in offsets)

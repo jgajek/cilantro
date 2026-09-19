@@ -130,7 +130,10 @@ public sealed class ControlFlowGraph
 
         var blockMap = blocks.SelectMany(block => block.Instructions.Select(i => (i, block)))
             .ToDictionary(item => item.i, item => item.block);
-        var normalEdges = new List<ControlFlowEdge>();
+        var allEdges = new List<ControlFlowEdge>();
+        var edgeKeys = new HashSet<(int Source, int Target, ControlFlowEdgeKind Kind)>();
+        var successors = new List<ControlFlowEdge>?[blocks.Count];
+        var predecessors = new List<ControlFlowEdge>?[blocks.Count];
         foreach (var block in blocks)
         {
             var last = block.Last;
@@ -158,7 +161,6 @@ public sealed class ControlFlowGraph
         }
 
         var regionMap = BuildRegionMap(method, instructions, indices);
-        var allEdges = new List<ControlFlowEdge>(normalEdges);
         foreach (var handler in method.Body.ExceptionHandlers)
         {
             var exceptionalTarget = handler.FilterStart ?? handler.HandlerStart;
@@ -168,15 +170,15 @@ public sealed class ControlFlowGraph
                          regionMap[block.First].Any(region =>
                              ReferenceEquals(region.Handler, handler) && region.InTry)))
             {
-                AddUniqueEdge(allEdges, block, blockMap[exceptionalTarget],
+                AddEdge(block, blockMap[exceptionalTarget],
                     ControlFlowEdgeKind.Exception);
             }
         }
 
         foreach (var block in blocks)
         {
-            block.Successors = allEdges.Where(edge => ReferenceEquals(edge.Source, block)).ToArray();
-            block.Predecessors = allEdges.Where(edge => ReferenceEquals(edge.Target, block)).ToArray();
+            block.Successors = successors[block.Id]?.ToArray() ?? [];
+            block.Predecessors = predecessors[block.Id]?.ToArray() ?? [];
         }
         return new ControlFlowGraph(method, blocks, allEdges, blockMap, regionMap);
 
@@ -192,25 +194,23 @@ public sealed class ControlFlowGraph
                 AddEdge(block, blocks[block.Id + 1], kind);
         }
 
-        void AddEdge(BasicBlock source, BasicBlock target, ControlFlowEdgeKind kind) =>
-            AddUniqueEdge(normalEdges, source, target, kind);
+        void AddEdge(BasicBlock source, BasicBlock target, ControlFlowEdgeKind kind)
+        {
+            // Keep first-occurrence order, including distinct edge kinds between the same pair.
+            // Index each accepted edge once instead of rescanning the growing edge list and then
+            // scanning it twice more for every block to assemble adjacency.
+            if (!edgeKeys.Add((source.Id, target.Id, kind)))
+                return;
+            var edge = new ControlFlowEdge(source, target, kind);
+            allEdges.Add(edge);
+            (successors[source.Id] ??= []).Add(edge);
+            (predecessors[target.Id] ??= []).Add(edge);
+        }
     }
 
     private static bool EndsBlock(Instruction instruction) =>
         instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch or
             FlowControl.Return or FlowControl.Throw;
-
-    private static void AddUniqueEdge(
-        List<ControlFlowEdge> edges,
-        BasicBlock source,
-        BasicBlock target,
-        ControlFlowEdgeKind kind)
-    {
-        if (!edges.Any(edge => ReferenceEquals(edge.Source, source) &&
-                              ReferenceEquals(edge.Target, target) &&
-                              edge.Kind == kind))
-            edges.Add(new ControlFlowEdge(source, target, kind));
-    }
 
     private static Dictionary<Instruction, IReadOnlyList<ExceptionRegion>> BuildRegionMap(
         MethodDef method,

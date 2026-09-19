@@ -191,7 +191,7 @@ public sealed class ConstantStringPass : DeobfuscationPass
                 }
 
                 changes++;
-                context.AddChange(new ChangeRecord(
+                transaction.RecordChange(context, new ChangeRecord(
                     Name,
                     "fold-constant-string",
                     $"{method.MDToken} IL_{instruction.Offset:X4}",

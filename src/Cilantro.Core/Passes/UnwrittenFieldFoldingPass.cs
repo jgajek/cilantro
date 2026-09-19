@@ -95,7 +95,7 @@ public sealed class UnwrittenFieldFoldingPass : DeobfuscationPass
                     instruction.OpCode = opcode;
                     instruction.Operand = operand;
                     folded++;
-                    context.AddChange(new ChangeRecord(
+                    transaction.RecordChange(context, new ChangeRecord(
                         Name,
                         "fold-unwritten-field-read",
                         $"{method.MDToken} IL_{instruction.Offset:X4}",
@@ -123,7 +123,7 @@ public sealed class UnwrittenFieldFoldingPass : DeobfuscationPass
                     instruction.OpCode = OpCodes.Throw;
                     instruction.Operand = null;
                     thrown++;
-                    context.AddChange(new ChangeRecord(
+                    transaction.RecordChange(context, new ChangeRecord(
                         Name,
                         "name-null-dereference",
                         $"{method.MDToken} IL_{instruction.Offset:X4}",

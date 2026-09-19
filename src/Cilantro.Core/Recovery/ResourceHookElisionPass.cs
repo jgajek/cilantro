@@ -61,10 +61,8 @@ public sealed class ResourceHookElisionPass : DeobfuscationPass
             return (PassStatus.Success, 0, ["No resource-resolve subscription was found to elide."]);
 
         var handlers = subscriptions.Select(item => item.Handler).Distinct().ToArray();
-        var transactions = subscriptions
-            .Select(item => item.Method)
-            .Distinct()
-            .ToDictionary(method => method, method => new BodyMutationTransaction(method));
+        using var transactions = new BodyMutationBatch(subscriptions
+            .Select(item => item.Method));
         try
         {
             foreach (var subscription in subscriptions)
@@ -84,21 +82,14 @@ public sealed class ResourceHookElisionPass : DeobfuscationPass
                 CilantroPipeline.BuildRewriteAllowance(context));
             if (!verification.Passed)
                 throw new InvalidOperationException(string.Join("; ", verification.Diagnostics));
-            foreach (var transaction in transactions.Values)
-                transaction.Commit();
+            transactions.Commit();
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException)
         {
-            foreach (var transaction in transactions.Values)
-                transaction.Rollback();
+            transactions.Rollback();
             return (PassStatus.Failed, 0,
                 [$"Resource-hook elision was rolled back: {exception.Message}"]);
-        }
-        finally
-        {
-            foreach (var transaction in transactions.Values)
-                transaction.Dispose();
         }
 
         foreach (var subscription in subscriptions)

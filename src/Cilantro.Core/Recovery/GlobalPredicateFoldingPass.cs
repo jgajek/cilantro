@@ -90,7 +90,7 @@ public class GlobalPredicateFoldingPass : DeobfuscationPass
                 continue;
             changes += folded;
             methodsRewritten++;
-            context.AddChange(new ChangeRecord(
+            transaction.RecordChange(context, new ChangeRecord(
                 Name,
                 "fold-global-state-read",
                 $"{method.MDToken} {method.FullName}",

@@ -21,6 +21,7 @@ public sealed record MutationPlan(
 public sealed class InstructionMutationTransaction : IDisposable
 {
     private readonly List<(Instruction Instruction, OpCode OpCode, object? Operand)> snapshots = [];
+    private readonly List<(ArtifactContext Context, ChangeRecord Change)> changes = [];
     private bool completed;
 
     public void Capture(Instruction instruction)
@@ -30,14 +31,26 @@ public sealed class InstructionMutationTransaction : IDisposable
         snapshots.Add((instruction, instruction.OpCode, instruction.Operand));
     }
 
+    /// <summary>Publishes a rewrite record only if the corresponding instruction edits commit.</summary>
+    public void RecordChange(ArtifactContext context, ChangeRecord change)
+    {
+        if (completed)
+            throw new InvalidOperationException("The instruction transaction is already complete.");
+        changes.Add((context, change));
+    }
+
     public void Commit()
     {
+        foreach (var (context, change) in changes)
+            context.AddChange(change);
+        changes.Clear();
         completed = true;
         snapshots.Clear();
     }
 
     public void Rollback()
     {
+        changes.Clear();
         for (var index = snapshots.Count - 1; index >= 0; index--)
         {
             var snapshot = snapshots[index];

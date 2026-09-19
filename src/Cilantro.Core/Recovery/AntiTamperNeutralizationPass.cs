@@ -137,8 +137,7 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
         }
 
         var callers = calls.Select(item => item.Method).Distinct().ToArray();
-        var transactions = callers.ToDictionary(
-            method => method, method => new BodyMutationTransaction(method));
+        using var transactions = new BodyMutationBatch(callers);
         try
         {
             foreach (var (_, call) in calls)
@@ -156,23 +155,16 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
                 context.OriginalStructure);
             if (!verification.Passed)
                 throw new InvalidOperationException(string.Join("; ", verification.Diagnostics));
-            foreach (var transaction in transactions.Values)
-                transaction.Commit();
+            transactions.Commit();
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or ArgumentException)
         {
-            foreach (var transaction in transactions.Values)
-                transaction.Rollback();
+            transactions.Rollback();
             return (PassStatus.Failed, 0,
             [
                 $"Integrity neutralization was rolled back: {exception.Message}"
             ]);
-        }
-        finally
-        {
-            foreach (var transaction in transactions.Values)
-                transaction.Dispose();
         }
 
         foreach (var (caller, call) in calls)
@@ -297,6 +289,8 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
             {
                 if (instruction.Operand is not IMethod called ||
                     called.ResolveMethodDef() is not { } target ||
+                    // Tokens are local to a module; a foreign RID must not stand for a local method.
+                    target.Module != entryPoint.Module ||
                     !visited.Add(target.MDToken.Raw))
                 {
                     continue;

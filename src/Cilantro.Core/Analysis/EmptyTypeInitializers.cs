@@ -37,9 +37,16 @@ public static class EmptyTypeInitializers
     /// and anything richer — a handler, a store, a branch — is a body this cannot reason about and
     /// declines rather than guesses at.
     /// </remarks>
+    public static bool DoesNothing(MethodDef method) =>
+        method.IsStaticConstructor && EmptyMethodBodies.DoesNothing(method);
+}
+
+/// <summary>Recognizes a void body consisting only of padding and a return.</summary>
+internal static class EmptyMethodBodies
+{
     public static bool DoesNothing(MethodDef method)
     {
-        if (!method.IsStaticConstructor || !method.HasBody)
+        if (!method.HasBody || method.MethodSig?.RetType.ElementType != ElementType.Void)
             return false;
         var body = method.Body;
         if (body.HasExceptionHandlers || body.Instructions.Count == 0)

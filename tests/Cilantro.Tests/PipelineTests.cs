@@ -123,7 +123,7 @@ public sealed class PipelineTests
             Assert.Equal(2, result.ExtractedPayloadPaths.Count);
             Assert.All(result.ExtractedPayloadPaths, path => Assert.True(File.Exists(path)));
             var payloadPath = Assert.Single(result.ExtractedPayloadPaths,
-                path => Path.GetFileNameWithoutExtension(path) == payload.AssemblyName);
+                path => path == payload.WrittenTo);
             using (var payloadModule = ModuleDefMD.Load(payloadPath))
             {
                 Assert.Null(payloadModule.EntryPoint);

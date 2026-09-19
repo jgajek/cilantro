@@ -60,7 +60,7 @@ Files extracted from the input are named individually under `WROTE`:
 
     Cleaned copy    cilantro/suspicious.cleaned.exe
     Extracted files 2 in cilantro/suspicious.payloads
-      Zebekeadu.dll (90.5 KB)
+      Zebekeadu.417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd.dll (90.5 KB)
         Assembly    Zebekeadu
         SHA-256     417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd
         From        KyVgypcyOSoGANSpXe::uMqwgnxr1

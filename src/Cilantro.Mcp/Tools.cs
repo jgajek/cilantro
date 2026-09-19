@@ -173,7 +173,7 @@ internal static class Tools
                     ["from"] = new JsonObject
                     {
                         ["type"] = "integer",
-                        ["description"] = "Byte to start at, for reading a long listing in pieces.",
+                        ["description"] = "UTF-8 byte offset to start at. Use the continuation offset returned by the previous page.",
                         ["minimum"] = 0
                     }
                 }
@@ -577,11 +577,18 @@ internal static class Tools
         if (!File.Exists(path))
             return Failed($"No such file: {path}");
 
-        var length = new FileInfo(path).Length;
-        var from = (int)Math.Max(0, arguments["from"]?.GetValue<long>() ?? 0);
+        long from = 0;
+        if (arguments["from"] is { } supplied &&
+            (supplied is not JsonValue value || !value.TryGetValue(out from) || from < 0))
+        {
+            return Failed("from must be a non-negative 64-bit integer byte offset.");
+        }
         using var stream = File.OpenRead(path);
+        var length = stream.Length;
+        if (from > length)
+            return Failed($"from is past the end of the file ({length} bytes).");
         var head = new byte[Math.Min(length, Most)];
-        var read = stream.Read(head, 0, head.Length);
+        var read = stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
         if (Binary(head.AsSpan(0, read)))
         {
             return Failed(
@@ -591,10 +598,28 @@ internal static class Tools
         }
 
         stream.Position = from;
-        var slice = new byte[Math.Min(length - from, Most)];
-        read = stream.Read(slice, 0, slice.Length);
-        var text = Encoding.UTF8.GetString(slice, 0, read);
-        var next = from + read;
+        // Read ahead far enough to identify a UTF-8 character crossing the page boundary, but
+        // leave that entire character for the next page. The continuation remains a byte offset.
+        var slice = new byte[Math.Min(length - from, Most + 3)];
+        read = stream.ReadAtLeast(slice, slice.Length, throwOnEndOfStream: false);
+        if (read > 0 && (slice[0] & 0xC0) == 0x80)
+            return Failed("from must point to the start of a UTF-8 character. Use the previous page's continuation offset.");
+        var count = Math.Min(read, Most);
+        if (count < read)
+        {
+            while (count > 0 && (slice[count] & 0xC0) == 0x80)
+                count--;
+        }
+        string text;
+        try
+        {
+            text = new UTF8Encoding(false, true).GetString(slice, 0, count);
+        }
+        catch (DecoderFallbackException)
+        {
+            return Failed("The requested text is not valid UTF-8.");
+        }
+        var next = from + count;
         return Said(next < length
             ? text + $"\n\n[{next} of {length} bytes. Call again with from: {next} for the rest.]"
             : text);

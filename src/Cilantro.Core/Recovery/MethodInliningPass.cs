@@ -46,24 +46,34 @@ namespace Cilantro.Core.Recovery;
 /// the two signatures line up differently, because <c>newobj</c> is handed no instance and the value
 /// it produces is the type being constructed rather than the void the constructor declares.
 ///
-/// The transform is a single operand rewrite at each site and never removes the forwarder, so the
+/// The initial pass rewrites only calls whose initializer trigger can be skipped. The recheck after
+/// loader elision can preserve a remaining trigger with RuntimeHelpers.RunClassConstructor, at the
+/// original call site after argument evaluation. It also removes calls to helpers the loader pass
+/// emptied, subject to the same initialization checks. Neither pass removes declarations, so the
 /// public-API and structural identity gates hold unchanged. It is deliberately narrow: only static
 /// forwarders whose body is an in-order argument load followed by one call and a return qualify.
 /// Argument-shuffling forwarders would require materializing the reordering through locals and are
 /// left out of this conservative pass rather than approximated. Every rewrite is staged and rolled
 /// back unless verification passes.
 /// </remarks>
-public sealed class MethodInliningPass : DeobfuscationPass
+public class MethodInliningPass : DeobfuscationPass
 {
     public override string Name => "method-inlining";
     public override IReadOnlyCollection<string> Dependencies => ["method-body-recovery"];
+    protected virtual bool PreserveInitializerCalls => false;
 
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
         ArtifactContext context)
     {
         var forwarders = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
-            .Select(method => (Method: method, Target: TryGetForwardedTarget(method)))
+            .Select(method => (Method: method, Target:
+                PreserveInitializerCalls && method.IsStatic && !method.IsStaticConstructor &&
+                !method.HasGenericParameters && method.MethodSig?.Params.Count == 0 &&
+                RecoveryOrphans.Of(context).Contains(method.MDToken.Raw) &&
+                EmptyMethodBodies.DoesNothing(method)
+                    ? new ForwardTarget(method, OpCodes.Nop, [])
+                    : TryGetForwardedTarget(method)))
             .Where(item => item.Target is not null)
             .ToDictionary(item => item.Method, item => item.Target!);
         if (forwarders.Count == 0)
@@ -72,11 +82,11 @@ public sealed class MethodInliningPass : DeobfuscationPass
 
         var changes = 0;
         var bypassed = new HashSet<MethodDef>();
-        using var transaction = new InstructionMutationTransaction();
+        using var transaction = new BodyMutationBatch();
         foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods)
                      .Where(item => item.HasBody))
         {
-            foreach (var instruction in method.Body.Instructions)
+            foreach (var instruction in method.Body.Instructions.ToArray())
             {
                 if (instruction.OpCode.FlowControl != FlowControl.Call ||
                     instruction.OpCode.Code is not (Code.Call or Code.Callvirt) ||
@@ -84,29 +94,62 @@ public sealed class MethodInliningPass : DeobfuscationPass
                     called.ResolveMethodDef() is not { } definition ||
                     !forwarders.TryGetValue(definition, out var forward) ||
                     // Leave the forwarder's own body alone; only external callers are redirected.
-                    method == definition)
+                    method == definition ||
+                    !CanAccessTarget(method, forward.Chain[^1], forward.Target))
                 {
                     continue;
                 }
 
-                transaction.Capture(instruction);
+                var initialize = forward.Chain.Where(link => !CanSkipInitializer(link, method)).ToArray();
+                // Only materialize the original call's own initialization trigger. Intermediate
+                // owners may not be nameable here, and open generic owners need a closed token.
+                if (initialize.Length != 0 && (!PreserveInitializerCalls ||
+                    initialize.Any(link => link.DeclaringType != definition.DeclaringType) ||
+                    HasGenericOwner(definition.DeclaringType) || definition.DeclaringType.IsBeforeFieldInit))
+                    continue;
+                var index = method.Body.Instructions.IndexOf(instruction);
+                if ((initialize.Length != 0 || forward.InnerOpCode == OpCodes.Nop) && index > 0 &&
+                    method.Body.Instructions[index - 1].OpCode.OpCodeType == OpCodeType.Prefix)
+                    continue;
+                transaction.Capture(method);
                 instruction.OpCode = forward.InnerOpCode;
-                instruction.Operand = forward.Target;
+                instruction.Operand = forward.InnerOpCode == OpCodes.Nop ? null : forward.Target;
+                if (initialize.Length != 0)
+                {
+                    // Keep the original instruction as the branch/EH entry. Arguments have
+                    // already been evaluated, exactly as before the wrapper's static call.
+                    var call = new Instruction(instruction.OpCode, instruction.Operand);
+                    instruction.OpCode = OpCodes.Ldtoken;
+                    instruction.Operand = definition.DeclaringType;
+                    var helpers = new TypeRefUser(context.Module, "System.Runtime.CompilerServices",
+                        "RuntimeHelpers", context.Module.CorLibTypes.AssemblyRef);
+                    var handle = new ValueTypeSig(new TypeRefUser(context.Module, "System",
+                        "RuntimeTypeHandle", context.Module.CorLibTypes.AssemblyRef));
+                    var ensure = new MemberRefUser(context.Module, "RunClassConstructor",
+                        MethodSig.CreateStatic(context.Module.CorLibTypes.Void, handle), helpers);
+                    method.Body.Instructions.Insert(index + 1, OpCodes.Call.ToInstruction(ensure));
+                    method.Body.Instructions.Insert(index + 2, call);
+                    method.Body.KeepOldMaxStack = false;
+                    method.Body.SimplifyBranches();
+                }
                 changes++;
                 // The whole chain is skipped, not just its first link.
                 bypassed.UnionWith(forward.Chain);
-                context.AddChange(new ChangeRecord(
+                transaction.RecordChange(context, new ChangeRecord(
                     Name,
                     "inline-forwarder",
                     $"{method.MDToken} IL_{instruction.Offset:X4}",
-                    $"Redirected forwarder {definition.MDToken} to {forward.Target.MDToken}."));
+                    forward.InnerOpCode == OpCodes.Nop
+                        ? $"Removed a call to loader-emptied helper {definition.MDToken}, preserving required initialization."
+                        : $"Redirected forwarder {definition.MDToken} to {forward.Target.MDToken}."));
             }
         }
         if (changes == 0)
             return (PassStatus.Success, 0, ["No reachable forwarder call site required redirection."]);
 
         var verification = AssemblyVerifier.Verify(
-            context.Module, context.OriginalIdentity, context.OriginalStructure);
+            context.Module, context.OriginalIdentity, context.OriginalStructure,
+            CilantroPipeline.BuildRewriteAllowance(context));
         if (!verification.Passed)
         {
             transaction.Rollback();
@@ -116,13 +159,17 @@ public sealed class MethodInliningPass : DeobfuscationPass
         transaction.Commit();
         // A forwarder exists to be called; every call it had now goes straight to the target.
         RecoveryOrphans.Declare(context, bypassed);
-        context.SetFact("inlining.redirected", changes);
+        context.TryGetFact<int>("inlining.redirected", out var previous);
+        context.SetFact("inlining.redirected", previous + changes);
         return (PassStatus.Success, changes,
         [
-            $"Redirected {changes} forwarder call site(s) to their proven targets.",
+            $"Rewrote {changes} forwarder call site(s), preserving required type initialization.",
             $"{bypassed.Count} forwarder(s) were left with nothing to forward."
         ]);
     }
+
+    private static bool HasGenericOwner(TypeDef type) =>
+        type.HasGenericParameters || type.DeclaringType is { } parent && HasGenericOwner(parent);
 
     /// <summary>
     /// Rewrites each forwarder's target to the end of its chain, so one redirection at a call site
@@ -146,14 +193,18 @@ public sealed class MethodInliningPass : DeobfuscationPass
     /// </remarks>
     private static void CollapseChains(Dictionary<MethodDef, ForwardTarget> forwarders)
     {
-        foreach (var (forwarder, immediate) in forwarders.ToArray())
+        // Keep the immediate edges unchanged while walking. Reading an already-collapsed entry
+        // would lose intermediate owners, including the access context of the final call.
+        var immediateTargets = new Dictionary<MethodDef, ForwardTarget>(forwarders);
+        foreach (var (forwarder, immediate) in immediateTargets)
         {
             var chain = new List<MethodDef> { forwarder };
             var seen = new HashSet<MethodDef> { forwarder };
             var final = immediate;
             while (final.Target.ResolveMethodDef() is { } next &&
                    seen.Add(next) &&
-                   forwarders.TryGetValue(next, out var onward) &&
+                   immediateTargets.TryGetValue(next, out var onward) &&
+                   CanSkipInitializer(next, forwarder) &&
                    ArgumentsPassStraightThrough(forwarder, onward.Target, onward.InnerOpCode) &&
                    ReturnTypeSurvives(forwarder, onward.Target, onward.InnerOpCode))
             {
@@ -171,6 +222,7 @@ public sealed class MethodInliningPass : DeobfuscationPass
     {
         if (!method.HasBody ||
             !method.IsStatic ||
+            method.IsStaticConstructor ||
             method.HasGenericParameters ||
             method.Body.ExceptionHandlers.Count != 0)
         {
@@ -205,6 +257,45 @@ public sealed class MethodInliningPass : DeobfuscationPass
             return null;
         }
         return new ForwardTarget(target, call.OpCode, []);
+    }
+
+    private static bool CanSkipInitializer(MethodDef forwarder, MethodDef caller) =>
+        // A static caller in the same type already has the wrapper's initialization semantics.
+        // An instance method can be entered on an uninitialized object, so it gets no exemption.
+        (caller.IsStatic && forwarder.DeclaringType == caller.DeclaringType) ||
+        !forwarder.DeclaringType.Methods.Any(initializer =>
+            initializer.IsStaticConstructor && !EmptyTypeInitializers.DoesNothing(initializer));
+
+    /// <summary>Moving a call must not give its new owner less access than the wrapper had.</summary>
+    private static bool CanAccessTarget(MethodDef caller, MethodDef forwarder, IMethod target)
+    {
+        // Within the same type the access context is unchanged, even for an unresolved reference.
+        if (caller.DeclaringType == forwarder.DeclaringType)
+            return true;
+        if (target.ResolveMethodDef() is not { } definition)
+            return false;
+        if (caller.DeclaringType == definition.DeclaringType)
+            return true;
+
+        var sameModule = caller.Module == definition.Module;
+        if (!definition.IsPublic &&
+            !(sameModule && (definition.IsAssembly || definition.IsFamilyOrAssembly)))
+        {
+            // Family access also constrains the receiver. Leave those calls wrapped unless the
+            // assembly access above suffices; neither inheritance nor friendship is guessed here.
+            return false;
+        }
+        for (var type = definition.DeclaringType; type is not null; type = type.DeclaringType)
+        {
+            if (!type.IsNested)
+                return type.IsPublic || sameModule;
+            if (!type.IsNestedPublic &&
+                !(sameModule && (type.IsNestedAssembly || type.IsNestedFamilyOrAssembly)))
+            {
+                return false;
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -296,4 +387,12 @@ public sealed class MethodInliningPass : DeobfuscationPass
     /// <param name="Chain">The forwarders a call site skips by going straight to the target.</param>
     private sealed record ForwardTarget(
         IMethod Target, OpCode InnerOpCode, IReadOnlyList<MethodDef> Chain);
+}
+
+/// <summary>Reconsiders wrappers after loader elision, preserving required initialization explicitly.</summary>
+public sealed class MethodInliningRecheckPass : MethodInliningPass
+{
+    protected override bool PreserveInitializerCalls => true;
+    public override string Name => "method-inlining-recheck";
+    public override IReadOnlyCollection<string> Dependencies => ["method-inlining", "loader-call-elision"];
 }

@@ -21,6 +21,35 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class StackAnalysisTests
 {
+    [Fact]
+    public void AFilterHandlerReceivesTheExceptionObject()
+    {
+        using var module = Module();
+        var method = Static(module, "Filtered");
+        var start = OpCodes.Ldnull.ToInstruction();
+        var filter = OpCodes.Pop.ToInstruction();
+        var handler = OpCodes.Pop.ToInstruction();
+        var done = OpCodes.Ret.ToInstruction();
+        foreach (var instruction in new[]
+        {
+            start, OpCodes.Throw.ToInstruction(), filter, OpCodes.Ldc_I4_1.ToInstruction(),
+            OpCodes.Endfilter.ToInstruction(), handler, OpCodes.Leave.ToInstruction(done), done
+        })
+            method.Body.Instructions.Add(instruction);
+        method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Filter)
+        {
+            TryStart = start, TryEnd = filter, FilterStart = filter,
+            HandlerStart = handler, HandlerEnd = done
+        });
+
+        var result = EvaluationStackAnalyzer.Analyze(method);
+
+        Assert.True(result.Valid, string.Join("; ", result.Diagnostics));
+        Assert.Equal(1, result.Depths[filter]);
+        Assert.Equal(1, result.Depths[handler]);
+        Assert.Equal(0, result.Depths[done]);
+    }
+
     /// <summary>
     /// A store into an array takes the array, the index and the value, and leaves nothing.
     /// </summary>

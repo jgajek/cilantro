@@ -169,7 +169,7 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
             transaction.Capture(instruction);
             instruction.OpCode = OpCodes.Nop;
             instruction.Operand = null;
-            context.AddChange(new ChangeRecord(
+            transaction.RecordChange(context, new ChangeRecord(
                 Name,
                 "elide-loader-call",
                 $"{method.MDToken} IL_{instruction.Offset:X4}",
@@ -200,13 +200,15 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
                 .Distinct()
                 .Where(byToken.ContainsKey)
                 .Select(token => byToken[token]));
-        // A type initializer the elision hollowed out is the same claim one step on: the call was
-        // the whole body, so what is left runs and returns. Cleanup is told about it here because
+        // An initializer or helper the elision hollowed out is the same claim one step on: the call
+        // was the whole body, so what is left runs and returns. Rechecking removes calls to empty
+        // helpers while preserving initialization; cleanup can then remove their declarations.
+        // These passes are told here because
         // this is the pass that emptied it.
         var emptied = callSites
             .Select(site => site.Method)
             .Distinct()
-            .Where(EmptyTypeInitializers.DoesNothing)
+            .Where(EmptyMethodBodies.DoesNothing)
             .ToArray();
         RecoveryOrphans.Declare(context, emptied);
         context.AddEvidence(new Evidence(
@@ -219,7 +221,8 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         return (PassStatus.Success, callSites.Length,
         [
             $"Elided {callSites.Length} call(s) to {elidable.Length} proven-inert loader entry point(s).",
-            $"{emptied.Length} type initializer(s) were left doing nothing and are cleanup's to remove.",
+            $"{emptied.Count(method => method.IsStaticConstructor)} type initializer(s) and " +
+                $"{emptied.Count(method => !method.IsStaticConstructor)} helper(s) were left doing nothing and are cleanup's to remove.",
             accounting
         ]);
     }

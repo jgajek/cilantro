@@ -7,6 +7,37 @@ namespace Cilantro.Tests;
 
 public sealed class AntiTamperNeutralizationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CallSubtreeDoesNotConfuseForeignTokensWithLocalMethods(bool alsoCallsLocal)
+    {
+        using var module = BuildFieldModule(readerInsideSubtree: true);
+        using var foreign = new ModuleDefUser("Foreign");
+        var type = module.Types.Single(item => item.Name == "Runtime");
+        var entry = type.Methods.Single(method => method.Name == "Entry");
+        var reader = type.Methods.Single(method => method.Name == "Reader");
+        var externalType = new TypeDefUser("External");
+        foreign.Types.Add(externalType);
+        var external = new MethodDefUser("ExternalCall", MethodSig.CreateStatic(foreign.CorLibTypes.Void))
+        {
+            Rid = reader.Rid,
+            Body = new CilBody()
+        };
+        externalType.Methods.Add(external);
+        external.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        entry.Body.Instructions.Clear();
+        entry.Body.Instructions.Add(OpCodes.Call.ToInstruction(external));
+        if (alsoCallsLocal)
+            entry.Body.Instructions.Add(OpCodes.Call.ToInstruction(reader));
+        entry.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+
+        var subtree = AntiTamperNeutralizationPass.ComputeCallSubtree(entry);
+
+        Assert.Equal(alsoCallsLocal, subtree.Contains(reader.MDToken.Raw));
+        Assert.Equal(alsoCallsLocal ? 2 : 1, subtree.Count);
+    }
+
     [SampleFact]
     [Trait(Cost.Key, Cost.High)]
     public void RemovesProvenIntegrityCheckOnJitHookSample()

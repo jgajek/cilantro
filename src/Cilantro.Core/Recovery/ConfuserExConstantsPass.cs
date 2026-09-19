@@ -526,10 +526,8 @@ public sealed class ConfuserExConstantsPass : DeobfuscationPass
         if (replacements.Count == 0)
             return (PassStatus.Success, 0, ["No string call site could be proven."]);
 
-        var transactions = replacements
-            .Select(item => item.Site.Caller)
-            .Distinct()
-            .ToDictionary(method => method, method => new BodyMutationTransaction(method));
+        using var transactions = new BodyMutationBatch(replacements
+            .Select(item => item.Site.Caller));
         try
         {
             foreach (var (site, text) in replacements)
@@ -552,20 +550,13 @@ public sealed class ConfuserExConstantsPass : DeobfuscationPass
                 context.OriginalStructure);
             if (!verification.Passed)
                 throw new InvalidOperationException(string.Join("; ", verification.Diagnostics));
-            foreach (var transaction in transactions.Values)
-                transaction.Commit();
+            transactions.Commit();
         }
         catch (Exception exception)
         {
-            foreach (var transaction in transactions.Values)
-                transaction.Rollback();
+            transactions.Rollback();
             return (PassStatus.Failed, 0,
                 [$"Atomic constants rewrite was rolled back: {exception.Message}"]);
-        }
-        finally
-        {
-            foreach (var transaction in transactions.Values)
-                transaction.Dispose();
         }
 
         foreach (var (site, text) in replacements)

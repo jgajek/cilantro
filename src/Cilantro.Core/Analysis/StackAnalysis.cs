@@ -37,7 +37,7 @@ public static class EvaluationStackAnalyzer
         {
             if (handler.HandlerStart is not null)
             {
-                var depth = handler.HandlerType == ExceptionHandlerType.Catch ? 1 : 0;
+                var depth = handler.IsCatch || handler.IsFilter ? 1 : 0;
                 work.Enqueue((handler.HandlerStart, depth));
             }
             if (handler.FilterStart is not null)

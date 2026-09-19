@@ -71,6 +71,21 @@ public sealed class LoaderCallElisionTests
     }
 
     [Fact]
+    public void AHelperEmptiedByElisionIsAttributedForTheRecheck()
+    {
+        using var context = LoaderContext();
+        var helper = Method(context, ".cctor");
+        helper.Name = "LoaderForwarder";
+        helper.Attributes = MethodAttributes.Assembly | MethodAttributes.Static;
+
+        var result = new LoaderCallElisionPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.True(EmptyMethodBodies.DoesNothing(helper));
+        Assert.Contains(helper.MDToken.Raw, RecoveryOrphans.Of(context));
+    }
+
+    [Fact]
     public void ALoaderCallStaysWhileReachableCodeReadsWhatItWrote()
     {
         using var context = LoaderContext(observeFromProgram: true);

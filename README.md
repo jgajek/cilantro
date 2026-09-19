@@ -453,6 +453,7 @@ sanitised or defanged in any way. Treat it exactly as you would the original.
 - **[How it compares](docs/parity.md)** — which of NETReactorSlayer, de4dotEx,
   Krypton and this one to reach for, and where this one is weaker.
 - **[Corpus](docs/corpus.md)** — how correctness is measured.
+- **[Code organization](docs/code-organization.md)** — the core components and mutation ownership.
 
 ## Building from source
 

@@ -38,6 +38,7 @@ public static class PipelinePlanner
         "delegate-proxy-analysis",
         "string-recovery",
         "method-inlining",
+        "method-inlining-recheck",
         "proxy-argument-narrowing",
         "stack-handoff",
         "resource-hook-elision",
@@ -96,6 +97,7 @@ public static class PipelinePlanner
         "token-recovery" or
         "type-restoration" or
         "method-inlining" or
+        "method-inlining-recheck" or
         "delegate-proxy-analysis" or
         "string-recovery" => PipelinePhase.IlTransform,
         _ => PipelinePhase.Finalize

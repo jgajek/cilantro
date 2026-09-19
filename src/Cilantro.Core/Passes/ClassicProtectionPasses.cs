@@ -106,7 +106,7 @@ public sealed class ConstantPredicatePass : DeobfuscationPass
             context.Module.GetTypes().SelectMany(type => type.Methods),
             ConstantHelperFolding.Catalog(context.Module),
             transaction,
-            (method, instruction, value) => context.AddChange(new ChangeRecord(
+            (method, instruction, value) => transaction.RecordChange(context, new ChangeRecord(
                 Name,
                 "fold-constant-helper",
                 $"{method.MDToken} IL_{instruction.Offset:X4}",

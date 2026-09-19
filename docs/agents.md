@@ -35,20 +35,24 @@ even that last case answers in JSON.
     "Blockers": "/samples/cilantro/suspicious.blockers.json",
     "Renames":  "/samples/cilantro/suspicious.renames.json",
     "Config":   null,
-    "Listings": ["/samples/cilantro/suspicious.virtualized/N66S3rciU7.lifted.il"]
+    "Listings": ["/samples/cilantro/suspicious.virtualized/N66S3rciU7.06000042.00000001.lifted.il"]
   },
   "Payloads": [
     {
       "PayloadSha256": "417032e5...",
       "PayloadLength": 92672,
       "AssemblyName":  "Zebekeadu",
-      "WrittenTo":     "/samples/cilantro/suspicious.payloads/Zebekeadu.dll"
+      "WrittenTo":     "/samples/cilantro/suspicious.payloads/Zebekeadu.417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd.dll"
     }
   ],
   "Blockers": [],
   "MoreToDeclare": false
 }
 ```
+
+Payload filenames include their SHA-256; listing filenames include the method token
+and program ID. Use the returned paths instead of deriving filenames from assembly
+or method names, which need not be unique.
 
 Four fields carry most of the weight.
 
@@ -231,6 +235,11 @@ can cost minutes, and a pipeline working through a queue is paying a different p
 for it than a person watching one run. And `read_output` will not hand back an
 extracted payload: those are malware, and the manifest already names the path
 and the hash so that something built to hold them can be pointed at the file.
+
+For paged text, `read_output.from` is a non-negative 64-bit UTF-8 byte offset.
+Use the continuation offset returned by the previous page: pages end between
+characters. Reading at EOF returns empty text; an offset beyond EOF or inside a
+character returns a tool error.
 
 ## Runs that outlast the call
 
