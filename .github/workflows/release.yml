@@ -78,6 +78,7 @@ jobs:
           cp -r ../../docs ../../schema ../../profiles .
           mkdir -p corpus/schema corpus/probes
           cp ../../corpus/*.json corpus/
+          cp ../../corpus/*.ps1 corpus/
           cp ../../corpus/schema/*.json corpus/schema/
           cp ../../corpus/probes/README.md corpus/probes/
           if [ "${{ matrix.runtime }}" = "win-x64" ]; then

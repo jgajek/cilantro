@@ -75,12 +75,10 @@ public class LoaderCallElisionPass : DeobfuscationPass
             return (PassStatus.Success, 0,
                 ["No loader call was elided because method-body recovery is not complete."]);
         }
-        if (!context.TryGetFact<LoaderInterpretationEvidence>("bootstrap.evidence", out var evidence) ||
-            evidence is null ||
-            evidence.Effects.Count == 0)
-        {
-            return (PassStatus.Success, 0, ["No bounded loader interpretation evidence is available."]);
-        }
+        // A resource-based recovery may have no bootstrap evidence. That says nothing
+        // about independently provable type initializers and proxy setup below.
+        context.TryGetFact<LoaderInterpretationEvidence>("bootstrap.evidence", out var evidence);
+        evidence ??= LoaderInterpretationEvidence.Empty;
 
         // Recovery can add methods before a later invocation. Their row IDs are assigned only
         // when writing the module, and cannot occur in the original bootstrap evidence.
@@ -146,7 +144,8 @@ public class LoaderCallElisionPass : DeobfuscationPass
         // synthetic delegate seeding used by ordinary recovery interpretation.
         if (ProxyLoaderTable.Read(context).Count != 0)
         {
-            var proxySteps = Math.Max(16_000_000, ColdInitializerStepBudget(context));
+            var proxySteps = BootstrapMachine.Limits(Math.Max(16_000_000, ColdInitializerStepBudget(context)),
+                BootstrapMachine.Environment(context).Declarations.Budgets).MaximumSteps;
             var leftBudget = new StaticWorkBudget(proxySteps);
             var rightBudget = new StaticWorkBudget(proxySteps);
             var proxyInitializers = context.Module.GetTypes().Where(ReactorDetectionPass.IsDelegateProxy)
@@ -545,7 +544,8 @@ public class LoaderCallElisionPass : DeobfuscationPass
     {
         // The proof repeats the entire loader before entering its candidate. Large encrypted
         // method tables can already have required more work than the ordinary guard budget.
-        return BootstrapMachine.InitializationStepBudget(context, MaximumSteps);
+        return BootstrapMachine.Limits(BootstrapMachine.InitializationStepBudget(context, MaximumSteps),
+            BootstrapMachine.Environment(context).Declarations.Budgets).MaximumSteps;
     }
 
     internal static bool TryInterpretColdInitializer(ArtifactContext context, MethodDef initializer,

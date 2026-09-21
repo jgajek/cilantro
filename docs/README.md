@@ -1,6 +1,6 @@
 # Documentation
 
-These pages describe the 0.10.1 analyst preview. Start with the workflow; use the technical references when a result needs investigation.
+These pages describe CILantro 0.10.2. Start with the workflow; use the technical references when a result needs investigation.
 
 | Task | Read |
 | --- | --- |
@@ -13,6 +13,6 @@ These pages describe the 0.10.1 analyst preview. Start with the workflow; use th
 | Understand static recovery | [Recovery architecture](how-recovery-works.md) |
 | Understand the protection layers | [Reactor](how-net-reactor-works.md), [ConfuserEx](how-confuserex-works.md) |
 | Build, test, or prepare a release | [Development](development.md), [code organization](code-organization.md), [corpus](corpus.md) |
-| Review this release | [0.10.1 notes](releases/0.10.1.md) |
+| Review this release | [0.10.2 notes](releases/0.10.2.md) |
 
 [Historical notes](history/README.md) preserve earlier experiments and implementation reasoning. Their measurements and feature descriptions are not the current support contract.

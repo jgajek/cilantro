@@ -332,8 +332,9 @@ public sealed class ModuleReachability
             var method = pending.Dequeue();
             if (!method.HasBody)
                 continue;
-            foreach (var instruction in method.Body.Instructions)
+            for (var index = 0; index < method.Body.Instructions.Count; index++)
             {
+                var instruction = method.Body.Instructions[index];
                 switch (instruction.Operand)
                 {
                     case IMethod called when IsMethodReference(instruction):
@@ -346,6 +347,10 @@ public sealed class ModuleReachability
                     case ITypeDefOrRef referenced when instruction.OpCode.Code == Code.Ldtoken:
                         if (OwnType(referenced) is { } exposed)
                         {
+                            // typeof(T).Assembly consumes the type without exposing its
+                            // members or permitting construction of T. Keep T's ordinary
+                            // metadata reference, but do not invent a reflective caller.
+                            if (IsAssemblyOnlyHandle(method, index)) break;
                             reflectivelyExposed.Add(exposed);
                             Activate(exposed);
                             // Reflection given a type can construct it, so a handle taken is an
@@ -472,6 +477,57 @@ public sealed class ModuleReachability
 
     private static bool IsStaticFieldAccess(Instruction instruction) =>
         instruction.OpCode.Code is Code.Ldsfld or Code.Stsfld or Code.Ldsflda;
+
+    private static bool IsAssemblyOnlyHandle(MethodDef method, int index)
+    {
+        var il = method.Body.Instructions;
+        var next = index + 1;
+        void SkipNops() { while (next < il.Count && il[next].OpCode.Code == Code.Nop) next++; }
+        SkipNops();
+        if (next >= il.Count || il[next].OpCode.Code != Code.Call || il[next].Operand is not IMethod
+            { FullName: "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)" }) return false;
+        next++;
+        SkipNops();
+        if (AssemblyEnd(next) is var end && end >= 0) return Linear(index + 1, end);
+        // Rebuilt stack slots can spill the Type to a local. Accept only a local
+        // whose every read consumes it solely as an assembly lookup, with no address
+        // escape. This is deliberately independent of reaching-definition guesses.
+        if (next >= il.Count || !il[next].IsStloc() ||
+            il[next].GetLocal(method.Body.Variables) is not { } local || !Linear(index + 1, next)) return false;
+        var reads = 0;
+        for (var at = 0; at < il.Count; at++)
+        {
+            if (il[at].GetLocal(method.Body.Variables) != local) continue;
+            if (il[at].OpCode.Code is Code.Ldloca or Code.Ldloca_S) return false;
+            if (!il[at].IsLdloc()) continue;
+            reads++;
+            var consumed = AssemblyEnd(at + 1);
+            if (consumed < 0 || !Linear(at + 1, consumed)) return false;
+        }
+        return reads != 0;
+
+        int AssemblyEnd(int at)
+        {
+            while (at < il.Count && il[at].OpCode.Code == Code.Nop) at++;
+            // Proxy argument narrowing can leave a redundant cast on the known Type result.
+            if (at < il.Count && il[at].OpCode.Code == Code.Castclass &&
+                il[at].Operand is ITypeDefOrRef { FullName: "System.Type" }) at++;
+            while (at < il.Count && il[at].OpCode.Code == Code.Nop) at++;
+            return at < il.Count && il[at].OpCode.Code is Code.Call or Code.Callvirt &&
+                il[at].Operand is IMethod
+                { FullName: "System.Reflection.Assembly System.Type::get_Assembly()" } ? at : -1;
+        }
+
+        bool Linear(int first, int last)
+        {
+            var interior = il.Skip(first).Take(last - first + 1).ToHashSet();
+            bool Interior(Instruction? instruction) => instruction is not null && interior.Contains(instruction);
+            return !il.Any(i => i.Operand is Instruction target && Interior(target) ||
+                    i.Operand is IList<Instruction> targets && targets.Any(Interior)) &&
+                !method.Body.ExceptionHandlers.Any(h => Interior(h.TryStart) || Interior(h.TryEnd) ||
+                    Interior(h.HandlerStart) || Interior(h.HandlerEnd) || Interior(h.FilterStart));
+        }
+    }
 
     private static bool IsMethodReference(Instruction instruction) =>
         instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj or

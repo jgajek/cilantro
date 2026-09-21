@@ -2007,8 +2007,7 @@ public sealed class StaticMachine
     }
 
     private static StaticValue DefaultValue(TypeSig? type) =>
-        type?.ElementType is ElementType.Class or ElementType.Object or ElementType.String or
-            ElementType.Array or ElementType.SZArray
+        StaticHeap.IsReferenceType(type)
             ? StaticValue.Null
             : type?.ElementType is ElementType.I8 or ElementType.U8
                 ? StaticValue.FromInt64(0)

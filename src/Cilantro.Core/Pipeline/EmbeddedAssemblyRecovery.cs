@@ -89,6 +89,10 @@ internal static class EmbeddedAssemblyRecovery
             var childOptions = options with
             {
                 RecoverEmbeddedAssemblies = false,
+                // Extracted stages can be plain assemblies or use a different protector.
+                // Ordinary recursive recovery should still emit verified generic cleanup;
+                // strict callers must explicitly opt into that policy.
+                GenericRecovery = options.GenericRecovery || !options.Strict,
                 ReportDirectory = childDirectory,
                 OutputPath = Path.Combine(childDirectory, "cleaned" + Path.GetExtension(next.Path)),
                 StatusPath = null

@@ -165,6 +165,8 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
             }));
         if (!report.VerificationPassed)
             foreach (var diagnostic in report.VerificationDiagnostics) validation.Add(new(diagnostic));
+        foreach (var evidence in report.Evidence.Where(e => e.Category == "reconstruction-state-boundary"))
+            validation.Add(new(evidence.Message));
         sections.Add(new("Validation", validation));
         sections.Add(new("Reconstruction comparison details", comparison.Select(e => new AnalystItem(e.Message))
             .Concat(report.Evidence.Where(e => e.Category == "reconstruction-method-trial")

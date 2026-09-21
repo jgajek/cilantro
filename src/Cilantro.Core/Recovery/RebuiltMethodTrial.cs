@@ -13,12 +13,15 @@ internal static class RebuiltMethodTrial
     internal static int StepLimit(ArtifactContext context) => BootstrapMachine.Limits(
         4_000_000, BootstrapMachine.Environment(context).Declarations.Budgets).MaximumSteps;
 
-    internal sealed record Result(DevirtualizationCheck Verdict, string Detail);
+    internal sealed record Result(DevirtualizationCheck Verdict, string Detail,
+        bool NonVmStateMatched = false, bool? VmStateShared = null);
     private sealed record Observation(string? Key, string Why, IReadOnlyList<string>? Names = null,
-        IReadOnlyList<string?>? Values = null, int StaticStart = 0);
+        IReadOnlyList<string?>? Values = null, int StaticStart = 0, IReadOnlySet<int>? VmRoots = null,
+        string? NonVmKey = null, bool? SharesVmState = null);
 
     internal static Result Compare(ArtifactContext context, MethodDef method, CilBody rebuilt, int scenario,
-        uint? engineToken = null, bool warmOriginal = false, HostProfile? hostProfile = null)
+        uint? engineToken = null, bool warmOriginal = false, HostProfile? hostProfile = null,
+        uint? rebuiltEntryToken = null)
     {
         var shipped = method.Body;
         var maximumSteps = StepLimit(context);
@@ -36,15 +39,30 @@ internal static class RebuiltMethodTrial
                 return new(DevirtualizationCheck.NotMade, $"original: {left.Why}; rebuilt: {right.Why}");
             if (left.Key == right.Key)
                 return new(DevirtualizationCheck.Agreed, "return/exception, arguments, observed static state, modeled network settings and modeled native memory matched");
-            var differing = Enumerable.Range(0, left.Values!.Count)
-                .First(index => left.Values[index] != right.Values![index]);
-            return new(DevirtualizationCheck.Disagreed, left.Names![differing] == "modeled native memory"
+            var differences = Enumerable.Range(0, left.Values!.Count)
+                .Where(index => left.Values[index] != right.Values![index]).ToArray();
+            var differing = differences[0];
+            var boundary = left.NonVmKey is not null && left.NonVmKey == right.NonVmKey
+                ? ". A separate snapshot excluding VM-owned static roots matched return/exception, arguments, other static roots, " +
+                    "modeled network settings and native memory, preserving aliases among those roots. " +
+                    "This localizes the difference but does not prove the VM state is unobservable; disagreement is retained"
+                : DescribeVmBoundary(differences, left.VmRoots);
+            if (left.NonVmKey is not null && left.NonVmKey == right.NonVmKey)
+                boundary += left.SharesVmState == false && right.SharesVmState == false
+                    ? ". No shared modeled objects were found between VM static roots and the captured non-VM roots on either side; reflection and later calls remain unproven"
+                    : left.SharesVmState == true || right.SharesVmState == true
+                        ? ". VM static roots share modeled objects with captured non-VM roots; the VM state cannot be treated as isolated"
+                        : ". VM-to-application object sharing could not be established within the snapshot limits";
+            return new(DevirtualizationCheck.Disagreed, (left.Names![differing] == "modeled native memory"
                 ? "return/exception, arguments, observed static state and modeled network settings matched; modeled native memory differed"
                 : left.Names![differing] == "modeled network settings"
                 ? "return/exception, arguments and observed static state matched; modeled network settings differed"
                 : differing >= left.StaticStart
                 ? $"return/exception and argument snapshots matched; observed static state differed at {left.Names![differing]}"
-                : $"observed state differed at {left.Names![differing]}");
+                : $"observed state differed at {left.Names![differing]}") + boundary,
+                NonVmStateMatched: left.NonVmKey is not null && left.NonVmKey == right.NonVmKey,
+                VmStateShared: left.SharesVmState == true || right.SharesVmState == true ? true
+                    : left.SharesVmState == false && right.SharesVmState == false ? false : null);
         }
         finally { method.Body = shipped; }
 
@@ -87,13 +105,16 @@ internal static class RebuiltMethodTrial
             }
             var stepped = false;
             var enteredEngine = false;
+            var enteredRebuilt = false;
             machine.Stepped = (frame, _) =>
             {
                 if (frame == method) stepped = true;
                 if (frame.MDToken.Raw == engineToken) enteredEngine = true;
+                if (frame.MDToken.Raw == rebuiltEntryToken) enteredRebuilt = true;
             };
             var answer = machine.Execute(method, arguments, budget);
-            if (!stepped || body == shipped && engineToken is not null && !enteredEngine)
+            if (!stepped || body == shipped && engineToken is not null && !enteredEngine ||
+                body == rebuilt && rebuiltEntryToken is not null && !enteredRebuilt)
                 return new(null, $"comparison body/engine was not exercised: {answer.Status}: {Short(answer.Diagnostic)}");
             if (answer.Status is not (StaticExecutionStatus.Completed or StaticExecutionStatus.Threw))
                 return new(null, $"{answer.Status}: {Short(answer.Diagnostic)}");
@@ -114,6 +135,13 @@ internal static class RebuiltMethodTrial
             // silently ignore VM-private state: an opaque/different state remains inconclusive/different.
             var fields = context.Module.GetTypes().SelectMany(t => t.Fields).Where(f => f.IsStatic)
                 .OrderBy(f => f.FullName, StringComparer.Ordinal).ToArray();
+            var engineType = engineToken is { } token
+                ? (context.Module.ResolveToken(token) as IMethod)?.ResolveMethodDef()?.DeclaringType : null;
+            bool VmOwned(TypeDef? owner) => engineType is not null && owner is not null &&
+                (owner == engineType || VmOwned(owner.DeclaringType));
+            var vmRoots = fields.Select((field, index) => (field, index))
+                .Where(pair => VmOwned(pair.field.DeclaringType))
+                .Select(pair => roots.Count + pair.index).ToHashSet();
             roots.AddRange(fields.Select(machine.State.ReadStaticField));
             names.AddRange(fields.Select(field => field.FullName));
             var snapshot = new Snapshot(machine.State.Heap, metadata);
@@ -124,10 +152,37 @@ internal static class RebuiltMethodTrial
             var opaque = Array.FindIndex(values, v => v is null);
             var outcome = answer.Status == StaticExecutionStatus.Threw && machine.State.Heap.TryGetRuntimeTypeName(answer.Value, out var thrownName)
                 ? $"Threw ({thrownName}): {Short(answer.Diagnostic)}" : answer.Status.ToString();
+            string? nonVmKey = null;
+            bool? sharesVmState = null;
+            if (opaque < 0 && vmRoots.Count != 0)
+            {
+                // Independent numbering avoids shifts caused by omitted VM objects. Shared
+                // roots still use one snapshot, so application aliases remain observable.
+                var nonVm = new Snapshot(machine.State.Heap, metadata);
+                var observed = roots.Where((_, index) => !vmRoots.Contains(index)).Select(nonVm.Read).ToList();
+                observed.Add(nonVm.ReadNetworkSettings(machine.State));
+                observed.Add(nonVm.ReadNativeState(machine.State));
+                if (observed.All(value => value is not null))
+                {
+                    nonVmKey = JsonSerializer.Serialize(new { answer.Status, Values = observed });
+                    var vm = new Snapshot(machine.State.Heap, metadata);
+                    var vmValues = roots.Where((_, index) => vmRoots.Contains(index)).Select(vm.Read).ToArray();
+                    if (vmValues.All(value => value is not null))
+                        sharesVmState = vm.SharesCapturedObjectsWith(nonVm);
+                }
+            }
             return opaque >= 0
                 ? new(null, $"{outcome}; opaque or over-budget state at {names[opaque]} ({snapshot.Failure ?? "node, depth or text budget exhausted"})")
-                : new(JsonSerializer.Serialize(new { answer.Status, Values = values }), outcome, names, values, roots.Count - fields.Length);
+                : new(JsonSerializer.Serialize(new { answer.Status, Values = values }), outcome, names, values, roots.Count - fields.Length, vmRoots, nonVmKey, sharesVmState);
         }
+    }
+
+    internal static string DescribeVmBoundary(IReadOnlyList<int> differences, IReadOnlySet<int>? vmRoots)
+    {
+        if (differences.Count == 0 || vmRoots is null || !differences.All(vmRoots.Contains)) return string.Empty;
+        return $". All {differences.Count} differing snapshot root(s) are static fields owned by the original VM type hierarchy; " +
+            "return/exception, arguments, other static roots, modeled network settings and native memory matched. " +
+            "This localizes the difference but does not prove the VM state is unobservable; disagreement is retained";
     }
 
     private static string Short(string? text)
@@ -180,6 +235,14 @@ internal static class RebuiltMethodTrial
     // strings, boxes and arrays; refuse opaque models instead of comparing allocation IDs.
     internal sealed class Snapshot(StaticHeap heap, Dictionary<object, int>? metadata = null)
     {
+        // Only compare graphs from the same machine; heap IDs have no cross-machine meaning.
+        private StaticHeap SourceHeap => heap;
+        internal bool SharesCapturedObjectsWith(Snapshot other)
+        {
+            if (!ReferenceEquals(SourceHeap, other.SourceHeap))
+                throw new ArgumentException("Object sharing requires snapshots of the same heap.", nameof(other));
+            return ids.Keys.Any(other.ids.ContainsKey) || modelIds.Keys.Any(other.modelIds.ContainsKey);
+        }
         private readonly Dictionary<int, int> ids = [];
         private readonly Dictionary<object, int> modelIds = new(ReferenceEqualityComparer.Instance);
         internal string? Failure { get; private set; }

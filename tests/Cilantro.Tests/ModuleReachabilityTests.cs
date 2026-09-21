@@ -16,6 +16,63 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class ModuleReachabilityTests : IDisposable
 {
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    [InlineData(4, false)]
+    [InlineData(5, false)]
+    [InlineData(6, true)]
+    public void AssemblyLookupDoesNotExposeTypeMembersButEscapingHandlesDo(int shape, bool exposed)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var target = SyntheticContext.AddType(module, "Hidden");
+            var api = SyntheticContext.AddType(module, "Api");
+            api.Attributes = TypeAttributes.Public;
+            var run = AddMethod(api, "Run", MethodAttributes.Public | MethodAttributes.Static);
+            var getType = module.Import(typeof(Type).GetMethod(nameof(Type.GetTypeFromHandle))!);
+            var getAssembly = module.Import(typeof(Type).GetProperty(nameof(Type.Assembly))!.GetMethod!);
+            run.Body.Instructions.Clear();
+            run.Body.Instructions.Add(OpCodes.Ldtoken.ToInstruction(target));
+            if (shape == 4) run.Body.Instructions.Add(OpCodes.Nop.ToInstruction());
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(getType));
+            var slot = new Local(module.CorLibTypes.GetTypeRef("System", "Type").ToTypeSig());
+            if (shape is 5 or 6)
+            {
+                run.Body.Variables.Add(slot);
+                run.Body.Instructions.Add(OpCodes.Stloc.ToInstruction(slot));
+                run.Body.Instructions.Add(OpCodes.Ldloc.ToInstruction(slot));
+            }
+            if (shape == 4)
+            {
+                run.Body.Instructions.Add(OpCodes.Nop.ToInstruction());
+                run.Body.Instructions.Add(OpCodes.Castclass.ToInstruction(module.CorLibTypes.GetTypeRef("System", "Type")));
+                run.Body.Instructions.Add(OpCodes.Nop.ToInstruction());
+            }
+            if (shape == 2) run.Body.Instructions.Add(OpCodes.Dup.ToInstruction());
+            var getter = OpCodes.Callvirt.ToInstruction(getAssembly);
+            if (shape != 1) run.Body.Instructions.Add(getter);
+            run.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            if (shape == 6)
+            {
+                run.Body.Instructions.Add(OpCodes.Ldloc.ToInstruction(slot));
+                run.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            }
+            if (shape == 2) run.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            if (shape == 3)
+            {
+                run.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+                run.Body.Instructions.Add(OpCodes.Br.ToInstruction(getter));
+            }
+        });
+        var target = context.Module.GetTypes().Single(t => t.Name == "Hidden");
+        Assert.Equal(exposed, ModuleReachability.Compute(context.Module).IsReflectivelyExposed(target));
+        Assert.Equal(exposed, ModuleReachability.ComputeWithInstances(context.Module, false).IsReflectivelyExposed(target));
+    }
+
     private readonly string _folder =
         Directory.CreateTempSubdirectory("Cilantro.Reachability").FullName;
 

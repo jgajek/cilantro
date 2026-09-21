@@ -112,10 +112,18 @@ public static class PayloadChainRecovery
         ArtifactContext context,
         Watch watch,
         out IReadOnlyList<string> diagnostics)
+        => Recover(context, watch, out diagnostics, out _, out _);
+
+    internal static IReadOnlyList<Recovered> Recover(
+        ArtifactContext context, Watch watch, out IReadOnlyList<string> diagnostics,
+        out bool hadCandidates, out bool incomplete)
     {
         ArgumentNullException.ThrowIfNull(watch);
         var notes = new List<string>();
-        var roots = UnpackingRoots(context.Module);
+        var roots = UnpackingRoots(context.Module, out var truncated);
+        incomplete = truncated;
+        if (truncated) notes.Add($"Candidate loader search limited to {MaximumRoots} roots; additional candidates were not interpreted.");
+        hadCandidates = roots.Length != 0;
         if (roots.Length == 0)
         {
             diagnostics = ["No startup path reaches a load of an assembly from memory."];
@@ -129,6 +137,7 @@ public static class PayloadChainRecovery
             var images = Harvest(context, root, watch, out var why);
             if (images is null)
             {
+                incomplete = true;
                 notes.Add($"{root.Name}: {why}");
                 continue;
             }
@@ -137,12 +146,24 @@ public static class PayloadChainRecovery
             // the order the machine happened to do things in.
             if (watch.Repeat)
             {
-                var again = Harvest(context, root, watch, out _);
+                var again = Harvest(context, root, watch, out var repeatWhy);
                 if (again is null || !SameImages(images, again))
                 {
+                    incomplete = true;
                     notes.Add($"{root.Name}: the interpretation was not reproducible");
                     continue;
                 }
+                if (!string.IsNullOrEmpty(repeatWhy))
+                {
+                    incomplete = true;
+                    notes.Add($"{root.Name} repeat: {repeatWhy}");
+                }
+            }
+
+            if (!string.IsNullOrEmpty(why))
+            {
+                incomplete = true;
+                notes.Add($"{root.Name}: {why}");
             }
 
             foreach (var image in images)
@@ -153,11 +174,8 @@ public static class PayloadChainRecovery
                 recovered.Add(new Recovered(root, image, AssemblyNameOf(image), hash));
             }
 
-            // The remaining candidates were only ever guesses about where the chain starts. Once one
-            // of them has run the chain and produced assemblies, the others have nothing left to
-            // answer, and interpreting them costs as much as the one that worked.
-            if (recovered.Count != 0)
-                break;
+            // Other roots can unpack independent assemblies. A successful root does not
+            // establish that its loads cover the remaining candidates; hashes deduplicate them.
         }
 
         if (recovered.Count == 0 && notes.Count == 0)
@@ -183,7 +201,7 @@ public static class PayloadChainRecovery
     /// encode a preference about how the crypter's author spelled things. Reaching the load is what
     /// makes a candidate worth the cost, and candidates that load nothing simply say so.
     /// </remarks>
-    private static MethodDef[] UnpackingRoots(ModuleDef module)
+    private static MethodDef[] UnpackingRoots(ModuleDef module, out bool truncated)
     {
         var surveyed = new CallSurvey(module);
         var roots = new List<MethodDef>();
@@ -199,8 +217,9 @@ public static class PayloadChainRecovery
                 (method.IsStatic || CanSupplyReceiver(method.DeclaringType)) &&
                 ReachesAMemoryLoad(method, surveyed))
             .OrderBy(method => method.MDToken.Raw)
-            .Take(MaximumRoots));
-        return [.. roots];
+            .Take(MaximumRoots + 1 - roots.Count));
+        truncated = roots.Count > MaximumRoots;
+        return [.. roots.Take(MaximumRoots)];
     }
 
     /// <summary>
@@ -368,8 +387,8 @@ public static class PayloadChainRecovery
         out string diagnostic)
     {
         var harvested = Harvest(context, root, watch, MaximumSteps, out diagnostic, out var exhausted);
-        return harvested is null && exhausted
-            ? Harvest(context, root, watch, PatientSteps, out diagnostic, out _)
+        return exhausted
+            ? Harvest(context, root, watch, PatientSteps, out diagnostic, out _) ?? harvested
             : harvested;
     }
 
@@ -418,6 +437,8 @@ public static class PayloadChainRecovery
             return null;
         }
 
+        if (!result.Succeeded || exhausted)
+            diagnostic = $"captured {loaded.Length} managed assembly load(s), but the startup path stopped: {result.Diagnostic}";
         return loaded;
     }
 

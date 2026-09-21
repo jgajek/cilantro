@@ -190,8 +190,8 @@ public sealed class VirtualizationDisassemblyPass : DeobfuscationPass
         if (elsewhere.Length == 0)
         {
             diagnostics.Add(
-                "The interpreter is asked for no program other than the ones whose stubs were " +
-                "matched, so the file holds no virtualized code beyond them.");
+                "No additional constant-identified calls to the known VM entry were found. " +
+                "Indirect calls and computed program identifiers may still conceal other programs.");
             return;
         }
 

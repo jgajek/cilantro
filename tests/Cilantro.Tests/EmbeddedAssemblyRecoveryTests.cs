@@ -7,6 +7,31 @@ namespace Cilantro.Tests;
 public sealed class EmbeddedAssemblyRecoveryTests
 {
     [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void ChildCleanupDoesNotRequireProtectorRecognitionUnlessStrict(bool strict, bool generic, bool expected)
+    {
+        using var fixture = new Fixture();
+        var child = fixture.File("child.dll", "child");
+        var root = fixture.Root with { ExtractedPayloadPaths = [child] };
+        var calls = 0;
+        var result = EmbeddedAssemblyRecovery.Run(root,
+            new PipelineOptions(Strict: strict, GenericRecovery: generic, FailOnPartial: true), (path, actual) =>
+            {
+                calls++;
+                Assert.Equal(expected, actual.GenericRecovery);
+                Assert.Equal(strict, actual.Strict);
+                Assert.True(actual.FailOnPartial);
+                // Emission/verification failures still make the chain incomplete.
+                return fixture.Result(path) with { Success = false };
+            });
+        Assert.Equal(1, calls);
+        Assert.False(result.Success);
+        Assert.Equal("incomplete", result.EmbeddedRecovery!.Nodes[1].Status);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void NativeContinuationUsesManagedRecoveryAndHonorsTheOutputDestination(bool success)

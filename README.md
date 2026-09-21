@@ -4,9 +4,9 @@ Recover readable .NET code and embedded assemblies from supported **.NET Reactor
 
 CILantro's distinguishing approach is to interpret the sample's own decoding and unpacking logic in a bounded model, using the protector's behavior to guide recovery. For analysts, it brings code cleanup, embedded-stage recovery, and evidence about what was recovered, assumed, or left unresolved into one workflow.
 
-CILantro restores encrypted method bodies and strings, simplifies obfuscated code, extracts supported embedded stages, and produces an offline HTML report. Supported Reactor virtualized methods can be reconstructed into CIL for inspection in a decompiler.
+CILantro can reconstruct supported Reactor VM bytecode into ordinary CIL, unflatten control flow, resolve indirect calls, and remove protector infrastructure when its analysis establishes that removal is safe. It restores encrypted methods and strings, follows supported native wrappers and embedded assembly chains into their managed payloads, and produces decompiler-ready assemblies with readable replacement names, payload hashes, and offline HTML reports. Bounded comparisons of original and rebuilt methods expose reconstruction disagreements instead of treating readable output as proof of correctness.
 
-**0.10.1 is an analyst preview.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
+**0.10.2 is a regular release for analysts.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
 
 ## Install
 
@@ -69,7 +69,7 @@ Read the [support and limitations](docs/compatibility.md) before adopting CILant
 - [Automation and MCP](docs/agents.md)
 - [Build, test, and release](docs/development.md)
 - [Complete documentation index](docs/README.md)
-- [0.10.1 release notes](docs/releases/0.10.1.md)
+- [0.10.2 release notes](docs/releases/0.10.2.md)
 
 ## Contributing and licence
 

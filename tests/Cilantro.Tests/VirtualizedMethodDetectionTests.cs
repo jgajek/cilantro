@@ -173,6 +173,24 @@ public sealed class VirtualizedMethodDetectionTests
         Assert.Empty(VirtualizedMethodDetector.Invocations(module, []));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NopsBetweenVmArgumentsAreAcceptedUnlessControlFlowCanEnterTheSequence(bool merge)
+    {
+        using var module = NewModule();
+        var entry = AddEntry(module);
+        AddStub(module, "Hidden", entry, programId: 0, arguments: 1);
+        var busy = AddBusyCaller(module, "Initializer", entry, programId: 1);
+        var il = busy.Body.Instructions;
+        var call = il.Single(i => i.Operand == entry);
+        var nop = OpCodes.Nop.ToInstruction();
+        il.Insert(il.IndexOf(call), nop);
+        if (merge) il.Add(OpCodes.Br.ToInstruction(nop));
+        var found = VirtualizedMethodDetector.Invocations(module, VirtualizedMethodDetector.Detect(module));
+        Assert.Equal(!merge, found.Any(i => i.Caller == busy && i.ProgramId == 1));
+    }
+
     /// <summary>
     /// A call site that does not say plainly which program it wants is not read as wanting one.
     /// </summary>

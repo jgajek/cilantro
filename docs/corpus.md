@@ -23,6 +23,19 @@ dotnet run --project src/Cilantro.Cli -c Release --no-build -- corpus run --mani
 
 Use isolated output directories. The runner validates sample identities and writes `corpus.outcomes.json`; missing required inputs are reported separately from failed assertions. Some entries use analysis-only or feature-specific policies, so passing the manifest is not identical to testing every sample with all default options.
 
+## Reconstruction cleanup gates
+
+The standard corpus runner disables reconstruction, so it cannot gate removal of an abandoned VM engine. For the pinned Qbjuef and Mlfhntkcvb payload inputs, also run ordinary reconstruction and check the resulting reports:
+
+```powershell
+New-Item -ItemType Directory -Force results | Out-Null
+cilantro C:/cilantro-verify/samples/Qbjuef.exe --recover-embedded --declarations corpus/reconstruction.declarations.json --output results/Qbjuef.cleaned.exe --report-dir results --json > results/qbjuef-run.json
+cilantro C:/cilantro-verify/samples/Mlfhntkcvb.payload.Lqcuzgc.dll --declarations corpus/reconstruction.declarations.json --output results/Mlfhntkcvb.cleaned.dll --report-dir results --json > results/mlfhntkcvb-run.json
+pwsh -NoProfile -File corpus/verify-reconstruction.ps1 -ReportDirectory results
+```
+
+The opt-in 192-million-step allowance accommodates independent cold proofs for Mlfhntkcvb's 514 proxy initializers. The report gate checks pinned input identities, successful structural validation, reconstruction of the method and initialization helper, minimum runtime removal, expected payload hashes, and the helper's cold/repeat comparison evidence. It deliberately requires the full-state disagreement to remain visible alongside matching captured non-VM state. This script reads reports; it does not execute either sample or independently prove equivalence.
+
 ## Benign runtime probes
 
 The [probe harness](../corpus/probes/README.md) builds benign programs for .NET Framework 4.8, .NET 8, and .NET 10, then uses an installed Reactor 7.5 console tool to protect strings/CFF, NecroBit-only, and full configurations. Nine protected configurations are compared with their unprotected oracles.

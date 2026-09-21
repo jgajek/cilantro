@@ -21,6 +21,66 @@ public sealed class PayloadChainRecoveryTests
     private const byte Key = 0x5A;
 
     [Fact]
+    public void AFailureAfterLoadingPreservesThePayloadButReportsPartialExtraction()
+    {
+        var payload = NewPayloadAssembly();
+        using var context = SyntheticContext.Build(module =>
+        {
+            AddDriver(module, Encode(payload, Key), true);
+            var unpack = module.GetTypes().SelectMany(type => type.Methods).Single(method => method.Name == "Unpack");
+            var instructions = unpack.Body.Instructions;
+            instructions.RemoveAt(instructions.Count - 1);
+            instructions.Add(OpCodes.Ldnull.ToInstruction());
+            instructions.Add(OpCodes.Throw.ToInstruction());
+        });
+        var result = new PayloadExtractionPass().Run(context);
+        Assert.Equal(PassStatus.Partial, result.Status);
+        Assert.Equal(1, result.Changes);
+        Assert.Contains(result.Diagnostics, line => line.Contains("startup path stopped"));
+        Assert.True(context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var extracted));
+        Assert.Equal(payload, Assert.Single(extracted!).Bytes);
+    }
+
+    [Fact]
+    public void IndependentLoadersAreAllVisitedAndDuplicatePayloadsAreWrittenOnce()
+    {
+        var first = NewPayloadAssembly();
+        var second = NewPayloadAssembly("second");
+        using var context = SyntheticContext.Build(module =>
+        {
+            AddDriver(module, Encode(first, Key), true, "First");
+            AddDriver(module, Encode(second, Key), true, "Second");
+            AddDriver(module, Encode(first, Key), true, "Duplicate");
+        });
+        var recovered = PayloadChainRecovery.Recover(context, out var diagnostics);
+        Assert.Empty(diagnostics);
+        Assert.Equal(2, recovered.Count);
+        Assert.Contains(recovered, item => item.Image.SequenceEqual(first));
+        Assert.Contains(recovered, item => item.Image.SequenceEqual(second));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ExtractionPassDoesNotSkipFieldBackedLoadersWithoutResources(bool valid)
+    {
+        var payload = NewPayloadAssembly();
+        using var context = SyntheticContext.Build(module =>
+            AddDriver(module, Encode(payload, Key), constructorSetsKey: valid));
+        Assert.Empty(context.Module.Resources);
+        var result = new PayloadExtractionPass().Run(context);
+        Assert.Equal(valid ? PassStatus.Success : PassStatus.Unsupported, result.Status);
+        if (valid)
+        {
+            Assert.Equal(1, result.Changes);
+            Assert.True(context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var extracted));
+            Assert.NotNull(extracted);
+            Assert.Equal(payload, Assert.Single(extracted).Bytes);
+        }
+        else Assert.DoesNotContain(result.Diagnostics, line => line.Contains("embeds no resource"));
+    }
+
+    [Fact]
     public void APayloadUnpackedByAConstructedDriverIsRecovered()
     {
         var payload = NewPayloadAssembly();
@@ -113,10 +173,10 @@ public sealed class PayloadChainRecoveryTests
     /// <summary>
     /// Builds a small but real assembly, so recovery has to parse metadata to accept it.
     /// </summary>
-    private static byte[] NewPayloadAssembly()
+    private static byte[] NewPayloadAssembly(string name = "payload")
     {
-        var module = new ModuleDefUser("payload.dll") { Kind = ModuleKind.Dll };
-        var assembly = new AssemblyDefUser("payload", new Version(1, 0));
+        var module = new ModuleDefUser(name + ".dll") { Kind = ModuleKind.Dll };
+        var assembly = new AssemblyDefUser(name, new Version(1, 0));
         assembly.Modules.Add(module);
         module.Types.Add(new TypeDefUser(
             "Payload", "Marker", module.CorLibTypes.Object.TypeDefOrRef)
@@ -131,9 +191,9 @@ public sealed class PayloadChainRecoveryTests
     /// <summary>
     /// Adds a driver whose instance method decodes an embedded blob and loads it.
     /// </summary>
-    private static void AddDriver(ModuleDefUser module, byte[] encoded, bool constructorSetsKey)
+    private static void AddDriver(ModuleDefUser module, byte[] encoded, bool constructorSetsKey, string name = "Driver")
     {
-        var driver = SyntheticContext.AddType(module, "Driver");
+        var driver = SyntheticContext.AddType(module, name);
         var keyField = new FieldDefUser(
             "key",
             new FieldSig(module.CorLibTypes.Int32),

@@ -4,6 +4,12 @@ CILantro reads PE metadata and CIL with dnlib and uses a bounded interpreter for
 
 ## Pipeline
 
+Reproducible assemblies captured before a loader stops remain available for extraction. The pass reports partial recovery when a candidate fails, captured bytes fail validation, or the candidate limit is reached. A loader that exhausts its initial step budget is eligible for the larger bounded retry even if it already captured an assembly. These diagnostics do not prevent ordinary verified output, but `--fail-on-partial` continues to enforce incomplete-pass failures.
+
+The loader search continues after the first recovered assembly because independent candidates can load different payloads. Recovered images are deduplicated by SHA-256. At most 24 candidate roots, including the entry point, are interpreted; additional candidates are reported as unexamined. This remains a bounded search rather than a claim of exhaustive extraction.
+
+Payload extraction checks candidate loader paths before concluding that resource accounting leaves nothing to extract. An assembly can construct payload bytes from initialized fields or code without embedding a resource. If a discovered loader cannot be interpreted successfully, an empty resource table does not turn that failure into a successful extraction check.
+
 1. Inspect the input, identify supported protection, and preserve its identity and original bytes.
 2. Recover supported encrypted method bodies and strings, then expose constants and call targets needed by later passes.
 3. Simplify control flow, interpret supported VM programs, restore resources, and extract embedded assemblies.

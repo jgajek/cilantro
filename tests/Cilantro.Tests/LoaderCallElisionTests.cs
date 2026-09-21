@@ -22,6 +22,22 @@ namespace Cilantro.Tests;
 public sealed class LoaderCallElisionTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void MissingBootstrapEvidenceStillAllowsIndependentGuardProof(bool observed, bool registers)
+    {
+        using var context = LoaderContext(observed, registers);
+        context.SetFact("bootstrap.evidence", LoaderInterpretationEvidence.Empty);
+        var result = new LoaderCallElisionPass().Run(context);
+        Assert.Equal(PassStatus.Success, result.Status);
+        var calls = Method(context, ".cctor").Body.Instructions.Any(i =>
+            i.Operand is IMethod called && called.Name == "Install");
+        Assert.Equal(observed || registers, calls);
+        if (!observed && !registers) Assert.True(result.Changes > 0);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void ImplicitInitializerIsRemovedOnlyWithoutSurvivingReaders(bool observed)

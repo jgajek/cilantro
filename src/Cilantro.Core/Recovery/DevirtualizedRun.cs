@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using Cilantro.Core.Interpretation;
 using Cilantro.Core.Pipeline;
 
@@ -106,7 +107,9 @@ internal static class DevirtualizedRun
                     $"Bounded interpreter comparison ({RebuiltMethodTrial.StepLimit(second)} steps per machine, shared by warm-up and measurement), not proof for other inputs or initial states."));
             }
         }
-        var payload = ComparePayload(original, programs, second, asked);
+        var payload = ComparePayload(original, programs, second, asked, trials);
+        if (DescribeStateDifferences(trials) is { } stateDifferences)
+            original.AddEvidence(new Evidence("reconstruction-state-boundary", stateDifferences));
         var differing = trials.Count(t => t.Verdict == DevirtualizationCheck.Disagreed);
         var trialNote = $"Controlled-input method trials: {trials.Count(t => t.Verdict == DevirtualizationCheck.Agreed)} matched, " +
             $"{differing} differed, {trials.Count(t => t.Verdict == DevirtualizationCheck.NotMade)} inconclusive. " +
@@ -114,16 +117,28 @@ internal static class DevirtualizedRun
         return (differing > 0 ? DevirtualizationCheck.Disagreed : payload.Verdict, [trialNote, .. payload.Said]);
     }
 
+    internal static string? DescribeStateDifferences(IReadOnlyList<RebuiltMethodTrial.Result> trials)
+    {
+        var differing = trials.Where(t => t.Verdict == DevirtualizationCheck.Disagreed).ToArray();
+        if (differing.Length == 0) return null;
+        var localized = differing.Count(t => t.NonVmStateMatched);
+        if (localized == 0) return null;
+        var isolated = differing.Count(t => t.NonVmStateMatched && t.VmStateShared == false);
+        var other = differing.Length - localized;
+        return $"In {localized} of {differing.Length} differing method trials, captured state outside the original VM's static roots matched. " +
+            $"In {isolated} of those trials, the captured VM and non-VM graphs shared no modeled objects. " +
+            (other > 0 ? $"Differing trials not explained by that boundary: {other}. " : "") +
+            "These are bounded observations, not a proof that VM state is inaccessible through reflection or later calls. " +
+            "Full-state disagreement remains; payload comparison and inconclusive trials are reported separately.";
+    }
+
     private static (DevirtualizationCheck Verdict, IReadOnlyList<string> Said) ComparePayload(
         ArtifactContext original, IReadOnlyList<VirtualProgram> programs, ArtifactContext second,
-        PayloadChainRecovery.InterpretedChain? asked)
+        PayloadChainRecovery.InterpretedChain? asked, List<RebuiltMethodTrial.Result> trials)
     {
-        if (asked is { Unpacked.Count: 0 })
-            return (DevirtualizationCheck.NotMade, [NothingToWatch(asked.Why)]);
-
-        var shipped = Unpacked(second, [], out var whyShipped);
-        if (shipped.Count == 0)
-            return (DevirtualizationCheck.NotMade, [NothingToWatch(whyShipped)]);
+        IReadOnlyList<string> whyShipped = asked?.Why ?? [];
+        var shipped = asked is { Unpacked.Count: 0 }
+            ? [] : Unpacked(second, [], out whyShipped);
 
         original.TryGetFact<IReadOnlySet<uint>>(VirtualizationRebuildPass.RebuiltFact, out var requested);
         requested ??= programs.Select(program => program.Method.Stub.MDToken.Raw).ToHashSet();
@@ -140,7 +155,16 @@ internal static class DevirtualizedRun
             stub.Body = body;
             built.Add(stub.MDToken.Raw);
         }
+        original.TryGetFact<IReadOnlyList<VirtualizationRebuildPass.LiftedRecipe>>(
+            VirtualizationRebuildPass.LiftedRecipesFact, out var recipes);
+        var originalCallers = (recipes ?? []).Select(r => r.Caller).Distinct()
+            .Select(token => second.Module.ResolveToken(token)).OfType<MethodDef>().Where(m => m.HasBody)
+            .ToDictionary(m => m.MDToken.Raw,
+                m => MethodBodyRecoveryInfrastructure.CloneBody(m, m, second.Module));
         var installedLifted = VirtualizationRebuildPass.InstallLiftedCopies(original, second);
+        trials.AddRange(CompareLiftedCallers(original, second, originalCallers));
+        if (shipped.Count == 0)
+            return (DevirtualizationCheck.NotMade, [NothingToWatch(whyShipped)]);
         built.UnionWith(installedLifted);
         requested = requested.Concat(installedLifted).ToHashSet();
         lifted -= installedLifted.Count;
@@ -180,6 +204,39 @@ internal static class DevirtualizedRun
         }
 
         return Coverage(shipped, requested, built, entered, lifted);
+    }
+
+    internal static IReadOnlyList<RebuiltMethodTrial.Result> CompareLiftedCallers(
+        ArtifactContext report, ArtifactContext copy, IReadOnlyDictionary<uint, CilBody> originals)
+    {
+        if (!copy.TryGetFact<IReadOnlyList<VirtualizationRebuildPass.LiftedRecipe>>(
+                VirtualizationRebuildPass.LiftedRecipesFact, out var recipes) || recipes is null) return [];
+        var trials = new List<RebuiltMethodTrial.Result>();
+        foreach (var recipe in recipes.Take(8))
+        {
+            if (copy.Module.ResolveToken(recipe.Caller) is not MethodDef caller ||
+                !originals.TryGetValue(recipe.Caller, out var original)) continue;
+            var rewritten = caller.Body;
+            try
+            {
+                caller.Body = original;
+                foreach (var warm in new[] { false, true })
+                {
+                    var trial = RebuiltMethodTrial.Compare(copy, caller, rewritten, 3,
+                        recipe.Entry, warmOriginal: warm, hostProfile: BootstrapMachine.Environment(copy).Host.Profile,
+                        rebuiltEntryToken: recipe.Holder.MDToken.Raw);
+                    trials.Add(trial);
+                    report.AddEvidence(new Evidence("reconstruction-method-trial",
+                        $"{caller.MDToken}, lifted program {recipe.Program.Method.ProgramId}, " +
+                        $"actual argument construction in its parameterless caller, {(warm ? "repeat call" : "cold start")}: " +
+                        $"{trial.Verdict}. {trial.Detail}. Both original VM entry and rebuilt helper must be exercised. " +
+                        $"Configured host profile {BootstrapMachine.Environment(copy).Host.Profile.Name}, " +
+                        $"{RebuiltMethodTrial.StepLimit(copy)} steps per machine; bounded interpretation, not full equivalence."));
+                }
+            }
+            finally { caller.Body = rewritten; }
+        }
+        return trials;
     }
 
     /// <summary>

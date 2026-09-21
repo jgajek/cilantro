@@ -29,6 +29,8 @@ Analysis-only still interprets recovery paths and writes reports and extracted f
 
 For supported native Reactor wrappers, the default run extracts the managed assembly and continues recovery automatically. The original extracted bytes remain available. Add `--recover-embedded` to follow further embedded stages as well. Traversal is bounded to depth 4, 32 artifacts, and 256 MiB of input bytes, with hash deduplication; limits are reported rather than silently treated as completion.
 
+Ordinary recursive recovery permits verified generic cleanup of extracted children, even when their protector is unrecognized. The root input still requires a recognized protector unless `--generic-recovery` is supplied. Strict child recovery also requires that explicit option. Structural verification, other emission gates, `--fail-on-partial`, and analysis-only behavior still apply; the original extracted bytes are preserved.
+
 ## Options
 
 | Option | Effect |

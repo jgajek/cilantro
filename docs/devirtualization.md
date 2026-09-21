@@ -23,6 +23,10 @@ A stack-consistent graph is useful evidence, not behavioral proof. An operation'
 
 ## How to judge the result
 
+When the supplementary non-VM snapshot matches, trials also check whether the VM and non-VM root graphs share modeled heap objects or collection state within each machine. A successful bounded traversal can establish absence of such sharing in that captured state; unsupported or over-budget graphs cannot. This does not rule out reflection, unmodeled external state, or aliases created by later calls, so it does not change the full-state verdict.
+
+Controlled-trial diagnostics distinguish differences confined to static roots owned by the original VM type hierarchy. A supplementary snapshot omits those roots and renumbers objects independently, preserving aliases among the remaining roots; otherwise discarded VM objects could shift numbering and make unchanged application objects appear different. The supplementary match requires return/exception, argument, other static-root, network-setting, and native-memory snapshots to match. It is a localization of observed differences, not an escape analysis: aliases between VM and application roots, reflection, or later calls could still expose VM state. The full snapshot and overall disagreement remain unchanged until those effects are justified.
+
 AppDomain event modeling preserves the subscription order of supported single-target managed delegates. Removing an equivalent delegate removes its last subscription, and null handlers do not change the list. Resource resolution invokes a snapshot of that list with the application domain as sender, stopping at the first returned assembly. This improves resource recovery when loaders register more than one handler. Subscription lists are bounded to 4,096 entries; unsupported delegate forms stop interpretation. These modeled subscriptions do not yet establish equivalent external registration effects in controlled trials.
 
 Modeled `ServicePointManager` settings are also captured in controlled comparisons. They belong to each interpreter machine, so sharing an intrinsic cannot carry settings between trials. A difference in settings such as `SecurityProtocol` is reported even when return values and managed statics match. This checks stored settings, not network behavior; callback registrations and `SetTcpKeepAlive` effects remain inconclusive.
@@ -51,6 +55,31 @@ Additional cold-start and repeat-call trials use the run's configured host profi
 Reflection over constructed generic methods preserves the supplied method and declaring-type arguments when answering parameter and return-type queries. For example, the parameter of `Array.Reverse<byte>` is reported as `byte[]`, rather than an unresolved generic parameter. Method flags such as `IsVirtual` come from the underlying declaration; framework overload selection distinguishes generic arity and static/instance signatures. These queries read metadata and do not execute the sample through CLR reflection.
 
 ## Remaining limits
+
+### Diagnosed cold-start differences
+
+The initial September 2026 audit of Qbjuef and Mlfhntkcvb.payload.Lqcuzgc separated a full-state mismatch from a mismatch in recovered application work. Before the additional helper comparisons described below, a 32-million-step budget and controlled 32-byte zero streams produced these results:
+
+| Sample | Captured non-VM state | Other evidence |
+| --- | --- | --- |
+| Qbjuef | Matched in all three differing cold-start trials; no modeled objects shared across the VM/non-VM boundary | Both repeat-call trials agreed. Payload bytes matched, but extraction exercised only one of two reconstructed bodies. |
+| Mlfhntkcvb.payload.Lqcuzgc | Matched in two of three differing cold-start trials; no modeled objects shared across the boundary in those two | The debugger-present trial still differs: the original protector throws and the rebuilt method completes. Both repeat-call trials agreed. |
+
+The original VM initializes caches and interpreter support state that the rebuilt method does not need. This accounts for the localized static-state differences on these fixtures; it does not establish equivalence on other inputs. Three additional trials per sample remained inconclusive. Both cleaned assemblies passed structural verification.
+
+The initial cleanup obstacle was numeric metadata-token resolution. Follow-up work found that resource-based recovery skipped independent initializer proofs when bootstrap evidence was absent, and that `typeof(T).Assembly` incorrectly exposed all members of `T` to reflection in reachability analysis. Independent proofs now run without bootstrap evidence. Assembly-only type-handle use, including intervening no-ops and a redundant `System.Type` cast, no longer implies reflective access to the type's members. A local spill is accepted only when every read is an assembly lookup and the local's address never escapes. Other uses and control-flow entries into those sequences remain conservative. Cleanup still requires attribution, deadness and absence of surviving references; the captured-state comparison alone never authorizes deletion.
+
+VM invocation discovery also tolerates no-ops between simple argument loads, while rejecting branch or exception-region entries into the argument sequence. This finds Mlfhntkcvb's additional 832-operation initialization program. Helper substitution removes the complete proven argument sequence rather than assuming a fixed number of adjacent instructions. Indirect calls and computed program identifiers can still conceal programs.
+
+Lifted initialization helpers now receive separate cold-start and repeat-call comparisons through their parameterless callers, using those callers' actual argument-building code. Both the original VM entry and the rebuilt helper must be exercised. These trials run even when the module extracts no payload, preserve independent machine state, and use the configured host profile under strict interpretation. They complement payload coverage rather than silently counting as coverage of the unpacking path.
+
+Cold initializer proofs honor declared step budgets, including their shared proxy-initializer allowance. Large proxy sets can exhaust that allowance; retained initializers are reported rather than treated as proven inert. Raising the analysis budget permits more proofs without weakening their requirements. Protector guard removal remains distinguishable from an accidental behavior change, and full-state disagreement is not converted to `agreed` by cleanup.
+
+The final cleanup trials removed 200 protector support types and 1,444 methods from Qbjuef, and 564 types and 2,930 methods from Mlfhntkcvb.payload.Lqcuzgc. Method totals include methods belonging to removed types. Mlfhntkcvb required a 192-million-step declaration to independently prove all 514 proxy initializers inert. Its newly discovered initialization program rebuilt into 1,163 CIL instructions. Both samples' additional helper trials matched captured non-VM state on cold start, with no shared modeled objects across the boundary, and matched full captured state on repeat calls. Both cleaned assemblies passed structural verification and ILSpy decompilation; Qbjuef's two extracted payload hashes were unchanged.
+
+Validation passed all 24 runnable corpus gates, 859 selected regression tests, and ten runtime comparisons against a source-built benign Reactor 7.5 fixture. Malware corpus trials remained static. Separate [reconstruction cleanup gates](corpus.md#reconstruction-cleanup-gates) enforce the removal counts and helper comparison evidence while requiring the full-state disagreement to remain visible. These results establish the stated checks, not equivalence for every input or complete unprotection of the corpus.
+
+Reports now summarize the localized trials separately from other disagreements, using `reconstruction-state-boundary` evidence in the analysis JSON and the Validation section of analyst output. These findings close the diagnosis of the observed warning; they do not claim complete unprotection or whole-corpus equivalence.
 
 Complex exception paths, reflection, unknown state, and sample-specific handlers can prevent complete lifting or validation. “No direct callers” does not exclude reflective calls. A remaining dispatcher is not necessarily a protection artifact, and a decompiler's readable C# is not the original source.
 

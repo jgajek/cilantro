@@ -17,17 +17,15 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
-        // Nothing is recorded for a later pass here. What is proved is that no resource this module
-        // embeds carries an assembly, and a load takes the bytes it is given from wherever they were
-        // built; so this says nothing about what the module hands the runtime, and a reader treating
-        // it as though it did would take a check it could have made for one there was no point making.
-        if (TryProveNoManagedPayload(context, out var accounting))
-            return (PassStatus.Success, 0, accounting);
-
         // Asking the module to unpack itself is the general answer and the one that survives a
         // change of crypter, so it is tried before anything that reasons about a particular codec.
-        if (TryRecoverByInterpretation(context, out var interpreted, out var declined))
+        if (TryRecoverByInterpretation(context, out var interpreted, out var declined, out var hadCandidates))
             return interpreted;
+
+        // Resources cannot account for bytes constructed from IL or initialized fields.
+        // A discovered loader must be tried, and its failure must remain visible.
+        if (!hadCandidates && TryProveNoManagedPayload(context, out var accounting))
+            return (PassStatus.Success, 0, [.. accounting, .. declined]);
 
         // This one did watch every load the startup path reached, so its silence means something.
         Told(context, [], declined);
@@ -104,10 +102,10 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
     private bool TryRecoverByInterpretation(
         ArtifactContext context,
         out (PassStatus, int, IReadOnlyList<string>) outcome,
-        out IReadOnlyList<string> declined)
+        out IReadOnlyList<string> declined, out bool hadCandidates)
     {
         outcome = default;
-        var recovered = PayloadChainRecovery.Recover(context, out var why);
+        var recovered = PayloadChainRecovery.Recover(context, new PayloadChainRecovery.Watch(), out var why, out hadCandidates, out var incomplete);
         declined = why;
         if (recovered.Count == 0)
             return false;
@@ -126,6 +124,7 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
             // assembly, and the others are extracted regardless of it.
             if (!PayloadStageValidator.TryValidateManaged(item.Image, out var read) || read is null)
             {
+                incomplete = true;
                 diagnostics.Add(
                     $"{origin}: the {item.Image.Length} byte(s) handed to the runtime are not a " +
                     "managed image, so nothing was extracted from that load.");
@@ -163,7 +162,7 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
         context.SetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", combined);
         diagnostics.AddRange(why);
         Told(context, recovered.Select(item => item.Sha256), why);
-        outcome = (PassStatus.Success, payloads.Count, diagnostics);
+        outcome = (incomplete ? PassStatus.Partial : PassStatus.Success, payloads.Count, diagnostics);
         return true;
     }
 

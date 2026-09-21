@@ -111,7 +111,7 @@ public static class VirtualizedMethodDetector
                 if (call.OpCode.Code is not (Code.Call or Code.Callvirt) ||
                     call.Operand is not IMethod called ||
                     !entries.TryGetValue(called.MDToken.Raw, out var entry) ||
-                    Identifier(instructions, at, called) is not { } program)
+                    Identifier(method, at, called, out _) is not { } program)
                 {
                     continue;
                 }
@@ -136,8 +136,10 @@ public static class VirtualizedMethodDetector
     /// between pushes counted and parameters passed, and a program number arrived at by guessing
     /// would be worse than admitting the call site was not read.
     /// </remarks>
-    private static int? Identifier(IList<Instruction> instructions, int at, IMethod called)
+    internal static int? Identifier(MethodDef method, int at, IMethod called, out int argumentStart)
     {
+        argumentStart = -1;
+        var instructions = method.Body.Instructions;
         if (called.MethodSig is not { } signature)
             return null;
         var offset = signature.HasThis ? 1 : 0;
@@ -154,13 +156,25 @@ public static class VirtualizedMethodDetector
         if (naming < 0 || at < slots)
             return null;
 
-        for (var slot = 0; slot < slots; slot++)
+        var arguments = new Instruction[slots];
+        var before = at - 1;
+        for (var slot = slots - 1; slot >= 0; slot--)
         {
-            if (!Leaves(instructions[at - slots + slot]))
-                return null;
+            while (before >= 0 && instructions[before].OpCode.Code == Code.Nop) before--;
+            if (before < 0 || !Leaves(instructions[before])) return null;
+            arguments[slot] = instructions[before--];
         }
+        // A branch/handler into the argument sequence can supply a different program
+        // number. Only a single straight-line producer sequence is evidence here.
+        var interior = instructions.Skip(before + 2).Take(at - before - 1).ToHashSet();
+        bool Enters(Instruction? instruction) => instruction is not null && interior.Contains(instruction);
+        if (instructions.Any(i => i.Operand is Instruction target && Enters(target) ||
+                i.Operand is IList<Instruction> targets && targets.Any(Enters)) ||
+            method.Body.ExceptionHandlers.Any(h => Enters(h.TryStart) || Enters(h.TryEnd) ||
+                Enters(h.HandlerStart) || Enters(h.HandlerEnd) || Enters(h.FilterStart))) return null;
         var read = 0;
-        return TryReadInt32([instructions[at - slots + naming]], ref read, out var value)
+        argumentStart = before + 1;
+        return TryReadInt32([arguments[naming]], ref read, out var value)
             ? value
             : null;
     }

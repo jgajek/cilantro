@@ -226,6 +226,9 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
         var recipes = new List<LiftedRecipe>();
         foreach (var (invocation, program, at) in liftable)
         {
+            if (invocation.Call.Operand is not IMethod called ||
+                VirtualizedMethodDetector.Identifier(invocation.Caller, at, called, out var argumentStart)
+                    != invocation.ProgramId) continue;
             var host = invocation.Caller.DeclaringType;
             var holder = new MethodDefUser(
                 $"LiftedProgram{invocation.ProgramId}",
@@ -287,8 +290,7 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
             using var transaction = new InstructionMutationTransaction();
             // The pushes the engine wanted go, the call becomes a call to the method holding the
             // program, and the pop of the result it no longer returns goes with them.
-            var slots = at - Pushes(invocation.Call);
-            for (var index = slots; index < at; index++)
+            for (var index = argumentStart; index < at; index++)
             {
                 transaction.Capture(instructions[index]);
                 instructions[index].OpCode = OpCodes.Nop;
@@ -385,12 +387,6 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
             "run replaced what called them, so the engine and what it calls are said to have lost " +
             "their purpose.");
     }
-
-    /// <summary>How many values a call to this method takes off the stack.</summary>
-    private static int Pushes(Instruction call) =>
-        call.Operand is IMethod called && called.MethodSig is { } signature
-            ? signature.Params.Count + (signature.HasThis ? 1 : 0)
-            : 0;
 
     private static string Verdict(DevirtualizationCheck check) => check switch
     {

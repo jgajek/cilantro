@@ -319,10 +319,12 @@ public sealed class ReconstructionCoverageTests
         Assert.Equal(DevirtualizationCheck.NotMade, RebuiltMethodTrial.Compare(context, method, other, 0).Verdict);
     }
 
-    [Fact]
-    public void LiftedHelperIsSubstitutedIntoTheComparisonCopyAndGetsAWatchableIdentity()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LiftedHelperIsSubstitutedIntoTheComparisonCopyAndGetsAWatchableIdentity(bool nops)
     {
-        static ArtifactContext Make() => SyntheticContext.Build(module =>
+        ArtifactContext Make() => SyntheticContext.Build(module =>
         {
             var owner = SyntheticContext.AddType(module, "Host");
             var entry = new MethodDefUser("Engine", MethodSig.CreateStatic(module.CorLibTypes.Object,
@@ -334,6 +336,11 @@ public sealed class ReconstructionCoverageTests
                 { Attributes = MethodAttributes.Static | MethodAttributes.Assembly, Body = new CilBody() };
             foreach (var i in new[] { OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Ldnull.ToInstruction(), OpCodes.Ldnull.ToInstruction(),
                 OpCodes.Call.ToInstruction(entry), OpCodes.Pop.ToInstruction(), OpCodes.Ret.ToInstruction() }) caller.Body.Instructions.Add(i);
+            if (nops)
+            {
+                caller.Body.Instructions.Insert(3, OpCodes.Nop.ToInstruction());
+                caller.Body.Instructions.Insert(1, OpCodes.Nop.ToInstruction());
+            }
             owner.Methods.Add(caller);
         });
         using var original = Make(); using var copy = Make();
@@ -347,6 +354,9 @@ public sealed class ReconstructionCoverageTests
         };
         original.SetFact<IReadOnlyList<VirtualizationRebuildPass.LiftedRecipe>>(VirtualizationRebuildPass.LiftedRecipesFact,
             [new(program, caller.MDToken.Raw, entry.MDToken.Raw, caller)]);
+        var originalBodies = copy.Module.GetTypes().SelectMany(t => t.Methods)
+            .Where(m => m.HasBody).ToDictionary(m => m.MDToken.Raw,
+                m => MethodBodyRecoveryInfrastructure.CloneBody(m, m, copy.Module));
         var installed = VirtualizationRebuildPass.InstallLiftedCopies(original, copy);
         var token = Assert.Single(installed);
         var helper = Assert.Single(copy.Module.GetTypes().SelectMany(t => t.Methods), m => m.MDToken.Raw == token);
@@ -354,6 +364,14 @@ public sealed class ReconstructionCoverageTests
         var redirected = copy.Module.GetTypes().SelectMany(t => t.Methods).Single(m => m.Name == "Caller");
         Assert.Contains(redirected.Body.Instructions, i => i.Operand == helper);
         Assert.DoesNotContain(redirected.Body.Instructions, i => i.Operand is IMethod m && m.Name == "Engine");
+        var checkedCalls = DevirtualizedRun.CompareLiftedCallers(copy, copy, originalBodies);
+        Assert.Equal(2, checkedCalls.Count);
+        Assert.All(checkedCalls, trial => Assert.Equal(DevirtualizationCheck.Agreed, trial.Verdict));
+        var helperCall = redirected.Body.Instructions.Single(i => i.Operand == helper);
+        helperCall.OpCode = OpCodes.Nop;
+        helperCall.Operand = null;
+        Assert.All(DevirtualizedRun.CompareLiftedCallers(copy, copy, originalBodies),
+            trial => Assert.Equal(DevirtualizationCheck.NotMade, trial.Verdict));
     }
 
     [Fact]

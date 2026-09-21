@@ -9,6 +9,16 @@ namespace Cilantro.Tests;
 public sealed class ColdInitializerTests
 {
     [Fact]
+    public void ColdProofHonorsTheDeclaredStepBudget()
+    {
+        using var context = Fixture(false);
+        context.SetFact(BootstrapMachine.RunEnvironmentFact,
+            new RunEnvironment(new HostEnvironment(HostProfile.Empty),
+                RunDeclarations.Parse("{\"budgets\":{\"steps\":32000000}}", "test")));
+        Assert.Equal(32_000_000, LoaderCallElisionPass.ColdInitializerStepBudget(context));
+    }
+
+    [Fact]
     public void ModuleBootstrapTargetRunsOnlyOncePerIndependentMachine()
     {
         using var context = SyntheticContext.Build(module =>

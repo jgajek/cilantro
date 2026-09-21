@@ -1103,7 +1103,9 @@ public sealed class StaticHeap
         _ => 4
     };
 
-    private static bool IsReferenceType(TypeSig? type) => type?.ElementType is
+    internal static bool IsReferenceType(TypeSig? type) => type?.RemovePinnedAndModifiers() is GenericInstSig generic
+        ? !generic.GenericType.IsValueType
+        : type?.RemovePinnedAndModifiers()?.ElementType is
         ElementType.Class or ElementType.Object or ElementType.String or
         ElementType.Array or ElementType.SZArray;
 
@@ -1489,10 +1491,9 @@ public sealed class StaticMachineState
         }
         return _staticFields.TryGetValue(field.FullName, out var value)
             ? value
-            : field.FieldSig?.Type.ElementType switch
+            : StaticHeap.IsReferenceType(field.FieldSig?.Type) ? StaticValue.Null
+            : field.FieldSig?.Type.RemovePinnedAndModifiers()?.ElementType switch
             {
-                ElementType.Class or ElementType.Object or ElementType.String or
-                ElementType.Array or ElementType.SZArray => StaticValue.Null,
                 ElementType.I8 or ElementType.U8 => StaticValue.FromInt64(0),
                 _ => StaticValue.FromInt32(0)
             };

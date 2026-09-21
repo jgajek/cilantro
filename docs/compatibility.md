@@ -1,6 +1,6 @@
 # Support and limitations
 
-CILantro 0.10.1 is a regular release for static recovery of supported .NET Reactor and ConfuserEx samples. Coverage follows the sample's protection configuration and implementation, not just the product name or version.
+CILantro 0.10.2 is a regular release for static recovery of supported .NET Reactor and ConfuserEx samples. Coverage follows the sample's protection configuration and implementation, not just the product name or version.
 
 ## Coverage
 
@@ -23,9 +23,9 @@ The ordinary CLI run enables readability renaming and supported VM reconstructio
 
 `--strict` disables these implicit assumptions and permissive continuation, and defaults renaming and reconstruction off. Explicit `--rename` and `--devirtualize` enable those transformations in strict mode. Declared facts and authorized declared call outcomes remain inputs to the analysis; strict mode does not prove those assertions true.
 
-## Validation baseline for this preview
+## Validation baseline
 
-The pre-release recovery baseline recorded 788 passing selected tests, 24/24 corpus gates, 10/10 additional static runs, 41/41 successful decompilations, and 9/9 benign runtime-oracle matches. These are different measurements, not 852 independent proofs of correct recovery. Documentation and presentation changes are validated separately in the release notes.
+Version 0.10.2 development validation recorded 859 passing selected regression tests, all 24 runnable corpus gates, two reconstruction cleanup gates, and ten matching runtime cases on a source-built benign Reactor 7.5 fixture. These measure different aspects of recovery and do not establish equivalence for all inputs. See the [release notes](releases/0.10.2.md) for results and limitations.
 
 The corpus gates cover their manifest assertions. A decompiler accepting a file proves neither its behavior nor extraction completeness. Runtime-oracle trials execute only the benign programs built from repository source; they exercise selected inputs, not all reconstructed VM paths. See [corpus validation](corpus.md).
 
