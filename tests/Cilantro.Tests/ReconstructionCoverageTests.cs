@@ -9,6 +9,85 @@ namespace Cilantro.Tests;
 
 public sealed class ReconstructionCoverageTests
 {
+    [Theory]
+    [InlineData("list")]
+    [InlineData("pairs")]
+    [InlineData("map")]
+    public void CollectionSnapshotsCompareContentsWithoutHeapIdDependence(string kind)
+    {
+        static string? Capture(string kind, bool padding, int number)
+        {
+            var heap = new StaticHeap(new StaticMachineLimits());
+            if (padding) Assert.True(heap.TryAllocateString("unused", out _));
+            Assert.True(heap.TryAllocateObject("Collection", out var root));
+            Assert.True(heap.TryAllocateString("key", out var key));
+            var value = StaticValue.FromInt32(number);
+            object model = kind switch
+            {
+                "list" => new List<StaticValue> { key, value, root },
+                "pairs" => new List<KeyValuePair<StaticValue, StaticValue>> { new(key, value), new(value, root) },
+                _ => new Dictionary<StaticValue, StaticValue> { [key] = value, [value] = root }
+            };
+            Assert.True(heap.TrySetModelValue(root, "Contents", model));
+            return new RebuiltMethodTrial.Snapshot(heap).Read(root);
+        }
+        var expected = Capture(kind, false, 7);
+        Assert.NotNull(expected);
+        Assert.Equal(expected, Capture(kind, true, 7));
+        Assert.NotEqual(expected, Capture(kind, false, 8));
+    }
+
+    [Fact]
+    public void MetadataSnapshotsRequireSharedIdentitiesAndDoNotConflateSameNamedModules()
+    {
+        using var first = new ModuleDefUser("SameName");
+        using var second = new ModuleDefUser("SameName");
+        var left = new StaticHeap(new StaticMachineLimits());
+        var right = new StaticHeap(new StaticMachineLimits());
+        Assert.True(left.TryAllocateMetadataHandle(first, out var a));
+        Assert.True(right.TryAllocateString("padding", out _));
+        Assert.True(right.TryAllocateMetadataHandle(first, out var b));
+        Assert.True(right.TryAllocateMetadataHandle(second, out var c));
+        Assert.Null(new RebuiltMethodTrial.Snapshot(left).Read(a));
+        var metadata = new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
+        var expected = new RebuiltMethodTrial.Snapshot(left, metadata).Read(a);
+        Assert.NotNull(expected);
+        Assert.Equal(expected, new RebuiltMethodTrial.Snapshot(right, metadata).Read(b));
+        Assert.NotEqual(expected, new RebuiltMethodTrial.Snapshot(right, metadata).Read(c));
+    }
+
+    [Fact]
+    public void CollectionSnapshotsPreserveStorageAliasesAndRefuseOversizedModels()
+    {
+        var heap = new StaticHeap(new StaticMachineLimits());
+        Assert.True(heap.TryAllocateObject("Collection", out var root));
+        var list = new List<StaticValue> { StaticValue.FromInt32(7) };
+        Assert.True(heap.TrySetModelValue(root, "First", list));
+        Assert.True(heap.TrySetModelValue(root, "Second", list));
+        var shared = new RebuiltMethodTrial.Snapshot(heap).Read(root);
+        Assert.NotNull(shared);
+        Assert.True(heap.TrySetModelValue(root, "Second", new List<StaticValue>(list)));
+        Assert.NotEqual(shared, new RebuiltMethodTrial.Snapshot(heap).Read(root));
+        Assert.True(heap.TrySetModelValue(root, "First", Enumerable.Repeat(StaticValue.Null, RebuiltMethodTrial.Snapshot.MaximumNodes).ToList()));
+        var bounded = new RebuiltMethodTrial.Snapshot(heap);
+        Assert.Null(bounded.Read(root));
+        Assert.Equal("collection exceeds remaining node budget", bounded.Failure);
+    }
+
+    [Fact]
+    public void SnapshotComparesLargeGraphsAndStillIncludesTheirTail()
+    {
+        using var module = new ModuleDefUser("LargeGraph");
+        var heap = new StaticHeap(new StaticMachineLimits());
+        Assert.True(heap.TryAllocateArray(module.CorLibTypes.Int32, 20000, out var values));
+        var before = new RebuiltMethodTrial.Snapshot(heap).Read(values);
+        Assert.NotNull(before);
+        Assert.True(heap.TryWriteArray(values, 19999, StaticValue.FromInt32(1)));
+        var after = new RebuiltMethodTrial.Snapshot(heap).Read(values);
+        Assert.NotNull(after);
+        Assert.NotEqual(before, after);
+    }
+
     [Fact]
     public void NestedSnapshotsAreBoundedAndIndependentOfHeapAllocationIds()
     {
@@ -73,7 +152,140 @@ public sealed class ReconstructionCoverageTests
         if (different) rebuilt.Instructions[0].OpCode = OpCodes.Ldc_I4_2;
         var result = RebuiltMethodTrial.Compare(context, method, rebuilt, 0);
         Assert.Equal(different ? DevirtualizationCheck.Disagreed : DevirtualizationCheck.Agreed, result.Verdict);
+        if (different) Assert.Contains("Synthetic.Host::State", result.Detail, StringComparison.Ordinal);
+        if (different) Assert.Contains("argument snapshots matched", result.Detail, StringComparison.Ordinal);
         Assert.Same(original, method.Body);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConfiguredTrialsUseExplicitHostFactsOnIndependentStrictMachines(bool warm)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var owner = SyntheticContext.AddType(module, "Host");
+            var method = new MethodDefUser("Run", MethodSig.CreateStatic(module.CorLibTypes.String))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            var getter = new MemberRefUser(module, "get_MachineName", MethodSig.CreateStatic(module.CorLibTypes.String),
+                module.CorLibTypes.GetTypeRef("System", "Environment"));
+            method.Body.Instructions.Add(OpCodes.Call.ToInstruction(getter));
+            method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            owner.Methods.Add(method);
+        });
+        var method = context.Module.GetTypes().SelectMany(t => t.Methods).Single();
+        var original = method.Body;
+        var rebuilt = new CilBody();
+        rebuilt.Instructions.Add(OpCodes.Ldstr.ToInstruction("analysis-host"));
+        rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var profile = HostProfile.Parse("""{"facts":{"env:MachineName":"analysis-host"}}""", "fixture");
+        var world = new RunEnvironment(new HostEnvironment(profile), strict: false);
+        context.SetFact("run.environment", world);
+        Assert.Equal(DevirtualizationCheck.NotMade,
+            RebuiltMethodTrial.Compare(context, method, rebuilt, 3, warmOriginal: warm).Verdict);
+        Assert.Equal(DevirtualizationCheck.Agreed,
+            RebuiltMethodTrial.Compare(context, method, rebuilt, 3, warmOriginal: warm, hostProfile: profile).Verdict);
+        rebuilt.Instructions[0].Operand = "other-host";
+        Assert.Equal(DevirtualizationCheck.Disagreed,
+            RebuiltMethodTrial.Compare(context, method, rebuilt, 3, warmOriginal: warm, hostProfile: profile).Verdict);
+        Assert.Empty(world.Host.Questions);
+        Assert.Same(original, method.Body);
+        // An unmodeled external call must not inherit the surrounding run's permissive policy.
+        ((MemberRef)original.Instructions[0].Operand).Name = "UnknownHostCall";
+        Assert.Equal(DevirtualizationCheck.NotMade,
+            RebuiltMethodTrial.Compare(context, method, rebuilt, 3, warmOriginal: warm, hostProfile: profile).Verdict);
+        Assert.Same(original, method.Body);
+    }
+
+    [Fact]
+    public void DeclaredTrialBudgetReachesLongBodiesAndRemainsSharedWithWarmup()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var owner = SyntheticContext.AddType(module, "Host");
+            var method = new MethodDefUser("Run", MethodSig.CreateStatic(module.CorLibTypes.Int32))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            var counter = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(counter);
+            var loop = OpCodes.Ldloc.ToInstruction(counter);
+            foreach (var i in new[] { OpCodes.Ldc_I4.ToInstruction(700_000), OpCodes.Stloc.ToInstruction(counter),
+                         loop, OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Sub.ToInstruction(), OpCodes.Dup.ToInstruction(),
+                         OpCodes.Stloc.ToInstruction(counter), OpCodes.Brtrue.ToInstruction(loop),
+                         OpCodes.Ldloc.ToInstruction(counter), OpCodes.Ret.ToInstruction() }) method.Body.Instructions.Add(i);
+            owner.Methods.Add(method);
+        });
+        var method = context.Module.GetTypes().SelectMany(t => t.Methods).Single();
+        var original = method.Body;
+        var rebuilt = new CilBody();
+        rebuilt.Instructions.Add(OpCodes.Ldc_I4_0.ToInstruction());
+        rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction());
+        Assert.Equal(DevirtualizationCheck.NotMade, RebuiltMethodTrial.Compare(context, method, rebuilt, 0).Verdict);
+        context.SetFact(BootstrapMachine.RunEnvironmentFact, new RunEnvironment(declarations:
+            RunDeclarations.Parse("""{"budgets":{"steps":5000000}}""", "long-trial")));
+        Assert.Equal(DevirtualizationCheck.Agreed, RebuiltMethodTrial.Compare(context, method, rebuilt, 0).Verdict);
+        var warm = RebuiltMethodTrial.Compare(context, method, rebuilt, 0, warmOriginal: true);
+        Assert.Equal(DevirtualizationCheck.NotMade, warm.Verdict);
+        Assert.Contains("5000000-step budget", warm.Detail, StringComparison.Ordinal);
+        Assert.Same(original, method.Body);
+    }
+
+    [Fact]
+    public void RepeatCallAgreementDoesNotEraseColdStartStaticDifferences()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var owner = SyntheticContext.AddType(module, "Host");
+            var field = new FieldDefUser("Initialized", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            owner.Fields.Add(field);
+            var method = new MethodDefUser("Run", MethodSig.CreateStatic(module.CorLibTypes.Void))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            foreach (var i in new[] { OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Stsfld.ToInstruction(field), OpCodes.Ret.ToInstruction() })
+                method.Body.Instructions.Add(i);
+            owner.Methods.Add(method);
+        });
+        var method = context.Module.GetTypes().SelectMany(t => t.Methods).Single();
+        var shipped = method.Body;
+        var rebuilt = new CilBody();
+        rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction());
+        Assert.Equal(DevirtualizationCheck.Disagreed, RebuiltMethodTrial.Compare(context, method, rebuilt, 0).Verdict);
+        Assert.Equal(DevirtualizationCheck.Agreed, RebuiltMethodTrial.Compare(context, method, rebuilt, 0, warmOriginal: true).Verdict);
+        Assert.Same(shipped, method.Body);
+        Assert.Equal(DevirtualizationCheck.Disagreed, RebuiltMethodTrial.Compare(context, method, rebuilt, 0).Verdict);
+        var field = method.DeclaringType.Fields.Single();
+        rebuilt.Instructions.Insert(0, OpCodes.Stsfld.ToInstruction(field));
+        rebuilt.Instructions.Insert(0, OpCodes.Ldc_I4_2.ToInstruction());
+        Assert.Equal(DevirtualizationCheck.Disagreed, RebuiltMethodTrial.Compare(context, method, rebuilt, 0, warmOriginal: true).Verdict);
+        Assert.Same(shipped, method.Body);
+    }
+
+    [Fact]
+    public void WarmupCannotSatisfyMeasuredEngineCoverage()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var owner = SyntheticContext.AddType(module, "Host");
+            var flag = new FieldDefUser("Initialized", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            owner.Fields.Add(flag);
+            var engine = new MethodDefUser("Engine", MethodSig.CreateStatic(module.CorLibTypes.Void))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            engine.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            owner.Methods.Add(engine);
+            var method = new MethodDefUser("Run", MethodSig.CreateStatic(module.CorLibTypes.Void))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            var end = OpCodes.Ret.ToInstruction();
+            foreach (var i in new[] { OpCodes.Ldsfld.ToInstruction(flag), OpCodes.Brtrue.ToInstruction(end),
+                         OpCodes.Call.ToInstruction(engine), OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Stsfld.ToInstruction(flag), end })
+                method.Body.Instructions.Add(i);
+            owner.Methods.Add(method);
+        });
+        var methods = context.Module.GetTypes().SelectMany(t => t.Methods).ToArray();
+        var method = methods.Single(m => m.Name == "Run");
+        var rebuilt = new CilBody();
+        rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var result = RebuiltMethodTrial.Compare(context, method, rebuilt, 0,
+            methods.Single(m => m.Name == "Engine").MDToken.Raw, warmOriginal: true);
+        Assert.Equal(DevirtualizationCheck.NotMade, result.Verdict);
+        Assert.Contains("engine was not exercised", result.Detail, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -96,6 +308,13 @@ public sealed class ReconstructionCoverageTests
         foreach (var i in method.Body.Instructions) other.Instructions.Add(new Instruction(i.OpCode, i.Operand));
         other.Instructions[0].Operand = "second";
         Assert.Equal(DevirtualizationCheck.Disagreed, RebuiltMethodTrial.Compare(context, method, other, 0).Verdict);
+        other.Instructions.Clear(); other.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var terminal = RebuiltMethodTrial.Compare(context, method, other, 0);
+        Assert.Equal(DevirtualizationCheck.Disagreed, terminal.Verdict);
+        Assert.Contains("Run()", terminal.Detail, StringComparison.Ordinal);
+        var warm = RebuiltMethodTrial.Compare(context, method, other, 0, warmOriginal: true);
+        Assert.Equal(DevirtualizationCheck.NotMade, warm.Verdict);
+        Assert.Contains("warm-up did not complete", warm.Detail, StringComparison.Ordinal);
         other.Instructions.Clear(); other.Instructions.Add(OpCodes.Jmp.ToInstruction(method));
         Assert.Equal(DevirtualizationCheck.NotMade, RebuiltMethodTrial.Compare(context, method, other, 0).Verdict);
     }

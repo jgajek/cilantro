@@ -9,9 +9,7 @@ internal static class LocalConstantPropagation
     internal static int Fold(MethodDef method)
     {
         var body = method.Body;
-        // Finally/exception transfers require an exceptional data-flow model. Do not infer
-        // normal-flow constants across those transfers, or across an address escape.
-        if (body.ExceptionHandlers.Count != 0 || body.Variables.Count == 0)
+        if (body.Variables.Count == 0 || body.Instructions.Count == 0)
             return 0;
         var eligible = body.Variables.Where(v => v.Type.ElementType is ElementType.I4 or ElementType.U4).ToHashSet();
         foreach (var i in body.Instructions)
@@ -25,8 +23,20 @@ internal static class LocalConstantPropagation
         var queued = new HashSet<BasicBlock>();
         queue.Enqueue(graph.Entry);
         queued.Add(graph.Entry);
+        // An exception can leave a protected block before its last assignment. Filters
+        // and unwind handlers can also modify locals before a handler is entered.
+        // Seed every exceptional entry independently, including filtered catch bodies.
+        foreach (var handler in body.ExceptionHandlers)
+            foreach (var entry in new[] { handler.FilterStart, handler.HandlerStart })
+                if (entry is not null)
+                {
+                    var root = graph.BlockOf(entry);
+                    inputs[root] = [];
+                    if (queued.Add(root)) queue.Enqueue(root);
+                }
         // Exhaustion means no rewrite, never a partially converged proof.
         var budget = Math.Min(1_000_000L, Math.Max(4096L, body.Instructions.Count * 32L));
+        var unknown = new Dictionary<Local, int>();
         while (queue.TryDequeue(out var block))
         {
             queued.Remove(block);
@@ -35,16 +45,21 @@ internal static class LocalConstantPropagation
             var output = Transfer(block, inputs[block], null);
             foreach (var edge in block.Successors)
             {
+                // The CFG's leave edge bypasses finally execution. Until that execution
+                // is modeled, no local fact may survive it, even on a normal exit.
+                var incoming = edge.Kind == ControlFlowEdgeKind.Exception ||
+                    block.Last.OpCode.Code is Code.Leave or Code.Leave_S
+                    ? unknown : output;
                 var changed = false;
                 if (!inputs.TryGetValue(edge.Target, out var target))
                 {
-                    inputs[edge.Target] = new(output);
+                    inputs[edge.Target] = new(incoming);
                     changed = true;
                 }
                 else
                 {
                     foreach (var local in target.Keys.ToArray())
-                        if (!output.TryGetValue(local, out var value) || value != target[local])
+                        if (!incoming.TryGetValue(local, out var value) || value != target[local])
                         {
                             target.Remove(local);
                             changed = true;

@@ -36,6 +36,8 @@ Facts can be strings, integers, booleans, null for absence, or bytes expressed a
 
 Step declarations raise a pass's allowance; a smaller number does not necessarily lower its built-in or adaptive budget. Some analyses have their own hard limits. Budget changes do not add missing API models or settle unknown behavior.
 
+Controlled VM method comparisons also honor `budgets.steps`. Their default is four million steps per comparison machine; in repeat-call trials, original warm-up and measurement share that allowance. A larger declared limit can let expensive protector initialization finish, but does not skip initialization or turn an unsupported outcome into agreement. Each trial records its effective step limit.
+
 ## Call assertions
 
 ```json

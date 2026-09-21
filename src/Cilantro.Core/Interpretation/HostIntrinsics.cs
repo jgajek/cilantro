@@ -767,9 +767,6 @@ public sealed class NetworkSettingsIntrinsic : IStaticIntrinsic
         "EncryptionPolicy"
     };
 
-    /// <summary>What this run has written, so that reading it back gives it.</summary>
-    private readonly Dictionary<string, StaticValue> _written = new(StringComparer.Ordinal);
-
     public bool Matches(IMethod method) =>
         method?.DeclaringType?.FullName == "System.Net.ServicePointManager";
 
@@ -786,7 +783,7 @@ public sealed class NetworkSettingsIntrinsic : IStaticIntrinsic
         if (name.StartsWith("set_", StringComparison.Ordinal) && arguments.Count == 1 &&
             Settings.Contains(setting))
         {
-            _written[setting] = arguments[0];
+            context.State.NetworkSettings[setting] = arguments[0];
             if (setting.EndsWith("Callback", StringComparison.Ordinal) &&
                 arguments[0].Kind != StaticValueKind.Null)
                 context.State.RecordRegistration($"ServicePointManager.{setting}");
@@ -795,7 +792,7 @@ public sealed class NetworkSettingsIntrinsic : IStaticIntrinsic
         if (name.StartsWith("get_", StringComparison.Ordinal) && arguments.Count == 0 &&
             Settings.Contains(setting))
         {
-            if (_written.TryGetValue(setting, out var read))
+            if (context.State.NetworkSettings.TryGetValue(setting, out var read))
                 return IntrinsicResult.Completed(read);
             if (setting.EndsWith("Callback", StringComparison.Ordinal))
                 return IntrinsicResult.Completed(StaticValue.Null);

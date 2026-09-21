@@ -461,6 +461,114 @@ public sealed class ControlFlowCompletionPassTests
         Assert.True(method.Body.Instructions[2].IsLdloc());
     }
 
+    [Theory]
+    [InlineData(ExceptionHandlerType.Catch)]
+    [InlineData(ExceptionHandlerType.Finally)]
+    [InlineData(ExceptionHandlerType.Fault)]
+    [InlineData(ExceptionHandlerType.Filter)]
+    public void ExceptionEntriesAndLeaveDiscardFactsButNormalBranchesPreserveThem(ExceptionHandlerType kind)
+    {
+        using var module = new ModuleDefUser("ExceptionConstants");
+        var method = NewVoidMethod(module);
+        var local = new Local(module.CorLibTypes.Int32);
+        method.Body.Variables.Add(local);
+        method.Body.InitLocals = true;
+        var start = Instruction.CreateLdcI4(7);
+        var normalRead = Instruction.Create(OpCodes.Ldloc, local);
+        var filterStart = Instruction.Create(OpCodes.Pop);
+        var filterRead = Instruction.Create(OpCodes.Ldloc, local);
+        var handlerStart = Instruction.Create(OpCodes.Nop);
+        var handlerRead = Instruction.Create(OpCodes.Ldloc, local);
+        var assignedRead = Instruction.Create(OpCodes.Ldloc, local);
+        var exitRead = Instruction.Create(OpCodes.Ldloc, local);
+        var il = method.Body.Instructions;
+        foreach (var i in new[] { start, Instruction.Create(OpCodes.Stloc, local),
+                     Instruction.Create(OpCodes.Br, normalRead), normalRead, Instruction.Create(OpCodes.Pop),
+                     Instruction.Create(OpCodes.Leave, exitRead) }) il.Add(i);
+        if (kind == ExceptionHandlerType.Filter)
+            foreach (var i in new[] { filterStart, filterRead, Instruction.Create(OpCodes.Pop),
+                         Instruction.CreateLdcI4(9), Instruction.Create(OpCodes.Stloc, local),
+                         Instruction.CreateLdcI4(1), Instruction.Create(OpCodes.Endfilter) }) il.Add(i);
+        il.Add(handlerStart);
+        if (kind is ExceptionHandlerType.Catch or ExceptionHandlerType.Filter)
+            il.Add(Instruction.Create(OpCodes.Pop));
+        foreach (var i in new[] { handlerRead, Instruction.Create(OpCodes.Pop), Instruction.CreateLdcI4(8),
+                     Instruction.Create(OpCodes.Stloc, local), Instruction.Create(OpCodes.Br, assignedRead),
+                     assignedRead, Instruction.Create(OpCodes.Pop) }) il.Add(i);
+        il.Add(kind is ExceptionHandlerType.Finally or ExceptionHandlerType.Fault
+            ? Instruction.Create(OpCodes.Endfinally) : Instruction.Create(OpCodes.Leave, exitRead));
+        il.Add(exitRead);
+        il.Add(Instruction.Create(OpCodes.Pop));
+        il.Add(Instruction.Create(OpCodes.Ret));
+        method.Body.ExceptionHandlers.Add(new ExceptionHandler(kind)
+        {
+            TryStart = start, TryEnd = kind == ExceptionHandlerType.Filter ? filterStart : handlerStart,
+            FilterStart = kind == ExceptionHandlerType.Filter ? filterStart : null,
+            HandlerStart = handlerStart, HandlerEnd = exitRead,
+            CatchType = kind == ExceptionHandlerType.Catch ? module.CorLibTypes.Object.TypeDefOrRef : null
+        });
+
+        Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
+        Assert.Equal(2, LocalConstantPropagation.Fold(method));
+        Assert.Equal(7, normalRead.GetLdcI4Value());
+        Assert.Equal(8, assignedRead.GetLdcI4Value());
+        Assert.True(handlerRead.IsLdloc());
+        Assert.True(exitRead.IsLdloc());
+        if (kind == ExceptionHandlerType.Filter) Assert.True(filterRead.IsLdloc());
+        Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
+    }
+
+    [Fact]
+    public void CompletionPreservesLocalChangesAcrossNestedFinallyExecution()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var method = NewVoidMethod(module);
+            method.MethodSig = MethodSig.CreateStatic(module.CorLibTypes.Int32);
+            var local = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(local);
+            var start = Instruction.CreateLdcI4(7);
+            var read = Instruction.Create(OpCodes.Ldloc, local);
+            var innerFinally = Instruction.CreateLdcI4(8);
+            var outerFinally = Instruction.Create(OpCodes.Ldloc, local);
+            var exit = Instruction.Create(OpCodes.Ldloc, local);
+            var continuation = Instruction.Create(OpCodes.Leave, exit);
+            foreach (var i in new[] { start, Instruction.Create(OpCodes.Stloc, local),
+                         Instruction.Create(OpCodes.Br, read), read, Instruction.Create(OpCodes.Pop),
+                         Instruction.Create(OpCodes.Leave, continuation), innerFinally,
+                         Instruction.Create(OpCodes.Stloc, local), Instruction.Create(OpCodes.Endfinally),
+                         continuation, outerFinally, Instruction.CreateLdcI4(1), Instruction.Create(OpCodes.Add),
+                         Instruction.Create(OpCodes.Stloc, local), Instruction.Create(OpCodes.Endfinally),
+                         exit, Instruction.Create(OpCodes.Ret) }) method.Body.Instructions.Add(i);
+            method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally)
+            { TryStart = start, TryEnd = innerFinally, HandlerStart = innerFinally, HandlerEnd = continuation });
+            method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally)
+            { TryStart = start, TryEnd = outerFinally, HandlerStart = outerFinally, HandlerEnd = exit });
+            SyntheticContext.AddType(module, "Host").Methods.Add(method);
+        });
+
+        Assert.Equal(9, Invoke());
+        var result = ControlFlowCompletionPass.TryComplete(SingleBodyMethod(context));
+        Assert.NotNull(result);
+        Assert.True(result.Value.Folded > 0);
+        Assert.Equal(9, Invoke());
+
+        int Invoke()
+        {
+            // Only this source-built fixture is executed, never a corpus assembly.
+            using var image = new MemoryStream();
+            context.Module.Write(image);
+            image.Position = 0;
+            var loading = new System.Runtime.Loader.AssemblyLoadContext(Guid.NewGuid().ToString(), isCollectible: true);
+            try
+            {
+                var assembly = loading.LoadFromStream(image);
+                return (int)assembly.GetType("Synthetic.Host")!.GetMethod("Method")!.Invoke(null, null)!;
+            }
+            finally { loading.Unload(); }
+        }
+    }
+
     private static MethodDefUser NewVoidMethod(ModuleDef module) =>
         new("Method", MethodSig.CreateStatic(module.CorLibTypes.Void))
         {

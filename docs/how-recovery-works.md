@@ -19,6 +19,10 @@ Recovery records observations, source locations, changes, host facts, blockers, 
 
 Instruction and body transformations use transactions: capture the original, edit, verify, then commit. Failure or early exit restores uncommitted bodies and discards their pending change records. Changes to metadata, fields, and resources require their own ownership and rollback discipline.
 
+## Control-flow simplification
+
+Control-flow simplification can propagate proven integer-local constants inside methods with exception handlers. Catch, filter, finally, and fault entries start with unknown local values. A `leave` also discards incoming facts because intervening finally handlers can change them. Normal branches still require agreement at every join, and address-taken locals are excluded. This enables additional unflattening without assuming that exception paths preserve the normal-path state; it does not fully model exception-driven dispatch.
+
 ## Removing protector code
 
 Cleanup needs both attribution and dependency analysis. An unused application method is not automatically protector debris. Initializers may decrypt data while also setting state used later; removing the entire initializer can break that state even when its decryption work is obsolete.

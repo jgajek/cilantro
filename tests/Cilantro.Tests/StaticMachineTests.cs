@@ -6,6 +6,39 @@ namespace Cilantro.Tests;
 
 public sealed class StaticMachineTests
 {
+    [Theory]
+    [InlineData("m_ptr")]
+    [InlineData("m_pData")]
+    [InlineData("m_pStringHeap")]
+    public void ReflectedRuntimePointersAreBoxedAndRetainTheirMappedAddress(string fieldName)
+    {
+        using var module = NewModule();
+        var machine = new StaticMachine();
+        var heap = machine.State.Heap;
+        Assert.True(machine.State.TryRegisterImage(new byte[16], 0x00400000));
+        Assert.True(heap.TryAllocateObject("System.Reflection.FieldInfo", out var field));
+        Assert.True(heap.TrySetModelValue(field, "MemberName", fieldName));
+        var getter = new MemberRefUser(module, "GetValue",
+            MethodSig.CreateInstance(module.CorLibTypes.Object, module.CorLibTypes.Object),
+            module.CorLibTypes.GetTypeRef("System.Reflection", "FieldInfo"));
+        var read = new LoaderFrameworkIntrinsic().Invoke(new IntrinsicContext(machine.State), getter,
+            [field, StaticValue.Null]);
+        Assert.Equal(StaticExecutionStatus.Completed, read.Status);
+        Assert.True(heap.TryGetRuntimeTypeName(read.Value, out var typeName));
+        Assert.Equal("System.IntPtr", typeName);
+        var method = NewMethod(module, "ReadPointer",
+            MethodSig.CreateStatic(module.CorLibTypes.IntPtr, module.CorLibTypes.Object));
+        foreach (var instruction in new[] { OpCodes.Ldarg_0.ToInstruction(),
+                     OpCodes.Isinst.ToInstruction(module.CorLibTypes.IntPtr.TypeDefOrRef),
+                     OpCodes.Unbox_Any.ToInstruction(module.CorLibTypes.IntPtr.TypeDefOrRef),
+                     OpCodes.Ret.ToInstruction() }) method.Body.Instructions.Add(instruction);
+        var result = machine.Execute(method, [read.Value]);
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.True(heap.TryGetNativeAddress(result.Value, out var address));
+        Assert.Equal(0x00400000L, address);
+        Assert.Empty(machine.State.Blockers.Blockers);
+    }
+
     [Fact]
     public void ProvenanceDoesNotAffectStaticValueEqualityOrHashing()
     {

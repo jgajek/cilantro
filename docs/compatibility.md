@@ -1,6 +1,6 @@
 # Support and limitations
 
-CILantro 0.10.0 is an analyst preview for static recovery of supported .NET Reactor and ConfuserEx samples. Coverage follows the sample's protection configuration and implementation, not just the product name or version.
+CILantro 0.10.1 is a regular release for static recovery of supported .NET Reactor and ConfuserEx samples. Coverage follows the sample's protection configuration and implementation, not just the product name or version.
 
 ## Coverage
 
@@ -31,8 +31,9 @@ The corpus gates cover their manifest assertions. A decompiler accepting a file 
 
 ## Known gaps in the current corpus
 
-- Mlfhntkcvb's reconstructed method has a controlled-trial disagreement: the original throws with the debugger-present input while the reconstruction completes. Whether this is intentional anti-debug removal or a semantic defect requires investigation. It must not be presented as proven equivalent.
-- `mc.dll` has one catalogued method body that the recovery trace never writes. Its remaining stub needs investigation rather than a guessed implementation.
+- Development tracing identifies Mlfhntkcvb's debugger-present disagreement as an original protector initializer throwing before VM dispatch. Expanded snapshots also expose cold-start VM-state differences in Mlfhntkcvb and Qbjuef. Both match on the repeat-call zero-stream fixture after identical original setup, including captured static state, but retain overall disagreement. This is bounded evidence, not proof that startup effects can be discarded; see [VM validation](devirtualization.md).
+- With the workstation profile and a declared 32-million-step budget, full-protection Reactor 7.5 benign probes for .NET Framework 4.8, .NET 8, and .NET 10 now agree on the repeat-call zero-stream fixture after identical original initialization. The comparison includes captured managed state, native regions, ordered writes, and image-protection records. Cold-start trials expose static-state differences and retain overall disagreement; their earlier inconclusive verdicts did not show those differences. Their cleaned outputs remain unchanged and pass structural verification. This is bounded evidence, not full equivalence. The default comparison budget remains four million steps; registrations without complete captured state still make a trial inconclusive.
+- `mc.dll` has one stub-shaped method that the recovery trace never writes: `EmptyList.Count()`, returning zero. That body is plausible for an empty list, so the heuristic does not by itself establish missing recovery. Do not substitute a guessed implementation.
 - Large Reactor outputs retain substantial dispatcher patterns and runtime infrastructure. Numeric token resolution and reflective construction restrict deletion.
 - Some extraction passes remain unsupported or incomplete. Each recovered child needs its own result review.
 - Some reconstructed operations are retained as fail-fast placeholders in regions classified unreachable by the recovered graph. That classification depends on the recovered semantics.

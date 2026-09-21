@@ -3748,11 +3748,12 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return InvokeResourceManager(context, name, arguments);
         if (type == "System.AppDomain")
             return InvokeAppDomain(context, name, arguments);
-        if (type == "System.ResolveEventArgs" && name == "get_Name" && arguments.Count == 1)
+        if (type == "System.ResolveEventArgs" && name is "get_Name" or "get_RequestingAssembly" && arguments.Count == 1)
         {
-            return context.State.Heap.TryGetModelValue(arguments[0], "Name", out StaticValue asked)
+            var property = name[4..];
+            return context.State.Heap.TryGetModelValue(arguments[0], property, out StaticValue asked)
                 ? IntrinsicResult.Completed(asked)
-                : IntrinsicResult.Invalid("Resolve event carries no name.");
+                : IntrinsicResult.Invalid($"Resolve event carries no modeled {property}.");
         }
         if (type == "System.ResolveEventHandler" &&
             name == ".ctor" &&
@@ -3864,11 +3865,9 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             arguments.Count == 2)
         {
             var subscribed = name[(name.IndexOf('_') + 1)..];
-            if (!context.State.Heap.TrySetModelValue(
-                    arguments[0], $"Event:{subscribed}", arguments[1]))
-            {
-                return IntrinsicResult.Invalid("Application-domain event receiver is not modeled.");
-            }
+            var changed = AppDomainEvents.Update(context.State.Heap, arguments[0], subscribed,
+                arguments[1], name.StartsWith("add_", StringComparison.Ordinal));
+            if (changed.Status != StaticExecutionStatus.Completed) return changed;
             // Subscribing changes what the program does later without touching anything the
             // interpretation can see afterwards, so it has to be declared rather than inferred.
             context.State.RecordRegistration($"AppDomain.{subscribed}");
@@ -4485,12 +4484,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             internalField is not null &&
             RuntimeImagePointerFields.Contains(internalField))
         {
-            return context.State.ImageRegion.IsKnown &&
-                heap.TryGetNativePointer(context.State.ImageRegion, 0, out var imagePointer)
-                ? IntrinsicResult.Completed(imagePointer)
-                : IntrinsicResult.Invalid(
+            if (!context.State.ImageRegion.IsKnown ||
+                !heap.TryGetNativePointer(context.State.ImageRegion, 0, out var imagePointer))
+                return IntrinsicResult.Invalid(
                     $"The runtime image pointer {internalField} was read before the analysed image " +
                     "was registered.");
+            // FieldInfo.GetValue returns object, even for a native-sized value field.
+            // Preserve the pointer inside an IntPtr box so isinst/GetType/unbox see
+            // the same value type that ordinary reflective field reads expose.
+            return heap.TryAllocateBox("System.IntPtr", imagePointer, out var boxedPointer)
+                ? IntrinsicResult.Completed(boxedPointer)
+                : IntrinsicResult.Invalid("Could not box the runtime image pointer.");
         }
         // Where a member was found is recorded when it is handed over, and where it was not, the
         // type that declares it is the only answer there is to give.
@@ -5215,6 +5219,9 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? present.GetConstructors(everything).Cast<System.Reflection.MethodBase>()
                 : present.GetMethods(everything))
             .Where(candidate => candidate.Name == reference.Name &&
+                candidate.IsStatic == (reference.MethodSig?.HasThis == false) &&
+                (candidate is MethodInfo genericMethod ? genericMethod.GetGenericArguments().Length : 0) ==
+                    (reference.MethodSig?.GenParamCount ?? 0) &&
                 candidate.GetParameters().Length == taken.Count)
             .ToArray();
         if (named.Length <= 1)
@@ -5231,6 +5238,20 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
     private static IntrinsicResult DescribeMember(StaticHeap heap, string name, object described)
     {
+        // Resolve signature questions in the call site's generic scope before resolving the
+        // definition: the definition alone loses both method and declaring-type arguments.
+        // A MethodSpec can also name a framework MemberRef with no local definition at all.
+        if (described is IMethod { MethodSig: { } callSignature } call &&
+            GenericScope.For(call, null) is { } scope)
+        {
+            if (name == "get_ReturnType")
+                return Describing(heap, "System.Type", scope.Bind(callSignature.RetType)!);
+            if (name == "GetParameters")
+                return ParameterList(heap, [.. callSignature.Params.Select(type => (object)scope.Bind(type)!)]);
+        }
+        if (described is MethodSpec { Method: { } genericDeclaration } &&
+            name is "get_IsVirtual" or "get_IsStatic" or "get_IsAbstract" or "get_IsPublic")
+            return DescribeMember(heap, name, genericDeclaration);
         // A reference and the definition it names describe the same member, so questions are asked
         // of the definition wherever one can be reached. What remains a reference points outside
         // this module, where the signature carried by the reference is all there is and all the
@@ -5417,21 +5438,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 object[] parameters = described is MethodDef target
                     ? [.. target.Parameters.Where(item => !item.IsHiddenThisParameter)]
                     : [.. ((MemberRef)described).MethodSig?.Params ?? []];
-                if (!heap.TryAllocateArray(null, parameters.Length, out var array))
-                    return AllocationFailure("parameter array");
-                for (var index = 0; index < parameters.Length; index++)
-                {
-                    if (Describing(heap, "System.Reflection.ParameterInfo", parameters[index]) is
-                            { Status: StaticExecutionStatus.Completed } item &&
-                        heap.TryWriteArray(array, index, item.Value))
-                    {
-                        continue;
-                    }
-
-                    return AllocationFailure("parameter model");
-                }
-
-                return IntrinsicResult.Completed(array);
+                return ParameterList(heap, parameters);
             default:
                 // What was asked about matters as much as what was asked: the same question is
                 // answerable of a definition and unanswerable of a reference that resolves nowhere.
@@ -5439,6 +5446,21 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                     $"Metadata question {name} is unmodeled for a {described.GetType().Name}" +
                     $" ({described}).");
         }
+    }
+
+    private static IntrinsicResult ParameterList(StaticHeap heap, object[] parameters)
+    {
+        if (!heap.TryAllocateArray(null, parameters.Length, out var array))
+            return AllocationFailure("parameter array");
+        for (var index = 0; index < parameters.Length; index++)
+        {
+            if (Describing(heap, "System.Reflection.ParameterInfo", parameters[index]) is
+                    { Status: StaticExecutionStatus.Completed } item &&
+                heap.TryWriteArray(array, index, item.Value))
+                continue;
+            return AllocationFailure("parameter model");
+        }
+        return IntrinsicResult.Completed(array);
     }
 
     /// <summary>
@@ -6239,7 +6261,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         return context.State.Heap.TryGetModelValue(assembly, LoadedImage, out byte[]? image) &&
             image is not null
                 ? ReadEmbeddedResource(image, resourceName)
-                : TryResolveResource(context, resourceName);
+                : TryResolveResource(context, resourceName, assembly);
     }
 
     /// <summary>
@@ -6253,14 +6275,16 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// keeps working for any handler the machine can already run, which is the point of having run
     /// the protector's own code this far.
     /// </remarks>
-    private static byte[]? TryResolveResource(IntrinsicContext context, string resourceName)
+    private static byte[]? TryResolveResource(IntrinsicContext context, string resourceName,
+        StaticValue? requestingAssembly = null)
     {
         var heap = context.State.Heap;
         if (context.Invoke is not { } invoke)
             return Declined("no call mechanism");
         if (!context.State.TryGetOrAllocateRuntimeSingleton("System.AppDomain", out var domain))
             return Declined("no application domain");
-        if (!heap.TryGetModelValue(domain, "Event:ResourceResolve", out StaticValue handler))
+        if (!heap.TryGetModelValue(domain, "Event:ResourceResolve", out List<StaticValue>? handlers) ||
+            handlers is null || handlers.Count == 0)
             return Declined("no handler is registered");
         if (!heap.TryAllocateObject("System.ResolveEventArgs", out var raised) ||
             !heap.TryAllocateString(resourceName, out var requested))
@@ -6269,13 +6293,21 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         }
 
         heap.TrySetModelValue(raised, "Name", requested);
-        var answered = invoke(handler, [StaticValue.Null, raised]);
-        if (answered.Status != StaticExecutionStatus.Completed)
-            return Declined($"handler stopped: {answered.Diagnostic}");
-        if (!heap.TryGetModelValue(answered.Value, LoadedImage, out byte[]? image) || image is null)
-            return Declined("handler returned no assembly image");
-        return ReadEmbeddedResource(image, resourceName) ??
-            Declined($"the returned assembly has no '{resourceName}'");
+        if (requestingAssembly is { } requester)
+            heap.TrySetModelValue(raised, "RequestingAssembly", requester);
+        // Snapshot subscriptions: changes made inside a handler affect the next resolution.
+        foreach (var handler in handlers.ToArray())
+        {
+            var answered = invoke(handler, [domain, raised]);
+            if (answered.Status != StaticExecutionStatus.Completed)
+                return Declined($"handler stopped: {answered.Diagnostic}");
+            if (answered.Value.Kind == StaticValueKind.Null) continue;
+            if (!heap.TryGetModelValue(answered.Value, LoadedImage, out byte[]? image) || image is null)
+                return Declined("handler returned no assembly image");
+            return ReadEmbeddedResource(image, resourceName) ??
+                Declined($"the returned assembly has no '{resourceName}'");
+        }
+        return Declined("all handlers returned null");
 
         byte[]? Declined(string reason)
         {

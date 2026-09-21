@@ -2,9 +2,11 @@
 
 Recover readable .NET code and embedded assemblies from supported **.NET Reactor and ConfuserEx** samples, without executing the sample.
 
+CILantro's distinguishing approach is to interpret the sample's own decoding and unpacking logic in a bounded model, using the protector's behavior to guide recovery. For analysts, it brings code cleanup, embedded-stage recovery, and evidence about what was recovered, assumed, or left unresolved into one workflow.
+
 CILantro restores encrypted method bodies and strings, simplifies obfuscated code, extracts supported embedded stages, and produces an offline HTML report. Supported Reactor virtualized methods can be reconstructed into CIL for inspection in a decompiler.
 
-**0.10.0 is an analyst preview.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
+**0.10.1 is an analyst preview.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
 
 ## Install
 
@@ -67,7 +69,7 @@ Read the [support and limitations](docs/compatibility.md) before adopting CILant
 - [Automation and MCP](docs/agents.md)
 - [Build, test, and release](docs/development.md)
 - [Complete documentation index](docs/README.md)
-- [0.10.0 release notes](docs/releases/0.10.0.md)
+- [0.10.1 release notes](docs/releases/0.10.1.md)
 
 ## Contributing and licence
 

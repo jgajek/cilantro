@@ -24,6 +24,25 @@ public sealed class StaticHeap
     public int MaximumObjectLength => _limits.MaximumArrayLength;
     public IReadOnlyList<ImageRegionWrite> ImageWrites => _imageWrites;
 
+    internal IEnumerable<StaticValue> NativeRegions => _objects
+        .Where(pair => pair.Value is HeapRegion).Select(pair => StaticValue.FromHeapReference(pair.Key));
+
+    internal bool TryGetRegionSnapshot(StaticValue reference, out string kind,
+        out long address, out ReadOnlyMemory<byte> bytes)
+    {
+        if (TryObject(reference, out var item) && item is HeapRegion region)
+        {
+            kind = region.Kind;
+            address = region.BaseAddress;
+            bytes = region.Bytes;
+            return true;
+        }
+        kind = string.Empty;
+        address = 0;
+        bytes = default;
+        return false;
+    }
+
     /// <summary>
     /// Notified with the region kind of every raw region write, so the owning machine state can
     /// attribute the write to the call stack that performed it.
@@ -1282,6 +1301,8 @@ public readonly record struct MappedImageProtection(uint Rva, uint Size, uint Pr
 
 public sealed class StaticMachineState
 {
+    // Runtime settings belong to a machine, even when intrinsic instances are reused.
+    internal Dictionary<string, StaticValue> NetworkSettings { get; } = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StaticValue> _staticFields = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StaticValue> _staticFieldReferences =
         new(StringComparer.Ordinal);
@@ -1420,6 +1441,7 @@ public sealed class StaticMachineState
 
     private readonly List<byte[]> _capturedAssemblyLoads = [];
     private readonly List<MappedImageProtection> _imageProtections = [];
+    internal IReadOnlyList<MappedImageProtection> ImageProtections => _imageProtections;
 
     public void CaptureAssemblyLoad(byte[] image) => _capturedAssemblyLoads.Add(image);
 
