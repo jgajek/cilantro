@@ -94,8 +94,9 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         {
             for (var round = 0; round < MaximumRounds; round++)
             {
-                var foldedThisRound = FoldConstantLocals(method) + FoldConstantBranches(method);
+                var foldedThisRound = LocalConstantPropagation.Fold(method) + FoldConstantLocals(method);
                 var discardedThisRound = RemoveDiscardedValues(method);
+                foldedThisRound += FoldConstantArithmetic(method) + FoldConstantBranches(method);
                 var removedThisRound = RemoveUnreachable(method) + discardedThisRound;
                 folded += foldedThisRound;
                 removed += removedThisRound;
@@ -132,6 +133,45 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             transaction.Rollback();
             return null;
         }
+    }
+
+    /// <summary>Folds non-throwing Int32 arithmetic over proven constant operands.</summary>
+    private static int FoldConstantArithmetic(MethodDef method)
+    {
+        var instructions = method.Body.Instructions;
+        var entered = EntryPoints(method);
+        var count = 0;
+        for (var index = 0; index < instructions.Count; index++)
+        {
+            var operation = instructions[index];
+            var code = operation.OpCode.Code;
+            if (code is not (Code.Add or Code.Sub or Code.Mul or Code.Xor or Code.And or Code.Or or
+                Code.Shl or Code.Shr or Code.Shr_Un or Code.Neg or Code.Not)) continue;
+            var right = Feeding(instructions, entered, index);
+            if (right is null || !right.IsLdcI4()) continue;
+            var b = right.GetLdcI4Value();
+            int value;
+            Instruction? left = null;
+            if (code is Code.Neg or Code.Not) value = code == Code.Neg ? unchecked(-b) : ~b;
+            else
+            {
+                left = Feeding(instructions, entered, instructions.IndexOf(right));
+                if (left is null || !left.IsLdcI4()) continue;
+                var a = left.GetLdcI4Value();
+                value = code switch
+                {
+                    Code.Add => unchecked(a + b), Code.Sub => unchecked(a - b), Code.Mul => unchecked(a * b),
+                    Code.Xor => a ^ b, Code.And => a & b, Code.Or => a | b,
+                    Code.Shl => a << b, Code.Shr => a >> b, Code.Shr_Un => (int)((uint)a >> b),
+                    _ => throw new InvalidOperationException()
+                };
+            }
+            if (left is not null) { left.OpCode = OpCodes.Nop; left.Operand = null; }
+            right.OpCode = OpCodes.Nop; right.Operand = null;
+            operation.OpCode = OpCodes.Ldc_I4; operation.Operand = value;
+            count++;
+        }
+        return count;
     }
 
     /// <summary>
@@ -320,6 +360,16 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                 }
             }
 
+            // InitLocals gives an unwritten integer local a known zero on every path,
+            // including exception handlers. Address-taken locals were excluded above.
+            // Folding these reads can eliminate a bogus back edge, which then makes
+            // the initial constant feeding a dispatcher visible to the next round.
+            if (stored == 0 && reads.Count > 0 && method.Body.InitLocals &&
+                local.Type.ElementType is ElementType.I4 or ElementType.U4)
+            {
+                constants[local] = 0;
+                continue;
+            }
             if (stored != 1 || store is null || reads.Count == 0)
                 continue;
             if (Feeding(instructions, entered, instructions.IndexOf(store)) is not { } producer ||
@@ -671,14 +721,41 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// </summary>
     private static int RemoveUnreachable(MethodDef method)
     {
-        var reachable = CfgDeadCodePass.ComputeReachable(method);
+        var ordinary = CfgDeadCodePass.ComputeReachable(method);
+        var instructions = method.Body.Instructions;
+        var tail = instructions.Count;
+        while (tail > 0 && !ordinary.Contains(instructions[tail - 1])) tail--;
+        var suffix = instructions.Skip(tail).ToHashSet();
+        var trimmed = 0;
+        if (suffix.Count != 0 && !instructions.Take(tail).Any(i => i.Operand switch
+            {
+                Instruction target => suffix.Contains(target),
+                IList<Instruction> targets => targets.Any(suffix.Contains),
+                _ => false
+            }))
+        {
+            // Exclusive EH ends can name the end of the method directly. Keeping
+            // a dead nop solely as an end marker otherwise creates illegal terminal
+            // fallthrough after branch folding has erased its old continuation.
+            foreach (var handler in method.Body.ExceptionHandlers)
+            {
+                if (handler.TryEnd is { } tryEnd && suffix.Contains(tryEnd)) handler.TryEnd = null;
+                if (handler.HandlerEnd is { } handlerEnd && suffix.Contains(handlerEnd)) handler.HandlerEnd = null;
+            }
+            trimmed = suffix.Count;
+            for (var i = instructions.Count - 1; i >= tail; i--) instructions.RemoveAt(i);
+        }
         var pinned = CollectExceptionBoundaries(method);
+        // A pinned end boundary can itself fall through or branch. Preserve its
+        // continuation as well: leaving only a terminal nop is rejected by the
+        // Framework JIT even when no ordinary entry can reach that suffix.
+        var reachable = CfgDeadCodePass.ComputeReachable(method, pinned);
         var doomed = method.Body.Instructions
             .Where(instruction => !reachable.Contains(instruction) && !pinned.Contains(instruction))
             .ToArray();
         foreach (var instruction in doomed)
             method.Body.Instructions.Remove(instruction);
-        return doomed.Length;
+        return trimmed + doomed.Length;
     }
 
     private static HashSet<Instruction> CollectExceptionBoundaries(MethodDef method)

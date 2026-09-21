@@ -326,6 +326,88 @@ public sealed class ConfuserExDispatcherTests
             case0, case1, [], ingress, ingress);
     }
 
+    [Fact]
+    public void SeparatesSharedArithmeticSoBothConditionalStatesResolve()
+    {
+        using var fixture = CreatePartiallyResolvable();
+        Assert.Equal(1, DispatcherTailSeparationPass.Separate(fixture.Method));
+        var analysis = new ConfuserExDispatcherAnalyzer().Analyze(fixture.Method);
+        Assert.Equal(0, analysis.Plan!.ResidualEdges);
+        Assert.Equal(3, analysis.Plan.Rewrites.Count);
+        var rewritten = new DispatcherDeobfuscationPass().Rewrite(fixture.Method);
+        Assert.Equal(3, rewritten.ChangedEdges);
+        Assert.True(EvaluationStackAnalyzer.Analyze(fixture.Method).Valid);
+    }
+
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(1, 20)]
+    public void SeparatedPathsPreserveBothConditionalResults(int input, int expected)
+    {
+        using var fixture = CreatePartiallyResolvable();
+        var method = fixture.Method;
+        method.MethodSig = MethodSig.CreateStatic(fixture.Module.CorLibTypes.Int32, fixture.Module.CorLibTypes.Int32);
+        method.Parameters.UpdateParameterTypes();
+        var il = method.Body.Instructions;
+        fixture.Case1.OpCode = OpCodes.Ldarg_0;
+        var firstArm = il.Single(i => i.IsLdcI4() && i.GetLdcI4Value() == (1 ^ Key ^ 7));
+        firstArm.Operand = Key ^ 7;
+        var returns = il.Where(i => i.OpCode.Code == Code.Ret).ToArray();
+        for (var i = 0; i < returns.Length; i++)
+        {
+            var ret = returns[i]; var at = il.IndexOf(ret);
+            ret.OpCode = OpCodes.Ldc_I4; ret.Operand = (i + 1) * 10;
+            il.Insert(at + 1, OpCodes.Ret.ToInstruction());
+        }
+        var before = new Cilantro.Core.Interpretation.StaticMachine().Execute(method,
+            [Cilantro.Core.Interpretation.StaticValue.FromInt32(input)]);
+        Assert.True(before.Succeeded);
+        Assert.Equal(expected, before.Value.AsInt32());
+        Assert.Equal(1, DispatcherTailSeparationPass.Separate(method));
+        Assert.True(new DispatcherDeobfuscationPass().Rewrite(method).ChangedEdges > 0);
+        var after = new Cilantro.Core.Interpretation.StaticMachine().Execute(method,
+            [Cilantro.Core.Interpretation.StaticValue.FromInt32(input)]);
+        Assert.True(after.Succeeded);
+        Assert.Equal(expected, after.Value.AsInt32());
+    }
+
+    [Fact]
+    public void SeparatesWithinATryWithoutMovingItsBoundaries()
+    {
+        using var fixture = CreatePartiallyResolvable();
+        var il = fixture.Method.Body.Instructions;
+        var exit = OpCodes.Ret.ToInstruction();
+        foreach (var ret in il.Where(i => i.OpCode.Code == Code.Ret))
+        { ret.OpCode = OpCodes.Leave; ret.Operand = exit; }
+        var handler = OpCodes.Pop.ToInstruction();
+        il.Add(handler); il.Add(OpCodes.Leave.ToInstruction(exit)); il.Add(exit);
+        var clause = new ExceptionHandler(ExceptionHandlerType.Catch)
+        {
+            TryStart = il[0], TryEnd = handler, HandlerStart = handler, HandlerEnd = exit,
+            CatchType = fixture.Module.CorLibTypes.GetTypeRef("System", "Exception")
+        };
+        fixture.Method.Body.ExceptionHandlers.Add(clause);
+        Assert.Equal(1, DispatcherTailSeparationPass.Separate(fixture.Method));
+        Assert.Same(handler, clause.TryEnd);
+        Assert.Same(handler, clause.HandlerStart);
+        Assert.Same(exit, clause.HandlerEnd);
+        Assert.True(EvaluationStackAnalyzer.Analyze(fixture.Method).Valid);
+    }
+
+    [Fact]
+    public void DoesNotCopyAnEffectfulSharedTail()
+    {
+        using var fixture = CreatePartiallyResolvable();
+        var il = fixture.Method.Body.Instructions;
+        var merge = il.Single(i => i.OpCode.Code == Code.Ldc_I4_7);
+        var sink = new MethodDefUser("Observe", MethodSig.CreateStatic(fixture.Module.CorLibTypes.Void))
+        { Attributes = dnlib.DotNet.MethodAttributes.Static, Body = new CilBody() };
+        sink.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        fixture.Method.DeclaringType.Methods.Add(sink);
+        il.Insert(il.IndexOf(merge) + 1, OpCodes.Call.ToInstruction(sink));
+        Assert.Equal(0, DispatcherTailSeparationPass.Separate(fixture.Method));
+    }
+
     /// <summary>
     /// A method with one edge whose state is settled and one edge two states share, so that what
     /// happens to each of them can be told apart.

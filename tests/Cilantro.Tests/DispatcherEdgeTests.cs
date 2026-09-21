@@ -131,6 +131,50 @@ public sealed class DispatcherEdgeTests
             result.Plan?.Declines.GetValueOrDefault(DispatcherEdgeDecline.UnprovenExpression) ?? 1);
     }
 
+    [Theory]
+    [InlineData(Code.Xor)]
+    [InlineData(Code.Add)]
+    [InlineData(Code.Sub)]
+    public void EvaluatesEncodedSelectors(Code operation)
+    {
+        var method = Flattened(Dispatch.FromLocal, bias: 40, fallsThrough: false,
+            state: operation == Code.Add ? -39 : 41);
+        var sub = method.Body.Instructions.Single(i => i.OpCode.Code == Code.Sub);
+        sub.OpCode = operation switch { Code.Xor => OpCodes.Xor, Code.Add => OpCodes.Add, _ => OpCodes.Sub };
+        var result = new DispatcherAnalyzer().AnalyzePartial(method);
+        Assert.Same(Cases(method)[1], Assert.Single(result.Plan!.Rewrites).Target);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThreadsStateUpdateBlocksButPreservesCalls(bool withCall)
+    {
+        var method = Flattened(Dispatch.FromLocal, bias: 40, fallsThrough: false, state: 1);
+        var branch = method.Body.Instructions.First(i => i.OpCode.Code == Code.Br);
+        var head = (Instruction)branch.Operand;
+        var update = OpCodes.Ldloc.ToInstruction(method.Body.Variables[0]);
+        var instructions = method.Body.Instructions;
+        var at = instructions.IndexOf(head);
+        foreach (var i in new[] { update, Instruction.CreateLdcI4(40), OpCodes.Xor.ToInstruction(),
+            OpCodes.Stloc.ToInstruction(method.Body.Variables[0]), OpCodes.Br.ToInstruction(head) }) instructions.Insert(at++, i);
+        branch.Operand = update;
+        if (withCall)
+        {
+            var helper = new MethodDefUser("Observe", MethodSig.CreateStatic(method.Module.CorLibTypes.Void));
+            method.DeclaringType.Methods.Add(helper);
+            instructions.Insert(instructions.IndexOf(update) + 1, OpCodes.Call.ToInstruction(helper));
+        }
+        var target = Cases(method)[1];
+        var changed = Cilantro.Core.Passes.DispatcherPathPass.Rewrite(method);
+        Assert.Equal(withCall ? 0 : 1, changed);
+        if (!withCall)
+        {
+            Assert.Same(target, branch.Operand);
+            Assert.Equal(41, instructions[0].GetLdcI4Value());
+        }
+    }
+
     private enum Dispatch
     {
         FromLocal,

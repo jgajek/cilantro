@@ -35,8 +35,9 @@ public sealed record VirtualRun(
 
     /// <summary>The effect an operation had on where the engine went next.</summary>
     /// <remarks>
-    /// An operation seen every time to be followed by something other than the next in the list is
-    /// an unconditional jump; one that sometimes is and sometimes is not is a conditional one. An
+    /// An operation always seen taking an edge is provisionally described as a branch. The merge
+    /// must retain any measured condition or consumed operands: counts alone cannot establish that
+    /// it is unconditional. One seen both taking and not taking an edge is conditional. An
     /// operation seen only once is not called either, since a jump that happened to be taken and a
     /// jump that is always taken look the same from a single sighting.
     /// </remarks>

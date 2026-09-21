@@ -37,7 +37,7 @@ public sealed record NecroBitBody(long Key, byte[] Il, bool NativeMode);
 /// </remarks>
 public static class NecroBitBodyRecovery
 {
-    // NecroBit prepends every decrypted body with a two-byte `br.s +5` over the five-byte `call` to
+    // NecroBit prepends most decrypted bodies with a two-byte `br.s +5` over the five-byte `call` to
     // its per-body tamper marker, so the real IL begins seven bytes in and the stream opens 2B 05 28.
     private const int MarkerLength = 7;
 
@@ -49,6 +49,8 @@ public static class NecroBitBodyRecovery
         ArgumentNullException.ThrowIfNull(module);
         ArgumentNullException.ThrowIfNull(state);
         var heap = state.Heap;
+        var mappedImageRegion = state.ImageRegion.Kind == StaticValueKind.HeapReference
+            ? state.ImageRegion.HeapId : -1;
         var found = new Dictionary<long, (byte[], bool)>();
         // The table's static field is named differently in every build, so it is found by shape: a
         // Hashtable whose entries are keyed by the method's IL address and hold a struct carrying the
@@ -65,8 +67,8 @@ public static class NecroBitBodyRecovery
             }
             foreach (var entry in entries)
             {
-                if (entry.Key.Kind != StaticValueKind.Int64 ||
-                    !TryReadBodyBytes(module, heap, entry.Value, out var il, out var nativeMode))
+                if (entry.Key.Kind != StaticValueKind.Int64 || entry.Key.AsInt64() == 0 ||
+                    !TryReadBodyBytes(module, heap, entry.Value, mappedImageRegion, out var il, out var nativeMode))
                 {
                     continue;
                 }
@@ -332,13 +334,16 @@ public static class NecroBitBodyRecovery
     {
         body = new CilBody();
         diagnostic = null;
-        if (rawIl.Length <= MarkerLength ||
-            rawIl[0] != 0x2B || rawIl[1] != 0x05 || rawIl[2] != 0x28)
+        var markerLength = HasMarker(rawIl) ? MarkerLength : 0;
+        if (rawIl.Length == 0 || markerLength == 0 && !frame.HasExceptionSections)
         {
-            diagnostic = "the captured body did not carry NecroBit's body marker.";
+            diagnostic = "the captured body has neither a NecroBit marker nor a restored exception section.";
             return false;
         }
-        var code = rawIl[MarkerLength..];
+        // Reactor can omit the marker when an exception region starts at offset zero.
+        // Such a body is still identified by its decrypt-table address and verified
+        // against the restored header and the image's exact exception boundaries.
+        var code = rawIl[markerLength..];
         CilBody parsed;
         try
         {
@@ -372,7 +377,7 @@ public static class NecroBitBodyRecovery
         // needed them but whose section will not parse is refused rather than grafted without them.
         if (frame.HasExceptionSections)
         {
-            if (!TryAttachExceptionHandlers(module, stub, parsed, out var ehDiagnostic))
+            if (!TryAttachExceptionHandlers(module, stub, parsed, markerLength, out var ehDiagnostic))
             {
                 diagnostic = ehDiagnostic;
                 return false;
@@ -415,6 +420,7 @@ public static class NecroBitBodyRecovery
         ModuleDefMD module,
         ProtectedMethodStub stub,
         CilBody body,
+        int markerLength,
         out string? diagnostic)
     {
         diagnostic = null;
@@ -477,10 +483,10 @@ public static class NecroBitBodyRecovery
         var codeEnd = (uint)(body.Instructions[^1].Offset + body.Instructions[^1].GetSize());
         foreach (var clause in clauses)
         {
-            if (!TryResolveBoundary(byOffset, codeEnd, clause.TryOffset, out var tryStart) ||
-                !TryResolveBoundary(byOffset, codeEnd, clause.TryOffset + clause.TryLength, out var tryEnd) ||
-                !TryResolveBoundary(byOffset, codeEnd, clause.HandlerOffset, out var handlerStart) ||
-                !TryResolveBoundary(byOffset, codeEnd, clause.HandlerOffset + clause.HandlerLength, out var handlerEnd))
+            if (!TryResolveBoundary(byOffset, codeEnd, markerLength, clause.TryOffset, out var tryStart) ||
+                !TryResolveBoundary(byOffset, codeEnd, markerLength, clause.TryOffset + clause.TryLength, out var tryEnd) ||
+                !TryResolveBoundary(byOffset, codeEnd, markerLength, clause.HandlerOffset, out var handlerStart) ||
+                !TryResolveBoundary(byOffset, codeEnd, markerLength, clause.HandlerOffset + clause.HandlerLength, out var handlerEnd))
             {
                 diagnostic = "an exception clause boundary did not fall on an instruction.";
                 return false;
@@ -503,7 +509,7 @@ public static class NecroBitBodyRecovery
             }
             else if ((clause.Flags & 0x7) == 1)
             {
-                if (!TryResolveBoundary(byOffset, codeEnd, clause.Token, out var filterStart))
+                if (!TryResolveBoundary(byOffset, codeEnd, markerLength, clause.Token, out var filterStart))
                 {
                     diagnostic = "a filter clause did not start on an instruction.";
                     return false;
@@ -523,13 +529,14 @@ public static class NecroBitBodyRecovery
     private static bool TryResolveBoundary(
         Dictionary<uint, Instruction> byOffset,
         uint codeEnd,
+        int markerLength,
         uint blobOffset,
         out Instruction? instruction)
     {
         instruction = null;
-        if (blobOffset < MarkerLength)
+        if (blobOffset < markerLength)
             return false;
-        var offset = blobOffset - MarkerLength;
+        var offset = blobOffset - (uint)markerLength;
         if (offset == codeEnd)
             return true;
         return byOffset.TryGetValue(offset, out instruction);
@@ -592,6 +599,7 @@ public static class NecroBitBodyRecovery
         ModuleDefMD module,
         StaticHeap heap,
         StaticValue value,
+        int mappedImageRegion,
         out byte[] il,
         out bool nativeMode)
     {
@@ -644,10 +652,9 @@ public static class NecroBitBodyRecovery
                 pointerFields.Add(field);
             }
         }
-        if (bodyBytes is null && haveLength && lengthField > MarkerLength)
-            bodyBytes = TryReadNativeBody(heap, instance, pointerFields, lengthField);
-        if (bodyBytes is null || bodyBytes.Length <= MarkerLength ||
-            bodyBytes[0] != 0x2B || bodyBytes[1] != 0x05 || bodyBytes[2] != 0x28)
+        if (bodyBytes is null && haveLength && lengthField > 0)
+            bodyBytes = TryReadNativeBody(heap, instance, pointerFields, lengthField, mappedImageRegion);
+        if (bodyBytes is null || bodyBytes.Length == 0)
         {
             return false;
         }
@@ -662,33 +669,39 @@ public static class NecroBitBodyRecovery
     /// <remarks>
     /// The record keeps two native-int fields: the address of its decrypted body in the shared page,
     /// and the IL address it is keyed by. Only the first points into a page the run allocated, so each
-    /// is resolved to a region and read from; the one that yields a body -- length bytes that open with
-    /// the anti-tamper marker -- is the body, and the IL-address field simply fails to read as one.
+    /// is resolved to a region and read from. The mapped-image pointer is excluded explicitly;
+    /// markerless exception bodies cannot be distinguished from stub bytes by a prefix test.
+    /// Multiple distinct scratch-region candidates are refused.
     /// </remarks>
     private static byte[]? TryReadNativeBody(
         StaticHeap heap,
         StaticValue instance,
         IReadOnlyList<FieldDef> pointerFields,
-        int length)
+        int length,
+        int mappedImageRegion)
     {
+        byte[]? found = null;
         foreach (var field in pointerFields)
         {
             if (!heap.TryReadField(instance, field, out var pointer))
                 continue;
             if (!TryResolvePointerAddress(heap, pointer, out var address) ||
-                !heap.TryResolveNativeAddress(address, out var native))
+                !heap.TryResolveNativeAddress(address, out var native) || native.NativeRegionId == mappedImageRegion)
             {
                 continue;
             }
             var bytes = new byte[length];
-            if (heap.TryReadBytes(native, 0, bytes) &&
-                bytes[0] == 0x2B && bytes[1] == 0x05 && bytes[2] == 0x28)
+            if (heap.TryReadBytes(native, 0, bytes))
             {
-                return bytes;
+                if (found is not null && !found.AsSpan().SequenceEqual(bytes)) return null;
+                found = bytes;
             }
         }
-        return null;
+        return found;
     }
+
+    internal static bool HasMarker(ReadOnlySpan<byte> bytes) =>
+        bytes.Length > MarkerLength && bytes[0] == 0x2B && bytes[1] == 0x05 && bytes[2] == 0x28;
 
     /// <summary>
     /// Resolves a native-int field value -- which the loader stores as an <see cref="System.IntPtr"/>

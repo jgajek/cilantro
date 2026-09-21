@@ -98,26 +98,30 @@ public sealed class NativeBootstrapTests
     }
 
     [SampleFact]
-    public void ARunOnABootstrapWritesTheAssemblyAndStopsThere()
+    [Trait(Cost.Key, Cost.High)]
+    public void ARunOnABootstrapPreservesTheRawAssemblyAndContinuesManagedRecovery()
     {
         var directory = Temporary();
         var stub = Path.Combine(directory, Stub);
         File.Copy(Checkout.Sample(Stub), stub);
 
-        var result = new CilantroPipeline().Run(stub, new PipelineOptions(ReportDirectory: directory));
+        var output = Path.Combine(directory, "managed.cleaned.dll");
+        var result = new CilantroPipeline().Run(stub, new PipelineOptions(ReportDirectory: directory, OutputPath: output));
 
         Assert.True(result.Success);
-        // No cleaned copy: the stub was not changed, and the assembly inside it was not read. A run
-        // that emitted something here would be claiming to have undone protection it never looked at.
+        // The native wrapper remains the root; the managed result has its own report.
         Assert.Null(result.OutputPath);
+        var child = Assert.Single(result.EmbeddedRecovery!.Nodes.Skip(1));
+        Assert.Equal("recovered", child.Status);
+        Assert.Equal(output, child.Run!.Wrote.Cleaned);
+        Assert.True(File.Exists(output));
         var payload = Assert.Single(result.ExtractedPayloadPaths);
         Assert.Equal(InnerAssemblySha256, Sha256(File.ReadAllBytes(payload)));
 
         var reported = Assert.Single(result.Report.Payloads);
         Assert.Equal(InnerAssemblySha256, reported.PayloadSha256);
         Assert.Equal(payload, reported.WrittenTo);
-        // Not "reactor": nothing in this run read the assembly inside, so its generation is
-        // unestablished and the token says only what was actually determined.
+        // The wrapper's classification is independent of its managed child's classification.
         Assert.Equal("reactor-bootstrap", result.Report.Protector);
         // The stub's own resources are described, since it has no managed ones to describe.
         Assert.Contains(result.Report.Resources, resource => resource.Name == "10/__/0");

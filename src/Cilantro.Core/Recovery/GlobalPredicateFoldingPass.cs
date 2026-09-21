@@ -85,7 +85,7 @@ public class GlobalPredicateFoldingPass : DeobfuscationPass
                      .SelectMany(type => type.Methods)
                      .Where(method => method.HasBody && method.Body.Instructions.Count != 0))
         {
-            var folded = FoldReads(method, instance, statics, transaction);
+            var folded = FoldReads(method, instance, statics, safety, transaction);
             if (folded == 0)
                 continue;
             changes += folded;
@@ -135,6 +135,7 @@ public class GlobalPredicateFoldingPass : DeobfuscationPass
         MethodDef method,
         Dictionary<uint, int> instanceFields,
         Dictionary<uint, int> staticFields,
+        FieldWriteSafety safety,
         InstructionMutationTransaction transaction)
     {
         var instructions = method.Body.Instructions;
@@ -146,6 +147,10 @@ public class GlobalPredicateFoldingPass : DeobfuscationPass
             if (instruction.Operand is not IField field)
                 continue;
             var token = field.ResolveFieldDef()?.MDToken.Raw ?? field.MDToken.Raw;
+            // Other types may already have completed initialization. Only exclude a read
+            // when this method can run in the initialization window that writes this field.
+            if (safety.MayReadBeforeInitializationCompletes(method, token))
+                continue;
 
             if (instruction.OpCode.Code == Code.Ldsfld &&
                 staticFields.TryGetValue(token, out var staticValue))

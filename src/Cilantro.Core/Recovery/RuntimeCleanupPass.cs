@@ -70,6 +70,22 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             context.Module,
             typeInitializersAlwaysRun: false,
             RebuiltMethods.Of(context));
+        // Numeric tokens can come from encrypted tables, rather than ldtoken operands. Until
+        // those consumers are eliminated, ordinary reference analysis cannot identify their
+        // targets, and deleting rows would also change the meaning of every later token.
+        var tokenConsumer = context.Module.GetTypes().SelectMany(type => type.Methods)
+            .Where(method => reachability.IsReachable(method) ||
+                reachability.IsReflectivelyExposed(method.DeclaringType))
+            .FirstOrDefault(method => method.HasBody && method.Body.Instructions.Any(instruction =>
+                instruction.Operand is IMethod called &&
+                called.DeclaringType?.FullName is "System.Reflection.Module" or "System.ModuleHandle" &&
+                called.Name.String is "ResolveMethod" or "ResolveField" or "ResolveType" or
+                    "ResolveMember" or "ResolveSignature" or "ResolveString" or
+                    "ResolveMethodHandle" or "ResolveFieldHandle" or "ResolveTypeHandle"));
+        if (tokenConsumer is not null)
+            return (PassStatus.Success, 0,
+                [$"Metadata declarations retained because {tokenConsumer.FullName} still resolves numeric metadata tokens."]);
+
         var orphans = RecoveryOrphans.Of(context);
         var refused = reachability.InstanceRefusal is { } why
             ? $"Every virtual method whose shape a call here matches was kept, because this " +
@@ -90,32 +106,16 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         var removedPublicApi = new HashSet<string>(StringComparer.Ordinal);
         var removedFieldCount = 0;
         var removedTypeCount = 0;
-        // Only the outermost of a doomed nest is detached; the rest go with it.
-        foreach (var type in removableTypes
-                     .Where(type => type.DeclaringType is null || !removableTypes.Contains(type.DeclaringType)))
-        {
-            foreach (var member in Nest(type))
-            {
-                removedTypeCount++;
-                foreach (var method in member.Methods)
-                    removedMethodTokens.Add(method.MDToken.Raw);
-                removedFieldCount += member.Fields.Count;
-                removedPublicApi.UnionWith(ArtifactIdentitySnapshot.PublicApiEntries(member));
-            }
-
-            if (type.DeclaringType is { } declaring)
-                declaring.NestedTypes.Remove(type);
-            else
-                context.Module.Types.Remove(type);
-            context.AddChange(new ChangeRecord(
-                Name,
-                "remove-runtime-type",
-                $"{type.MDToken} {type.FullName}",
-                "Removed a type proven unreachable and unreferenced after recovery."));
-        }
+        RemoveTypes(removableTypes);
 
         var removedMethodCount = RemoveDeadMethods(
             context, reachability, removedMethodTokens, removedPublicApi, out var unattributed);
+        // Removing an orphaned method can release types previously pinned only by its
+        // signature or body. Reuse the original deadness proof, but recheck references
+        // against the declarations that actually survived method cleanup.
+        var remainingDead = context.Module.GetTypes().Where(deadTypes.Contains).ToHashSet();
+        if (remainingDead.Count != 0 && removedMethodCount != 0)
+            RemoveTypes(ComputeUnreferenced(context.Module, remainingDead));
         var attribution = unattributed == 0
             ? "Every dead method of a surviving type was attributable to the protector."
             : $"Left {unattributed} dead method(s) of surviving types in place, because nothing " +
@@ -151,6 +151,34 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             attribution,
             .. refused is null ? Array.Empty<string>() : [refused]
         ]);
+
+        void RemoveTypes(HashSet<TypeDef> typesToRemove)
+        {
+            // Only the outermost of a doomed nest is detached; the rest go with it.
+            foreach (var type in typesToRemove
+                         .Where(type => type.DeclaringType is null || !typesToRemove.Contains(type.DeclaringType)))
+            {
+                foreach (var member in Nest(type))
+                {
+                    removedTypeCount++;
+                    foreach (var method in member.Methods)
+                        removedMethodTokens.Add(method.MDToken.Raw);
+                    removedFieldCount += member.Fields.Count;
+                    removedPublicApi.UnionWith(ArtifactIdentitySnapshot.PublicApiEntries(member));
+                }
+
+                if (type.DeclaringType is { } declaring)
+                    declaring.NestedTypes.Remove(type);
+                else
+                    context.Module.Types.Remove(type);
+                context.AddChange(new ChangeRecord(
+                    Name,
+                    "remove-runtime-type",
+                    $"{type.MDToken} {type.FullName}",
+                    "Removed a type proven unreachable and unreferenced after recovery."));
+            }
+        }
+
     }
 
     /// <summary>
@@ -194,6 +222,9 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         var dead = surviving
             .SelectMany(type => type.Methods)
             .Where(method =>
+                // Runtime delegate constructors are required for type loading even
+                // when managed IL only reaches the delegate through marshaling.
+                !method.IsRuntime &&
                 !method.IsVirtual &&
                 !MemberVisibility.IsExternallyVisible(method) &&
                 !accessors.Contains(method) &&

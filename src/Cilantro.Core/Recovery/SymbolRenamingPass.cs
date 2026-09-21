@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Verification;
 
@@ -239,6 +240,27 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
     /// </remarks>
     private static string? Does(MethodDef method, ModuleDef module)
     {
+        var body = method.Body?.Instructions.Where(i => i.OpCode.Code != dnlib.DotNet.Emit.Code.Nop).ToArray();
+        if (body is { Length: 2 or 3 } && body[^1].OpCode.Code == dnlib.DotNet.Emit.Code.Ret &&
+            body[^2].Operand is IField reference && reference.ResolveFieldDef() is { } field &&
+            ((body.Length == 2 && body[0].OpCode.Code == dnlib.DotNet.Emit.Code.Ldsfld) ||
+             (body.Length == 3 && !method.IsStatic && body[0].OpCode.Code == dnlib.DotNet.Emit.Code.Ldarg_0 &&
+              body[1].OpCode.Code == dnlib.DotNet.Emit.Code.Ldfld)))
+        {
+            var name = ReactorNameHeuristics.IsGeneratedName(field.Name) ? Held(field) : Identifier(field.Name);
+            if (!string.IsNullOrEmpty(name)) return "Read_" + name;
+        }
+        if (body is { Length: 3 or 4 } && body[^1].OpCode.Code == dnlib.DotNet.Emit.Code.Ret &&
+            body[^2].Operand is IField written && written.ResolveFieldDef() is { } destination &&
+            method.MethodSig.Params.Count == 1 && method.ReturnType.ElementType == ElementType.Void &&
+            ((body.Length == 3 && method.IsStatic && body[0].IsLdarg() && body[0].GetParameterIndex() == 0 &&
+              body[1].OpCode.Code == dnlib.DotNet.Emit.Code.Stsfld) ||
+             (body.Length == 4 && !method.IsStatic && body[0].IsLdarg() && body[0].GetParameterIndex() == 0 &&
+              body[1].IsLdarg() && body[1].GetParameterIndex() == 1 && body[2].OpCode.Code == dnlib.DotNet.Emit.Code.Stfld)))
+        {
+            var name = ReactorNameHeuristics.IsGeneratedName(destination.Name) ? Held(destination) : Identifier(destination.Name);
+            if (!string.IsNullOrEmpty(name)) return "Write_" + name;
+        }
         if (MethodBehaviour.AsConstant(method) is { } constant)
         {
             return constant switch
@@ -250,13 +272,13 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
             };
         }
 
-        if (!MethodBehaviour.TryReadForwarder(method, out var called) ||
-            called is null ||
-            !MethodBehaviour.IsForeign(called, module))
+        if (!MethodBehaviour.TryReadForwarder(method, out var called) || called is null) return null;
+        var visited = new HashSet<MethodDef> { method };
+        while (!MethodBehaviour.IsForeign(called, module))
         {
-            // A forwarder onto the assembly's own code is left numbered: whatever it reaches is
-            // itself generated, so naming this one after it would only move the question.
-            return null;
+            var next = called.ResolveMethodDef();
+            if (next is null || visited.Count >= 8 || !visited.Add(next) ||
+                !MethodBehaviour.TryReadForwarder(next, out called) || called is null) return null;
         }
 
         var declaring = Identifier(called.DeclaringType?.Name);
@@ -277,7 +299,14 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
     /// </remarks>
     private static string? Held(FieldDef field)
     {
-        var name = field.FieldType?.ToTypeDefOrRef()?.Name;
+        var signature = field.FieldType;
+        var suffix = "";
+        while (signature is SZArraySig array)
+        {
+            suffix += "Array";
+            signature = array.Next;
+        }
+        var name = signature?.ToTypeDefOrRef()?.Name;
         if (name is null)
             return null;
         var simple = Identifier(name);
@@ -288,7 +317,7 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
             return null;
         }
 
-        return char.ToLowerInvariant(simple[0]) + simple[1..];
+        return char.ToLowerInvariant(simple[0]) + simple[1..] + suffix;
     }
 
     /// <summary>

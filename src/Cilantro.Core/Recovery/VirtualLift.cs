@@ -695,6 +695,8 @@ public static class VirtualLift
     {
         switch (line.Mnemonic)
         {
+            case "ldstr":
+                return Of(module.CorLibTypes.String, named);
             case "ldc.i4":
                 return Of(module.CorLibTypes.Int32, named);
             case "ldc.i8":
@@ -753,8 +755,7 @@ public static class VirtualLift
                         : VirtualKind.Boxed;
             case "newobj":
                 return line.Operand is VirtualOperand.Number made &&
-                    Resolved(made.Value, module) is IMethod { DeclaringType: { } owner } &&
-                    owner.IsValueType
+                    Resolved(made.Value, module) is IMethod { DeclaringType: { } owner }
                         ? Of(owner.ToTypeSig(), named)
                         : VirtualKind.Boxed;
             case var conversion when conversion?.StartsWith("conv.", StringComparison.Ordinal) == true:
@@ -802,8 +803,10 @@ public static class VirtualLift
     {
         if (type is null ||
             type.ElementType == ElementType.Void ||
-            !type.IsValueType ||
-            type.IsGenericParameter ||
+            type.ElementType == ElementType.Object ||
+            (!type.IsValueType && type.ElementType is not
+                (ElementType.Class or ElementType.String or ElementType.SZArray or ElementType.Array or ElementType.GenericInst)) ||
+            type.ContainsGenericParameter ||
             type.IsByRef ||
             type.IsPointer)
         {
@@ -1542,6 +1545,17 @@ public static class VirtualLift
         var depths = new Dictionary<int, int>();
         Spread(program, going, arity, forced, stopped, depths, (0, 0));
 
+        // Paired ranges identify an entry; their endpoints and kind flags are not
+        // additional entries. Catch receives an exception, finally/fault an empty stack.
+        foreach (var region in program.Regions.Where(r => r.Guarded is not null && r.Handled is not null))
+        {
+            var entry = region.Handled!.Value.From;
+            if (entry < 0 || entry >= program.Instructions.Count) continue;
+            Spread(program, going, arity, forced, stopped, depths,
+                (entry, VirtualBody.CatchName(region.Caught) is null ? 0 : 1));
+            handlers.Add(entry);
+        }
+
         // Then the handlers. A guarded region says which operations it covers but not what each of
         // its numbers means, and nothing has to be assumed about that: a number the ordinary walk
         // never arrives at is tried as a place a throw arrives at instead, with the exception on
@@ -1553,6 +1567,7 @@ public static class VirtualLift
         {
             spread = false;
             foreach (var place in program.Regions
+                .Where(region => region.Guarded is null || region.Handled is null)
                 .SelectMany(region => region.Numbers)
                 .Distinct()
                 .Where(place => place > 0 && place < program.Instructions.Count &&
@@ -1720,7 +1735,7 @@ public static class VirtualLift
         if (handlers.Count > 0)
         {
             yield return $"  {handlers.Count} place(s) a guarded region covers are walked as " +
-                "handlers as well, entered with the exception on the stack: " +
+                "handler entries (catch: exception; finally/fault: empty stack): " +
                 string.Join(", ", handlers.Order());
         }
         if (forced.Count > 0)
@@ -1757,8 +1772,7 @@ public static class VirtualLift
             var runs = Runs(missed).ToList();
             yield return $"  {missed.Count} operation(s) " +
                 (dead
-                    ? "nothing in the program reaches, the walk having been at no point unable to " +
-                        "follow it: "
+                    ? "unreachable in the recovered control-flow graph (not a proof of the engine semantics): "
                     : "no path arrives at: ") +
                 string.Join(", ", runs.Take(Listed)) +
                 (runs.Count > Listed ? ", ..." : string.Empty);

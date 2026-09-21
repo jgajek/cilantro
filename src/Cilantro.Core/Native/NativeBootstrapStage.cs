@@ -33,12 +33,9 @@ public sealed class NativeBootstrapException : Exception
 /// there is nothing managed to load until this tool has made it.
 /// </summary>
 /// <remarks>
-/// A run that gets this far stops here rather than carrying on into the pass pipeline. What comes
-/// out of a bootstrap is a whole protected assembly — a stage in its own right, of unknown size and
-/// with its own protections — and it is reported the way every other recovered stage is: written
-/// beside the report, named in the manifest, and left for the caller to run the tool on. Continuing
-/// automatically would make one invocation mean two different amounts of work depending on how the
-/// sample was packed, and would bury the recovered assembly's own findings under the stub's.
+/// Preserves the extracted protected assembly byte for byte. The pipeline then follows this
+/// stage through bounded managed recovery, with a separate child report and cleaned output.
+/// The wrapper report continues to describe the original native input.
 /// </remarks>
 internal static class NativeBootstrapStage
 {
@@ -194,7 +191,7 @@ internal static class NativeBootstrapStage
                     payload.ModuleName,
                     payload.EntryPointToken,
                     payload.Resources,
-                    payloadPath)
+                    payloadPath, PayloadOrigin.NativeWrapper)
             ],
             evidence,
             Passes:

@@ -25,10 +25,12 @@ namespace Cilantro.Core.Analysis;
 public sealed class FieldWriteSafety
 {
     private readonly HashSet<uint> _writeOnce;
+    private readonly Dictionary<uint, HashSet<MethodDef>> _initializingReaders;
 
-    private FieldWriteSafety(HashSet<uint> writeOnce, string? refusal)
+    private FieldWriteSafety(HashSet<uint> writeOnce, Dictionary<uint, HashSet<MethodDef>> initializingReaders, string? refusal)
     {
         _writeOnce = writeOnce;
+        _initializingReaders = initializingReaders;
         Refusal = refusal;
     }
 
@@ -36,6 +38,9 @@ public sealed class FieldWriteSafety
     public string? Refusal { get; }
 
     public bool IsWriteOnceDuringInitialization(uint fieldToken) => _writeOnce.Contains(fieldToken);
+
+    public bool MayReadBeforeInitializationCompletes(MethodDef method, uint fieldToken) =>
+        _initializingReaders.TryGetValue(fieldToken, out var readers) && readers.Contains(method);
 
     public static FieldWriteSafety Analyze(ModuleDef module)
     {
@@ -80,11 +85,23 @@ public sealed class FieldWriteSafety
             }
         }
 
-        var closure = InitializationClosure(module, callees);
+        var initializers = module.GetTypes().Select(type => type.FindStaticConstructor())
+            .OfType<MethodDef>().Select(initializer => InitializationClosure(initializer, callees)).ToArray();
+        var closure = initializers.SelectMany(methods => methods).ToHashSet();
         var callableFromOutside = methods
             .Where(method => !closure.Contains(method))
             .SelectMany(method => callees[method])
             .ToHashSet();
+        callableFromOutside.UnionWith(methods.Where(MemberVisibility.IsExternallyVisible));
+        var pendingOutside = new Queue<MethodDef>(callableFromOutside);
+        while (pendingOutside.TryDequeue(out var caller))
+        {
+            foreach (var callee in callees.GetValueOrDefault(caller, []))
+            {
+                if (callableFromOutside.Add(callee))
+                    pendingOutside.Enqueue(callee);
+            }
+        }
         var reachability = ModuleReachability.Compute(module);
 
         var unbounded = reflectiveWriters
@@ -95,6 +112,7 @@ public sealed class FieldWriteSafety
         if (unbounded.Length != 0)
         {
             return new FieldWriteSafety(
+                [],
                 [],
                 $"{unbounded.Length} method(s) can write fields reflectively after initialization, " +
                 $"so no field can be proven write-once, starting with {unbounded[0]}.");
@@ -113,7 +131,10 @@ public sealed class FieldWriteSafety
                 !addressTaken.Contains(token) &&
                 writers[token].All(CannotWriteAfterInitialization))
             .ToHashSet();
-        return new FieldWriteSafety(safe, null);
+        var initializingReaders = safe.ToDictionary(token => token, token => initializers
+            .Where(initialization => initialization.Overlaps(writers[token]))
+            .SelectMany(initialization => initialization).ToHashSet());
+        return new FieldWriteSafety(safe, initializingReaders, null);
 
         bool CannotWriteAfterInitialization(MethodDef writer) =>
             !reachability.IsReachable(writer) ||
@@ -129,16 +150,12 @@ public sealed class FieldWriteSafety
     /// is what makes a write inside the closure a write that cannot repeat.
     /// </remarks>
     private static HashSet<MethodDef> InitializationClosure(
-        ModuleDef module,
+        MethodDef initializer,
         Dictionary<MethodDef, HashSet<MethodDef>> callees)
     {
-        var closure = new HashSet<MethodDef>();
+        var closure = new HashSet<MethodDef> { initializer };
         var pending = new Queue<MethodDef>();
-        foreach (var type in module.GetTypes())
-        {
-            if (type.FindStaticConstructor() is { } initializer && closure.Add(initializer))
-                pending.Enqueue(initializer);
-        }
+        pending.Enqueue(initializer);
 
         while (pending.Count != 0)
         {

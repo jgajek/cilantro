@@ -66,6 +66,15 @@ public sealed record PipelineOptions(
     /// </remarks>
     string? StatusPath = null,
 
+    /// <summary>
+    /// Allows verified generic rewrites to be emitted without a recognized protector.
+    /// Does not bypass failed passes, other recovery gates, or structural verification.
+    /// </summary>
+    bool GenericRecovery = false,
+
+    /// <summary>Recover embedded assemblies recursively, within fixed depth, artifact and byte limits.</summary>
+    bool RecoverEmbeddedAssemblies = false,
+
     /// <summary>Asks the run to stop.</summary>
     /// <remarks>
     /// <para>
@@ -108,6 +117,15 @@ public sealed record PipelineResult(
     IReadOnlyList<string> ExtractedPayloadPaths,
     ArtifactReport Report)
 {
+    /// <summary>The analyst-facing report with links to the files produced.</summary>
+    public string? ReadableReportPath { get; init; }
+
+    /// <summary>Whether the caller requested analysis without a cleaned assembly.</summary>
+    public bool AnalyzeOnly { get; init; }
+
+    public string? EmbeddedRecoveryReportPath { get; init; }
+    public EmbeddedRecoveryReport? EmbeddedRecovery { get; init; }
+
     /// <summary>Listings of the programs behind virtualized methods, two files per method.</summary>
     public IReadOnlyList<string> VirtualProgramPaths { get; init; } = [];
 
@@ -133,6 +151,9 @@ public sealed record PipelineResult(
 
     /// <summary>How many virtualized methods the cleaned copy holds as code rather than as a stub.</summary>
     public int RebuiltMethods { get; init; }
+
+    /// <summary>Additional interpreter programs rebuilt into newly created helper methods.</summary>
+    public int LiftedPrograms { get; init; }
 
     /// <summary>What came of building those bodies, method by method.</summary>
     public IReadOnlyList<string> DevirtualizationNotes { get; init; } = [];

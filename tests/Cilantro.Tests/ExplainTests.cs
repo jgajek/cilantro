@@ -2,17 +2,11 @@ using System.Text;
 using dnlib.DotNet;
 using Cilantro.Cli;
 using Cilantro.Core;
+using Cilantro.Core.Recovery;
 
 namespace Cilantro.Tests;
 
-/// <summary>
-/// Covers what a person is told when a run finishes.
-/// </summary>
-/// <remarks>
-/// The failure mode is a successful recovery that reads as a failure. A default run that names
-/// its assumptions, its skipped calls, or an unchecked rebuild is the thing that produced that
-/// reading, so those words are the ones these tests refuse.
-/// </remarks>
+/// <summary>Analyst-facing outcomes must agree with written files and expose material limitations.</summary>
 public sealed class ExplainTests
 {
     [Fact]
@@ -26,7 +20,8 @@ public sealed class ExplainTests
 
         var page = Shown(result, sample);
 
-        Assert.Contains("RESULT   Not protected", page, StringComparison.Ordinal);
+        Assert.Contains("Analysis complete; no cleaned assembly requested", page, StringComparison.Ordinal);
+        Assert.Contains("No supported protection detected", page, StringComparison.Ordinal);
         Assert.DoesNotContain("triage", page, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("strict", page, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ASSUMED", page, StringComparison.Ordinal);
@@ -45,122 +40,234 @@ public sealed class ExplainTests
 
         var page = Shown(result, sample);
 
-        Assert.Contains("RESULT   Not protected", page, StringComparison.Ordinal);
+        Assert.Contains("Analysis complete; no cleaned assembly requested", page, StringComparison.Ordinal);
+        Assert.Contains("No supported protection detected", page, StringComparison.Ordinal);
         Assert.Contains("Reading  strict", page, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The sample that was reported as a failed deobfuscation after a finished recovery.
-    /// </summary>
-    [SampleFact]
-    [Trait(Cost.Key, Cost.High)]
-    public void ADefaultRunOnARecoveredSampleSaysRecoveredAndNothingElse()
+    [Fact]
+    public void OutputComesFirstAndLimitationsAreVisibleWithoutVerbose()
     {
         using var directory = Temporary();
-        var sample = Checkout.Sample("Qbjuef.exe");
-        var result = new CilantroPipeline().Run(sample, new PipelineOptions(
-            OutputPath: Path.Combine(directory.Path, "a.cleaned.exe"),
-            ReportDirectory: directory.Path));
-
-        Assert.True(result.Success);
-        Assert.NotNull(result.OutputPath);
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var result = basis with
+        {
+            AnalyzeOnly = false,
+            OutputPath = Path.Combine(directory.Path, "sample.cleaned.dll"),
+            RebuiltMethods = 1,
+            VirtualizedMethods = 2,
+            Report = basis.Report with
+            {
+                Protector = "reactor",
+                Recovery = basis.Report.Recovery with
+                {
+                    RestoredMethodBodies = 312, ReplacedStringSites = 63, StringCallSites = 65,
+                    RemainingSwitchDispatchers = 1, ControlFlowMethodsSimplified = 76,
+                    DispatcherMethodsRestored = 37, DispatcherMethodCandidates = 38
+                }
+            }
+        };
         var page = Shown(result, sample);
-
-        Assert.Contains("RESULT   Recovered", page, StringComparison.Ordinal);
-        Assert.Contains("Methods devirtualized", page, StringComparison.Ordinal);
-        Assert.Contains("1 of 1", page, StringComparison.Ordinal);
-        // The second program this file holds is run by a type initializer that does other work, so
-        // it is counted here and not as a method that failed to be devirtualized.
-        Assert.Contains(
-            "Interpreter programs found elsewhere   1, listed but not rebuilt",
-            page,
-            StringComparison.Ordinal);
-        Assert.Contains("DEVIRTUALIZED METHODS", page, StringComparison.Ordinal);
-        Assert.Contains(
-            "methods protected by code virtualization into readable",
-            page,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "reconstructions from the virtual machine's instructions",
-            page,
-            StringComparison.Ordinal);
-        Assert.Contains("not the original method bodies", page, StringComparison.Ordinal);
-        Assert.Contains("uses      Activator.CreateInstance", page, StringComparison.Ordinal);
-        Assert.Contains("changes   ", page, StringComparison.Ordinal);
-        Assert.Contains("status    nothing in the cleaned copy calls this", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("  REBUILT", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("METHODS MADE READABLE", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("Method bodies decrypted", page, StringComparison.Ordinal);
-        Assert.Contains("Proxy calls restored", page, StringComparison.Ordinal);
-        Assert.Contains("1,230", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("Hidden calls resolved", page, StringComparison.Ordinal);
-        Assert.Contains("Methods with control flow simplified", page, StringComparison.Ordinal);
-        // Both of these count two runs of the fold rather than one, the second reaching the methods
-        // whose predicates read state the interpreter assigned and nothing named until its program
-        // was written out as IL. That is 23 further methods and 77 further branches here.
-        //
-        // Was 289 before values worked out and then thrown away were removed as well. The 12 added
-        // are methods holding nothing else worth simplifying: their whole content was arithmetic
-        // over constants whose result went to a local nothing reads.
-        //
-        // Then 301 to 344, and the branches from 357 to 666, on reading a dispatcher's state out
-        // of the local it was assigned to once rather than only out of the instruction in front of
-        // the branch. What that reaches is the shape a flattened method is left in after its edges
-        // are made direct: a state nothing writes again and a loop of comparisons against it.
-        //
-        // Then 344 to 379 and 666 to 776, on no longer refusing a fold that leaves a dispatcher
-        // head reached only from below with its state on the stack. The refusal was there because
-        // such a head is unverifiable, and it cost these folds along with the ones they would have
-        // gone on to make; the state is moved into a local at the end of the run instead.
-        Assert.Contains("379", page, StringComparison.Ordinal);
-        Assert.Contains("Constant branches resolved", page, StringComparison.Ordinal);
-        // 64 of these are owed to a reference deciding a branch as surely as an integer does, being
-        // true exactly when it is not null, and this file puts a null constant in front of one
-        // often.
-        Assert.Contains("776", page, StringComparison.Ordinal);
-        // Was 0 of 3 while the rewrite only looked for dispatchers reading a variable. Reactor
-        // hands most of its dispatchers their state on the evaluation stack instead, and counting
-        // those is what turned a line saying nothing was straightened into one saying almost
-        // everything was.
-        Assert.Contains("Flattened methods restored", page, StringComparison.Ordinal);
-        // One more candidate and one more restored than while a rebuilt body carried its state in
-        // a slot declared as an object: the dispatcher rewrite reads a state variable, and it can
-        // only read one that holds a number.
-        Assert.Contains("351 of 352 candidates", page, StringComparison.Ordinal);
-        Assert.Contains("VM listings", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("Hidden code", page, StringComparison.Ordinal);
-        Assert.Contains("Cleaned copy", page, StringComparison.Ordinal);
-        Assert.Contains("Extracted files 2", page, StringComparison.Ordinal);
-        Assert.Contains("Zebekeadu.dll (90.5 KB)", page, StringComparison.Ordinal);
-        Assert.Contains("Assembly    Zebekeadu", page, StringComparison.Ordinal);
-        Assert.Contains(
-            "SHA-256     417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd",
-            page,
-            StringComparison.Ordinal);
-        Assert.Contains("From        KyVgypcyOSoGANSpXe::uMqwgnxr1", page, StringComparison.Ordinal);
-        Assert.Contains(
-            "nkXbYoyJhFlJ5QXl4A.CZFLvot6mL92Di9HnX.dll (51 KB)",
-            page,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("PureRAT", page, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("final payload", page, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("support library", page, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Open the cleaned copy", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("Failed", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("triage", page, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("ASSUMED", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("BLOCKED", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("unchecked", page, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("The check was not made", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("Reading  ", page, StringComparison.Ordinal);
-        Assert.DoesNotContain("[RebuiltFromReading]", page, StringComparison.Ordinal);
+        Assert.Contains("RESULT   Cleaned assembly written", page, StringComparison.Ordinal);
+        Assert.True(page.IndexOf(result.OutputPath, StringComparison.Ordinal) < page.IndexOf("WHAT CHANGED", StringComparison.Ordinal));
+        Assert.Contains("63 encrypted string uses resolved (not unique strings)", page, StringComparison.Ordinal);
+        Assert.Contains("2 detected encrypted string uses remain unresolved", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("a method can count more than once", page, StringComparison.Ordinal);
+        Assert.Contains("a method can count more than once", Shown(result, sample, verbose: true), StringComparison.Ordinal);
+        Assert.Contains("dispatcher-like", page, StringComparison.Ordinal);
+        Assert.Contains("have not been cross-checked", page, StringComparison.Ordinal);
+        Assert.Contains("1 virtualized method was not reconstructed", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Flattened methods restored", page, StringComparison.Ordinal);
+        Assert.Contains("Program behavior was not independently verified", page, StringComparison.Ordinal);
     }
 
-    private static string Shown(PipelineResult result, string sample)
+    [Fact]
+    public void FailedRecoveryDoesNotImplyAnEmptySample()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var result = basis with
+        {
+            Success = false, AnalyzeOnly = false,
+            Report = basis.Report with
+            {
+                VerificationPassed = false,
+                Passes = [new("payload-extraction", PassStatus.Partial, 0, ["Budget exhausted"], TimeSpan.Zero)]
+            }
+        };
+        var page = Shown(result, sample);
+        Assert.Contains("Run incomplete", page, StringComparison.Ordinal);
+        Assert.Contains("Extraction may be incomplete", page, StringComparison.Ordinal);
+        Assert.Contains("Structural checks failed", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("RESULT   No supported protection", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BootstrapIsExtractedOnlyAndTheNextCommandQuotesItsPath()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var payload = Path.Combine(directory.Path, "a b'c.dll");
+        var result = basis with
+        {
+            AnalyzeOnly = false, ExtractedPayloadPaths = [payload],
+            Report = basis.Report with { Protector = "reactor-bootstrap" }
+        };
+        var page = Shown(result, sample);
+        Assert.Contains("RESULT   Managed assembly extracted", page, StringComparison.Ordinal);
+        Assert.Contains("Extracted only; not yet cleaned", page, StringComparison.Ordinal);
+        Assert.Contains("cilantro '" + payload.Replace("'", "''", StringComparison.Ordinal) + "'", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Structural checks passed", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HtmlEscapesSampleTextAndLinksToTheActualOutputs()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var payloadPath = Path.Combine(directory.Path, "a #& b.dll");
+        var result = AnalystReport.Write(basis with
+        {
+            ExtractedPayloadPaths = [payloadPath],
+            Report = basis.Report with
+            {
+                Payloads = [new("<script>alert(1)</script>", "", 0, "", 0, "hash", "<img src=x>", "module", 0, [], payloadPath)],
+                Passes = [new("payload-extraction", PassStatus.Partial, 0, ["<script>bad()</script>"], TimeSpan.Zero)]
+            }
+        }, true);
+        var html = File.ReadAllText(result.ReadableReportPath!);
+        Assert.DoesNotContain("<script>", html, StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;", html, StringComparison.Ordinal);
+        Assert.Contains("href=\"./a%20%23%26%20b.dll\"", html, StringComparison.Ordinal);
+        Assert.Contains("&lt;script&gt;bad()&lt;/script&gt;", html, StringComparison.Ordinal);
+        Assert.Equal(result.ReadableReportPath, RunManifest.Of(result).Wrote.Report);
+        Assert.Contains("plain.analysis.json", html, StringComparison.Ordinal);
+        Assert.Contains("Extraction may be incomplete", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AProgramLiftedToAHelperIsNotReportedAsUnrebuilt()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var result = basis with { ProgramsRunElsewhere = 1, LiftedPrograms = 1 };
+        var page = Shown(result, sample);
+        Assert.Contains("additional interpreter program reconstructed as a helper method", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("program was not rebuilt", page, StringComparison.Ordinal);
+        Assert.Contains("have not been cross-checked", page, StringComparison.Ordinal);
+        Assert.Equal(1, RunManifest.Of(result).LiftedPrograms);
+    }
+
+    [Fact]
+    public void LoadCapturedAssemblyIsPrioritizedAheadOfTheResourceBundle()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var bundle = new PayloadInfo("resource", "", 0, "", 0, "bundle", "encoded-name", "bundle", 0, [], Path.Combine(directory.Path, "bundle.dll"), PayloadOrigin.ResourceBundle);
+        var payload = new PayloadInfo("loader", "", 0, "", 0, "payload", "Zebekeadu", "Zebekeadu.dll", 0, [], Path.Combine(directory.Path, "payload.dll"), PayloadOrigin.AssemblyLoad);
+        var child = basis with { OutputPath = Path.Combine(directory.Path, "cleaned-child.dll"), Report = basis.Report with { InputPath = payload.WrittenTo!, Recovery = basis.Report.Recovery with { ReplacedStringSites = 152 } } };
+        var root = basis with { AnalyzeOnly = false, OutputPath = Path.Combine(directory.Path, "cleaned-root.dll"), ExtractedPayloadPaths = [bundle.WrittenTo!, payload.WrittenTo!], Report = basis.Report with { Payloads = [bundle, payload] } };
+        var extracted = Shown(root, sample);
+        Assert.Contains("Start here: Zebekeadu", extracted, StringComparison.Ordinal);
+        Assert.Contains("cilantro '" + payload.WrittenTo, extracted, StringComparison.Ordinal);
+        Assert.DoesNotContain("cilantro '" + bundle.WrittenTo, extracted, StringComparison.Ordinal);
+        root = root with { EmbeddedRecovery = new(true, 4, 32, 1000,
+            [new(sample, "root", 0, "recovered", RunManifest.Of(root)), new(payload.WrittenTo!, "payload", 1, "recovered", RunManifest.Of(child)), new(bundle.WrittenTo!, "bundle", 1, "limited", null, "Depth limit reached.")],
+            [new(0, 1, payload.WrittenTo!), new(0, 2, bundle.WrittenTo!)]) };
+        root = AnalystReport.Write(root, false);
+        var html = File.ReadAllText(root.ReadableReportPath!);
+        Assert.True(html.IndexOf("Start here: Zebekeadu", StringComparison.Ordinal) < html.IndexOf("Restored resource bundle", StringComparison.Ordinal));
+        Assert.Contains("cleaned-child.dll", html, StringComparison.Ordinal);
+        Assert.Contains("152", html, StringComparison.Ordinal);
+        Assert.Contains("Depth limit reached.", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("cilantro &#39;", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReconstructionDetailsAreCollapsedAndPayloadAgreementIsSeparateFromCoverage()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var result = AnalystReport.Write(basis with
+        {
+            RebuiltMethods = 1,
+            Report = basis.Report with
+            {
+                RebuiltMethods = [new("<method>", ["<api>"], ["field"], false, 100)],
+                Evidence = [new("reconstruction-payload-comparison", "Both interpreter runs extracted identical assembly bytes."), new("reconstruction-coverage", "Reconstructed bodies exercised by this comparison: 0 of 2.")]
+            }
+        }, false);
+        var html = File.ReadAllText(result.ReadableReportPath!);
+        Assert.Contains("<details><summary>Reconstructed bodies (1)", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<details open", html, StringComparison.Ordinal);
+        Assert.Contains("&lt;method&gt;", html, StringComparison.Ordinal);
+        Assert.Contains("Both interpreter runs extracted identical", html, StringComparison.Ordinal);
+        Assert.Contains("0 of 2", html, StringComparison.Ordinal);
+        Assert.Contains("No direct callers were found", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MethodDisagreementIsVisibleEvenWhenPayloadEvidenceExistsAndEmissionSucceeded()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var result = AnalystReport.Write(basis with
+        {
+            Success = true, AnalyzeOnly = false, OutputPath = Path.Combine(directory.Path, "cleaned.dll"),
+            RebuiltMethods = 1, DevirtualizationCheck = DevirtualizationCheck.Disagreed,
+            Report = basis.Report with
+            {
+                VerificationPassed = true,
+                Evidence = [new("reconstruction-payload-comparison", "Payload bytes matched."),
+                    new("reconstruction-method-trial", "Debugger-present trial: original threw; rebuilt completed.")]
+            }
+        }, false);
+        var page = Shown(result, sample);
+        Assert.Contains("NEEDS REVIEW", page, StringComparison.Ordinal);
+        Assert.Contains("Reconstruction check disagreed", page, StringComparison.Ordinal);
+        Assert.Contains("Structural checks passed", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("did not reproduce the original payload", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Debugger-present trial", page, StringComparison.Ordinal);
+        Assert.Contains("Debugger-present trial", Shown(result, sample, verbose: true), StringComparison.Ordinal);
+        var html = File.ReadAllText(result.ReadableReportPath!);
+        Assert.Contains("<section class=\"notice\"><h2>Needs review", html, StringComparison.Ordinal);
+        Assert.Contains("Debugger-present trial", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChildReconstructionDisagreementIsVisibleInTheParentSummary()
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var payload = Path.Combine(directory.Path, "child.dll");
+        var child = basis with { DevirtualizationCheck = DevirtualizationCheck.Disagreed,
+            Report = basis.Report with { InputPath = payload } };
+        var root = basis with
+        {
+            EmbeddedRecovery = new(true, 4, 32, 1000,
+                [new(sample, "root", 0, "recovered", RunManifest.Of(basis)),
+                 new(payload, "child", 1, "recovered", RunManifest.Of(child))],
+                [new(0, 1, payload)])
+        };
+        var page = Shown(root, sample);
+        Assert.Contains("NEEDS REVIEW", page, StringComparison.Ordinal);
+        Assert.Contains("child.dll: reconstruction check disagreed", page, StringComparison.Ordinal);
+    }
+
+    private static string Shown(PipelineResult result, string sample, bool verbose = false)
     {
         var page = new StringBuilder();
         using var writer = new StringWriter(page);
-        Explain.Summarize(result, sample, writer);
+        Explain.Summarize(result, sample, writer, verbose);
         return page.ToString();
     }
 

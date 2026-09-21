@@ -90,7 +90,7 @@ public sealed class ControlFlowCompletionPassTests
     }
 
     [Fact]
-    public void LeavesCleanMethodUntouched()
+    public void RemovesUnusedChainOfLocalAssignments()
     {
         using var context = SyntheticContext.Build(module =>
         {
@@ -115,8 +115,9 @@ public sealed class ControlFlowCompletionPassTests
         var method = SingleBodyMethod(context);
 
         Assert.Equal(PassStatus.Success, result.Status);
-        Assert.Equal(0, result.Changes);
-        Assert.Equal(7, method.Body.Instructions.Count);
+        Assert.True(result.Changes > 0);
+        Assert.Single(method.Body.Instructions, i => i.OpCode.Code != Code.Nop);
+        Assert.Equal(OpCodes.Ret, method.Body.Instructions[^1].OpCode);
     }
 
     /// <summary>
@@ -356,6 +357,108 @@ public sealed class ControlFlowCompletionPassTests
         Assert.True(
             EvaluationStackAnalyzer.Analyze(method) is { Valid: true },
             string.Join("; ", EvaluationStackAnalyzer.Analyze(method).Diagnostics));
+    }
+
+    [Fact]
+    public void ZeroInitializedUnwrittenLocalEliminatesBogusDispatcherBackEdge()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var method = NewVoidMethod(module);
+            method.Body.InitLocals = true;
+            var local = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(local);
+            var done = Instruction.Create(OpCodes.Ret);
+            var head = Instruction.Create(OpCodes.Switch, new[] { done });
+            var back = Instruction.Create(OpCodes.Ldloc, local);
+            var il = method.Body.Instructions;
+            il.Add(Instruction.Create(OpCodes.Ldc_I4_0));
+            il.Add(Instruction.Create(OpCodes.Br, head));
+            il.Add(back);
+            il.Add(head);
+            il.Add(Instruction.Create(OpCodes.Ldloc, local));
+            il.Add(Instruction.Create(OpCodes.Ldc_I4, 988));
+            il.Add(Instruction.Create(OpCodes.Beq, back));
+            il.Add(done);
+            SyntheticContext.AddType(module, "Host").Methods.Add(method);
+        });
+        var method = SingleBodyMethod(context);
+        Assert.NotNull(ControlFlowCompletionPass.TryComplete(method));
+        Assert.DoesNotContain(method.Body.Instructions, i => i.OpCode == OpCodes.Switch || i.IsLdloc());
+        Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void DoesNotAssumeZeroForUninitializedOrAddressTakenLocal(bool initialized, bool addressTaken)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var method = NewVoidMethod(module);
+            method.MethodSig = MethodSig.CreateStatic(module.CorLibTypes.Int32);
+            method.Body.InitLocals = initialized;
+            var local = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(local);
+            if (addressTaken)
+            {
+                method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldloca, local));
+                method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_7));
+                method.Body.Instructions.Add(Instruction.Create(OpCodes.Stind_I4));
+            }
+            method.Body.Instructions.Add(Instruction.Create(OpCodes.Ldloc, local));
+            method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            SyntheticContext.AddType(module, "Host").Methods.Add(method);
+        });
+        var method = SingleBodyMethod(context);
+        ControlFlowCompletionPass.TryComplete(method);
+        Assert.Contains(method.Body.Instructions, i => i.IsLdloc());
+    }
+
+    [Theory]
+    [InlineData(7, true)]
+    [InlineData(8, false)]
+    public void CrossBlockConstantsRequireAgreementAtJoin(int other, bool folds)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var method = NewVoidMethod(module);
+            method.MethodSig = MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.Boolean);
+            var local = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(local);
+            var alternate = Instruction.CreateLdcI4(other);
+            var read = Instruction.Create(OpCodes.Ldloc, local);
+            foreach (var instruction in new[] {
+                Instruction.Create(OpCodes.Ldarg_0), Instruction.Create(OpCodes.Brtrue, alternate),
+                Instruction.CreateLdcI4(7), Instruction.Create(OpCodes.Stloc, local), Instruction.Create(OpCodes.Br, read),
+                alternate, Instruction.Create(OpCodes.Stloc, local), read, Instruction.Create(OpCodes.Ret) })
+                method.Body.Instructions.Add(instruction);
+            SyntheticContext.AddType(module, "Host").Methods.Add(method);
+        });
+        var method = SingleBodyMethod(context);
+        LocalConstantPropagation.Fold(method);
+        var result = method.Body.Instructions[^2];
+        Assert.Equal(folds, result.IsLdcI4());
+        if (folds) Assert.Equal(7, result.GetLdcI4Value());
+    }
+
+    [Fact]
+    public void LoopBackEdgeInvalidatesInitialConstant()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var method = NewVoidMethod(module);
+            var local = new Local(module.CorLibTypes.Int32);
+            method.Body.Variables.Add(local);
+            var read = Instruction.Create(OpCodes.Ldloc, local);
+            foreach (var instruction in new[] { Instruction.CreateLdcI4(0), Instruction.Create(OpCodes.Stloc, local),
+                read, Instruction.CreateLdcI4(1), Instruction.Create(OpCodes.Add), Instruction.Create(OpCodes.Stloc, local),
+                Instruction.Create(OpCodes.Br, read) }) method.Body.Instructions.Add(instruction);
+            SyntheticContext.AddType(module, "Host").Methods.Add(method);
+        });
+        var method = SingleBodyMethod(context);
+        Assert.Equal(0, LocalConstantPropagation.Fold(method));
+        Assert.True(method.Body.Instructions[2].IsLdloc());
     }
 
     private static MethodDefUser NewVoidMethod(ModuleDef module) =>

@@ -14,10 +14,13 @@ if (args.Any(argument => argument is "-h" or "--help" or "/?"))
 
           "cilantro": { "command": "/path/to/cilantro-mcp" }
 
-        It offers three tools. unpack recovers readable code and hidden payloads from a
-        .NET Reactor protected assembly, by reading it rather than running it.
-        next_declarations turns what stopped a run into the file to run with next.
-        read_output reads back a report or a listing.
+        unpack performs static recovery on supported Reactor and ConfuserEx samples.
+        start_unpack, unpack_status, and cancel_unpack manage longer background runs.
+        next_declarations prepares declarations from blockers and supplied answers.
+        read_output reads reports and listings as text; it does not return binaries.
+
+        Recovery can be partial. Structural verification and reconstruction comparisons
+        are separate results. VM reconstruction is opt-in here (devirtualize: true).
 
         For a person at a terminal, the CLI is the same pipeline with a summary written
         for reading: cilantro --help, or --json for the same object this returns.

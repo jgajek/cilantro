@@ -56,6 +56,30 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
     /// How many programs run from a method that does other work were given a method of their own.
     /// </summary>
     internal const string LiftedFact = "virtualization.liftedPrograms";
+    internal const string LiftedRecipesFact = "virtualization.liftedRecipes";
+    internal sealed record LiftedRecipe(VirtualProgram Program, uint Caller, uint Entry, MethodDef Holder);
+
+    internal static IReadOnlySet<uint> InstallLiftedCopies(ArtifactContext original, ArtifactContext copy)
+    {
+        if (!original.TryGetFact<IReadOnlyList<LiftedRecipe>>(LiftedRecipesFact, out var recipes) || recipes is null)
+            return new HashSet<uint>();
+        var remapped = new List<VirtualProgram>();
+        foreach (var recipe in recipes)
+        {
+            if (copy.Module.ResolveToken(recipe.Caller) is not MethodDef caller ||
+                copy.Module.ResolveToken(recipe.Entry) is not IMethod entry) continue;
+            remapped.Add(recipe.Program with { Method = recipe.Program.Method with { Stub = caller, Entry = entry } });
+        }
+        var invocations = VirtualizedMethodDetector.Invocations(copy.Module, remapped.Select(p => p.Method).ToArray())
+            .Select(i => i with { Replaced = false }).ToArray();
+        copy.SetFact<IReadOnlyList<VirtualInvocation>>("virtualization.invocations", invocations);
+        copy.SetFact<IReadOnlyList<VirtualProgram>>("virtualization.otherPrograms", remapped);
+        var liftable = Liftable(copy).ToArray();
+        if (liftable.Length == 0) return new HashSet<uint>();
+        new VirtualizationRebuildPass().Lift(copy, liftable, ReadingMarker.Add(copy.Module), [], assignTokens: true);
+        return copy.TryGetFact<IReadOnlyList<LiftedRecipe>>(LiftedRecipesFact, out var installed) && installed is not null
+            ? installed.Select(r => r.Holder.MDToken.Raw).ToHashSet() : new HashSet<uint>();
+    }
 
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
         ArtifactContext context)
@@ -195,9 +219,11 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
         ArtifactContext context,
         IReadOnlyList<(VirtualInvocation Invocation, VirtualProgram Program, int At)> liftable,
         ReadingMarker marker,
-        List<string> said)
+        List<string> said,
+        bool assignTokens = false)
     {
         var lifted = 0;
+        var recipes = new List<LiftedRecipe>();
         foreach (var (invocation, program, at) in liftable)
         {
             var host = invocation.Caller.DeclaringType;
@@ -286,6 +312,8 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
                 continue;
             }
             transaction.Commit();
+            if (assignTokens) context.Module.UpdateRowId(holder);
+            recipes.Add(new LiftedRecipe(program, invocation.Caller.MDToken.Raw, invocation.Entry.MDToken.Raw, holder));
             lifted++;
             said.Add(
                 $"{holder.Name}: {string.Join(" ", attempt.Notes)} It holds program " +
@@ -298,6 +326,7 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
                 $"Gave program {invocation.ProgramId} a method of its own and pointed the call " +
                 "that ran it through the engine at that method instead."));
         }
+        context.SetFact<IReadOnlyList<LiftedRecipe>>(LiftedRecipesFact, recipes);
         return lifted;
     }
 

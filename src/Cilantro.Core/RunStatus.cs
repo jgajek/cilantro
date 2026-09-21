@@ -172,14 +172,19 @@ public sealed record RunStatus(
         {
             try
             {
-                return File.Exists(path)
-                    ? JsonSerializer.Deserialize<RunStatus>(
-                        File.ReadAllText(path),
-                        CilantroPipeline.ReportJsonOptions)
-                    : null;
+                // The writer atomically replaces this file. A Windows reader must allow
+                // deletion/rename, otherwise polling can suppress the terminal update.
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                return JsonSerializer.Deserialize<RunStatus>(stream, CilantroPipeline.ReportJsonOptions);
             }
             catch (Exception exception) when (
-                attempt < 3 && exception is IOException or JsonException)
+                attempt == 3 && exception is FileNotFoundException or DirectoryNotFoundException)
+            {
+                return null;
+            }
+            catch (Exception exception) when (
+                attempt < 3 && exception is IOException or UnauthorizedAccessException or JsonException)
             {
                 Thread.Sleep(20);
             }
@@ -346,15 +351,22 @@ internal sealed class RunStatusWriter : IDisposable
             ObservedUtc = DateTimeOffset.UtcNow,
             ElapsedSeconds = Math.Round(_clock.Elapsed.TotalSeconds, 3)
         };
-        try
+        // Windows can briefly hold an old destination open while a reader closes it.
+        // In particular, a terminal update has no later heartbeat to repair a lost write.
+        var json = JsonSerializer.Serialize(_status, CilantroPipeline.ReportJsonOptions);
+        for (var attempt = 0; attempt < 4; attempt++)
         {
-            File.WriteAllText(
-                _stagingPath,
-                JsonSerializer.Serialize(_status, CilantroPipeline.ReportJsonOptions));
-            File.Move(_stagingPath, _path, overwrite: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
+            try
+            {
+                File.WriteAllText(_stagingPath, json);
+                if (File.Exists(_path)) File.Replace(_stagingPath, _path, null);
+                else File.Move(_stagingPath, _path);
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                if (attempt < 3) Thread.Sleep(20);
+            }
         }
     }
 }

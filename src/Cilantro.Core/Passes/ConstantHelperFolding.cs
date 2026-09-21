@@ -37,7 +37,8 @@ internal static class ConstantHelperFolding
         IEnumerable<MethodDef> bodies,
         IReadOnlyDictionary<uint, MethodBehaviour.Constant> catalog,
         InstructionMutationTransaction transaction,
-        Action<MethodDef, Instruction, MethodBehaviour.Constant> record)
+        Action<MethodDef, Instruction, MethodBehaviour.Constant> record,
+        ISet<MethodDef>? foldedHelpers = null)
     {
         ArgumentNullException.ThrowIfNull(bodies);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -51,11 +52,14 @@ internal static class ConstantHelperFolding
             {
                 if (instruction.OpCode.FlowControl != FlowControl.Call ||
                     instruction.Operand is not IMethod called ||
-                    !catalog.TryGetValue(called.MDToken.Raw, out var value))
+                    called.ResolveMethodDef() is not { } definition ||
+                    definition.Module != method.Module ||
+                    !catalog.TryGetValue(definition.MDToken.Raw, out var value))
                 {
                     continue;
                 }
 
+                foldedHelpers?.Add(definition);
                 transaction.Capture(instruction);
                 instruction.OpCode = value switch
                 {

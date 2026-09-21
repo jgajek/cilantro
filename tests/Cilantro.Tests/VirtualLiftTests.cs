@@ -271,7 +271,7 @@ public sealed class VirtualLiftTests
         var lifted = string.Join("\n", VirtualLift.Render(program, context.Module));
 
         Assert.Contains("reaches 3 of 4", lifted, StringComparison.Ordinal);
-        Assert.Contains("1 operation(s) nothing in the program reaches", lifted, StringComparison.Ordinal);
+        Assert.Contains("1 operation(s) unreachable in the recovered control-flow graph", lifted, StringComparison.Ordinal);
         Assert.DoesNotContain("no path arrives at", lifted, StringComparison.Ordinal);
     }
 
@@ -322,8 +322,7 @@ public sealed class VirtualLiftTests
 
         Assert.Contains("reaches 6 of 6", lifted, StringComparison.Ordinal);
         Assert.Contains(
-            "1 place(s) a guarded region covers are walked as handlers as well, entered with the " +
-                "exception on the stack: 3",
+            "1 place(s) a guarded region covers are walked as handler entries (catch: exception; finally/fault: empty stack): 3",
             lifted,
             StringComparison.Ordinal);
     }
@@ -370,7 +369,7 @@ public sealed class VirtualLiftTests
 
         Assert.Contains("throw", lifted, StringComparison.Ordinal);
         Assert.Contains(
-            "1 operation(s) nothing in the program reaches", lifted, StringComparison.Ordinal);
+            "1 operation(s) unreachable in the recovered control-flow graph", lifted, StringComparison.Ordinal);
     }
 
     /// <summary>

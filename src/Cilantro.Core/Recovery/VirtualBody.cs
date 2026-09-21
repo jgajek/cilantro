@@ -182,6 +182,9 @@ public static class VirtualBody
                     Add(OpCodes.Ldnull);
                     Add(OpCodes.Throw);
                     contradicted++;
+                    if (contradicted <= 4)
+                        _notes.Add($"Operation {line.Index} ({line.Mnemonic ?? "unread"}) retained as a fail-fast " +
+                            $"placeholder: incoming depth {line.Depth}, measured pop {line.Pops}, push {line.Pushes}.");
                 }
                 else if (Lower(line) is { } refusal)
                 {
@@ -252,12 +255,13 @@ public static class VirtualBody
             _notes.Add(
                 $"{lines.Count} operation(s) became {_body.Instructions.Count} instruction(s) over " +
                 $"{_slots.Count} slot(s), " +
-                (typed == 0
-                    ? "every value carried as an object."
+                (_slots.Count == 0
+                    ? "with no engine locals to restore."
+                    : typed == 0 ? "all engine locals held as objects."
                     : $"{typed} of them holding one settled type rather than an object.") +
                 (dead == 0
                     ? string.Empty
-                    : $" {dead} of them are places nothing reaches and throw instead.") +
+                    : $" {dead} operations are unreachable in the recovered graph and retain fail-fast placeholders.") +
                 (_guards.Count == 0
                     ? string.Empty
                     : $" {_guards.Count} guarded region(s) became handlers."));
@@ -1252,7 +1256,7 @@ public static class VirtualBody
         private void AsObject(VirtualLift.VirtualKind kind)
         {
             if (kind.Held is { } held && _typing.Types.TryGetValue(held, out var type))
-                Add(OpCodes.Box, type.ToTypeDefOrRef());
+                Boxed(type);
         }
 
         /// <summary>

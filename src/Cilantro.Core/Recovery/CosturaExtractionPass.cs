@@ -73,7 +73,8 @@ public sealed class CosturaExtractionPass : DeobfuscationPass
                     payloadModule.Assembly?.Name.String ?? payloadModule.Name.String,
                     payloadModule.Name,
                     payloadModule.EntryPoint?.MDToken.Raw ?? 0,
-                    payloadModule.Resources.Select(item => item.Name.String).ToArray());
+                    payloadModule.Resources.Select(item => item.Name.String).ToArray(),
+                    Origin: PayloadOrigin.EmbeddedDependency);
             }
             catch (Exception exception) when (ManagedImage.Rejects(exception))
             {

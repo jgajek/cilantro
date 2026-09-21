@@ -108,6 +108,15 @@ public sealed class StaticHeap
         return true;
     }
 
+    internal bool TryGetInstanceSnapshot(StaticValue reference, out string type,
+        out IReadOnlyDictionary<string, StaticValue> fields, out IReadOnlyDictionary<string, object?> model)
+    {
+        type = ""; fields = new Dictionary<string, StaticValue>(); model = new Dictionary<string, object?>();
+        if (!TryObject(reference, out var item) || item is not HeapInstance instance) return false;
+        type = instance.TypeName; fields = instance.Fields; model = instance.ModelValues;
+        return true;
+    }
+
     public bool TryReadField(StaticValue reference, IField field, out StaticValue value)
     {
         value = StaticValue.Unknown;

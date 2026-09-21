@@ -137,7 +137,8 @@
         "ModuleName",
         "EntryPointToken",
         "EmbeddedResources",
-        "WrittenTo"
+        "WrittenTo",
+        "Origin"
       ],
       "properties": {
         "SourceResource": { "type": "string" },
@@ -150,6 +151,7 @@
         "ModuleName": { "type": "string" },
         "EntryPointToken": { "type": "integer", "minimum": 0 },
         "EmbeddedResources": { "type": "array", "items": { "type": "string" } },
+        "Origin": { "description": "Observed extraction mechanism, not a malware-family classification.", "enum": ["unknown", "assemblyLoad", "resourceBundle", "embeddedDependency", "nativeWrapper", "resourceCodec"] },
         "WrittenTo": {
           "description": "The file this payload was written to.",
           "type": ["string", "null"]

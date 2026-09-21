@@ -1513,6 +1513,13 @@ public static class VirtualProgramRecovery
                 continue;
             merged.TryGetValue(opcode, out var known);
 
+            // Repeatedly taking the same edge does not prove an unconditional jump. Preserve
+            // a measured predicate, or the consumed operands that require a condition, even
+            // when the observed inputs never exercised its fall-through edge.
+            if (name == "branch" && known is not null &&
+                (known.Pops > 0 || known.Decides is not null))
+                name = "branch if";
+
             // A jump that takes nothing off the stack has nothing to decide with, so a sighting of it
             // not going anywhere is not a condition coming out false — there is no condition to come
             // out either way. It is the seam this already allows for in the other direction: a program

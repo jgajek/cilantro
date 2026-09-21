@@ -878,7 +878,7 @@ public sealed class StaticMachineTests
         var first = machine.Execute(invoke);
         var second = machine.Execute(invoke);
 
-        Assert.Equal(StaticExecutionStatus.InvalidProgram, first.Status);
+        Assert.Equal(StaticExecutionStatus.Threw, first.Status);
         Assert.Equal(StaticExecutionStatus.InvalidProgram, second.Status);
         Assert.Contains("previously failed", second.Diagnostic);
         Assert.Equal(

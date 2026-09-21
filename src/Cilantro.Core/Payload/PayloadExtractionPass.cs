@@ -59,7 +59,7 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
                 discovered.AssemblyName,
                 read?.ModuleName ?? discovered.AssemblyName,
                 read?.EntryPointToken ?? 0,
-                read?.Resources ?? []);
+                read?.Resources ?? [], Origin: PayloadOrigin.ResourceCodec);
             IReadOnlyList<ExtractedPayload> structuralPayloads =
                 [new(structuralInfo, discovered.ManagedAssembly)];
             context.SetFact("payload.artifacts", structuralPayloads);
@@ -141,7 +141,7 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
                 item.AssemblyName,
                 read.ModuleName,
                 read.EntryPointToken,
-                read.Resources);
+                read.Resources, Origin: PayloadOrigin.AssemblyLoad);
             payloads.Add(new ExtractedPayload(info, item.Image));
             context.AddEvidence(new Evidence(
                 "extracted-payload",

@@ -1,25 +1,12 @@
-using System.Globalization;
 using System.Text;
 using Cilantro.Core;
 using Cilantro.Core.Interpretation;
-using Cilantro.Core.Recovery;
 
 namespace Cilantro.Cli;
 
 /// <summary>
 /// Turns a pipeline report into something an analyst can read without knowing how the tool works.
 /// </summary>
-/// <remarks>
-/// Someone who has just pulled a suspicious file out of a sandbox wants three things in this
-/// order: whether the run worked, what was recovered, and where the readable copy is. The default
-/// summary says those and stops. How the reading was licensed — assumed host facts, calls stepped
-/// over, whether a rebuilt body was cross-checked — is the business of <c>--strict</c> and
-/// <c>--verbose</c>, because printing it on an ordinary successful run is what made a finished
-/// recovery look like a failure.
-///
-/// Everything printed here is read off the report rather than restated, so the summary cannot drift
-/// from what actually happened.
-/// </remarks>
 internal static class Explain
 {
     /// <summary>
@@ -30,11 +17,11 @@ internal static class Explain
         ("jit-hook",
             "Method bodies are encrypted, and decrypted in memory as they run (NecroBit)"),
         ("method-stubs",
-            "Every method was replaced by an empty stub that gets filled in at run time"),
+            "Methods were replaced by stubs that get filled in at run time"),
         ("protected-strings",
-            "Text is encrypted, so no readable strings appear in the file"),
+            "Some strings are encrypted and decoded at run time"),
         ("dispatcher-control-flow",
-            "Control flow is scrambled, so decompiled code reads as nonsense"),
+            "Control-flow obfuscation makes decompiled code harder to follow"),
         ("invalid-call-junk",
             "Junk instructions are woven in to make decompilers give up"),
         ("delegate-proxy",
@@ -54,7 +41,7 @@ internal static class Explain
         ("constants-table",
             "Numbers and text come from one encrypted table rather than appearing in the code"),
         ("switch-dispatch-control-flow",
-            "Each method was turned into a state machine, so its steps appear in no useful order"),
+            "Methods use state-machine dispatch to obscure their execution order"),
         ("anti-debug",
             "The file checks for a debugger and behaves differently when it finds one")
     ];
@@ -68,67 +55,70 @@ internal static class Explain
         PipelineResult result, string inputPath, TextWriter output, bool verbose = false)
     {
         var report = result.Report;
+        var summary = AnalystSummary.Of(result);
         var home = Path.GetDirectoryName(Path.GetFullPath(inputPath))!;
-        // Strict asked for the assumptions to be named. Verbose asked for the reasoning. Either
-        // one is a request for the long form; a default run is not.
-        var detail = verbose || report.Strict;
         output.WriteLine();
-        output.WriteLine($"  File     {Path.GetFileName(inputPath)}  ({Size(report.InputLength)})");
-        output.WriteLine($"  SHA-256  {report.InputSha256}");
-        if (detail)
+        output.WriteLine($"  CILantro {CilantroPipeline.Version}");
+        output.WriteLine($"  RESULT   {summary.Outcome}");
+        output.WriteLine($"  Protection: {summary.Protection}");
+        output.WriteLine($"  File: {Path.GetFileName(inputPath)}");
+        output.WriteLine();
+        foreach (var section in summary.Sections.Where(section => section.Items.Count > 0 && (!section.DetailsOnly || verbose || report.Strict)))
         {
+            output.WriteLine($"  {section.Title.ToUpperInvariant()}");
+            if (section.Title == "Artifacts" && !verbose)
+            {
+                foreach (var item in section.Items.Where(item => item.Text.Contains(" -> ", StringComparison.Ordinal)))
+                    WriteParagraph(output, item.Text);
+                WriteParagraph(output, "Open the HTML report for extraction provenance, individual files, and child reports.");
+                output.WriteLine();
+                continue;
+            }
+            foreach (var item in section.Items)
+            {
+                WriteParagraph(output, item.Text);
+                if (item.Path is { } path && (verbose || section.Title != "Remaining"))
+                    output.WriteLine($"      {Path.GetFullPath(path)}");
+            }
+            output.WriteLine();
+        }
+        if (!verbose)
+            output.WriteLine("  Full artifact inventory and diagnostics: open the HTML report. Use --verbose for technical output.");
+        if (verbose || report.Strict)
+        {
+            output.WriteLine($"  SHA-256  {report.InputSha256}");
             output.WriteLine(report.Strict
-                ? "  Reading  strict: nothing assumed, stopping wherever the tool cannot follow"
+                ? "  Reading  strict: no implicit host assumptions; unsupported interpretation stops"
                 : "  Reading  triage: a plausible machine assumed, unreadable calls stepped over");
-        }
-
-        output.WriteLine();
-
-        var capabilities = report.Evidence
-            .Where(evidence => evidence.Category == "capability")
-            .Select(evidence => evidence.Message)
-            .ToHashSet(StringComparer.Ordinal);
-        var protector = report.Evidence
-            .FirstOrDefault(evidence => evidence.Category == "protector-name")?.Message
-            ?? "an unrecognized protector";
-
-        if (report.Evidence.Any(evidence => evidence.Category == "native-bootstrap"))
-        {
-            Verdict(output, "Recovered the hidden assembly");
-            Bootstrap(result, home, output);
-            return;
-        }
-
-        if (capabilities.Count == 0)
-        {
-            Verdict(output, "Not protected");
-            output.WriteLine(
-                "  This file is not protected by anything this tool knows.");
-            output.WriteLine();
-            output.WriteLine("    There is nothing to undo, so no cleaned copy was written.");
-            output.WriteLine("    If you expected protection here, the report lists what was");
-            output.WriteLine($"    checked: {Near(result.AnalysisReportPath, home)}");
-            output.WriteLine();
-            return;
-        }
-
-        Verdict(output, result.Success ? "Recovered" : "Failed");
-        Protection(capabilities, protector, output);
-        Recovered(result, output);
-        Rebuilt(report, output);
-        if (detail)
+            var capabilities = report.Evidence.Where(e => e.Category == "capability")
+                .Select(e => e.Message).ToHashSet(StringComparer.Ordinal);
+            Protection(capabilities, summary.Protection, output);
+            Rebuilt(report, output);
             Assumed(report, output);
-        if (detail || !result.Success)
             Blocked(result, home, output);
-        Written(result, home, output, detail);
-        Caveats(result, output, detail);
+        }
     }
 
-    /// <summary>The one line that says whether the run worked.</summary>
-    private static void Verdict(TextWriter output, string result)
+    // Paths and copyable commands stay intact; ordinary prose fits a typical terminal.
+    private static void WriteParagraph(TextWriter output, string text)
     {
-        output.WriteLine($"  RESULT   {result}");
-        output.WriteLine();
+        if (text.StartsWith("cilantro ", StringComparison.Ordinal))
+        {
+            output.WriteLine($"    {text}");
+            return;
+        }
+        var line = new StringBuilder();
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.Length > 0 && line.Length + word.Length + 1 > 92)
+            {
+                output.WriteLine($"    {line}");
+                line.Clear();
+            }
+            if (line.Length > 0) line.Append(' ');
+            line.Append(word);
+        }
+        if (line.Length > 0) output.WriteLine($"    {line}");
     }
 
     /// <summary>
@@ -264,77 +254,6 @@ internal static class Explain
         output.WriteLine();
     }
 
-    private static void Recovered(PipelineResult result, TextWriter output)
-    {
-        var recovery = result.Report.Recovery;
-        var lines = new List<(string Label, string Value)>();
-        if (recovery.RestoredMethodBodies > 0 || recovery.RemainingMethodStubs > 0)
-        {
-            var total = recovery.RestoredMethodBodies + recovery.RemainingMethodStubs;
-            lines.Add(("Method bodies decrypted", $"{recovery.RestoredMethodBodies:N0} of {total:N0}"));
-        }
-
-        // A different protection from the line above: those bodies were encrypted IL, these were
-        // bytecode for the protector's interpreter. Mixing them into one "methods recovered" figure
-        // is what made a sample with no NecroBit and one rebuilt virtualized method look as though
-        // nothing had been decrypted.
-        var virtualized = result.VirtualizedMethods;
-        if (virtualized > 0 || result.RebuiltMethods > 0)
-        {
-            var found = Math.Max(virtualized, result.RebuiltMethods);
-            lines.Add(("Methods devirtualized",
-                $"{result.RebuiltMethods:N0} of {found:N0}"));
-        }
-
-        // Counted apart from the line above rather than raising its denominator, because these are
-        // not methods that failed to be devirtualized. The interpreter is asked to run them from a
-        // method that does other work, so there is no body to put anything into, and listing them
-        // beside the rebuilt ones would read as a shortfall instead of as more of the file found.
-        if (result.ProgramsRunElsewhere > 0)
-        {
-            lines.Add(("Interpreter programs found elsewhere",
-                $"{result.ProgramsRunElsewhere:N0}, listed but not rebuilt"));
-        }
-
-        if (recovery.StringCallSites > 0)
-        {
-            lines.Add(("Strings decrypted",
-                $"{recovery.ReplacedStringSites:N0} of {recovery.StringCallSites:N0}"));
-        }
-
-        Add(lines, "String calls decoded", recovery.ConstantStringSites);
-        Add(lines, "Proxy calls restored", recovery.ProxyCallsRestored);
-        Add(lines, "Hidden calls resolved", recovery.TokensRestored);
-        Add(lines, "Hidden true/false values resolved", recovery.BooleansRecovered);
-        Add(lines, "Methods with control flow simplified", recovery.ControlFlowMethodsSimplified);
-        Add(lines, "Constant branches resolved", recovery.ConstantBranchesFolded);
-        if (recovery.DispatcherMethodCandidates > 0)
-        {
-            lines.Add(("Flattened methods restored",
-                $"{recovery.DispatcherMethodsRestored:N0} of " +
-                $"{recovery.DispatcherMethodCandidates:N0} candidates"));
-        }
-        Add(lines, "Junk instructions removed", recovery.UnreachableInstructionsRemoved);
-        Add(lines, "Encrypted resources restored", recovery.ResourcesRestored);
-        Add(lines, "Protector types deleted", recovery.RuntimeTypesRemoved);
-        Add(lines, "Obfuscated names replaced", recovery.SymbolsRenamed);
-        if (lines.Count == 0)
-            return;
-
-        output.WriteLine("  RECOVERED");
-        output.WriteLine();
-        var width = lines.Max(line => line.Label.Length);
-        foreach (var (label, value) in lines)
-            output.WriteLine($"    {label.PadRight(width)}   {value}");
-        output.WriteLine();
-    }
-
-    private static void Add(List<(string, string)> lines, string label, int value)
-    {
-        if (value > 0)
-            lines.Add((label, value.ToString("N0", CultureInfo.InvariantCulture)));
-    }
-
     /// <summary>
     /// The way into each body the tool built rather than recovered.
     /// </summary>
@@ -420,169 +339,6 @@ internal static class Explain
         var arguments = name.IndexOf('(', StringComparison.Ordinal);
         return arguments < 0 ? name : name[..arguments];
     }
-
-    private static void Bootstrap(PipelineResult result, string home, TextWriter output)
-    {
-        var report = result.Report;
-        output.WriteLine(
-            "  PROTECTION   .NET Reactor, native bootstrap. The file is native code with the");
-        output.WriteLine(
-            "               managed assembly encrypted inside it.");
-        output.WriteLine();
-
-        output.WriteLine("  WROTE");
-        output.WriteLine();
-        foreach (var payload in report.Payloads)
-        {
-            output.WriteLine(
-                $"    Assembly        {payload.AssemblyName} ({Size(payload.PayloadLength)}), " +
-                $"SHA-256 {payload.PayloadSha256}");
-            if (payload.WrittenTo is { } path)
-                output.WriteLine($"                    {Near(path, home)}");
-        }
-
-        output.WriteLine();
-        output.WriteLine("  HOW");
-        output.WriteLine();
-        foreach (var evidence in report.Evidence.Where(item => item.Category == "native-bootstrap"))
-            output.WriteLine($"    {evidence.Message}");
-
-        output.WriteLine();
-        output.WriteLine("  NEXT");
-        output.WriteLine();
-        output.WriteLine("    The recovered assembly is protected in its own right and has not");
-        output.WriteLine("    been read. Run this tool on it to undo what is on it:");
-        foreach (var payload in report.Payloads.Where(item => item.WrittenTo is not null))
-            output.WriteLine($"      cilantro {Near(payload.WrittenTo!, home)}");
-        output.WriteLine();
-    }
-
-    private static void Written(PipelineResult result, string home, TextWriter output, bool detail)
-    {
-        output.WriteLine("  WROTE");
-        output.WriteLine();
-        output.WriteLine(result.OutputPath is null
-            ? "    Cleaned copy    none"
-            : $"    Cleaned copy    {Near(result.OutputPath, home)}");
-        if (result.ExtractedPayloadPaths.Count > 0)
-        {
-            var folder = Near(Path.GetDirectoryName(result.ExtractedPayloadPaths[0])!, home);
-            output.WriteLine(
-                $"    Extracted files {result.ExtractedPayloadPaths.Count} in {folder}");
-            foreach (var payload in result.Report.Payloads.Where(item => item.WrittenTo is not null))
-            {
-                output.WriteLine(
-                    $"      {Path.GetFileName(payload.WrittenTo!)} ({Size(payload.PayloadLength)})");
-                output.WriteLine($"        Assembly    {payload.AssemblyName}");
-                output.WriteLine($"        SHA-256     {payload.PayloadSha256}");
-                output.WriteLine($"        From        {payload.SourceResource}");
-            }
-        }
-
-        if (result.VirtualProgramPaths.Count > 0)
-        {
-            var folder = Near(Path.GetDirectoryName(result.VirtualProgramPaths[0])!, home);
-            // Every program read back has a listing, including the ones no method stands for, so
-            // this counts the listings rather than the methods that were rebuilt from them.
-            output.WriteLine(
-                $"    VM listings     " +
-                $"{result.VirtualizedMethods + result.ProgramsRunElsewhere} in {folder}");
-        }
-
-        if (result.RebuiltMethods > 0 &&
-            (detail || result.DevirtualizationCheck == DevirtualizationCheck.Disagreed))
-        {
-            var rebuilt = result.RebuiltMethods == 1
-                ? "1 method in the cleaned copy"
-                : $"{result.RebuiltMethods} methods in the cleaned copy";
-            if (result.DevirtualizationCheck == DevirtualizationCheck.Disagreed)
-            {
-                output.WriteLine($"    Built back      {rebuilt} — did not match the original");
-                foreach (var note in result.DevirtualizationNotes)
-                    output.WriteLine($"                      {note}");
-            }
-            else
-            {
-                var standing = result.DevirtualizationCheck switch
-                {
-                    DevirtualizationCheck.Agreed => "they unpacked the same payload as the original",
-                    _ => "a reading, unchecked"
-                };
-                output.WriteLine(
-                    $"    Built back      {result.RebuiltMethods} method(s) in the cleaned copy, " +
-                    $"marked [RebuiltFromReading] ({standing})");
-                foreach (var note in result.DevirtualizationNotes)
-                    output.WriteLine($"                      {note}");
-            }
-        }
-        else if (detail &&
-            result.DevirtualizationNotes.Count > 0 &&
-            result.VirtualProgramPaths.Count > 0 &&
-            result.RebuiltMethods == 0)
-        {
-            output.WriteLine("    Built back      nothing, and here is why:");
-            foreach (var note in result.DevirtualizationNotes)
-                output.WriteLine($"                      {note}");
-        }
-
-        if (result.ConfigReportPath is { } config)
-            output.WriteLine($"    Constants       {Near(config, home)}");
-        output.WriteLine($"    Full report     {Near(result.AnalysisReportPath, home)}");
-        output.WriteLine();
-    }
-
-    private static void Caveats(PipelineResult result, TextWriter output, bool detail)
-    {
-        var failed = result.Report.Passes
-            .Where(pass => pass.Status == PassStatus.Failed)
-            .ToArray();
-        var unsupported = detail
-            ? result.Report.Passes
-                .Where(pass => pass.Status is PassStatus.Unsupported or PassStatus.Partial)
-                .Where(pass => !DeclinedAnotherProtector(pass))
-                .ToArray()
-            : [];
-        if (failed.Length == 0 && unsupported.Length == 0 && result.OutputPath is not null)
-        {
-            output.WriteLine("  Open the cleaned copy in dnSpyEx or ILSpy to read the code.");
-            output.WriteLine();
-            return;
-        }
-
-        if (failed.Length == 0 && unsupported.Length == 0 && result.OutputPath is null)
-        {
-            output.WriteLine("    No cleaned copy was written.");
-            output.WriteLine();
-            return;
-        }
-
-        output.WriteLine("  NOTES");
-        output.WriteLine();
-        foreach (var pass in failed)
-            output.WriteLine($"    ! {pass.Pass} failed: {First(pass)}");
-        foreach (var pass in unsupported)
-            output.WriteLine($"    - {pass.Pass} was incomplete: {First(pass)}");
-        if (result.OutputPath is null)
-        {
-            output.WriteLine();
-            output.WriteLine("    No cleaned copy was written.");
-        }
-
-        output.WriteLine();
-    }
-
-    private static bool DeclinedAnotherProtector(PassResult pass) =>
-        pass.Pass is "reactor-detection" or "confuserex-detection";
-
-    private static string First(PassResult pass) =>
-        pass.Diagnostics.Count > 0 ? pass.Diagnostics[0] : "no detail recorded";
-
-    private static string Size(long bytes) => bytes switch
-    {
-        >= 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):0.#} MB",
-        >= 1024 => $"{bytes / 1024.0:0.#} KB",
-        _ => $"{bytes} bytes"
-    };
 
     public static void PassLog(ArtifactReport report) => PassLog(report, Console.Out);
 

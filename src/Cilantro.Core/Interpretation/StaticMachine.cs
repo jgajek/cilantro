@@ -203,9 +203,12 @@ public sealed class StaticMachine
         var enclosing = _stepsInCalls;
         _stepsInCalls = 0;
         FrameEntered?.Invoke(method, arguments);
+        var completed = false;
         try
         {
-            return ExecuteFrameCore(method, arguments, budget, depth, generics);
+            var result = ExecuteFrameCore(method, arguments, budget, depth, generics);
+            completed = result.Status == StaticExecutionStatus.Completed;
+            return result;
         }
         finally
         {
@@ -213,6 +216,7 @@ public sealed class StaticMachine
             MachineTrace.Frame(method, total - _stepsInCalls, total);
             _stepsInCalls = enclosing + total;
             _frames.RemoveAt(_frames.Count - 1);
+            State.Evidence.CompleteMethod(completed);
             State.Evidence.LeaveMethod();
             FrameExited?.Invoke(method);
         }
@@ -239,14 +243,15 @@ public sealed class StaticMachine
             method.Name != ".cctor" &&
             (method.IsStatic ||
              method.Name == ".ctor" ||
-             method.DeclaringType?.IsValueType == true) &&
-            EnsureTypeInitialized(
+             method.DeclaringType?.IsValueType == true))
+        {
+            using var entryInitialization = State.Evidence.InitializingEntry();
+            if (EnsureTypeInitialized(
                 method.DeclaringType,
                 TypeInitializationTrigger.MethodCall,
                 budget,
                 depth) is { } methodInitializationFailure)
-        {
-            return methodInitializationFailure;
+                return methodInitializationFailure;
         }
         if (method.ReturnType.ElementType == ElementType.Void &&
             State.IsNeutralized(method.MDToken.Raw))
@@ -1319,6 +1324,19 @@ public sealed class StaticMachine
                             instruction: instruction);
                         return FrameResult.Fail(StaticExecutionStatus.Unsupported, unrun);
                 }
+            }
+            catch (DivideByZeroException) when (instruction.OpCode.Code is Code.Div or Code.Div_Un or Code.Rem or Code.Rem_Un)
+            {
+                if (!State.Heap.TryAllocateObject("System.DivideByZeroException", out var thrown))
+                    return AllocationFailure(instruction, "arithmetic exception");
+                var landed = TryDispatchToCatch(method, indices, ip, thrown, out var handlerIndex);
+                // Do not bypass an intervening finally while transferring an implicit exception.
+                if (FindFinally(method, indices, ip, landed ? handlerIndex : instructions.Count) is not null)
+                    return FrameResult.Fail(StaticExecutionStatus.Unsupported, "Arithmetic exception requires finally unwinding.");
+                State.RecordThrow($"System.DivideByZeroException from {method.Name} IL_{instruction.Offset:X4}");
+                if (!landed)
+                    return new FrameResult(StaticExecutionStatus.Threw, thrown, "Integer division by zero.");
+                stack.Clear(); stack.Add(thrown); caught = thrown; next = handlerIndex;
             }
             catch (Exception exception) when (
                 exception is InvalidOperationException or
@@ -2415,7 +2433,17 @@ public sealed class StaticMachine
             State,
             (callee, arguments) => CallDelegate(callee, arguments, budget, depth),
             (callee, arguments) => Reenter(callee, arguments, budget, depth),
-            _frames);
+            _frames,
+            type =>
+            {
+                var definition = type.ResolveTypeDef();
+                if (definition is null || definition.HasGenericParameters || !MayRunHere(definition.Module))
+                    return IntrinsicResult.Unknown("The requested type initializer is outside the interpreted module or is generic.");
+                var failure = EnsureTypeInitialized(definition, TypeInitializationTrigger.Explicit, budget, depth);
+                return failure is { } stopped
+                    ? new IntrinsicResult(stopped.Status, stopped.Value, stopped.Diagnostic)
+                    : IntrinsicResult.Completed();
+            });
 
     /// <summary>
     /// Runs a delegate on behalf of a modeled API that was handed one.
@@ -3320,6 +3348,7 @@ public sealed class StaticMachine
     private enum TypeInitializationTrigger
     {
         StaticField,
+        Explicit,
         MethodCall
     }
 

@@ -37,6 +37,16 @@ public sealed record ResourceInfo(
     string Sha256,
     string Classification);
 
+public enum PayloadOrigin
+{
+    Unknown,
+    AssemblyLoad,
+    ResourceBundle,
+    EmbeddedDependency,
+    NativeWrapper,
+    ResourceCodec
+}
+
 /// <param name="WrittenTo">
 /// The file the run wrote this payload to, once it has written it.
 /// </param>
@@ -56,7 +66,8 @@ public sealed record PayloadInfo(
     string ModuleName,
     uint EntryPointToken,
     IReadOnlyList<string> EmbeddedResources,
-    string? WrittenTo = null);
+    string? WrittenTo = null,
+    PayloadOrigin Origin = PayloadOrigin.Unknown);
 
 public sealed record ExtractedPayload(PayloadInfo Info, byte[] Bytes);
 

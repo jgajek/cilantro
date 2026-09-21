@@ -187,6 +187,42 @@ public sealed class RunStatusTests
         }
     }
 
+    [Fact]
+    public async Task ConcurrentPollingDoesNotPreventTerminalStatusReplacement()
+    {
+        var directory = Directory.CreateTempSubdirectory("cilantro-status-polling");
+        using var stopping = new CancellationTokenSource();
+        using var started = new ManualResetEventSlim();
+        var path = Path.Combine(directory.FullName, "run.status.json");
+        using var initial = RunStatusWriter.Begin(path, "sample.dll", 1);
+        initial.Dispose(); // Seed the file without leaving a second heartbeat writer active.
+        var reader = Task.Run(() =>
+        {
+            while (!stopping.IsCancellationRequested)
+            {
+                Assert.NotNull(RunStatus.Read(path));
+                started.Set();
+            }
+        });
+        try
+        {
+            Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
+            for (var iteration = 0; iteration < 100; iteration++)
+            {
+                using var writer = RunStatusWriter.Begin(path, "sample.dll", 1);
+                writer.Failed("test failure");
+                Assert.Equal(RunPhase.Failed, RunStatus.Read(path)!.Phase);
+            }
+        }
+        finally
+        {
+            stopping.Cancel();
+            await reader;
+            initial.Dispose();
+            directory.Delete(recursive: true);
+        }
+    }
+
     /// <summary>Reading where nothing has been written is an absence, not a failure.</summary>
     [Fact]
     public void ReadingAStatusThatIsNotThereIsNotAnError() =>

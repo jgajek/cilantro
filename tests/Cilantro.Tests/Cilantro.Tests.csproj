@@ -36,6 +36,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../../corpus/probes/Probe/RecoveryGroundTruth.cs" Link="RecoveryGroundTruth.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

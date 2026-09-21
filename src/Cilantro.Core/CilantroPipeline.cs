@@ -83,6 +83,7 @@ public sealed class CilantroPipeline
         // passes already know how to collapse.
         new GlobalStateCapturePass(),
         new GlobalPredicateFoldingPass(),
+        new DispatcherTailSeparationPass(),
         new DispatcherDeobfuscationPass(),
         new CfgDeadCodePass(),
         new ControlFlowCompletionPass(),
@@ -92,6 +93,8 @@ public sealed class CilantroPipeline
         // Strings the protector left to per-string decoders rather than to its table are folded
         // after the table, because a decoder can read a table entry but never the other way round.
         new ConstantStringPass(),
+        new NumericTableRecoveryPass(),
+        new IntegerHelperRecoveryPass(),
         // ConfuserEx keeps its literals in one buffer that its own getters read, which is neither a
         // table a reading can index nor a decoder per string. It runs beside the other two because
         // what it produces is the same thing: an ldstr where a call used to be.
@@ -118,13 +121,14 @@ public sealed class CilantroPipeline
         new ResourceRoleRefinementPass(),
         new ResourceRestorationPass(),
         new ResourceHookElisionPass(),
-        // Cutting the loader loose comes last of the rewrites, because whether its state is still
-        // observable depends on every recovery before it having replaced the code that read it — and
-        // because everything that reads the module by running it needs the loader still there to run.
+        // The first loader cut follows interpretation-based recovery. It also enables inlining
+        // through initializers that have become empty. Reconstructed bodies get a later recheck.
         new LoaderCallElisionPass(),
         // Calls through an effectful type initializer could not safely be skipped earlier. Once
         // loader elision has proved and removed its work, the empty initializer no longer blocks them.
         new MethodInliningRecheckPass(),
+        new NumericTableRecheckPass(),
+        new IntegerHelperRecheckPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
         // Building the read-back methods precedes cleanup, which would otherwise delete the very
@@ -142,17 +146,22 @@ public sealed class CilantroPipeline
         // the predicate the analyst would otherwise be handed and the thing hiding the flattening
         // the pass below looks for.
         new ControlFlowRecompletionPass(),
+        new DispatcherPathPass(),
         // Flattening is looked for once more here, at the end. Every pass above takes something out
         // of the middle of a method body — a proxy call, a resolver call, a loader call — and until
         // they have, a dispatcher does not look like one. See DispatcherRecheckPass.
         new DispatcherRecheckPass(),
 
-        // Last of the passes that change IL: the conversions the bypassed proxy adapters were
+        // Final stack normalization: the conversions the bypassed proxy adapters were
         // doing go in once nothing else is going to read the bodies they go into, and the state the
         // folded dispatchers were handed on the stack goes into a local once no pass is going to
         // fold another edge and strand another head.
         new ProxyNarrowingPass(),
         new StackHandoffPass(),
+        // Reconstruction can expose loader-owned writes and let the predicate recheck remove
+        // their readers. Revisit initialization before cleanup decides which runtime helpers live.
+        new LoaderCallRecheckPass(),
+        new IntegrityVerdictPass(),
         new RuntimeCleanupPass(),
         new SymbolRenamingPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it
@@ -179,13 +188,13 @@ public sealed class CilantroPipeline
         var plan = PipelinePlanner.Plan(_passes);
         if (options.StatusPath is not { } statusPath)
         {
-            return RunCore(inputPath, options, plan, null);
+            return Finish(RunCore(inputPath, options, plan, null), options);
         }
 
         using var status = RunStatusWriter.Begin(statusPath, inputPath, plan.Count);
         try
         {
-            var result = RunCore(inputPath, options, plan, status);
+            var result = Finish(RunCore(inputPath, options, plan, status), options, status);
             status.Finished(RunManifest.Of(result));
             return result;
         }
@@ -204,12 +213,26 @@ public sealed class CilantroPipeline
         }
     }
 
+    private PipelineResult Finish(PipelineResult result, PipelineOptions options, RunStatusWriter? status = null)
+    {
+        result = AnalystReport.Write(result, options.AnalyzeOnly);
+        if (!options.RecoverEmbeddedAssemblies && result.Report.Protector != NativeBootstrapStage.BootstrapProtector)
+            return result;
+        // One traversal owns every stage and its budgets. Calling Run here would start
+        // a new traversal for each native child, losing deduplication and depth limits.
+        result = EmbeddedAssemblyRecovery.Run(result, options, (path, childOptions) =>
+            AnalystReport.Write(RunCore(path, childOptions, PipelinePlanner.Plan(_passes), status),
+                childOptions.AnalyzeOnly), nativeOnly: !options.RecoverEmbeddedAssemblies);
+        return AnalystReport.Write(result, options.AnalyzeOnly);
+    }
+
     private PipelineResult RunCore(
         string inputPath,
         PipelineOptions options,
         IReadOnlyList<PlannedPass> plan,
         RunStatusWriter? status)
     {
+        options.Cancellation.ThrowIfCancellationRequested();
         // What the run was told is read before the module is, because a declarations file that
         // cannot be read is the caller's mistake and there is no point loading a sample to find out.
         var declarations = (options.DeclarationsPath is { } stated
@@ -237,8 +260,8 @@ public sealed class CilantroPipeline
                     ? HostProfile.Default
                     : HostProfile.Workstation);
         // Before the managed load, because a native bootstrap has nothing for it to load: the
-        // assembly is inside the file rather than being the file. A run that gets a result here is
-        // finished, having produced the stage that was hidden rather than a reading of it.
+        // assembly is inside the file rather than being the file. Finish follows the extracted
+        // managed stage through the same passes while retaining this wrapper's provenance.
         if (NativeBootstrapStage.TryRun(inputPath, options, out var recovered))
             return recovered;
 
@@ -325,7 +348,8 @@ public sealed class CilantroPipeline
             allowance);
         var fatalFailure = context.PassResults.Any(result => result.Status == PassStatus.Failed);
         var emissionGates = _passes
-            .Where(pass => pass.GatesEmission)
+            .Where(pass => pass.GatesEmission &&
+                !(options.GenericRecovery && pass is ProtectorIdentityPass))
             .Select(pass => pass.Name)
             .ToHashSet(StringComparer.Ordinal);
         var incompleteRecovery = context.PassResults.Any(result =>
@@ -335,6 +359,10 @@ public sealed class CilantroPipeline
             verification.Passed &&
             !fatalFailure &&
             !incompleteRecovery;
+
+        if (options.GenericRecovery)
+            context.AddEvidence(new Evidence("recovery-mode",
+                "Generic recovery requested: protector identification is not required for emission; other recovery and verification gates still apply."));
 
         var inputDirectory = Path.GetDirectoryName(Path.GetFullPath(context.InputPath))!;
         var stem = Path.GetFileNameWithoutExtension(context.InputPath);
@@ -367,17 +395,14 @@ public sealed class CilantroPipeline
         // Emission happens before the report is written so that a module which verifies in memory
         // but not once serialized is explained rather than silently withheld. Round-tripping is the
         // only check that sees what the metadata writer actually produced.
-        // Deleting metadata rows and preserving row indexes cannot both hold: the writer has to
-        // renumber whatever followed a removed row. Token preservation is dropped exactly when
-        // cleanup deleted something, which is the only case where it is unachievable.
+        // Compact deleted rows instead of asking the writer to fill their gaps with dummy
+        // declarations. Cleanup declines deletion while live numeric-token consumers remain.
+        // Appended reconstruction metadata does not require renumbering existing rows.
         context.TryGetFact<int>("cleanup.removedTypeCount", out var removedTypeCount);
         context.TryGetFact<int>("cleanup.removedMethodCount", out var removedMethodCount);
-        context.TryGetFact<int>(
-            VirtualizationRebuildPass.AddedTypesFact, out var addedTypeCount);
         var preserveTokens = options.PreserveTokens &&
             removedTypeCount == 0 &&
-            removedMethodCount == 0 &&
-            addedTypeCount == 0;
+            removedMethodCount == 0;
 
         if (canEmit)
         {
@@ -475,6 +500,7 @@ public sealed class CilantroPipeline
             VirtualizationRebuildPass.CheckFact, out var devirtualizationCheck);
         context.TryGetFact<IReadOnlySet<uint>>(
             VirtualizationRebuildPass.RebuiltFact, out var rebuiltMethods);
+        context.TryGetFact<int>(VirtualizationRebuildPass.LiftedFact, out var liftedPrograms);
 
         return new PipelineResult(
             canEmit || options.AnalyzeOnly && !fatalFailure,
@@ -497,6 +523,7 @@ public sealed class CilantroPipeline
             // Only where the cleaned copy was written does the count describe something the analyst
             // has: the bodies went into the module either way, but a run that withheld the copy
             // delivered no code to read.
+            LiftedPrograms = outputPath is null ? 0 : liftedPrograms,
             RebuiltMethods = outputPath is null ? 0 : rebuiltMethods?.Count ?? 0
         };
     }

@@ -21,6 +21,184 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class LoaderCallElisionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ImplicitInitializerIsRemovedOnlyWithoutSurvivingReaders(bool observed)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var runtime = SyntheticContext.AddType(module, "Runtime");
+            var state = new FieldDefUser("state", new FieldSig(module.CorLibTypes.Int32),
+                FieldAttributes.Assembly | FieldAttributes.Static);
+            runtime.Fields.Add(state);
+            var initializer = new MethodDefUser(".cctor", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Private | MethodAttributes.Static |
+                MethodAttributes.SpecialName | MethodAttributes.RTSpecialName) { Body = new CilBody() };
+            initializer.Body.Instructions.Add(OpCodes.Ldc_I4_1.ToInstruction());
+            initializer.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(state));
+            initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            runtime.Methods.Add(initializer);
+            var touch = Static(module, "Touch", module.CorLibTypes.Void);
+            touch.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            runtime.Methods.Add(touch);
+            var program = SyntheticContext.AddType(module, "Program");
+            program.Attributes = TypeAttributes.Public;
+            var run = Static(module, "Run", module.CorLibTypes.Void);
+            run.Access = MethodAttributes.Public;
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(touch));
+            if (observed)
+            {
+                run.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(state));
+                run.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            }
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            program.Methods.Add(run);
+        });
+        var initializer = Method(context, ".cctor");
+        var original = Cilantro.Core.Verification.MethodBodySnapshot.Capture(initializer);
+        context.SetFact("method-protection.complete", true);
+        context.SetFact("bootstrap.evidence", new LoaderInterpretationEvidence([], new Dictionary<uint, LoaderMethodEffects>
+        {
+            [initializer.MDToken.Raw] = new(["System.Int32 Synthetic.Runtime::state"], false, false, [])
+        }));
+
+        var result = new LoaderCallElisionPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(observed ? 0 : 1, result.Changes);
+        if (observed) Assert.True(original.StructurallyEquals(initializer));
+        else Assert.True(EmptyMethodBodies.DoesNothing(initializer));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void VirtualReaderNeedsAnInstanceToKeepLoaderAlive(bool constructed)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var runtime = SyntheticContext.AddType(module, "Runtime");
+            var state = new FieldDefUser("state", new FieldSig(module.CorLibTypes.Int32),
+                FieldAttributes.Assembly | FieldAttributes.Static);
+            runtime.Fields.Add(state);
+            var reader = new MethodDefUser("GetHashCode", MethodSig.CreateInstance(module.CorLibTypes.Int32),
+                MethodImplAttributes.IL, MethodAttributes.Public | MethodAttributes.Virtual)
+                { Body = new CilBody() };
+            reader.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(state));
+            reader.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            runtime.Methods.Add(reader);
+            var ctor = new MethodDefUser(".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Assembly | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
+                { Body = new CilBody() };
+            ctor.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction());
+            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(new MemberRefUser(module, ".ctor",
+                MethodSig.CreateInstance(module.CorLibTypes.Void), module.CorLibTypes.Object.TypeDefOrRef)));
+            ctor.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            runtime.Methods.Add(ctor);
+            var install = Static(module, "Install", module.CorLibTypes.Void);
+            install.Body.Instructions.Add(OpCodes.Ldc_I4_1.ToInstruction());
+            install.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(state));
+            install.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            runtime.Methods.Add(install);
+            var program = SyntheticContext.AddType(module, "Program");
+            program.Attributes = TypeAttributes.Public;
+            var initializer = new MethodDefUser(".cctor", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Private | MethodAttributes.Static |
+                MethodAttributes.SpecialName | MethodAttributes.RTSpecialName) { Body = new CilBody() };
+            initializer.Body.Instructions.Add(OpCodes.Call.ToInstruction(install));
+            initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            program.Methods.Add(initializer);
+            var hash = new MethodDefUser("Hash", MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.Object),
+                MethodImplAttributes.IL, MethodAttributes.Public | MethodAttributes.Static) { Body = new CilBody() };
+            hash.Body.Instructions.Add(constructed ? OpCodes.Newobj.ToInstruction(ctor) : OpCodes.Ldarg_0.ToInstruction());
+            hash.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(new MemberRefUser(module, "GetHashCode",
+                MethodSig.CreateInstance(module.CorLibTypes.Int32), module.CorLibTypes.Object.TypeDefOrRef)));
+            hash.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            program.Methods.Add(hash);
+        });
+        context.SetFact("method-protection.complete", true);
+        context.SetFact("bootstrap.evidence", new LoaderInterpretationEvidence([], new Dictionary<uint, LoaderMethodEffects>
+        {
+            [Method(context, "Install").MDToken.Raw] = new(["System.Int32 Synthetic.Runtime::state"], false, false, [])
+        }));
+
+        var result = new LoaderCallElisionPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(constructed ? 0 : 1, result.Changes);
+    }
+
+    [Fact]
+    public void ReconstructedReaderKeepsItsLoaderInitialization()
+    {
+        using var context = LoaderContext();
+        ReadingMarker.Add(context.Module).Mark(Method(context, "ReadState"));
+
+        var result = new LoaderCallElisionPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(Method(context, ".cctor").Body.Instructions,
+            instruction => instruction.Operand is IMethod called && called.Name == "Install");
+    }
+
+    [Fact]
+    public void UnassignedRecoveryMethodsDoNotCollideInTheEvidenceLookup()
+    {
+        using var context = LoaderContext();
+        var marker = ReadingMarker.Add(context.Module);
+        var reader = Method(context, "ReadState");
+        marker.Mark(reader);
+        var added = Static(context.Module, "RecoveredHelper", context.Module.CorLibTypes.Void);
+        added.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        reader.DeclaringType.Methods.Add(added);
+        Assert.Equal(0u, added.MDToken.Rid);
+
+        var result = new LoaderCallElisionPass().Run(context);
+
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(Method(context, ".cctor").Body.Instructions,
+            instruction => instruction.Operand is IMethod called && called.Name == "Install");
+    }
+
+    [Fact]
+    public void LateRecheckSkipsModulesWithoutReconstructedBodies()
+    {
+        using var context = LoaderContext();
+        var result = new LoaderCallRecheckPass().Run(context);
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(Method(context, ".cctor").Body.Instructions,
+            instruction => instruction.Operand is IMethod called && called.Name == "Install");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LateRecheckReleasesLoaderOnlyAfterItsReconstructedReaderIsGone(bool folded)
+    {
+        using var context = LoaderContext();
+        var reader = Method(context, "ReadState");
+        ReadingMarker.Add(context.Module).Mark(reader);
+        context.SetFact(VirtualizationRebuildPass.AddedTypesFact, 1);
+        context.SetFact(VirtualizationRebuildPass.AddedMethodsFact, ReadingMarker.AddedMethodCount);
+        Assert.Equal(0, new LoaderCallElisionPass().Run(context).Changes);
+        if (folded)
+        {
+            reader.Body.Instructions[0].OpCode = OpCodes.Ldc_I4_1;
+            reader.Body.Instructions[0].Operand = null;
+        }
+
+        var result = new LoaderCallRecheckPass().Run(context);
+
+        Assert.True(result.Status == PassStatus.Success, string.Join("; ", result.Diagnostics));
+        Assert.Equal(folded ? 1 : 0, result.Changes);
+        Assert.Equal(!folded, Method(context, ".cctor").Body.Instructions.Any(
+            instruction => instruction.Operand is IMethod called && called.Name == "Install"));
+    }
+
     [Fact]
     public void SubscribingToTheRuntimeIsRecordedAsAnEffect()
     {

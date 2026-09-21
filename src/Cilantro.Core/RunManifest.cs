@@ -82,6 +82,9 @@ public sealed record RunManifest(
     /// </summary>
     public const string Current = "cilantro.run/1";
 
+    /// <summary>Additional interpreter programs rebuilt into new helper methods.</summary>
+    public int LiftedPrograms { get; init; }
+
     /// <summary>Everything one run of the pipeline produced, as a manifest.</summary>
     public static RunManifest Of(PipelineResult result)
     {
@@ -107,7 +110,7 @@ public sealed record RunManifest(
                 result.BlockerReportPath,
                 result.RenameMapPath,
                 result.ConfigReportPath,
-                result.VirtualProgramPaths),
+                result.VirtualProgramPaths) { Report = result.ReadableReportPath, Embedded = result.EmbeddedRecoveryReportPath },
             report.Payloads,
             report.Recovery,
             result.RebuiltMethods,
@@ -117,7 +120,10 @@ public sealed record RunManifest(
             report.Passes,
             report.Blockers ?? [],
             report.ContinuedPast?.Count ?? 0,
-            report.Blockers?.Any(blocker => blocker.Remedy is not null) ?? false);
+            report.Blockers?.Any(blocker => blocker.Remedy is not null) ?? false)
+        {
+            LiftedPrograms = result.LiftedPrograms
+        };
     }
 }
 
@@ -139,7 +145,14 @@ public sealed record RunOutputs(
     string? Blockers,
     string? Renames,
     string? Config,
-    IReadOnlyList<string> Listings);
+    IReadOnlyList<string> Listings)
+{
+    /// <summary>The readable HTML report, when produced by the pipeline.</summary>
+    public string? Report { get; init; }
+
+    /// <summary>Bounded embedded-assembly recovery results and parent-child links.</summary>
+    public string? Embedded { get; init; }
+}
 
 /// <summary>Why a run could not be attempted, in the same channel as the run itself.</summary>
 /// <remarks>

@@ -281,7 +281,7 @@ public sealed class DispatcherAnalyzer
 
         foreach (var (switchInstruction, dispatcher, head) in dispatchers)
         {
-            var (state, bias) = head;
+            var (state, selector) = head;
             var cases = (IList<Instruction>)switchInstruction.Operand;
             foreach (var source in dispatcher.Predecessors
                          .Where(edge => edge.Kind != ControlFlowEdgeKind.Exception)
@@ -292,7 +292,7 @@ public sealed class DispatcherAnalyzer
                     continue;
                 offered++;
                 if (TryPlanEdge(
-                        method, graph, source, dispatcher, switchInstruction, cases, state, bias,
+                        method, graph, source, dispatcher, switchInstruction, cases, state, selector,
                         claimed, out var redirect, out var decline))
                 {
                     rewrites.Add(redirect!);
@@ -326,23 +326,22 @@ public sealed class DispatcherAnalyzer
     }
 
     /// <summary>
-    /// The local a switch dispatches on and the constant subtracted from it first, when the block
-    /// does nothing but read the local, bias it and switch.
+    /// The state a switch dispatches on and its bounded, constant integer selector chain.
     /// </summary>
     /// <remarks>
     /// Reactor's dispatchers are rarely the bare <c>ldloc; switch</c> the whole-method proof looks
     /// for. The states it numbers a method's blocks with do not start at zero, so the dispatcher
     /// subtracts where they do start and switches on the difference: <c>ldloc L; ldc.i4 K; sub;
     /// switch</c>. Reading that as no dispatcher at all is what left almost every flattened method
-    /// in a real module untouched, so the bias is carried out of here and applied to the constant an
-    /// edge assigns rather than being required to be absent.
+    /// in a real module untouched. The selector is applied to the constant an edge assigns,
+    /// including bounded chains of addition, subtraction, multiplication and bitwise operations.
     ///
     /// The same shape is what a C# compiler emits for a switch over a sparse enum, and this does
     /// not try to tell the two apart. It does not have to: an edge is only rewritten when a block
     /// assigns the state a constant and jumps straight here, which is a thing a flattener does and
     /// ordinary code does not, and rewriting one is sound either way.
     /// </remarks>
-    private static (Local? State, int Bias)? StateOf(
+    private static (Local? State, Func<int, int> Select)? StateOf(
         MethodDef method,
         ControlFlowGraph graph,
         Instruction switchInstruction)
@@ -366,17 +365,29 @@ public sealed class DispatcherAnalyzer
             return null;
         var read = state is null ? 0 : 1;
 
-        if (meaningful.Length == read + 1)
-            return (state, 0);
-        if (meaningful.Length != read + 3 || !TryGetInt32Constant(meaningful[read], out var bias))
-            return null;
-
-        return meaningful[read + 1].OpCode.Code switch
+        var steps = new List<(Code Code, int Constant)>();
+        for (var at = read; at < meaningful.Length - 1; at += 2)
         {
-            Code.Sub => (state, bias),
-            Code.Add => (state, -bias),
-            _ => null
-        };
+            if (at + 1 >= meaningful.Length - 1 || !TryGetInt32Constant(meaningful[at], out var constant))
+                return null;
+            var code = meaningful[at + 1].OpCode.Code;
+            if (code is not (Code.Add or Code.Sub or Code.Xor or Code.Mul or Code.And or Code.Or))
+                return null;
+            steps.Add((code, constant));
+            if (steps.Count > 16) return null;
+        }
+        return (state, value =>
+        {
+            foreach (var (code, constant) in steps)
+                value = code switch
+                {
+                    Code.Add => unchecked(value + constant), Code.Sub => unchecked(value - constant),
+                    Code.Mul => unchecked(value * constant), Code.Xor => value ^ constant,
+                    Code.And => value & constant, Code.Or => value | constant,
+                    _ => throw new InvalidOperationException()
+                };
+            return value;
+        });
     }
 
     /// <summary>
@@ -394,7 +405,7 @@ public sealed class DispatcherAnalyzer
         Instruction switchInstruction,
         IList<Instruction> cases,
         Local? state,
-        int bias,
+        Func<int, int> selector,
         HashSet<Instruction> claimed,
         out DispatcherEdgeRedirect? redirect,
         out DispatcherEdgeDecline? decline)
@@ -457,11 +468,10 @@ public sealed class DispatcherAnalyzer
             return false;
         }
 
-        // The dispatcher switches on the state less its bias, so that is the index the constant
-        // selects. A state outside the range is not an unproven edge: a switch whose operand names
+        // The selector transforms the state into the index the constant selects. A state outside the range is not an unproven edge: a switch whose operand names
         // no case falls through to whatever follows it, so the destination is just as settled, and
         // declining it would leave the dispatcher standing for edges whose outcome is known.
-        var selected = value - bias;
+        var selected = selector(value);
         var chosen = selected >= 0 && selected < cases.Count
             ? cases[selected]
             : FallsThroughTo(method, switchInstruction);

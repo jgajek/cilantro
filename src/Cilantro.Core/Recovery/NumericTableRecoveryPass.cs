@@ -1,0 +1,474 @@
+using dnlib.DotNet;
+using dnlib.DotNet.Emit;
+using Cilantro.Core.Analysis;
+using Cilantro.Core.Interpretation;
+using Cilantro.Core.Verification;
+
+namespace Cilantro.Core.Recovery;
+
+/// <summary>Reads closed, initializer-owned integer tables without executing sample code.</summary>
+public class NumericTableRecoveryPass : DeobfuscationPass
+{
+    public override string Name => "numeric-tables";
+    public override bool GatesEmission => false;
+    public override IReadOnlyCollection<string> Dependencies => ["constant-strings"];
+
+    private sealed record Getter(MethodDef Method, FieldDef Holder, FieldDef Table);
+
+    protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
+    {
+        var methods = context.Module.GetTypes().SelectMany(t => t.Methods).ToArray();
+        var getters = methods.Select(ReadGetter).OfType<Getter>().ToArray();
+        var rejected = new List<string>();
+        getters = getters.Where(g =>
+        {
+            var accepted = Closed(g, getters, methods, out var reason);
+            if (!accepted) rejected.Add($"{g.Method.MDToken}: {reason}");
+            return accepted;
+        }).ToArray();
+        if (getters.Length == 0) return (PassStatus.Success, 0, ["No closed integer-table getter was found.", .. rejected.Take(8)]);
+        var byMethod = getters.ToDictionary(g => g.Method);
+        var sites = new List<(MethodDef Caller, Instruction Key, Instruction Call, Getter Getter, int Index)>();
+        foreach (var method in methods.Where(m => m.HasBody))
+        {
+            var targeted = new HashSet<Instruction>();
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is Instruction target) targeted.Add(target);
+                if (instruction.Operand is IList<Instruction> targets) targeted.UnionWith(targets);
+            }
+            foreach (var handler in method.Body.ExceptionHandlers)
+                foreach (var boundary in new[] { handler.TryStart, handler.TryEnd, handler.HandlerStart, handler.HandlerEnd, handler.FilterStart })
+                    if (boundary is not null) targeted.Add(boundary);
+            var instructions = method.Body.Instructions;
+            for (var i = 1; i < instructions.Count; i++)
+                if (instructions[i].OpCode.Code == Code.Call && instructions[i].Operand is IMethod called &&
+                    called.ResolveMethodDef() is { } definition && byMethod.TryGetValue(definition, out var getter) &&
+                    instructions[i - 1].IsLdcI4() && !targeted.Contains(instructions[i]))
+                    sites.Add((method, instructions[i - 1], instructions[i], getter, instructions[i - 1].GetLdcI4Value()));
+        }
+        var asks = sites.Select(s => (s.Getter, s.Index)).Distinct().Take(2048).ToArray();
+        if (asks.Length == 0) return (PassStatus.Success, 0, ["Integer table calls did not supply literal indexes."]);
+        if (!BootstrapMachine.TrySeed(context, 4_000_000, out var first, out var why) || first is null ||
+            !BootstrapMachine.TrySeed(context, 4_000_000, out var second, out why) || second is null)
+            return (PassStatus.Partial, 0, [why]);
+        // Constant rewrites must not bake the run's assumed or declared host into
+        // the assembly. Only module bytes and deterministic interpreted operations
+        // may supply these values; executed ambient reads stop either machine.
+        first.State.RegisterRunEnvironment(new RunEnvironment(new HostEnvironment(HostProfile.Empty)));
+        second.State.RegisterRunEnvironment(new RunEnvironment(new HostEnvironment(HostProfile.Empty)));
+        var refusals = new HashSet<string>();
+        var initializationFields = InitializationFields(context.Module, methods);
+        var preserve = new HashSet<Getter>();
+        var preservable = new HashSet<Getter>();
+        foreach (var getter in getters)
+        {
+            if (CanPreserveInitialization(getter, initializationFields) ||
+                IndependentConstruction(getter, initializationFields, out var dependency)) preservable.Add(getter);
+            else refusals.Add($"{getter.Method.MDToken}: initialization dependency proof refused: {dependency}");
+        }
+        var forward = Read(first, asks, refusals, initializationFields, preservable, preserve);
+        var reverse = Read(second, asks.Reverse(), refusals, initializationFields, preservable, preserve);
+        using var transaction = new BodyMutationBatch();
+        var folded = new HashSet<MethodDef>();
+        var changes = 0;
+        foreach (var site in sites)
+        {
+            var key = (site.Getter, site.Index);
+            if (!forward.TryGetValue(key, out var value) || value is null ||
+                !reverse.TryGetValue(key, out var other) || other != value) continue;
+            if (preserve.Contains(site.Getter) && (site.Caller.DeclaringType == site.Getter.Holder.DeclaringType || site.Caller.IsStaticConstructor)) continue;
+            transaction.Capture(site.Caller);
+            site.Key.OpCode = OpCodes.Nop; site.Key.Operand = null;
+            if (preserve.Contains(site.Getter))
+            {
+                // Keep the actual field access that triggered initialization. This also
+                // preserves beforefieldinit timing instead of forcing its initializer.
+                var il = site.Caller.Body.Instructions;
+                var insert = il.IndexOf(site.Key) + 1;
+                var getterOwner = site.Getter.Method.DeclaringType;
+                if (getterOwner != site.Getter.Holder.DeclaringType && !getterOwner.IsBeforeFieldInit &&
+                    getterOwner.FindStaticConstructor() is not null)
+                {
+                    site.Key.OpCode = OpCodes.Ldtoken; site.Key.Operand = getterOwner;
+                    var helper = new MemberRefUser(context.Module, "RunClassConstructor",
+                        MethodSig.CreateStatic(context.Module.CorLibTypes.Void, VirtualLift.Handle(context.Module, "RuntimeTypeHandle")),
+                        context.Module.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "RuntimeHelpers"));
+                    il.Insert(insert++, OpCodes.Call.ToInstruction(helper));
+                    il.Insert(insert++, OpCodes.Ldsfld.ToInstruction(site.Getter.Holder));
+                }
+                else { site.Key.OpCode = OpCodes.Ldsfld; site.Key.Operand = site.Getter.Holder; }
+                il.Insert(insert, OpCodes.Pop.ToInstruction());
+                site.Caller.Body.KeepOldMaxStack = false;
+                site.Caller.Body.SimplifyBranches();
+            }
+            site.Call.OpCode = OpCodes.Ldc_I4; site.Call.Operand = value.Value;
+            transaction.RecordChange(context, new ChangeRecord(Name, "restore-numeric-constant",
+                $"{site.Caller.MDToken} IL_{site.Call.Offset:X4}", $"Recovered Int32 constant {value.Value}."));
+            folded.Add(site.Getter.Method);
+            changes++;
+        }
+        if (!AssemblyVerifier.Verify(context.Module).Passed)
+            return (PassStatus.Partial, 0, ["Numeric rewrites failed verification and were rolled back."]);
+        transaction.Commit();
+        RecoveryOrphans.DeclareSubtree(context, folded);
+        context.AddEvidence(new Evidence(Name, $"Replaced {changes} integer-table reads; independent static interpretations agreed."));
+        return (PassStatus.Success, changes, [$"Recovered {changes} integer constants from {getters.Length} closed table getter(s).", .. refusals.Take(8)]);
+    }
+
+    private static Getter? ReadGetter(MethodDef method)
+    {
+        if (!method.IsStatic || !method.HasBody || method.HasGenericParameters ||
+            method.MethodSig.Params.Count != 1 || method.MethodSig.Params[0].ElementType != ElementType.I4 ||
+            method.ReturnType.ElementType != ElementType.I4 || method.Body.ExceptionHandlers.Count != 0) return null;
+        var il = method.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+        return il.Length == 5 && il[0].OpCode.Code == Code.Ldsfld && il[1].OpCode.Code == Code.Ldfld &&
+            il[2].OpCode.Code == Code.Ldarg_0 && il[3].OpCode.Code == Code.Ldelem_I4 && il[4].OpCode.Code == Code.Ret &&
+            il[0].Operand is IField holderRef && holderRef.ResolveFieldDef() is { IsInitOnly: true } holder &&
+            il[1].Operand is IField tableRef && tableRef.ResolveFieldDef() is { } table &&
+            table.FieldType is SZArraySig { Next.ElementType: ElementType.I4 } &&
+            holder.DeclaringType == table.DeclaringType && holder.Module == method.Module
+                ? new(method, holder, table) : null;
+    }
+
+    private static bool Closed(Getter getter, Getter[] getters, MethodDef[] methods, out string reason)
+    {
+        reason = "storage is externally accessible or can be modified outside initialization";
+        var owner = getter.Table.DeclaringType;
+        if (MemberVisibility.IsExternallyVisible(owner) || owner.FindStaticConstructor() is not { } initializer) return false;
+        var initialization = new HashSet<MethodDef>();
+        var pending = new Stack<MethodDef>(); pending.Push(initializer);
+        while (pending.TryPop(out var method))
+        {
+            if (!initialization.Add(method) || !method.HasBody) continue;
+            foreach (var instruction in method.Body.Instructions)
+                if (instruction.Operand is IMethod called && called.ResolveMethodDef() is { } target && target.DeclaringType == owner)
+                    pending.Push(target);
+        }
+        var readers = getters.Where(g => g.Table == getter.Table).Select(g => g.Method).ToHashSet();
+        foreach (var method in initialization.Where(m => m.HasBody))
+            if (!ArrayStaysPrivate(method, getter.Table)) { reason = $"array privacy could not be established in {method.FullName}"; return false; }
+        foreach (var method in methods.Where(m => m.HasBody))
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is IField fieldRef && fieldRef.ResolveFieldDef() is { } field &&
+                    (field == getter.Table || field == getter.Holder && !ReadsHolder(method, getter.Holder)) &&
+                    !initialization.Contains(method) && !readers.Contains(method)) return false;
+                if (instruction.Operand is IMethod call && call.ResolveMethodDef() is { } target &&
+                    initialization.Contains(target) && !initialization.Contains(method)) return false;
+                // A runtime type handle can expose private storage to reflection.
+                if (instruction.OpCode.Code == Code.Ldtoken && instruction.Operand is ITypeDefOrRef type &&
+                    type.ResolveTypeDef() == owner) return false;
+            }
+        return true;
+    }
+
+    private static bool ArrayStaysPrivate(MethodDef method, FieldDef table, bool readOnly = false)
+    {
+        var il = method.Body.Instructions.ToArray();
+        var targets = method.Body.Instructions.SelectMany(i => i.Operand switch
+        {
+            Instruction target => new[] { target },
+            IList<Instruction> many => many,
+            _ => Array.Empty<Instruction>()
+        }).ToHashSet();
+        for (var at = 0; at < il.Length; at++)
+        {
+            if (il[at].Operand is not IField reference || reference.ResolveFieldDef() != table) continue;
+            if (il[at].OpCode.Code is Code.Stfld or Code.Stsfld)
+            {
+                if (readOnly) return false;
+                // A fresh array goes straight into the field; no duplicated reference can
+                // have been published elsewhere before that store.
+                var previous = at - 1;
+                if (targets.Contains(il[at])) return false;
+                while (previous >= 0 && il[previous].OpCode.Code == Code.Nop)
+                {
+                    if (targets.Contains(il[previous])) return false;
+                    previous--;
+                }
+                if (previous < 0 || il[previous].OpCode.Code != Code.Newarr) return false;
+                continue;
+            }
+            if (il[at].OpCode.Code != (table.IsStatic ? Code.Ldsfld : Code.Ldfld)) return false;
+            var stack = new Stack<bool>(); stack.Push(true);
+            var consumed = false;
+            for (var scan = at + 1; scan < il.Length && scan <= at + 64; scan++)
+            {
+                var instruction = il[scan];
+                if (targets.Contains(instruction) || instruction.OpCode.FlowControl is
+                    FlowControl.Branch or FlowControl.Cond_Branch or FlowControl.Return or FlowControl.Throw) return false;
+                instruction.CalculateStackUsage(out var pushes, out var pops);
+                if (pops < 0 || pushes < 0) return false;
+                var usedArray = false;
+                for (var count = 0; count < pops; count++)
+                    if (stack.TryPop(out var array) && array)
+                    {
+                        if (count != pops - 1) return false;
+                        usedArray = true;
+                    }
+                if (usedArray)
+                {
+                    if (readOnly ? instruction.OpCode.Code is not (Code.Ldelem_I1 or Code.Ldelem_U1 or Code.Ldelem_I2 or Code.Ldelem_U2 or Code.Ldelem_I4 or Code.Ldelem_U4 or Code.Ldelem_I8 or Code.Ldelem_R4 or Code.Ldelem_R8 or Code.Ldlen)
+                        : instruction.OpCode.Code is not (Code.Stelem_I4 or Code.Ldelem_I4 or Code.Ldlen)) return false;
+                    consumed = true;
+                    break;
+                }
+                for (var count = 0; count < pushes; count++) stack.Push(false);
+            }
+            if (!consumed) return false;
+        }
+        return true;
+    }
+
+    // A lazily initialized decompressor may set up its own immutable lookup tables.
+    // Dropping that trigger is harmless only when every static write is confined to
+    // the declaring type's initializer: any later field access triggers it itself.
+    private static HashSet<string> InitializationFields(ModuleDef module, MethodDef[] methods)
+    {
+        var allowed = module.GetTypes().SelectMany(t => t.Fields).Where(f => f.IsStatic).ToHashSet();
+        foreach (var method in methods.Where(m => m.HasBody))
+            foreach (var instruction in method.Body.Instructions)
+                if (instruction.Operand is IField fieldRef && fieldRef.ResolveFieldDef() is { } field &&
+                    (instruction.OpCode.Code == Code.Ldsflda || instruction.OpCode.Code == Code.Stsfld &&
+                     (!method.IsStaticConstructor || method.DeclaringType != field.DeclaringType)))
+                    allowed.Remove(field);
+        return allowed.Select(f => f.FullName).ToHashSet(StringComparer.Ordinal);
+    }
+
+    // Preserve effects only when the values cannot depend on mutable external static
+    // inputs. Follow local calls and triggered type initializers; unknown reads refuse.
+    private static bool CanPreserveInitialization(Getter getter, HashSet<string> immutable)
+    {
+        var owner = getter.Holder.DeclaringType;
+        if (getter.Method.DeclaringType != owner) return false;
+        for (var type = owner; type is not null; type = type.DeclaringType)
+            if (type.HasGenericParameters) return false;
+        var pending = new Stack<MethodDef>(); pending.Push(owner.FindStaticConstructor());
+        var seen = new HashSet<MethodDef>();
+        while (pending.TryPop(out var method))
+        {
+            if (!seen.Add(method)) continue;
+            if (!method.HasBody || seen.Count > 512) return false;
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is IField reference)
+                {
+                    var field = reference.ResolveFieldDef();
+                    if (instruction.OpCode.Code == Code.Ldsflda) return false;
+                    if (instruction.OpCode.Code == Code.Ldsfld &&
+                        (field is null || !immutable.Contains(field.FullName))) return false;
+                    if (field?.DeclaringType.FindStaticConstructor() is { } init) pending.Push(init);
+                }
+                if (instruction.Operand is IMethod call && call.ResolveMethodDef() is { } target && target.Module == owner.Module)
+                {
+                    pending.Push(target);
+                    if (target.DeclaringType.FindStaticConstructor() is { } init) pending.Push(init);
+                }
+                if (instruction.OpCode.Code == Code.Calli) return false;
+            }
+        }
+        return true;
+    }
+
+    // Slice the holder assignment away from earlier initializer side effects. The
+    // initializer is still invoked at each rewritten site; only the newly constructed
+    // table's inputs must be closed. Branching initialization and later mutations refuse.
+    private static bool IndependentConstruction(Getter getter, HashSet<string> immutable, out string reason)
+    {
+        reason = "initializer timing, generic context or exception regions are not closed";
+        var owner = getter.Holder.DeclaringType;
+        if (owner.HasGenericParameters ||
+            getter.Method.DeclaringType.HasGenericParameters ||
+            owner.FindStaticConstructor() is not { HasBody: true } initializer ||
+            initializer.Body.ExceptionHandlers.Count != 0) return false;
+        reason = "holder is not the final straight-line, unique parameterless construction";
+        var il = StraightLine(initializer);
+        if (il is null || il.Length < 3 ||
+            il[^1].OpCode.Code != Code.Ret || il[^2].OpCode.Code != Code.Stsfld ||
+            il[^2].Operand is not IField holder || holder.ResolveFieldDef() != getter.Holder ||
+            il[^3].OpCode.Code != Code.Newobj || il[^3].Operand is not IMethod constructed ||
+            constructed.ResolveMethodDef() is not { HasBody: true } constructor ||
+            constructor.DeclaringType != owner || constructor.MethodSig.Params.Count != 0 ||
+            il.Count(i => i.Operand is IField f && f.ResolveFieldDef() == getter.Holder) != 1) return false;
+        var pending = new Stack<(MethodDef Method, string Path)>(); pending.Push((constructor, constructor.FullName));
+        var seen = new HashSet<MethodDef>();
+        var literalFields = new Dictionary<FieldDef, bool>();
+        while (pending.TryPop(out var item))
+        {
+            var (method, path) = item;
+            if (!seen.Add(method)) continue;
+            reason = $"unreadable or over-budget dependency {method.FullName}";
+            if (!method.HasBody || seen.Count > 256 || method.HasGenericParameters) return false;
+            foreach (var instruction in method.Body.Instructions)
+            {
+                reason = $"indirect dependency {method.FullName} IL_{instruction.Offset:X4}";
+                if (instruction.OpCode.Code is Code.Calli or Code.Ldsflda or Code.Ldftn or Code.Ldvirtftn) return false;
+                if (instruction.OpCode.Code == Code.Ldsfld && instruction.Operand is IField reference)
+                {
+                    reason = $"unresolved mutable static read {reference.FullName}; conservative dependency path: {path} (not proof the table value depends on this read)";
+                    if (reference.ResolveFieldDef() is not { } field || !immutable.Contains(field.FullName)) return false;
+                    // A literal lookup table can have unrelated loader work before its
+                    // assignment. Prove its complete value expression instead of following
+                    // that unrelated work as a dependency of every array element.
+                    if (!literalFields.TryGetValue(field, out var literal))
+                        literalFields[field] = literal = LiteralInitializerField(field);
+                    if (literal) continue;
+                    if (field.DeclaringType.FindStaticConstructor() is { } init) pending.Push((init, Extend(path, "field initializer", init)));
+                }
+                if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj && instruction.Operand is IMethod called)
+                {
+                    if (called.ResolveMethodDef() is { } target && target.Module == owner.Module)
+                    {
+                        reason = $"virtual dispatch {target.FullName}";
+                        // Unknown dispatch could introduce dependencies outside this slice.
+                        if (instruction.OpCode.Code == Code.Callvirt && target.IsVirtual) return false;
+                        pending.Push((target, Extend(path, "call", target)));
+                    }
+                    else if (called.DeclaringType?.ResolveTypeDef()?.Module == owner.Module) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static string Extend(string path, string edge, MethodDef method) =>
+        (path.Length > 1600 ? "..." + path[^1600..] : path) + $" -> {edge} {method.FullName}";
+
+    internal static bool LiteralInitializerField(FieldDef field)
+    {
+        if (!field.IsInitOnly || MemberVisibility.IsExternallyVisible(field.DeclaringType) ||
+            field.DeclaringType.FindStaticConstructor() is not { HasBody: true } initializer ||
+            initializer.Body.ExceptionHandlers.Count != 0 || StraightLine(initializer) is not { } il) return false;
+        var stores = il.Select((instruction, index) => (instruction, index)).Where(x =>
+            x.instruction.OpCode.Code == Code.Stsfld && x.instruction.Operand is IField f && f.ResolveFieldDef() == field).ToArray();
+        if (stores.Length != 1) return false;
+        var end = stores[0].index;
+        var needed = 1;
+        var start = end;
+        while (start > 0 && needed > 0 && end - start < 4096)
+        {
+            var instruction = il[--start];
+            instruction.CalculateStackUsage(out var pushes, out var pops);
+            if (pops < 0 || pushes < 0 || !Literal(instruction)) return false;
+            needed = Math.Max(0, needed - pushes) + pops;
+        }
+        if (needed != 0) return false;
+        var depth = 0;
+        foreach (var instruction in il[start..end])
+        {
+            instruction.CalculateStackUsage(out var pushes, out var pops);
+            if (depth < pops) return false;
+            depth += pushes - pops;
+        }
+        // No alias remains on the stack after publishing the array.
+        if (depth != 1) return false;
+        foreach (var method in field.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
+        {
+            if (method.Body.Instructions.Any(i => i.OpCode.Code == Code.Ldtoken &&
+                (i.Operand is IField f && f.ResolveFieldDef() == field ||
+                 i.Operand is ITypeDefOrRef t && t.ResolveTypeDef() == field.DeclaringType))) return false;
+            if (method == initializer) continue;
+            if (field.FieldType is SZArraySig)
+            { if (!ArrayStaysPrivate(method, field, readOnly: true)) return false; }
+            else if (method.Body.Instructions.Any(i => i.Operand is IField f && f.ResolveFieldDef() == field && i.OpCode.Code != Code.Ldsfld)) return false;
+        }
+        if (il.Count(i => i.Operand is IField f && f.ResolveFieldDef() == field) == 1) return true;
+        // Some compilers publish a fresh array and then fill it through the field.
+        // Admit only literal element stores, with no calls or foreign initialization
+        // after publication that could observe or mutate the partially filled array.
+        if (field.FieldType is not SZArraySig) return false;
+        for (var at = end + 1; at < il.Length; at++)
+        {
+            var instruction = il[at];
+            if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Calli or Code.Newobj or Code.Ldtoken ||
+                instruction.Operand is IField other && other.DeclaringType.ResolveTypeDef() != field.DeclaringType) return false;
+        }
+        for (var at = 0; at < il.Length; at++)
+        {
+            if (il[at].Operand is not IField reference || reference.ResolveFieldDef() != field || at == end) continue;
+            if (at <= end || at + 3 >= il.Length || il[at].OpCode.Code != Code.Ldsfld ||
+                !il[at + 1].IsLdcI4() || il[at + 1].GetLdcI4Value() < 0 ||
+                !(il[at + 2].IsLdcI4() || il[at + 2].OpCode.Code is Code.Ldc_I8 or Code.Ldc_R4 or Code.Ldc_R8) ||
+                il[at + 3].OpCode.Code is not (Code.Stelem_I1 or Code.Stelem_I2 or Code.Stelem_I4 or Code.Stelem_I8 or Code.Stelem_R4 or Code.Stelem_R8)) return false;
+        }
+        return true;
+
+        bool Literal(Instruction i) => i.IsLdcI4() || i.OpCode.Code is
+            Code.Ldc_I8 or Code.Ldc_R4 or Code.Ldc_R8 or Code.Ldnull or Code.Ldstr or Code.Dup or Code.Pop or
+            Code.Stelem_I1 or Code.Stelem_I2 or Code.Stelem_I4 or Code.Stelem_I8 or Code.Stelem_R4 or Code.Stelem_R8 ||
+            i.OpCode.Code == Code.Newarr && i.Operand is ITypeDefOrRef type && type.FullName is
+                "System.Byte" or "System.SByte" or "System.Int16" or "System.UInt16" or "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64" or "System.Single" or "System.Double" ||
+            i.OpCode.Code == Code.Ldtoken && i.Operand is IField source && source.ResolveFieldDef() is { HasFieldRVA: true } ||
+            i.OpCode.Code == Code.Call && i.Operand is IMethod { DeclaringType.FullName: "System.Runtime.CompilerServices.RuntimeHelpers", Name.String: "InitializeArray" } helper &&
+            helper.ResolveMethodDef()?.Module != field.Module;
+    }
+
+    private static Instruction[]? StraightLine(MethodDef method)
+    {
+        var body = method.Body.Instructions;
+        var positions = body.Select((instruction, index) => (instruction, index)).ToDictionary(x => x.instruction, x => x.index);
+        var seen = new HashSet<Instruction>();
+        var path = new List<Instruction>();
+        for (var at = 0; at < body.Count; at++)
+        {
+            var instruction = body[at];
+            if (!seen.Add(instruction)) return null;
+            if (instruction.OpCode.Code is Code.Br or Code.Br_S)
+            {
+                if (instruction.Operand is not Instruction target || !positions.TryGetValue(target, out var next)) return null;
+                at = next - 1;
+                continue;
+            }
+            if (instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch or FlowControl.Throw) return null;
+            if (instruction.OpCode.Code != Code.Nop) path.Add(instruction);
+            if (instruction.OpCode.Code == Code.Ret) return [.. path];
+        }
+        return null;
+    }
+
+    private static bool ReadsHolder(MethodDef method, FieldDef holder)
+    {
+        var il = method.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+        return il.Length == 5 && il[0].OpCode.Code == Code.Ldsfld && il[0].Operand is IField reference &&
+            reference.ResolveFieldDef() == holder && il[1].OpCode.Code == Code.Ldfld &&
+            il[2].OpCode.Code == Code.Ldarg_0 && il[3].OpCode.Code is Code.Ldelem_I4 or Code.Ldelem_I8 or Code.Ldelem_R4 or Code.Ldelem_R8 &&
+            il[4].OpCode.Code == Code.Ret;
+    }
+
+    private static Dictionary<(Getter, int), int?> Read(StaticMachine machine, IEnumerable<(Getter Getter, int Index)> asks, HashSet<string> refusals, HashSet<string> initializationFields, HashSet<Getter> preservable, HashSet<Getter> preserve)
+    {
+        var results = new Dictionary<(Getter, int), int?>();
+        var initialized = new Dictionary<Getter, bool>();
+        foreach (var (getter, index) in asks)
+        {
+            if (!initialized.TryGetValue(getter, out var ready))
+            {
+                var warm = machine.Execute(getter.Method, [StaticValue.FromInt32(index)]);
+                var effects = machine.State.LoaderEvidence.EffectsOf(getter.Method.MDToken.Raw);
+                var inert = effects.StaticFieldsWritten.All(initializationFields.Contains);
+                ready = warm.Succeeded && !effects.WroteMappedImage && !effects.WroteScratchRegion &&
+                    effects.Registrations.Count == 0 && (inert || preservable.Contains(getter));
+                if (ready && !inert) preserve.Add(getter);
+                initialized[getter] = ready;
+                if (!ready) refusals.Add($"{getter.Method.MDToken}: {warm.Diagnostic ?? $"initializer effects prevent folding: fields={string.Join(",", effects.StaticFieldsWritten)}, mapped={effects.WroteMappedImage}, scratch={effects.WroteScratchRegion}, registrations={string.Join(",", effects.Registrations)}"}");
+            }
+            if (!ready) { results[(getter, index)] = null; continue; }
+            using var scope = machine.State.Evidence.SetAside(getter.Method.MDToken.Raw);
+            var answer = machine.Execute(getter.Method, [StaticValue.FromInt32(index)]);
+            var mark = machine.State.LoaderEvidence.EffectsOf(getter.Method.MDToken.Raw);
+            results[(getter, index)] = answer.Succeeded && answer.Value.Kind == StaticValueKind.Int32 &&
+                !mark.WroteStaticField && !mark.WroteMappedImage && !mark.WroteScratchRegion && mark.Registrations.Count == 0
+                ? answer.Value.AsInt32() : null;
+        }
+        return results;
+    }
+}
+
+
+/// <summary>Retries numeric recovery after proven loader initialization has been removed.</summary>
+public sealed class NumericTableRecheckPass : NumericTableRecoveryPass
+{
+    public override string Name => "numeric-tables-recheck";
+    public override IReadOnlyCollection<string> Dependencies => ["method-inlining-recheck"];
+}

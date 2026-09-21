@@ -18,6 +18,7 @@
     "Payloads",
     "Recovery",
     "RebuiltMethods",
+    "LiftedPrograms",
     "RebuiltCheck",
     "Verified",
     "VerificationDiagnostics",
@@ -65,6 +66,7 @@
       "type": "integer",
       "minimum": 0
     },
+    "LiftedPrograms": { "description": "Additional interpreter programs rebuilt into new helper methods.", "type": "integer", "minimum": 0 },
     "RebuiltCheck": {
       "description": "What running the cleaned copy established about those bodies. `agreed` means it unpacked the same payload the original did.",
       "enum": ["notMade", "agreed", "disagreed"]
@@ -99,13 +101,15 @@
     "outputs": {
       "title": "Every file the run wrote",
       "type": "object",
-      "required": ["Cleaned", "Analysis", "Changes", "Blockers", "Renames", "Config", "Listings"],
+      "required": ["Cleaned", "Analysis", "Changes", "Blockers", "Renames", "Config", "Listings", "Report", "Embedded"],
       "properties": {
         "Cleaned": {
           "description": "The readable copy of the assembly, or null where the run had nothing it could stand behind.",
           "type": ["string", "null"]
         },
         "Analysis": { "type": "string" },
+        "Embedded": { "description": "Embedded-assembly recovery graph and per-artifact manifests.", "type": ["string", "null"] },
+        "Report": { "description": "Analyst-facing HTML report with output links and limitations.", "type": ["string", "null"] },
         "Changes": { "type": "string" },
         "Blockers": { "type": ["string", "null"] },
         "Renames": { "type": ["string", "null"] },

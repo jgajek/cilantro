@@ -110,7 +110,8 @@ public sealed record IntrinsicContext(
     StaticMachineState State,
     DelegateInvoker? Invoke = null,
     MethodInvoker? Call = null,
-    IReadOnlyList<MethodDef>? Frames = null);
+    IReadOnlyList<MethodDef>? Frames = null,
+    Func<ITypeDefOrRef, IntrinsicResult>? InitializeType = null);
 
 public interface IStaticIntrinsic
 {
@@ -2170,7 +2171,7 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
             case "CreateType" or "CreateTypeInfo" when arguments.Count == 1:
                 return Close(context, arguments[0]);
             case "CreateDelegate":
-                return Bind(context, arguments);
+                return BindDelegate(context, arguments);
             case "DefineParameter":
                 return IntrinsicResult.Completed(StaticValue.Null);
             default:
@@ -2715,7 +2716,7 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     /// <summary>
     /// Assembles the emitted instructions into a body and hands back a delegate over it.
     /// </summary>
-    private static IntrinsicResult Bind(
+    internal static IntrinsicResult BindDelegate(
         IntrinsicContext context,
         IReadOnlyList<StaticValue> arguments)
     {
@@ -4109,6 +4110,13 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
             return IntrinsicResult.Completed(member);
         }
+        // DynamicMethod overrides MethodInfo.CreateDelegate. Dispatch by the modeled receiver
+        // as well as the metadata owner; Reactor commonly calls the base-class signature.
+        if (type == "System.Reflection.MethodInfo" && name == "CreateDelegate" && arguments.Count == 2 &&
+            heap.TryGetRuntimeTypeName(arguments[0], out var dynamicReceiver) &&
+            dynamicReceiver == "System.Reflection.Emit.DynamicMethod")
+            return ReflectionEmitIntrinsic.BindDelegate(context, arguments);
+
         // Binding a delegate reflectively reaches the same state a delegate constructor would, so
         // it is modeled as what it produces rather than refused for arriving by another route.
         if (type is "System.Delegate" or "System.MulticastDelegate" &&
@@ -7027,6 +7035,14 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
+        if (name == "RunClassConstructor" && arguments.Count == 1)
+        {
+            if (!context.State.Heap.TryGetMetadataHandle(arguments[0], out var handle) ||
+                handle is not ITypeDefOrRef type || context.InitializeType is null)
+                return IntrinsicResult.Unknown("RunClassConstructor requires a resolved type handle and an interpreter.");
+            return context.InitializeType(type);
+        }
+
         // Forcing a method or delegate to compile is a runtime housekeeping step with no result and
         // nothing this machine models a state for: a NecroBit loader calls it to make sure its hook is
         // JIT-compiled before it installs it, and under static interpretation there is nothing to

@@ -18,6 +18,98 @@ namespace Cilantro.Tests;
 public sealed class GlobalStateFoldingTests
 {
     [Fact]
+    public void AnotherTypesInitializerCanReadCompletedState()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var holder = SyntheticContext.AddType(module, "Holder");
+            var field = AddStaticInt(holder, "state");
+            AddInitializer(module, holder, field);
+            var consumer = SyntheticContext.AddType(module, "Consumer");
+            AddInitializer(module, consumer, AddStaticInt(consumer, "other"));
+            var body = consumer.FindStaticConstructor().Body;
+            body.Instructions.Insert(0, OpCodes.Ldsfld.ToInstruction(field));
+            body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+        });
+        context.SetFact("globals.state", new CapturedGlobalState(
+            new Dictionary<uint, int>(), new Dictionary<uint, int> { [FieldToken(context, "state")] = 42 }));
+
+        var result = new GlobalPredicateFoldingPass().Run(context);
+
+        Assert.Equal(1, result.Changes);
+        var consumer = context.Module.GetTypes().Single(type => type.Name == "Consumer");
+        Assert.Equal(42, consumer.FindStaticConstructor().Body.Instructions[0].GetLdcI4Value());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReadsDuringInitializationKeepTheirIntermediateValues(bool throughHelper)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            var field = AddStaticInt(type, "state");
+            AddInitializer(module, type, field);
+            var initializer = type.FindStaticConstructor();
+            var reader = new MethodDefUser("ReadDuringStartup",
+                MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Private | MethodAttributes.Static)
+                { Body = new CilBody() };
+            type.Methods.Add(reader);
+            reader.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(field));
+            reader.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            reader.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            if (throughHelper)
+                initializer.Body.Instructions.Insert(0, OpCodes.Call.ToInstruction(reader));
+            else
+            {
+                initializer.Body.Instructions.Insert(0, OpCodes.Ldsfld.ToInstruction(field));
+                initializer.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+            }
+        });
+        context.SetFact("globals.state", new CapturedGlobalState(
+            new Dictionary<uint, int>(), new Dictionary<uint, int> { [FieldToken(context, "state")] = 42 }));
+
+        var result = new GlobalPredicateFoldingPass().Run(context);
+
+        var holder = context.Module.GetTypes().Single(type => type.Name == "Holder");
+        var startup = throughHelper ? holder.Methods.Single(method => method.Name == "ReadDuringStartup")
+            : holder.FindStaticConstructor();
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(Code.Ldsfld, startup.Body.Instructions[0].OpCode.Code);
+    }
+
+    [Fact]
+    public void AStartupWriterReachedThroughAnOrdinaryCallChainIsNotWriteOnce()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            var field = AddStaticInt(type, "state");
+            AddInitializer(module, type, field);
+            var initializer = type.FindStaticConstructor();
+            var writer = new MethodDefUser("Write", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Private | MethodAttributes.Static)
+                { Body = initializer.Body };
+            type.Methods.Add(writer);
+            var helper = new MethodDefUser("StartupHelper", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Assembly | MethodAttributes.Static)
+                { Body = new CilBody() };
+            type.Methods.Add(helper);
+            helper.Body.Instructions.Add(OpCodes.Call.ToInstruction(writer));
+            helper.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            initializer.Body = new CilBody();
+            initializer.Body.Instructions.Add(OpCodes.Call.ToInstruction(helper));
+            initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            AddPublicCaller(module, helper);
+        });
+
+        Assert.False(FieldWriteSafety.Analyze(context.Module)
+            .IsWriteOnceDuringInitialization(FieldToken(context, "state")));
+    }
+
+    [Fact]
     public void FieldWrittenOnlyByATypeInitializerIsWriteOnce()
     {
         using var context = SyntheticContext.Build(module =>

@@ -290,6 +290,30 @@ public sealed class OptInCleanupRenameTests
             context.Module.GetTypes().Select(type => type.Namespace.String));
     }
 
+    [Fact]
+    public void NamesFieldSettersAndClosedForwarderChainsButNotCycles()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var owner = SyntheticContext.AddType(module, "Host");
+            var field = new FieldDefUser("Enabled", new FieldSig(module.CorLibTypes.Boolean), FieldAttributes.Private | FieldAttributes.Static);
+            owner.Fields.Add(field);
+            var setter = new MethodDefUser("gFvcpJGhiO", MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.Boolean))
+                { Attributes = MethodAttributes.Assembly | MethodAttributes.Static, Body = new CilBody() };
+            setter.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction()); setter.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(field)); setter.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            owner.Methods.Add(setter);
+            var leaf = Forwarder(module, "Leaf"); owner.Methods.Add(leaf);
+            var chain = Forwarder(module, "vwAcYxvHwU"); chain.Body.Instructions[0].Operand = leaf; owner.Methods.Add(chain);
+            var cycle = Forwarder(module, "wPl4Mn7QbXr"); cycle.Body.Instructions[0].Operand = cycle; owner.Methods.Add(cycle);
+        });
+        context.SetFact("options.renameSymbols", true);
+        new SymbolRenamingPass().Run(context);
+        var names = context.Module.GetTypes().SelectMany(t => t.Methods).Select(m => m.Name.String).ToArray();
+        Assert.Contains("Write_Enabled", names);
+        Assert.Contains("GC_Collect", names);
+        Assert.Single(names, n => n.StartsWith("generatedMethod_", StringComparison.Ordinal));
+    }
+
     private static MethodDefUser Forwarder(ModuleDef module, string name)
     {
         var method = NewVoidMethod(module, name, MethodAttributes.Assembly);
@@ -332,6 +356,71 @@ public sealed class OptInCleanupRenameTests
         method.Body.Instructions.Add(OpCodes.Call.ToInstruction(collect));
         method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
         return method;
+    }
+
+    [Fact]
+    public void NamesArrayFieldsAndSimpleReadersDescriptively()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Host");
+            var field = new FieldDefUser("vwAcYxvHwU", new FieldSig(new SZArraySig(module.CorLibTypes.Byte)), FieldAttributes.Private | FieldAttributes.Static);
+            type.Fields.Add(field);
+            var reader = new MethodDefUser("kT7mNpQrStU", MethodSig.CreateStatic(field.FieldType))
+            { Attributes = MethodAttributes.Private | MethodAttributes.Static, Body = new CilBody() };
+            reader.Body.Instructions.Add(Instruction.Create(OpCodes.Ldsfld, field));
+            reader.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            type.Methods.Add(reader);
+        });
+        context.SetFact("options.renameSymbols", true);
+        new SymbolRenamingPass().Run(context);
+        var host = context.Module.GetTypes().Single(t => t.Name == "Host");
+        Assert.StartsWith("byteArrayField_", host.Fields.Single().Name.String);
+        Assert.StartsWith("Read_byteArray", host.Methods.Single().Name.String);
+        AssertWritesAndVerifies(context);
+    }
+
+    [Fact]
+    public void FoldedConstantHelperBecomesCleanupCandidate()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Host");
+            var helper = new MethodDefUser("Predicate", MethodSig.CreateStatic(module.CorLibTypes.Boolean))
+            { Attributes = MethodAttributes.Private | MethodAttributes.Static, Body = new CilBody() };
+            helper.Body.Instructions.Add(Instruction.Create(OpCodes.Ldc_I4_1));
+            helper.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+            var caller = NewVoidMethod(module, "Caller", MethodAttributes.Public);
+            caller.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, helper));
+            caller.Body.Instructions.Insert(1, Instruction.Create(OpCodes.Pop));
+            type.Methods.Add(helper); type.Methods.Add(caller);
+        });
+        context.SetFact("options.removeRuntime", true);
+        var folded = new Cilantro.Core.Passes.ConstantPredicatePass().Run(context);
+        Assert.Equal(PassStatus.Success, folded.Status);
+        new RuntimeCleanupPass().Run(context);
+        Assert.DoesNotContain(context.Module.GetTypes().SelectMany(t => t.Methods), m => m.Name == "Predicate");
+        AssertWritesAndVerifies(context);
+    }
+
+    [Fact]
+    public void RemovingOrphanSignatureReleasesDeadProtectorType()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var proxy = AddDeadProxy(module, "DeadProxy");
+            var host = SyntheticContext.AddType(module, "Host");
+            host.Methods.Add(NewVoidMethod(module, "PublicEntry", MethodAttributes.Public));
+            var orphan = NewVoidMethod(module, "Orphan", MethodAttributes.Private);
+            orphan.MethodSig = MethodSig.CreateStatic(module.CorLibTypes.Void, proxy.ToTypeSig());
+            host.Methods.Add(orphan);
+        });
+        context.SetFact("options.removeRuntime", true);
+        DeclareProxyOrphaned(context, "DeadProxy");
+        RecoveryOrphans.Declare(context, FindMethod(context, "Orphan"));
+        new RuntimeCleanupPass().Run(context);
+        Assert.DoesNotContain(context.Module.GetTypes(), t => t.Name == "DeadProxy");
+        AssertWritesAndVerifies(context);
     }
 
     private static void BuildRenamableModule(ModuleDefUser module)

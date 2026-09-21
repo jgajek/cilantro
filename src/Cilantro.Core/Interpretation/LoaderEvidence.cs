@@ -95,6 +95,13 @@ public sealed record LoaderMethodEffects(
     IReadOnlyList<string> Registrations)
 {
     public bool WroteStaticField => StaticFieldsWritten.Count != 0;
+
+    /// <summary>
+    /// Subtree writes excluding the declaring type's implicit initialization on method entry.
+    /// Null means the evidence predates this distinction and cannot justify removing only a body.
+    /// </summary>
+    public IReadOnlyList<string>? BodyStaticFieldsWritten { get; init; }
+    public bool AllInvocationsCompleted { get; init; }
 }
 
 public sealed record LoaderInterpretationEvidence(
@@ -134,8 +141,12 @@ public sealed record LoaderInterpretationEvidence(
             other.Effects.TryGetValue(entry.Key, out var effects) &&
             effects.WroteMappedImage == entry.Value.WroteMappedImage &&
             effects.WroteScratchRegion == entry.Value.WroteScratchRegion &&
+            effects.AllInvocationsCompleted == entry.Value.AllInvocationsCompleted &&
             effects.StaticFieldsWritten.SequenceEqual(
                 entry.Value.StaticFieldsWritten, StringComparer.Ordinal) &&
+            ((effects.BodyStaticFieldsWritten is null && entry.Value.BodyStaticFieldsWritten is null) ||
+             (effects.BodyStaticFieldsWritten is not null && entry.Value.BodyStaticFieldsWritten is not null &&
+              effects.BodyStaticFieldsWritten.SequenceEqual(entry.Value.BodyStaticFieldsWritten, StringComparer.Ordinal))) &&
             effects.Registrations.SequenceEqual(entry.Value.Registrations, StringComparer.Ordinal));
     }
 }
@@ -150,6 +161,8 @@ internal sealed class LoaderEvidenceRecorder
     private readonly List<uint> _callStack = [];
     private readonly List<LoaderObservation> _observations = [];
     private readonly Dictionary<uint, MutableEffects> _effects = [];
+    private readonly HashSet<int> _initializingFrames = [];
+    private readonly HashSet<uint> _failedMethods = [];
 
     public void EnterMethod(MethodDef method) => _callStack.Add(method.MDToken.Raw);
 
@@ -166,8 +179,43 @@ internal sealed class LoaderEvidenceRecorder
         _observations.Add(new LoaderObservation(kind, detail, verdict, _callStack.ToArray()));
     }
 
-    public void RecordStaticFieldWrite(string fieldFullName) =>
-        MarkStack(effects => effects.StaticFields.Add(fieldFullName));
+    public void RecordStaticFieldWrite(string fieldFullName)
+    {
+        for (var index = 0; index < _callStack.Count; index++)
+        {
+            var token = _callStack[index];
+            if (!_effects.TryGetValue(token, out var effects))
+                _effects[token] = effects = new MutableEffects();
+            effects.StaticFields.Add(fieldFullName);
+            if (!_initializingFrames.Contains(index)) effects.BodyStaticFields.Add(fieldFullName);
+        }
+    }
+
+    public void CompleteMethod(bool completed)
+    {
+        if (_callStack.Count == 0) return;
+        if (!completed) _failedMethods.Add(_callStack[^1]);
+        if (_effects.TryGetValue(_callStack[^1], out var effects)) effects.AllInvocationsCompleted &= completed;
+    }
+
+    // Only this frame's automatic entry initialization is excluded. A callee initializing
+    // another type still contributes to its caller's body effects.
+    public EntryInitialization InitializingEntry() => new(this, _callStack.Count - 1);
+
+    public readonly struct EntryInitialization : IDisposable
+    {
+        private readonly LoaderEvidenceRecorder _recorder;
+        private readonly int _index;
+
+        internal EntryInitialization(LoaderEvidenceRecorder recorder, int index)
+        {
+            _recorder = recorder;
+            _index = index;
+            _recorder._initializingFrames.Add(index);
+        }
+
+        public void Dispose() => _recorder._initializingFrames.Remove(_index);
+    }
 
     /// <summary>
     /// Records that the subtree handed something to the runtime that outlives the interpretation.
@@ -217,6 +265,8 @@ internal sealed class LoaderEvidenceRecorder
             if (_recorder._effects.TryGetValue(_token, out var during))
             {
                 _earlier.StaticFields.UnionWith(during.StaticFields);
+                _earlier.BodyStaticFields.UnionWith(during.BodyStaticFields);
+                _earlier.AllInvocationsCompleted &= during.AllInvocationsCompleted;
                 _earlier.Registrations.UnionWith(during.Registrations);
                 _earlier.MappedImage |= during.MappedImage;
                 _earlier.ScratchRegion |= during.ScratchRegion;
@@ -234,7 +284,12 @@ internal sealed class LoaderEvidenceRecorder
                 entry.Value.StaticFields.Order(StringComparer.Ordinal).ToArray(),
                 entry.Value.MappedImage,
                 entry.Value.ScratchRegion,
-                entry.Value.Registrations.Order(StringComparer.Ordinal).ToArray())));
+                entry.Value.Registrations.Order(StringComparer.Ordinal).ToArray())
+            {
+                BodyStaticFieldsWritten = entry.Value.BodyStaticFields.Order(StringComparer.Ordinal).ToArray(),
+                AllInvocationsCompleted = entry.Value.AllInvocationsCompleted &&
+                    !_failedMethods.Contains(entry.Key) && !_callStack.Contains(entry.Key)
+            }));
 
     // Attributing a write to every frame currently on the stack gives subtree semantics: a
     // caller is responsible for whatever its callees wrote, which is what removability needs.
@@ -251,6 +306,8 @@ internal sealed class LoaderEvidenceRecorder
     private sealed class MutableEffects
     {
         public HashSet<string> StaticFields { get; } = new(StringComparer.Ordinal);
+        public HashSet<string> BodyStaticFields { get; } = new(StringComparer.Ordinal);
+        public bool AllInvocationsCompleted { get; set; } = true;
         public HashSet<string> Registrations { get; } = new(StringComparer.Ordinal);
         public bool MappedImage { get; set; }
         public bool ScratchRegion { get; set; }

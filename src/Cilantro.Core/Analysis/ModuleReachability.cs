@@ -116,7 +116,7 @@ public sealed class ModuleReachability
     /// visible outside the assembly; and this is a fixed point, since constructing a type reaches
     /// its methods and those may construct more.
     ///
-    /// The reading is only taken where the module cannot get behind it, and the wider reading
+    /// The reading is only taken where the module cannot get behind it, and the reachable reading
     /// decides that: where anything it reaches can make an instance without naming its type, there
     /// is no type the unnamed instance could not be of, and the narrower reading is refused whole.
     /// <see cref="InstanceRefusal"/> says why.
@@ -128,10 +128,13 @@ public sealed class ModuleReachability
     {
         ArgumentNullException.ThrowIfNull(module);
         var roots = alsoRoots?.ToArray() ?? [];
+        var narrower = Walk(module, typeInitializersAlwaysRun, roots, virtualsNeedAnInstance: true);
+        // A reflective constructor inside an uninstantiated type cannot bootstrap its
+        // own receiver. Inspect the reachable fixed point, then fall back if something
+        // in that graph can actually introduce instances without naming their types.
+        if (UnnamedReach(module, narrower) is not { } refusal) return narrower;
         var wider = Walk(module, typeInitializersAlwaysRun, roots, virtualsNeedAnInstance: false);
-        if (UnnamedReach(module, wider) is { } refusal)
-            return new ModuleReachability(wider._reachable, wider._reflectivelyExposed, refusal);
-        return Walk(module, typeInitializersAlwaysRun, roots, virtualsNeedAnInstance: true);
+        return new ModuleReachability(wider._reachable, wider._reflectivelyExposed, refusal);
     }
 
     /// <summary>
@@ -139,7 +142,7 @@ public sealed class ModuleReachability
     /// <see langword="null"/> where every instance it can make is of a type it names.
     /// </summary>
     /// <remarks>
-    /// Only what the wider reading reaches is asked about. A module may carry a reflective
+    /// Only what the instance-aware fixed point reaches is asked about. A module may carry a reflective
     /// constructor the protector abandoned — these files do — and an abandoned one makes nothing.
     ///
     /// Invoking a method reflectively is deliberately not a reason to refuse, though it does run a
@@ -177,7 +180,7 @@ public sealed class ModuleReachability
                     continue;
                 }
                 var name = called.Name.String;
-                if (Constructs(owner, name) && !NamesWhatItMakes(module, body, at))
+                if (Constructs(owner, name) && !NamesWhatItMakes(module, method, at))
                 {
                     return "it can make an instance without naming its type, through " +
                         $"{owner}::{name} reached from {method.FullName}";
@@ -212,7 +215,8 @@ public sealed class ModuleReachability
     /// this reading has not already allowed for.
     /// </summary>
     /// <remarks>
-    /// Two forms say it. One handed a type token names the type, and taking that token has already
+    /// A type token, including a finite set carried through local assignments, names the type.
+    /// Taking that token has already
     /// put the type among those an instance can exist of, so the construction adds nothing. One
     /// handed an assembly name and a type name as literals names both, and where the assembly is
     /// not this one it makes nothing declared here at all — these files reach for a cipher out of
@@ -221,16 +225,24 @@ public sealed class ModuleReachability
     /// Anything else is a construction whose type is decided by a value, and a value could be any
     /// type. There is no middle answer to give about it.
     /// </remarks>
-    private static bool NamesWhatItMakes(ModuleDef module, IList<Instruction> body, int at)
+    private static bool NamesWhatItMakes(ModuleDef module, MethodDef method, int at)
     {
+        var body = method.Body.Instructions;
+        var entries = body.SelectMany(i => i.Operand switch
+        {
+            Instruction target => new[] { target },
+            IList<Instruction> many => many,
+            _ => Array.Empty<Instruction>()
+        }).ToHashSet();
+        foreach (var handler in method.Body.ExceptionHandlers)
+            foreach (var boundary in new[] { handler.TryStart, handler.TryEnd, handler.HandlerStart, handler.HandlerEnd, handler.FilterStart })
+                if (boundary is not null) entries.Add(boundary);
+        if (entries.Contains(body[at])) return false;
         if (body[at].Operand is not IMethod called || called.MethodSig?.Params is not { } parameters)
             return false;
         if (parameters is [{ FullName: "System.Type" }])
         {
-            return at >= 2 &&
-                body[at - 1].Operand is IMethod handle &&
-                handle.Name == "GetTypeFromHandle" &&
-                body[at - 2].OpCode.Code == Code.Ldtoken;
+            return NamedType(at - 1, new HashSet<Local>(), 0);
         }
         if (parameters is [{ FullName: "System.String" }, { FullName: "System.String" }] &&
             at >= 2 &&
@@ -242,6 +254,43 @@ public sealed class ModuleReachability
                 !assembly.StartsWith(ours, StringComparison.OrdinalIgnoreCase);
         }
         return false;
+
+        bool FixedType(MethodDef? helper, HashSet<MethodDef> seen)
+        {
+            if (helper is not { IsStatic: true, HasBody: true } || helper.Module != module ||
+                helper.HasGenericParameters || helper.DeclaringType.HasGenericParameters ||
+                helper.MethodSig.Params.Count != 0 || helper.ReturnType.FullName != "System.Type" ||
+                helper.Body.ExceptionHandlers.Count != 0 || seen.Count >= 8 || !seen.Add(helper)) return false;
+            var il = helper.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+            if (il.Length == 3 && il[0].OpCode.Code == Code.Ldtoken && il[0].Operand is ITypeDefOrRef &&
+                il[1].OpCode.Code == Code.Call && il[1].Operand is IMethod
+                { DeclaringType.FullName: "System.Type", Name.String: "GetTypeFromHandle" } &&
+                il[2].OpCode.Code == Code.Ret) return true;
+            return il.Length == 2 && il[0].OpCode.Code == Code.Call && il[0].Operand is IMethod next &&
+                il[1].OpCode.Code == Code.Ret && FixedType(next.ResolveMethodDef(), seen);
+        }
+
+        bool NamedType(int index, HashSet<Local> visited, int depth)
+        {
+            if (index < 0 || depth > 8) return false;
+            while (index >= 0 && body[index].OpCode.Code == Code.Nop)
+            { if (entries.Contains(body[index])) return false; index--; }
+            if (index < 0) return false;
+            if (body[index].OpCode.Code == Code.Ldnull) return true;
+            if (index >= 1 && !entries.Contains(body[index]) && body[index].OpCode.Code == Code.Call &&
+                body[index].Operand is IMethod { DeclaringType.FullName: "System.Type", Name.String: "GetTypeFromHandle" } &&
+                body[index - 1].OpCode.Code == Code.Ldtoken && body[index - 1].Operand is ITypeDefOrRef) return true;
+            if (body[index].OpCode.Code == Code.Call && body[index].Operand is IMethod helper &&
+                FixedType(helper.ResolveMethodDef(), new HashSet<MethodDef>())) return true;
+            if (!body[index].IsLdloc() || body[index].GetLocal(method.Body.Variables) is not { } local || !visited.Add(local)) return false;
+            if (body.Any(i => i.OpCode.Code is Code.Ldloca or Code.Ldloca_S && i.GetLocal(method.Body.Variables) == local)) return false;
+            var stores = body.Select((i, n) => (i, n)).Where(x => x.i.IsStloc() && x.i.GetLocal(method.Body.Variables) == local).ToArray();
+            // A local assigned only known tokens can hold one of those or its initial null value;
+            // neither permits constructing a different type. The token itself already
+            // makes that exact type reflectively exposed in the ordinary reachability walk.
+            return stores.Length is > 0 and <= 8 && stores.All(store => !entries.Contains(store.i) &&
+                NamedType(store.n - 1, new HashSet<Local>(visited), depth + 1));
+        }
     }
 
     private static ModuleReachability Walk(

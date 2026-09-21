@@ -41,13 +41,13 @@ internal static class Tools
         {
             ["name"] = "unpack",
             ["description"] =
-                "Recover readable code and hidden payloads from a .NET Reactor protected assembly. " +
+                "Recover readable code and embedded assemblies from supported .NET Reactor or ConfuserEx samples. " +
                 "The file is read, never run. Returns one JSON object: Wrote names every file " +
                 "produced, including the cleaned copy a decompiler can open; Payloads names what was " +
                 "hidden inside, each with its SHA-256 and the path it was written to; Blockers says " +
                 "what stopped the run and what to declare to get past it; MoreToDeclare says whether " +
-                "running again with a fuller declarations file could do better. Takes a few seconds " +
-                "for most samples. Set devirtualize to rebuild methods that shipped as bytecode for " +
+                "running again with a fuller declarations file could do better. Success and structural " +
+                "verification do not prove complete recovery or equivalent behavior. Set devirtualize to rebuild methods that shipped as bytecode for " +
                 "a custom interpreter, which is worth it when the code itself is the question and " +
                 "costs a minute or two.",
             ["inputSchema"] = new JsonObject
@@ -104,10 +104,9 @@ internal static class Tools
         {
             ["name"] = "cancel_unpack",
             ["description"] =
-                "Stop a background run. It stops at the end of the pass it is in, so this returns " +
-                "before the run has actually finished — poll unpack_status until Phase is cancelled. " +
-                "What it had already written to disk stays written, but there is no manifest and no " +
-                "cleaned copy, because half a pipeline has nothing to claim. Only runs this server " +
+                "Request cancellation of a background run at its next cancellation checkpoint. This returns " +
+                "before the run has necessarily stopped — poll unpack_status for the terminal phase. " +
+                "Files already written remain on disk; their presence does not establish a completed run. Only runs this server " +
                 "started can be stopped.",
             ["inputSchema"] = new JsonObject
             {
@@ -217,6 +216,8 @@ internal static class Tools
             "expects, and leave names and virtualized methods as they are. Off by " +
             "default, which gets further on its own and says what it assumed."),
         ["analyzeOnly"] = Flag("Report what is there without writing a cleaned copy."),
+        ["recoverEmbedded"] = Flag("Continue recovery into extracted assemblies, within depth, artifact and byte limits."),
+        ["genericRecovery"] = Flag("Allow verified generic rewrites without identifying the protector; other recovery gates still apply."),
         ["devirtualize"] = Flag(
             "Rebuild methods that are bytecode for a custom interpreter back into code " +
             "in the cleaned copy, and check the result by unpacking with it. Off here " +
@@ -242,6 +243,8 @@ internal static class Tools
         string? statusPath,
         CancellationToken cancellation) => new(
             AnalyzeOnly: Yes(arguments, "analyzeOnly") ?? false,
+            GenericRecovery: Yes(arguments, "genericRecovery") ?? false,
+            RecoverEmbeddedAssemblies: Yes(arguments, "recoverEmbedded") ?? false,
             RenameSymbols: Yes(arguments, "rename"),
             OutputPath: Word(arguments, "output"),
             ReportDirectory: Word(arguments, "reportDir"),

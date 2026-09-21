@@ -1,32 +1,33 @@
 # Code organization
 
-`Cilantro.Core` separates the run coordinator from the data and passes it uses:
-
 | Location | Responsibility |
 | --- | --- |
-| `CilantroPipeline.cs` | Default pass order, run orchestration, reporting and emission |
-| `ArtifactContext.cs` | Loaded assembly, trusted libraries, facts, evidence and change records |
-| `Pipeline/` | Pass contract, options/results and execution planning |
-| `Reporting/ReportModels.cs` | Public report records |
-| `Passes/`, `Recovery/`, `Strings/`, `Payload/`, `Proxy/` | Detection and recovery stages |
-| `Verification/` | Assembly validation, identity/structure checks and mutation rollback |
-| `Analysis/`, `Codec/` | Analysis and decoding helpers |
+| `src/Cilantro.Cli/Program.cs` | Arguments, exit codes, JSON mode, and CLI entry point |
+| `src/Cilantro.Cli/Explain.cs` | Human-readable console presentation |
+| `src/Cilantro.Core/CilantroPipeline.cs` | Pass order, orchestration, verification, emission, and reporting |
+| `src/Cilantro.Core/Pipeline/` | Options, planning, status, results, and bounded embedded recovery |
+| `src/Cilantro.Core/Interpretation/` | Static machine, values, heap, modeled APIs, host facts, and evidence |
+| `src/Cilantro.Core/Recovery/` | Body recovery, VM reading/rebuilding, cleanup, resources, and naming |
+| `src/Cilantro.Core/Analysis/` | CFG, state, reachability, and dependency analyses |
+| `src/Cilantro.Core/Passes/` | General transformations and control-flow cleanup |
+| `src/Cilantro.Core/Native/` | Supported native-bootstrap extraction |
+| `src/Cilantro.Core/Reporting/` | Report models, shared analyst summary, artifact prioritization, and HTML |
+| `src/Cilantro.Core/Verification/` | Validation and mutation transactions |
+| `src/Cilantro.Mcp/` | Stdio protocol, tool definitions, and background runs |
+| `tests/Cilantro.Tests/` | Unit, integration, schema, and sample regression tests |
 
-Types extracted from `CilantroPipeline.cs` retain their `Cilantro.Core` namespace and public
-signatures. File placement does not require callers to change imports. Pass ordering remains in
-`CilantroPipeline.CreateDefaultPasses`; dependencies and planner decisions still control execution.
+## Ownership rules
 
-## Mutation ownership
+Use `InstructionMutationTransaction` for instruction edits, `BodyMutationTransaction` for a body, and `BodyMutationBatch` for related body changes. Capture before mutation and verify before committing. Dispose uncommitted transactions to restore bodies and discard pending change records. These transactions do not own arbitrary metadata/resource edits.
 
-Use `InstructionMutationTransaction` for opcode/operand edits, `BodyMutationTransaction` for one
-complete method body, and `BodyMutationBatch` for a rewrite spanning multiple bodies. Capture before
-editing. A batch captures each method once, even when several call sites belong to that method.
-Keep the batch in a `using` scope so an exception or early return restores every uncommitted body.
+Preserve type-initialization timing, side effects, exception boundaries, stack behavior, and indirect references. Do not equate no direct callers with no uses. Loader-body effects are distinct from the containing type's automatic initialization. Numeric token consumers can require stable metadata identities even after visible call sites have been rewritten.
 
-Verify the rewrite before calling `Commit`. Change records queued through `RecordChange` become
-visible only on commit; rollback discards them. A batch owns body snapshots and pending records,
-not changes to fields, resources or type declarations. Those need their own rollback handling.
+## Presentation and contracts
 
-Tests exercise commit, rollback, repeated capture, exception unwinding and the recovery passes
-that use these transactions. Corpus gates and emitted output hashes check that structural
-refactoring preserves sample results.
+`AnalystSummary` supplies the console and HTML interpretation of a result. `AnalystArtifact` combines provenance and child results to recommend a starting artifact. `AnalystReport` escapes sample-derived text and renders offline HTML. Keep root/child validation qualifications visible in both surfaces.
+
+`RunManifest` and `Reporting/ReportModels.cs` define JSON-facing records. Update the corresponding [schemas](../schema/README.md) and schema tests when their serialized shape changes. Human wording is not a machine contract.
+
+## Validation
+
+Add tests for semantic boundaries, rollback, and false-positive refusal, not just happy-path counters. Use the sample corpus for static regression and benign probes for executable comparisons. [Development](development.md) gives commands; [historical notes](history/pre-0.10/code-organization.md) preserve detailed reasoning from earlier implementation rounds.

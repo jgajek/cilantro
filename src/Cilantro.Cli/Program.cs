@@ -29,6 +29,8 @@ internal static class CilantroCommand
         // when the thing that went wrong was the command line itself.
         _json = args.Contains("--json");
         var analyzeOnly = false;
+        var genericRecovery = false;
+        var recoverEmbedded = false;
         var failOnPartial = false;
         var removeRuntime = true;
         bool? renameSymbols = null;
@@ -50,6 +52,12 @@ internal static class CilantroCommand
             {
                 case "--analyze-only":
                     analyzeOnly = true;
+                    break;
+                case "--recover-embedded":
+                    recoverEmbedded = true;
+                    break;
+                case "--generic-recovery":
+                    genericRecovery = true;
                     break;
                 case "--fail-on-partial":
                     failOnPartial = true;
@@ -142,7 +150,9 @@ internal static class CilantroCommand
                 AllowDeclaredCalls: allowDeclaredCalls,
                 Strict: strict,
                 Devirtualize: devirtualize,
-                StatusPath: status ? RunStatus.PathFor(input, reportDirectory) : null));
+                StatusPath: status ? RunStatus.PathFor(input, reportDirectory) : null,
+                GenericRecovery: genericRecovery,
+                RecoverEmbeddedAssemblies: recoverEmbedded));
 
             if (_json)
             {
@@ -153,9 +163,9 @@ internal static class CilantroCommand
                 return result.Success ? 0 : 1;
             }
 
+            Explain.Summarize(result, input, verbose);
             if (verbose)
                 Explain.PassLog(result.Report);
-            Explain.Summarize(result, input, verbose);
             if (!result.Report.VerificationPassed)
             {
                 foreach (var diagnostic in result.Report.VerificationDiagnostics)
@@ -269,28 +279,32 @@ internal static class CilantroCommand
             $"""
             CILantro {CilantroPipeline.Version} - recover readable code from protected .NET
 
-            Point it at a file protected with .NET Reactor or ConfuserEx. It decrypts what
-            the protector encrypted, undoes what it scrambled, and writes a clean copy you
-            can open in a decompiler. The protected file is never run.
+            Recover supported .NET Reactor and ConfuserEx samples for analysis. The sample
+            is interpreted statically, never executed. Recovery can be partial; a cleaned
+            assembly and structural checks do not prove equivalent program behavior.
 
-              cilantro suspicious.exe
+              cilantro suspicious.exe --recover-embedded
 
             That writes suspicious.cleaned.exe beside the input, plus a cilantro
             folder holding the full report and any files that were hidden inside.
             If cilantro is already a file there — as when the tool itself sits
             beside the sample — the folder is named cilantro.out instead.
 
-            By default it does everything that makes the result easier to read: it renames
-            the protector's generated symbols and, where a method is bytecode for an
-            interpreter, builds that method back into code in the clean copy, marked as the
-            tool's reading rather than something it proved. --strict turns both off and stops
-            wherever a normal run would assume its way past something.
+            Start with Open in the summary, then review Remaining and Validation.
+            Supported native wrappers automatically continue into their managed stage.
+            --recover-embedded also follows further extracted assemblies within limits.
+
+            Default runs enable readability renaming and supported VM reconstruction, and
+            may use recorded host assumptions. --strict disables implicit assumptions and
+            defaults renaming/reconstruction off; it still recovers code and can write output.
 
             Options:
               -v, --verbose            Show every step the tool took
                   --json               Print one JSON object instead of the summary, naming
                                        every file written and what to declare to get further
-                  --analyze-only       Report what is there without writing a clean copy
+                  --analyze-only       Write reports/extracted files, but no cleaned assembly
+                  --generic-recovery   Allow verified rewrites when the protector is unrecognized
+                  --recover-embedded   Continue recovery into extracted assemblies (bounded)
               -o, --output PATH        Write the clean copy somewhere else
                   --report-dir DIR     Write the report somewhere else
                   --keep-runtime       Leave the protector's own code in place instead of removing it
@@ -304,9 +318,9 @@ internal static class CilantroCommand
                   --status             Keep a NAME.status.json beside the reports saying which
                                        pass is running, so a long run can be watched from
                                        elsewhere while it goes
-                  --fail-on-partial    Write nothing unless every stage fully succeeded
-                  --strict             Assume nothing: stop where a normal run would carry on,
-                                       and leave the assembly as it stands
+                  --fail-on-partial    Block successful recovery on incomplete passes;
+                                       reports and extracted artifacts may still be written
+                  --strict             Disable implicit host assumptions and permissive reading
                   --host-profile FILE  State what the Windows machine the sample expects looks like
                   --library FILE       Let the reader follow calls into this assembly (repeatable)
                   --declarations FILE  Everything above in one file, plus budgets and passes to skip
@@ -320,6 +334,8 @@ internal static class CilantroCommand
             docs/declarations.md
 
             Driving it from a program or an agent: --json, and docs/agents.md
+            Exit codes: 0 configured success; 1 incomplete/failed run; 2 input or command error.
+            Success does not mean complete unprotection. See docs/quick-start.md.
 
             Development:
               cilantro corpus run [--manifest PATH] [--samples DIR] [--output DIR] [--strict]

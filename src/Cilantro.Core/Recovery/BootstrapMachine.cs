@@ -100,7 +100,7 @@ public static class BootstrapMachine
             return false;
 
         watching?.Invoke(machine);
-        RunInitializers(context, machine);
+        RunInitializers(context, machine, maximumSteps);
         SeedResolvedProxies(context, machine);
         if (machine.State.ModuleFileIsAbsent || Refusal(machine) is not { } refusal)
             return true;
@@ -115,7 +115,7 @@ public static class BootstrapMachine
             return false;
 
         watching?.Invoke(machine);
-        RunInitializers(context, machine);
+        RunInitializers(context, machine, maximumSteps);
         SeedResolvedProxies(context, machine);
         return true;
     }
@@ -187,10 +187,23 @@ public static class BootstrapMachine
         return TrialGuardAnalysis.Find(context.Module, proxies);
     }
 
-    private static void RunInitializers(ArtifactContext context, StaticMachine machine)
+    internal static int InitializationStepBudget(ArtifactContext context, int maximumSteps)
+    {
+        var bootstrapSteps = context.TryGetFact<MethodRecoveryAttempt>("method-protection.attempt", out var attempt)
+            && attempt is not null ? Math.Max(0, attempt.Steps) : 0;
+        // Preserve the caller's allowance. Only the measured startup overhead is capped;
+        // subsequent method queries still use their original per-method budget.
+        return (int)Math.Max(maximumSteps, Math.Min(64_000_000L, maximumSteps + (long)bootstrapSteps));
+    }
+
+    private static void RunInitializers(ArtifactContext context, StaticMachine machine, int maximumSteps)
     {
         if (context.Module.GlobalType.FindStaticConstructor() is { HasBody: true } moduleInitializer)
-            machine.Execute(moduleInitializer);
+        {
+            var steps = Limits(InitializationStepBudget(context, maximumSteps),
+                Environment(context).Declarations.Budgets).MaximumSteps;
+            machine.Execute(moduleInitializer, [], new StaticWorkBudget(steps));
+        }
         foreach (var holder in context.Module.GetTypes()
                      .Where(type => type != context.Module.GlobalType &&
                          ReactorStructureDetector.IsResolverKeyHolder(type)))

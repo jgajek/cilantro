@@ -20,16 +20,19 @@ public static class AssemblyVerifier
         {
             var instructions = method.Body.Instructions;
             var instructionSet = instructions.ToHashSet();
+            var invalidBoundaries = false;
             foreach (var instruction in instructions)
             {
                 if (instruction.Operand is Instruction target && !instructionSet.Contains(target))
                 {
                     diagnostics.Add($"{method.MDToken}: branch target is outside the method.");
+                    invalidBoundaries = true;
                 }
                 else if (instruction.Operand is IList<Instruction> targets &&
                          targets.Any(target => !instructionSet.Contains(target)))
                 {
                     diagnostics.Add($"{method.MDToken}: switch target is outside the method.");
+                    invalidBoundaries = true;
                 }
             }
 
@@ -43,6 +46,10 @@ public static class AssemblyVerifier
                     VerifyBoundary(handler.FilterStart, "filter start");
             }
 
+            // Reachability assumes all targets belong to the body. Preserve the diagnostic
+            // above instead of throwing while trying to walk an already-invalid graph.
+            if (invalidBoundaries)
+                continue;
             var reachable = CfgDeadCodePass.ComputeReachable(method);
             var invalidReachableCalls = reachable.Count(instruction =>
                 instruction.OpCode.FlowControl == FlowControl.Call && instruction.Operand is null);
@@ -61,6 +68,7 @@ public static class AssemblyVerifier
                 if (boundary is not null && instructionSet.Contains(boundary))
                     return;
                 diagnostics.Add($"{method.MDToken}: {kind} is outside the method.");
+                invalidBoundaries = true;
             }
         }
 

@@ -160,6 +160,105 @@ public sealed class ModuleReachabilityTests : IDisposable
         Assert.True(narrowed.IsReachable(OnCircle(context)));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FixedTypeForwardersAreNarrowedButCyclesAreNot(bool cycle)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var api = Shapes(module, construct: false);
+            var run = api.Methods.Single(m => m.Name == "Run");
+            var typeSig = module.CorLibTypes.GetTypeRef("System", "Type").ToTypeSig();
+            var helper = new MethodDefUser("NamedType", MethodSig.CreateStatic(typeSig))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            api.Methods.Add(helper);
+            var forward = new MethodDefUser("Forward", MethodSig.CreateStatic(typeSig))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            api.Methods.Add(forward);
+            forward.Body.Instructions.Add(OpCodes.Call.ToInstruction(helper));
+            forward.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            if (cycle) helper.Body.Instructions.Add(OpCodes.Call.ToInstruction(forward));
+            else {
+                helper.Body.Instructions.Add(OpCodes.Ldtoken.ToInstruction(api));
+                helper.Body.Instructions.Add(OpCodes.Call.ToInstruction(new MemberRefUser(module, "GetTypeFromHandle",
+                    MethodSig.CreateStatic(typeSig, new ValueTypeSig(module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle"))),
+                    module.CorLibTypes.GetTypeRef("System", "Type"))));
+            }
+            helper.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            var make = new MemberRefUser(module, "CreateInstance", MethodSig.CreateStatic(module.CorLibTypes.Object, typeSig),
+                module.CorLibTypes.GetTypeRef("System", "Activator"));
+            run.Body.Instructions.Insert(0, OpCodes.Call.ToInstruction(forward));
+            run.Body.Instructions.Insert(1, OpCodes.Call.ToInstruction(make));
+            run.Body.Instructions.Insert(2, OpCodes.Pop.ToInstruction());
+        });
+        var reach = ModuleReachability.ComputeWithInstances(context.Module, true);
+        Assert.Equal(cycle, reach.InstanceRefusal is not null);
+        Assert.Equal(cycle, reach.IsReachable(OnCircle(context)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnknownReflectionCannotBootstrapAnUninstantiatedReceiver(bool construct)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            Shapes(module, construct);
+            var draw = module.GetTypes().Single(t => t.Name == "Circle").Methods.Single(m => m.Name == "Draw");
+            var make = new MemberRefUser(module, "CreateInstance", MethodSig.CreateStatic(module.CorLibTypes.Object,
+                module.CorLibTypes.GetTypeRef("System", "Type").ToTypeSig()), module.CorLibTypes.GetTypeRef("System", "Activator"));
+            // Unknown type supplied through a field, inside the otherwise unreachable method.
+            var field = new FieldDefUser("TypeInput", new FieldSig(module.CorLibTypes.GetTypeRef("System", "Type").ToTypeSig()), FieldAttributes.Static);
+            draw.DeclaringType.Fields.Add(field);
+            draw.Body.Instructions.Insert(0, OpCodes.Ldsfld.ToInstruction(field));
+            draw.Body.Instructions.Insert(1, OpCodes.Call.ToInstruction(make));
+            draw.Body.Instructions.Insert(2, OpCodes.Pop.ToInstruction());
+        });
+        var reach = ModuleReachability.ComputeWithInstances(context.Module, false);
+        Assert.Equal(construct, reach.InstanceRefusal is not null);
+        Assert.Equal(construct, reach.IsReachable(OnCircle(context)));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [InlineData(false, true)]
+    [InlineData(true, false, true)]
+    public void ReflectiveTypeInASingleAssignmentLocalDoesNotRetainUnrelatedVirtuals(bool reassigned, bool alternateEntry = false, bool unknown = false)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var api = Shapes(module, construct: false);
+            var run = api.Methods.Single(m => m.Name == "Run");
+            var local = new Local(module.CorLibTypes.GetTypeRef("System", "Type").ToTypeSig());
+            run.Body.Variables.Add(local); run.Body.InitLocals = true;
+            var get = new MemberRefUser(module, "GetTypeFromHandle",
+                MethodSig.CreateStatic(local.Type, new ValueTypeSig(module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle"))),
+                module.CorLibTypes.GetTypeRef("System", "Type"));
+            var make = new MemberRefUser(module, "CreateInstance", MethodSig.CreateStatic(module.CorLibTypes.Object, local.Type),
+                module.CorLibTypes.GetTypeRef("System", "Activator"));
+            var prefix = new List<Instruction> { OpCodes.Ldtoken.ToInstruction(api), OpCodes.Call.ToInstruction(get), OpCodes.Stloc.ToInstruction(local) };
+            if (reassigned) { prefix.Add(OpCodes.Ldnull.ToInstruction()); prefix.Add(OpCodes.Stloc.ToInstruction(local)); }
+            if (unknown)
+            {
+                var field = new FieldDefUser("TypeInput", new FieldSig(local.Type), FieldAttributes.Public | FieldAttributes.Static);
+                api.Fields.Add(field);
+                prefix.Add(OpCodes.Ldsfld.ToInstruction(field)); prefix.Add(OpCodes.Stloc.ToInstruction(local));
+            }
+            prefix.Add(OpCodes.Ldloc.ToInstruction(local)); prefix.Add(OpCodes.Call.ToInstruction(make)); prefix.Add(OpCodes.Pop.ToInstruction());
+            if (alternateEntry)
+            {
+                prefix.Insert(0, OpCodes.Br.ToInstruction(prefix[^2]));
+                prefix.Insert(0, OpCodes.Ldnull.ToInstruction());
+            }
+            for (var i = 0; i < prefix.Count; i++) run.Body.Instructions.Insert(i, prefix[i]);
+        });
+        var reach = ModuleReachability.ComputeWithInstances(context.Module, true);
+        Assert.Equal(alternateEntry || unknown, reach.InstanceRefusal is not null);
+        Assert.Equal(alternateEntry || unknown, reach.IsReachable(OnCircle(context)));
+    }
+
     /// <summary>
     /// A virtual call whose shape one type's method matches, that type being constructed or not.
     /// </summary>

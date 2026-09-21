@@ -102,6 +102,7 @@ public sealed class ConstantPredicatePass : DeobfuscationPass
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
         using var transaction = new InstructionMutationTransaction();
+        var foldedHelpers = new HashSet<MethodDef>();
         var changes = ConstantHelperFolding.Fold(
             context.Module.GetTypes().SelectMany(type => type.Methods),
             ConstantHelperFolding.Catalog(context.Module),
@@ -110,7 +111,7 @@ public sealed class ConstantPredicatePass : DeobfuscationPass
                 Name,
                 "fold-constant-helper",
                 $"{method.MDToken} IL_{instruction.Offset:X4}",
-                value.ToString())));
+                value.ToString())), foldedHelpers);
 
         var verification = AssemblyVerifier.Verify(context.Module);
         if (!verification.Passed)
@@ -120,6 +121,7 @@ public sealed class ConstantPredicatePass : DeobfuscationPass
                 ["Constant predicate rewrite failed verification and was rolled back."]);
         }
         transaction.Commit();
+        RecoveryOrphans.Declare(context, foldedHelpers);
         return (PassStatus.Success, changes, [$"Folded {changes} calls to proven constant helpers."]);
     }
 }

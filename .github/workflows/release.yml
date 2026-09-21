@@ -24,10 +24,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
+      - name: Test release source
+        run: dotnet test Cilantro.slnx -c Release
 
       # Self-contained and single-file, so the download runs on a machine that has never had .NET
       # installed. That is the whole point: an analyst should not have to provision a runtime
@@ -70,6 +75,11 @@ jobs:
           cd publish/${{ matrix.runtime }}
           rm -f *.pdb
           cp ../../LICENSE ../../README.md .
+          cp -r ../../docs ../../schema ../../profiles .
+          mkdir -p corpus/schema corpus/probes
+          cp ../../corpus/*.json corpus/
+          cp ../../corpus/schema/*.json corpus/schema/
+          cp ../../corpus/probes/README.md corpus/probes/
           if [ "${{ matrix.runtime }}" = "win-x64" ]; then
             zip -r ../../${{ matrix.artifact }} .
           else
@@ -88,12 +98,21 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
       - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
       - name: Checksums
         run: sha256sum cilantro-* > SHA256SUMS.txt
+
+      - name: Select release notes
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: cp "docs/releases/${TAG#v}.md" RELEASE-NOTES.md
 
       - uses: softprops/action-gh-release@v3
         with:
@@ -104,4 +123,5 @@ jobs:
           # A release missing the thing people came to download is worse than no release, and by
           # default an asset pattern that matches nothing is passed over in silence.
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          body_path: RELEASE-NOTES.md
+          prerelease: ${{ (github.event.inputs.tag || github.ref_name) == 'v0.10.0' }}

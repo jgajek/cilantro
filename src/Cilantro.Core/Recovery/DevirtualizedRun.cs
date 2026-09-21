@@ -10,7 +10,7 @@ public enum DevirtualizationCheck
     /// <summary>The comparison could not be made, and the notes say why.</summary>
     NotMade,
 
-    /// <summary>The built bodies did the same work the engine did.</summary>
+    /// <summary>The observed unpacking path matched and entered every reconstructed body under test.</summary>
     Agreed,
 
     /// <summary>They did something else.</summary>
@@ -18,8 +18,8 @@ public enum DevirtualizationCheck
 }
 
 /// <summary>
-/// Runs the module's own unpacking path twice — once as it shipped, once with the built bodies in
-/// place of the stubs — and compares what came out.
+/// Runs the module's own unpacking path twice â€” once as it shipped, once with the built bodies in
+/// place of the stubs â€” and compares what came out.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -34,10 +34,10 @@ public enum DevirtualizationCheck
 /// to the runtime. So the module is prepared once, interpreted once as it shipped, then the built
 /// bodies are put in place of the stubs and it is interpreted again. Both runs start from the same
 /// state, in the same module, with the same everything, and the only difference between them is
-/// the code the protected method holds. If the second run arrives at the same assembly — the same
-/// megabyte of decrypted bytes, hash for hash — the built bodies did the work the engine did.
-/// Nothing produces that by accident, and none of the several thousand operations behind it can be
-/// misread without changing it.
+/// the code the protected method holds. If the second run arrives at the same assembly â€” the same
+/// megabyte of decrypted bytes, hash for hash â€” the built bodies did the work the engine did.
+/// This is a comparison of the observed unpacking path, not proof of full behavioral
+/// equivalence: unvisited branches and side effects outside the captured payload are not checked.
 /// </para>
 /// <para>
 /// Two things would let this pass while testing nothing, and both are checked. If the run as it
@@ -52,18 +52,10 @@ internal static class DevirtualizedRun
         ArtifactContext original,
         IReadOnlyList<VirtualProgram> programs)
     {
-        // Everything below rests on this module unpacking something, and the run has already asked
-        // it to, on the module with every recovery applied. A module that unpacked nothing then will
-        // not unpack anything for a copy prepared with less, so preparing one settles nothing that
-        // is not settled here — and preparing one costs a second run of nearly the whole pipeline,
-        // which on a build with no payload was the largest single cost of the analysis.
-        if (original.TryGetFact<PayloadChainRecovery.InterpretedChain>(
-                PayloadChainRecovery.ChainFact, out var asked) &&
-            asked is not null &&
-            asked.Unpacked.Count == 0)
-        {
-            return (DevirtualizationCheck.NotMade, [NothingToWatch(asked.Why)]);
-        }
+        // Payload absence skips only the extraction comparison. Direct method trials
+        // can still expose reconstruction differences without an unpacking entry point.
+        original.TryGetFact<PayloadChainRecovery.InterpretedChain>(
+            PayloadChainRecovery.ChainFact, out var asked);
 
         // A second copy of the same input, prepared the same way, rather than the module the run
         // has been working on. That one has had the bodies written into it already and cannot be
@@ -88,13 +80,53 @@ internal static class DevirtualizedRun
             CilantroPipeline.CancellationFact, out var cancellation);
         Prepare(second, cancellation);
 
+        var trials = new List<RebuiltMethodTrial.Result>();
+        foreach (var program in programs.Take(8))
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (second.Module.ResolveToken(program.Method.Stub.MDToken.Raw) is not MethodDef stub ||
+                VirtualBody.Build(program, second.Module, stub).Body is not { } rebuilt) continue;
+            for (var scenario = 0; scenario < 5; scenario++)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                var engine = (second.Module.ResolveToken(program.Method.Entry.MDToken.Raw) as IMethod)?.ResolveMethodDef();
+                var trial = engine is null
+                    ? new RebuiltMethodTrial.Result(DevirtualizationCheck.NotMade, "the original VM entry could not be resolved")
+                    : RebuiltMethodTrial.Compare(second, stub, rebuilt, scenario, engine.MDToken.Raw);
+                trials.Add(trial);
+                original.AddEvidence(new Evidence("reconstruction-method-trial",
+                    $"{stub.MDToken}, controlled input {scenario}" +
+                    (scenario >= 3 ? $" (32-byte zero streams for object/stream arguments; debugger attached={scenario == 4})" : " (no host facts)") + $": {trial.Verdict}. {trial.Detail}. " +
+                    "Bounded interpreter comparison, not proof for other inputs or initial states."));
+            }
+        }
+        var payload = ComparePayload(original, programs, second, asked);
+        var differing = trials.Count(t => t.Verdict == DevirtualizationCheck.Disagreed);
+        var trialNote = $"Controlled-input method trials: {trials.Count(t => t.Verdict == DevirtualizationCheck.Agreed)} matched, " +
+            $"{differing} differed, {trials.Count(t => t.Verdict == DevirtualizationCheck.NotMade)} inconclusive. " +
+            "These compare bounded interpreter outcomes and observed state, not all inputs; see reconstruction-method-trial evidence.";
+        return (differing > 0 ? DevirtualizationCheck.Disagreed : payload.Verdict, [trialNote, .. payload.Said]);
+    }
+
+    private static (DevirtualizationCheck Verdict, IReadOnlyList<string> Said) ComparePayload(
+        ArtifactContext original, IReadOnlyList<VirtualProgram> programs, ArtifactContext second,
+        PayloadChainRecovery.InterpretedChain? asked)
+    {
+        if (asked is { Unpacked.Count: 0 })
+            return (DevirtualizationCheck.NotMade, [NothingToWatch(asked.Why)]);
+
         var shipped = Unpacked(second, [], out var whyShipped);
         if (shipped.Count == 0)
             return (DevirtualizationCheck.NotMade, [NothingToWatch(whyShipped)]);
 
+        original.TryGetFact<IReadOnlySet<uint>>(VirtualizationRebuildPass.RebuiltFact, out var requested);
+        requested ??= programs.Select(program => program.Method.Stub.MDToken.Raw).ToHashSet();
+        original.TryGetFact<int>(VirtualizationRebuildPass.LiftedFact, out var lifted);
         var built = new HashSet<uint>();
         foreach (var program in programs)
         {
+            if (!requested.Contains(program.Method.Stub.MDToken.Raw))
+                continue;
             if (second.Module.ResolveToken(program.Method.Stub.MDToken.Raw) is not MethodDef stub)
                 continue;
             if (VirtualBody.Build(program, second.Module, stub).Body is not { } body)
@@ -102,6 +134,10 @@ internal static class DevirtualizedRun
             stub.Body = body;
             built.Add(stub.MDToken.Raw);
         }
+        var installedLifted = VirtualizationRebuildPass.InstallLiftedCopies(original, second);
+        built.UnionWith(installedLifted);
+        requested = requested.Concat(installedLifted).ToHashSet();
+        lifted -= installedLifted.Count;
         if (built.Count == 0)
         {
             return (DevirtualizationCheck.NotMade,
@@ -111,10 +147,19 @@ internal static class DevirtualizedRun
             ]);
         }
 
-        var entered = 0;
-        var again = Unpacked(second, built, out var whyAgain, () => entered++);
+        var entered = new HashSet<uint>();
+        var again = Unpacked(second, built, out var whyAgain, token => entered.Add(token));
+        var matched = again.SetEquals(shipped);
+        original.AddEvidence(new Evidence("reconstruction-payload-comparison", matched
+            ? "Both interpreter runs extracted identical assembly bytes."
+            : "The interpreter runs produced different extracted assemblies."));
+        var covered = requested.Count(token => built.Contains(token) && entered.Contains(token));
+        original.AddEvidence(new Evidence("reconstruction-coverage",
+            $"Reconstructed bodies exercised by this comparison: {covered} of {requested.Count + lifted}. " +
+            (covered == 0 ? (matched ? "The matching extraction did not test the reconstructed code." : "No reconstructed body was exercised.")
+                : covered < requested.Count + lifted ? "Unexercised bodies remain unvalidated." : "This only checks the observed unpacking path.")));
         var said = new List<string>();
-        if (!again.SetEquals(shipped))
+        if (!matched)
         {
             said.Add(again.Count == 0
                 ? "THE CHECK FAILED: with the built bodies in place, the module no longer unpacks " +
@@ -128,19 +173,41 @@ internal static class DevirtualizedRun
             return (DevirtualizationCheck.Disagreed, said);
         }
 
-        if (entered == 0)
-        {
-            said.Add(
-                "The check was not made: the module unpacked the same assembly either way, but " +
-                "the run never entered a built body, so that says nothing about them.");
-            return (DevirtualizationCheck.NotMade, said);
-        }
+        return Coverage(shipped, requested, built, entered, lifted);
+    }
 
-        said.Add(
-            $"Checked by running it: with the built bodies in place of the stubs, the module " +
-            $"unpacks {Listed(shipped)} — byte for byte what it unpacks as it shipped — and a " +
-            $"built body was entered {entered} time(s) doing it.");
-        return (DevirtualizationCheck.Agreed, said);
+    /// <summary>
+    /// Matching payloads only validate a reconstruction when every body under test was
+    /// installed and entered. Repeated entries into one body cannot cover another body.
+    /// The lifted count names helpers that could not be installed; installed helpers join
+    /// the requested and installed token sets and must be entered like every other body.
+    /// </summary>
+    internal static (DevirtualizationCheck Verdict, IReadOnlyList<string> Said) Coverage(
+        HashSet<string> payloads,
+        IReadOnlySet<uint> requested,
+        IReadOnlySet<uint> installed,
+        IReadOnlySet<uint> entered,
+        int lifted)
+    {
+        var covered = requested.Count(token => installed.Contains(token) && entered.Contains(token));
+        var total = requested.Count + lifted;
+        if (payloads.Count == 0 || total == 0 || covered != total)
+        {
+            return (DevirtualizationCheck.NotMade,
+            [
+                $"Reconstruction comparison covered {covered} of {total} rebuilt bodies. " +
+                (payloads.Count > 0 ? "The interpreted runs extracted identical payload bytes. " : "No payload bytes were available to compare. ") +
+                $"{requested.Count - covered} rebuilt body/bodies were not installed or entered; " +
+                $"{lifted} lifted helper(s) were not substituted into the comparison. " +
+                "This does not validate the unexercised bodies."
+            ]);
+        }
+        return (DevirtualizationCheck.Agreed,
+        [
+            $"The interpreted runs extracted identical payload bytes ({Listed(payloads)}), " +
+            $"and all {covered} reconstructed bodies under test were entered. " +
+            "This checks the observed unpacking path, not every behavior of those bodies."
+        ]);
     }
 
     /// <summary>That there is no reference to compare against, and what was said instead.</summary>
@@ -154,7 +221,7 @@ internal static class DevirtualizedRun
         ArtifactContext context,
         IReadOnlyCollection<uint> watched,
         out IReadOnlyList<string> why,
-        Action? entered = null)
+        Action<uint>? entered = null)
     {
         var recovered = PayloadChainRecovery.Recover(
             context,
@@ -163,7 +230,7 @@ internal static class DevirtualizedRun
                 Machine: machine => machine.FrameEntered = (method, _) =>
                 {
                     if (watched.Contains(method.MDToken.Raw))
-                        entered?.Invoke();
+                        entered?.Invoke(method.MDToken.Raw);
                 }),
             out why);
         return recovered.Select(item => item.Sha256).ToHashSet(StringComparer.Ordinal);
@@ -204,6 +271,8 @@ internal static class DevirtualizedRun
         foreach (var planned in PipelinePlanner.Plan(CilantroPipeline.CreateDefaultPasses()))
         {
             cancellation.ThrowIfCancellationRequested();
+            // Keep the entry calls whose replacement this comparison must exercise.
+            if (planned.Pass is LoaderCallElisionPass) break;
             if (Skipped.Contains(planned.Pass.Name) ||
                 !PipelinePlanner.Decide(planned, built).Execute)
                 continue;

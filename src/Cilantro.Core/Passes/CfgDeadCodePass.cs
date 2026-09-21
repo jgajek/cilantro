@@ -37,7 +37,7 @@ public sealed class CfgDeadCodePass : DeobfuscationPass
         return (PassStatus.Success, changed, [$"Normalized {changed} method prefixes."]);
     }
 
-    internal static HashSet<Instruction> ComputeReachable(MethodDef method)
+    internal static HashSet<Instruction> ComputeReachable(MethodDef method, IEnumerable<Instruction>? additionalRoots = null)
     {
         var instructions = method.Body.Instructions;
         var reachable = new HashSet<Instruction>();
@@ -48,6 +48,8 @@ public sealed class CfgDeadCodePass : DeobfuscationPass
 
         var work = new Stack<Instruction>();
         work.Push(instructions[0]);
+        if (additionalRoots is not null)
+            foreach (var root in additionalRoots) work.Push(root);
         foreach (var handler in method.Body.ExceptionHandlers)
         {
             if (handler.TryStart is not null) work.Push(handler.TryStart);
@@ -66,7 +68,11 @@ public sealed class CfgDeadCodePass : DeobfuscationPass
                 continue;
             }
 
-            var currentIndex = index[current];
+            // A malformed target invalidates the reachability proof. Keep every
+            // instruction; verification will report the bad target rather than
+            // letting cleanup delete code or report generation throw.
+            if (!index.TryGetValue(current, out var currentIndex))
+                return instructions.ToHashSet();
             switch (current.OpCode.FlowControl)
             {
                 case FlowControl.Branch:

@@ -172,6 +172,13 @@ public sealed class HostProfile
 
     public IReadOnlyDictionary<string, HostAnswer> Answers => _answers;
 
+    internal static HostProfile Trial(bool debuggerAttached) => new("simulated-debugger-" + debuggerAttached,
+        new(StringComparer.Ordinal) { ["debugger:IsAttached"] = HostAnswer.Of(debuggerAttached),
+            ["debugger:IsLogging"] = HostAnswer.Of(false) });
+
+    /// <summary>No host assumptions, for recovery that must produce host-independent constants.</summary>
+    internal static HostProfile Empty { get; } = new("empty", new(StringComparer.Ordinal));
+
     /// <summary>
     /// The answers the intrinsics gave before any of this existed, and no others.
     /// </summary>

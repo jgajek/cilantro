@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using Cilantro.Core.Analysis;
 using Cilantro.Core.Passes;
 using Cilantro.Core.Verification;
 
@@ -48,6 +49,7 @@ public sealed class RebuiltBodyCleanupPass : DeobfuscationPass
         }
 
         var folded = 0;
+        var foldedHelpers = new HashSet<MethodDef>();
         using (var transaction = new InstructionMutationTransaction())
         {
             folded = ConstantHelperFolding.Fold(
@@ -58,7 +60,7 @@ public sealed class RebuiltBodyCleanupPass : DeobfuscationPass
                     Name,
                     "fold-constant-helper",
                     $"{method.MDToken} IL_{instruction.Offset:X4}",
-                    value.ToString())));
+                    value.ToString())), foldedHelpers);
 
             var verification = AssemblyVerifier.Verify(context.Module);
             if (!verification.Passed)
@@ -68,6 +70,7 @@ public sealed class RebuiltBodyCleanupPass : DeobfuscationPass
                     ["Folding the rebuilt bodies' constant helpers did not verify, and was undone."]);
             }
             transaction.Commit();
+            RecoveryOrphans.Declare(context, foldedHelpers);
         }
 
         // Folding turns each of those calls into a constant a branch reads, which is the whole
@@ -75,33 +78,43 @@ public sealed class RebuiltBodyCleanupPass : DeobfuscationPass
         // nothing can now enter.
         var removed = 0;
         var completed = 0;
+        var paths = 0;
         foreach (var method in rebuilt)
         {
-            var outcome = ControlFlowCompletionPass.TryComplete(method);
-            if (outcome is null || (outcome.Value.Folded == 0 && outcome.Value.Removed == 0))
-                continue;
-            removed += outcome.Value.Removed;
+            var methodFolded = 0;
+            var methodRemoved = 0;
+            var methodPaths = 0;
+            // Rebuilt bodies arrive after the normal dispatcher passes.
+            for (var round = 0; round <= 64; round++)
+            {
+                if (ControlFlowCompletionPass.TryComplete(method) is { } outcome)
+                { methodFolded += outcome.Folded; methodRemoved += outcome.Removed; }
+                if (round == 64) break;
+                var changed = new DispatcherDeobfuscationPass().Rewrite(method).ChangedEdges;
+                changed += DispatcherPathPass.Rewrite(method);
+                if (changed == 0) break;
+                methodPaths += changed;
+            }
+            if (methodFolded == 0 && methodRemoved == 0 && methodPaths == 0) continue;
+            removed += methodRemoved;
+            paths += methodPaths;
             completed++;
-            context.AddChange(new ChangeRecord(
-                Name,
-                "complete-control-flow",
-                $"{method.MDToken} {method.FullName}",
-                $"Folded {outcome.Value.Folded} constant branch(es) and removed " +
-                $"{outcome.Value.Removed} unreachable instruction(s) from a rebuilt body."));
+            context.AddChange(new ChangeRecord(Name, "complete-control-flow", $"{method.MDToken} {method.FullName}",
+                $"Folded {methodFolded} branches, removed {methodRemoved} instructions and made {methodPaths} dispatcher paths direct."));
         }
 
         context.SetFact(FoldedFact, folded);
         context.SetFact(RemovedFact, removed);
-        if (folded == 0 && removed == 0)
+        if (folded == 0 && removed == 0 && paths == 0)
         {
             return (PassStatus.Success, 0,
                 [$"The {rebuilt.Count} rebuilt body(s) held nothing left to fold."]);
         }
 
-        return (PassStatus.Success, folded + removed,
+        return (PassStatus.Success, folded + removed + paths,
         [
             $"Folded {folded} constant-helper call(s) and removed {removed} instruction(s) " +
-            $"across {completed} of {rebuilt.Count} rebuilt body(s)."
+            $"across {completed} of {rebuilt.Count} rebuilt body(s); made {paths} dispatcher paths direct."
         ]);
     }
 }

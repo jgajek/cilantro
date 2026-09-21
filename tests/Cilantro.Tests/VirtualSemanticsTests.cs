@@ -1155,6 +1155,22 @@ public sealed class VirtualSemanticsTests
         new Dictionary<int, VirtualOperation>(),
         new Dictionary<int, IReadOnlyList<string>>());
 
+    [Theory]
+    [InlineData(1, null)]
+    [InlineData(2, "bgt.un")]
+    [InlineData(0, "brtrue")]
+    public void AnAlwaysObservedTakenPredicateIsNotAnUnconditionalBranch(int pops, string? condition)
+    {
+        var probed = new Dictionary<int, VirtualOperation>
+        {
+            [Jump] = new(Jump, pops, 0, "branch if") { Decides = condition, TouchesState = true }
+        };
+        var operation = VirtualProgramRecovery.Merge(probed, Watching(5, 5), [])[Jump];
+        Assert.Equal("branch if", operation.Name);
+        Assert.Equal(condition, operation.Decides);
+        Assert.Equal(pops, operation.Pops);
+    }
+
     private static MethodDefUser Constructor(ModuleDefUser module)
     {
         var constructor = new MethodDefUser(

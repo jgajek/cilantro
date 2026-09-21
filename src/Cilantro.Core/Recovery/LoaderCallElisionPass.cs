@@ -8,7 +8,7 @@ using Cilantro.Core.Verification;
 namespace Cilantro.Core.Recovery;
 
 /// <summary>
-/// Removes calls to loader entry points that recovery has made inert.
+/// Removes calls and implicit type initialization that recovery has made inert.
 /// </summary>
 /// <remarks>
 /// Reactor prefixes type initializers throughout the assembly with calls into its runtime, so the
@@ -38,13 +38,15 @@ namespace Cilantro.Core.Recovery;
 /// recomputing reachability asks the question that actually matters: can anything that still runs
 /// observe the write. Candidates that fail are dropped and the rest retried, because dropping one
 /// keeps its readers alive and may implicate another.
+/// Type initializers require replacing their bodies during both the speculative and committed
+/// edits: the CLR enters them implicitly, even when the module has no explicit call instruction.
 ///
 /// Patching the mapped image is disqualifying until method bodies have been recovered statically,
 /// because before that the runtime patcher is the only thing supplying them. Afterwards it is
 /// redundant with work already done, and removing it is what lets the recovered assembly run
 /// without the protector.
 /// </remarks>
-public sealed class LoaderCallElisionPass : DeobfuscationPass
+public class LoaderCallElisionPass : DeobfuscationPass
 {
     private const int MaximumSteps = 4_000_000;
 
@@ -80,8 +82,11 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
             return (PassStatus.Success, 0, ["No bounded loader interpretation evidence is available."]);
         }
 
+        // Recovery can add methods before a later invocation. Their row IDs are assigned only
+        // when writing the module, and cannot occur in the original bootstrap evidence.
         var byToken = context.Module.GetTypes()
             .SelectMany(type => type.Methods)
+            .Where(method => method.MDToken.Rid != 0)
             .ToDictionary(method => method.MDToken.Raw);
         var initializer = context.Module.GlobalType.FindStaticConstructor();
         var candidates = new List<Candidate>();
@@ -136,12 +141,44 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
                 guardEvidence.EffectsOf(guard.MDToken.Raw).StaticFieldsWritten));
         }
 
+        // These initializers pass a type handle to the proxy resolver, so the argument-free
+        // callee search cannot find them. Each proof starts from a new heap, without the
+        // synthetic delegate seeding used by ordinary recovery interpretation.
+        if (ProxyLoaderTable.Read(context).Count != 0)
+        {
+            var proxySteps = Math.Max(16_000_000, ColdInitializerStepBudget(context));
+            var leftBudget = new StaticWorkBudget(proxySteps);
+            var rightBudget = new StaticWorkBudget(proxySteps);
+            var proxyInitializers = context.Module.GetTypes().Where(ReactorDetectionPass.IsDelegateProxy)
+                .Select(type => type.FindStaticConstructor()).OfType<MethodDef>()
+                .Where(method => IsElidableShape(method) && !EmptyMethodBodies.DoesNothing(method) &&
+                    candidates.All(candidate => candidate.Method != method))
+                .OrderBy(method => method.MDToken.Raw).ToArray();
+            foreach (var method in proxyInitializers)
+            {
+                if (!TryInterpretColdInitializer(context, method, leftBudget, rightBudget,
+                        out var coldEvidence, out var reason))
+                {
+                    guardNotes.Add($"proxy initializer {method.MDToken} retained: {reason}");
+                    // A common resolver failure or budget exhaustion is shared by the remaining
+                    // proxies; do not repeatedly pay for the same unsupported path.
+                    break;
+                }
+                var effects = coldEvidence!.EffectsOf(method.MDToken.Raw);
+                if (effects.Registrations.Count != 0) { registered++; continue; }
+                candidates.Add(new Candidate(method, AntiTamperNeutralizationPass.ComputeCallSubtree(method),
+                    effects.StaticFieldsWritten));
+                interpretedGuards++;
+            }
+        }
+
         // A candidate that another candidate also calls is kept rather than folded into it. Reactor
         // calls the same entry point both from its own bootstrap and from the head of application
         // type initializers, so an inner frame typically has call sites the outer one does not
         // reach, and treating it as disappearing with its caller leaves those behind.
         var (elidable, callSites, blocked) =
-            SelectObservablyInert(context.Module, [.. candidates]);
+            SelectObservablyInert(context.Module, [.. candidates], RebuiltMethods.Of(context));
+        var implicitInitializers = InitializersToEmpty(elidable);
         var accounting =
             $"{evidence.Effects.Count} interpreted frame(s) and {interpretedGuards} interpreted " +
             $"initializer guard(s): {wrongShape} not argument-free void, {registered} " +
@@ -151,7 +188,7 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
                 ? "."
                 : $", {blocked.Count} still write state that code surviving the elision reads " +
                   $"({string.Join("; ", blocked)}).");
-        if (callSites.Length == 0)
+        if (callSites.Length == 0 && implicitInitializers.Length == 0)
         {
             return (PassStatus.Success, 0,
             [
@@ -163,10 +200,10 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
             ]);
         }
 
-        using var transaction = new InstructionMutationTransaction();
+        using var transaction = new BodyMutationBatch();
         foreach (var (method, instruction, target) in callSites)
         {
-            transaction.Capture(instruction);
+            transaction.Capture(method);
             instruction.OpCode = OpCodes.Nop;
             instruction.Operand = null;
             transaction.RecordChange(context, new ChangeRecord(
@@ -174,6 +211,13 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
                 "elide-loader-call",
                 $"{method.MDToken} IL_{instruction.Offset:X4}",
                 $"Removed a call to proven-inert loader entry point {target.MDToken}."));
+        }
+        foreach (var method in implicitInitializers)
+        {
+            transaction.Capture(method);
+            EmptyInitializer(method);
+            transaction.RecordChange(context, new ChangeRecord(Name, "empty-inert-initializer",
+                method.MDToken.ToString(), "Removed proven-inert initialization invoked implicitly by the CLR."));
         }
 
         var verification = AssemblyVerifier.Verify(
@@ -207,20 +251,23 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         // this is the pass that emptied it.
         var emptied = callSites
             .Select(site => site.Method)
+            .Concat(implicitInitializers)
             .Distinct()
             .Where(EmptyMethodBodies.DoesNothing)
             .ToArray();
         RecoveryOrphans.Declare(context, emptied);
         context.AddEvidence(new Evidence(
             "loader-call-elision",
-            $"Removed {callSites.Length} call(s) to {elidable.Length} loader entry point(s) whose " +
+            $"Removed {callSites.Length} call(s) and emptied {implicitInitializers.Length} implicit " +
+            $"initializer(s) among {elidable.Length} loader entry point(s) whose " +
             "subtrees performed only protector work and whose static writes nothing still reachable " +
             "reads.",
             null,
             0.95));
-        return (PassStatus.Success, callSites.Length,
+        return (PassStatus.Success, callSites.Length + implicitInitializers.Length,
         [
             $"Elided {callSites.Length} call(s) to {elidable.Length} proven-inert loader entry point(s).",
+            $"Emptied {implicitInitializers.Length} proven-inert initializer(s) invoked implicitly by the CLR.",
             $"{emptied.Count(method => method.IsStaticConstructor)} type initializer(s) and " +
                 $"{emptied.Count(method => !method.IsStaticConstructor)} helper(s) were left doing nothing and are cleanup's to remove.",
             accounting
@@ -231,6 +278,82 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         MethodDef Method,
         IReadOnlySet<uint> Subtree,
         IReadOnlyList<string> FieldsWritten);
+
+    protected (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) ElideBodiesPreservingInitialization(
+        ArtifactContext context)
+    {
+        if (!context.TryGetFact<bool>("method-protection.complete", out var complete) || !complete ||
+            context.Module.GlobalType.FindStaticConstructor() is not { HasBody: true } bootstrap)
+            return (PassStatus.Success, 0, []);
+
+        // The original recovery interpretation may have stopped as soon as the encrypted bodies
+        // were available. Only two complete, independent cold starts of the current module can
+        // justify this distinction after reconstruction. No resolved proxies are pre-seeded.
+        if (!TryInterpretColdInitializer(context, bootstrap,
+                new StaticWorkBudget(ColdInitializerStepBudget(context)),
+                new StaticWorkBudget(ColdInitializerStepBudget(context)), out var evidence, out var reason))
+            return (PassStatus.Success, 0, ["Loader bodies retained: " + reason]);
+
+        var methods = context.Module.GetTypes().SelectMany(type => type.Methods).ToArray();
+        var accepted = methods.Where(method => IsElidableShape(method) && !method.IsStaticConstructor &&
+                method.MDToken.Rid != 0 && !ReadingMarker.Marks(method) &&
+                !method.HasGenericParameters && !method.DeclaringType.HasGenericParameters &&
+                !method.DeclaringType.IsBeforeFieldInit &&
+                method.DeclaringType.FindStaticConstructor() is { HasBody: true } &&
+                !EmptyMethodBodies.DoesNothing(method))
+            .Select(method => (Method: method, Effects: evidence!.EffectsOf(method.MDToken.Raw)))
+            .Where(item => item.Effects.AllInvocationsCompleted && item.Effects.Registrations.Count == 0 &&
+                item.Effects.BodyStaticFieldsWritten is not null &&
+                item.Effects.StaticFieldsWritten.Except(item.Effects.BodyStaticFieldsWritten).Any())
+            .Select(item => new Candidate(item.Method,
+                AntiTamperNeutralizationPass.ComputeCallSubtree(item.Method), item.Effects.BodyStaticFieldsWritten!))
+            .ToArray();
+
+        // Keep every call instruction. For a non-beforefieldinit type the CLR must still
+        // run its initializer when this static method is entered, even with an empty body.
+        // Initialization of other types from inside the body is not excluded from its effects.
+        while (accepted.Length != 0)
+        {
+            using var probe = new BodyMutationBatch(accepted.Select(item => item.Method));
+            foreach (var item in accepted) EmptyInitializer(item.Method);
+            var observed = StaticFieldsReadByReachableCode(context.Module, RebuiltMethods.Of(context));
+            probe.Rollback();
+            var remaining = accepted.Where(item => !item.FieldsWritten.Any(observed.ContainsKey)).ToArray();
+            if (remaining.Length == accepted.Length) break;
+            accepted = remaining;
+        }
+        if (accepted.Length == 0) return (PassStatus.Success, 0, []);
+
+        using var transaction = new BodyMutationBatch(accepted.Select(item => item.Method));
+        foreach (var item in accepted)
+        {
+            EmptyInitializer(item.Method);
+            transaction.RecordChange(context, new ChangeRecord(Name, "empty-loader-body-keep-initialization",
+                item.Method.MDToken.ToString(),
+                "Removed an inert loader body while retaining its calls and required declaring-type initialization."));
+        }
+        var verification = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity,
+            context.OriginalStructure, CilantroPipeline.BuildRewriteAllowance(context));
+        if (!verification.Passed)
+            return (PassStatus.Failed, 0,
+                ["Loader body removal failed verification and was rolled back: " + string.Join("; ", verification.Diagnostics)]);
+
+        transaction.Commit();
+        var orphanTokens = accepted.SelectMany(item => item.Subtree).ToHashSet();
+        RecoveryOrphans.Declare(context, methods.Where(method => orphanTokens.Contains(method.MDToken.Raw)));
+        return (PassStatus.Success, accepted.Length,
+            [$"Emptied {accepted.Length} proven-inert loader body(s), preserving their calls and required type initialization."]);
+    }
+
+    private static MethodDef[] InitializersToEmpty(IEnumerable<Candidate> candidates) =>
+        candidates.Select(item => item.Method)
+            .Where(method => method.IsStaticConstructor && !EmptyMethodBodies.DoesNothing(method)).ToArray();
+
+    private static void EmptyInitializer(MethodDef method)
+    {
+        method.Body = new CilBody();
+        method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+    }
 
     /// <summary>
     /// Narrows candidates to those whose static writes no surviving code can observe, by making the
@@ -254,26 +377,34 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         (MethodDef Method, Instruction Instruction, MethodDef Target)[] CallSites,
         IReadOnlyList<string> Blocked) SelectObservablyInert(
             ModuleDef module,
-            Candidate[] candidates)
+            Candidate[] candidates,
+            IEnumerable<MethodDef> additionalRoots)
     {
         var blocked = new List<string>();
         var accepted = candidates;
         while (accepted.Length != 0)
         {
-            var callSites = FindCallSites(module, accepted.Select(item => item.Method).ToArray());
-            if (callSites.Length == 0)
+            var initializers = InitializersToEmpty(accepted);
+            var callSites = FindCallSites(module, accepted.Select(item => item.Method).ToArray())
+                .Where(site => !initializers.Contains(site.Method)).ToArray();
+            if (callSites.Length == 0 && initializers.Length == 0)
                 return (accepted, [], blocked);
 
             Dictionary<string, string> observed;
-            using (var probe = new InstructionMutationTransaction())
+            using (var probe = new BodyMutationBatch())
             {
-                foreach (var (_, instruction, _) in callSites)
+                foreach (var (method, instruction, _) in callSites)
                 {
-                    probe.Capture(instruction);
+                    probe.Capture(method);
                     instruction.OpCode = OpCodes.Nop;
                     instruction.Operand = null;
                 }
-                observed = StaticFieldsReadByReachableCode(module);
+                foreach (var method in initializers)
+                {
+                    probe.Capture(method);
+                    EmptyInitializer(method);
+                }
+                observed = StaticFieldsReadByReachableCode(module, additionalRoots);
                 probe.Rollback();
             }
 
@@ -305,14 +436,19 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
     /// reads loader state from its initializer, and asking whether that read can happen is asking
     /// whether anything still touches the type, which after the elision is exactly what is in
     /// question. Treating every initializer as running would answer yes by assumption.
+    /// Virtual readers likewise require an instance, using cleanup's conservative fallback when
+    /// reflection makes construction uncertain. Reconstructed methods remain explicit roots:
+    /// their state dependencies matter even without a normal caller in the input assembly.
     ///
     /// Carrying a reader alongside the field is what makes a decline diagnosable. The field name
     /// alone says the elision is unsafe but not what still depends on the loader, and that is the
     /// thing a reader of the report needs in order to know which recovery is missing.
     /// </remarks>
-    private static Dictionary<string, string> StaticFieldsReadByReachableCode(ModuleDef module)
+    private static Dictionary<string, string> StaticFieldsReadByReachableCode(
+        ModuleDef module, IEnumerable<MethodDef> additionalRoots)
     {
-        var reachability = ModuleReachability.Compute(module, typeInitializersAlwaysRun: false);
+        var reachability = ModuleReachability.ComputeWithInstances(
+            module, typeInitializersAlwaysRun: false, additionalRoots);
         var read = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var method in reachability.ReachableMethods.OrderBy(item => item.MDToken.Raw))
         {
@@ -399,22 +535,69 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
         MethodDef guard,
         out LoaderInterpretationEvidence? evidence)
     {
+        return TryInterpretColdInitializer(context, guard,
+            new StaticWorkBudget(ColdInitializerStepBudget(context)),
+            new StaticWorkBudget(ColdInitializerStepBudget(context)),
+            out evidence, out _);
+    }
+
+    internal static int ColdInitializerStepBudget(ArtifactContext context)
+    {
+        // The proof repeats the entire loader before entering its candidate. Large encrypted
+        // method tables can already have required more work than the ordinary guard budget.
+        return BootstrapMachine.InitializationStepBudget(context, MaximumSteps);
+    }
+
+    internal static bool TryInterpretColdInitializer(ArtifactContext context, MethodDef initializer,
+        StaticWorkBudget leftBudget, StaticWorkBudget rightBudget,
+        out LoaderInterpretationEvidence? evidence, out string reason)
+    {
         evidence = null;
-        if (!BootstrapMachine.TryRunInitializers(context, MaximumSteps, out var first, out _) ||
-            first is null ||
-            !first.Execute(guard).Succeeded ||
-            !BootstrapMachine.TryRunInitializers(context, MaximumSteps, out var second, out _) ||
-            second is null ||
-            !second.Execute(guard).Succeeded)
+        reason = "independent interpretations did not agree";
+        if (!Read(leftBudget, out var left, out reason) || !Read(rightBudget, out var right, out reason))
+            return false;
+        if (!left!.Agrees(right!))
         {
+            reason = "independent interpretations did not agree";
             return false;
         }
-
-        var candidate = first.State.Evidence.Snapshot();
-        if (!candidate.Agrees(second.State.Evidence.Snapshot()))
-            return false;
-        evidence = candidate;
+        evidence = left;
         return true;
+
+        bool Read(StaticWorkBudget budget, out LoaderInterpretationEvidence? result, out string diagnostic)
+        {
+            result = null;
+            diagnostic = "interpretation budget exhausted";
+            if (budget.RemainingSteps == 0 ||
+                !BootstrapMachine.TrySeed(context, MaximumSteps, out var machine, out diagnostic) || machine is null)
+                return false;
+            if (context.Module.GlobalType.FindStaticConstructor() is { HasBody: true } bootstrap)
+            {
+                var initialized = machine.Execute(bootstrap, [], budget);
+                if (!initialized.Succeeded)
+                {
+                    diagnostic = "module initialization did not complete without seeded proxies: " +
+                        (initialized.Diagnostic ?? initialized.Status.ToString())
+                            .Split(" | provenance:", StringSplitOptions.None)[0];
+                    return false;
+                }
+            }
+            // A module initializer requested as the proof target has already run above.
+            // Executing it explicitly again would not model a cold CLR startup.
+            if (initializer != context.Module.GlobalType.FindStaticConstructor())
+            {
+                var execution = machine.Execute(initializer, [], budget);
+                if (!execution.Succeeded)
+                {
+                    diagnostic = $"{execution.Status}: " +
+                        (execution.Diagnostic ?? "no diagnostic").Split(" | provenance:", StringSplitOptions.None)[0];
+                    return false;
+                }
+            }
+            result = machine.State.Evidence.Snapshot();
+            diagnostic = "";
+            return true;
+        }
     }
 
     private static (MethodDef Method, Instruction Instruction, MethodDef Target)[] FindCallSites(
@@ -435,5 +618,30 @@ public sealed class LoaderCallElisionPass : DeobfuscationPass
                     Instruction: instruction,
                     Target: ((IMethod)instruction.Operand).ResolveMethodDef()!)))
             .ToArray();
+    }
+}
+
+/// <summary>
+/// Rechecks loader dependencies after reconstructed bodies and their predicates have been simplified.
+/// </summary>
+public sealed class LoaderCallRecheckPass : LoaderCallElisionPass
+{
+    public override string Name => "loader-call-recheck";
+
+    public override IReadOnlyCollection<string> Dependencies => ["loader-call-elision", "stack-handoff"];
+
+    protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
+        ArtifactContext context)
+    {
+        if (!RebuiltMethods.Of(context).Any())
+            return (PassStatus.Success, 0, ["No reconstructed body requires a later loader dependency check."]);
+
+        // Repeat the effects and reachability checks against the final bodies. A reconstruction
+        // alone is not permission to remove its loader: live reads and failed cold proofs still
+        // keep initialization in place.
+        var calls = base.Execute(context);
+        if (calls.Status != PassStatus.Success) return calls;
+        var bodies = ElideBodiesPreservingInitialization(context);
+        return (bodies.Status, calls.Changes + bodies.Changes, [.. calls.Diagnostics, .. bodies.Diagnostics]);
     }
 }

@@ -230,6 +230,7 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
         diagnostic = string.Empty;
         var byToken = module.GetTypes()
             .SelectMany(type => type.Methods)
+            .Where(method => method.Rid != 0)
             .ToDictionary(method => method.MDToken.Raw);
 
         var common = verificationFrames

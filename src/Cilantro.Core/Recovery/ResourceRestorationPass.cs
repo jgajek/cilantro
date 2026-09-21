@@ -170,7 +170,7 @@ public sealed class ResourceRestorationPass : DeobfuscationPass
             bundle.Name,
             bundle.Name,
             0,
-            []);
+            [], Origin: PayloadOrigin.ResourceBundle);
     }
 
     /// <summary>

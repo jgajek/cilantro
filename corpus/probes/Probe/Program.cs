@@ -14,6 +14,18 @@ namespace Probe
 
         public static int Main(string[] args)
         {
+            if (args.Length == 1 && args[0] == "--recovery-self-test")
+            {
+                foreach (var input in new[] { int.MinValue, -33, -1, 0, 1, 31, int.MaxValue })
+                    Console.WriteLine("branch " + input + " " + RecoveryGroundTruth.Branch(input));
+                foreach (var divisor in new[] { 0, 1, -3 })
+                {
+                    var bytes = new byte[] { 0, 1, 127, 255 };
+                    var result = RecoveryGroundTruth.Mutate(bytes, divisor);
+                    Console.WriteLine("mutate " + divisor + " " + result + " " + Convert.ToBase64String(bytes));
+                }
+                return 0;
+            }
             Console.WriteLine("PROBE_STR_01 probe entry point");
             Console.WriteLine(DescribeCampaign());
             Console.WriteLine(ClassifyInput(args.Length));

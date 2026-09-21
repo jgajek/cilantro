@@ -17,6 +17,35 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class VirtualBodyTests
 {
+    [Fact]
+    public void AnAlwaysTakenObservationKeepsBothPredicatePathsInTheRebuiltBody()
+    {
+        using var context = Module();
+        var program = Program(context, [
+            (Push, new VirtualOperand.Number(1)),
+            (Push, new VirtualOperand.Number(2)),
+            (Jump, new VirtualOperand.Number(5)),
+            (Push, new VirtualOperand.Number(10)),
+            (Return, new VirtualOperand.None()),
+            (Push, new VirtualOperand.Number(20)),
+            (Return, new VirtualOperand.None())
+        ]);
+        var operations = program.Operations.ToDictionary(item => item.Key, item => item.Value);
+        operations[Jump] = new(Jump, 2, 0, "branch if") { Decides = "bgt.un" };
+        var watched = new VirtualRun(5, new Dictionary<int, (int, int)> { [Jump] = (5, 5) },
+            new Dictionary<int, int>(), new Dictionary<int, VirtualOperation>(),
+            new Dictionary<int, IReadOnlyList<string>>());
+        program = program with { Operations = VirtualProgramRecovery.Merge(operations, watched, program.Instructions.ToList()) };
+        var built = VirtualBody.Build(program, context.Module, Stub(context));
+        Assert.Null(built.Refused);
+        Assert.Equal(0, built.Distrusted);
+        Assert.Contains(built.Body!.Instructions, instruction => instruction.OpCode == OpCodes.Bgt_Un);
+        var stub = Stub(context);
+        stub.Body = built.Body;
+        var stack = EvaluationStackAnalyzer.Analyze(stub);
+        Assert.True(stack.Valid, string.Join("; ", stack.Diagnostics));
+    }
+
     private const int Push = 1;
     private const int Store = 2;
     private const int Load = 3;
@@ -199,7 +228,7 @@ public sealed class VirtualBodyTests
         ]);
 
         Assert.Null(built.Refused);
-        Assert.Contains("nothing reaches", string.Join(" ", built.Notes), StringComparison.Ordinal);
+        Assert.Contains("unreachable in the recovered graph", string.Join(" ", built.Notes), StringComparison.Ordinal);
         Assert.Contains("ldnull, throw", Written(built.Body!), StringComparison.Ordinal);
         // Counted as well as written, because a body to be run rather than read is refused over it:
         // an operation nothing arrives at is work the body would drop instead of doing.
@@ -234,6 +263,8 @@ public sealed class VirtualBodyTests
 
         Assert.Null(built.Refused);
         Assert.Equal(1, built.Distrusted);
+        Assert.Contains(built.Notes, note => note.Contains("Operation 2 (add)") &&
+            note.Contains("incoming depth 2") && note.Contains("pop 1, push 1"));
         Assert.Contains(
             "stands in the body as a throw",
             string.Join(" ", built.Notes),
@@ -377,6 +408,16 @@ public sealed class VirtualBodyTests
     }
 
     /// <summary>A program with one finally, whose handler the engine ends with its own operation.</summary>
+    [Fact]
+    public void KnownFinallyEntryHasEmptyStackAndRegionEndpointsDoNotBecomeEntries()
+    {
+        using var context = Module();
+        var program = Finally(context);
+        var plan = VirtualLift.Plan(program, context.Module);
+        Assert.Equal(0, plan[3].Depth);
+        Assert.False(plan[3].Disputed);
+    }
+
     private static VirtualProgram Finally(ArtifactContext context)
     {
         var program = Program(context, [
@@ -495,6 +536,37 @@ public sealed class VirtualBodyTests
         // dropping that value. Landing on the return itself would leave the value behind.
         Assert.Equal(OpCodes.Pop, landed.OpCode);
         Assert.Equal(OpCodes.Ret, body.Instructions[at + 1].OpCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReferenceSlotsKeepTheirDeclaredTypeWithoutBoxing(bool returnObject)
+    {
+        using var context = Module();
+        var stub = Stub(context);
+        stub.MethodSig = MethodSig.CreateStatic(returnObject ? context.Module.CorLibTypes.Object : context.Module.CorLibTypes.String, context.Module.CorLibTypes.String);
+        stub.Parameters.UpdateParameterTypes();
+        var program = Program(context, [
+            (12, new VirtualOperand.Number(0)),
+            (Store, new VirtualOperand.Number(0)),
+            (Load, new VirtualOperand.Number(0)),
+            (Return, new VirtualOperand.None())
+        ]);
+        program = program with { Operations = new Dictionary<int, VirtualOperation>(program.Operations)
+            { [12] = new(12, 0, 1, "loads the argument it indexes") } };
+        var built = VirtualBody.Build(program, context.Module, stub);
+        Assert.Null(built.Refused);
+        Assert.Contains(built.Body!.Variables, v => v.Type.ElementType == ElementType.String);
+        Assert.DoesNotContain(built.Body.Instructions, i => i.OpCode.Code is Code.Box or Code.Castclass or Code.Unbox_Any);
+        stub.Body = built.Body;
+        Assert.True(Cilantro.Core.Analysis.EvaluationStackAnalyzer.Analyze(stub).Valid);
+        var machine = new Cilantro.Core.Interpretation.StaticMachine();
+        Assert.True(machine.State.Heap.TryAllocateString("reference-value", out var argument));
+        var answer = machine.Execute(stub, [argument]);
+        Assert.True(answer.Succeeded);
+        Assert.True(machine.State.Heap.TryGetString(answer.Value, out var text));
+        Assert.Equal("reference-value", text);
     }
 
     private static VirtualBody.Attempt Build(
