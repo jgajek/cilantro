@@ -55,7 +55,8 @@ public sealed record CorpusSample(
     string? HostProfile = null,
     IReadOnlyList<string>? Libraries = null,
     string? Declarations = null,
-    bool AllowDeclaredCalls = false);
+    bool AllowDeclaredCalls = false,
+    int? MinimumRecoveredStringSites = null);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -634,6 +635,9 @@ public static class CorpusRunner
                 $"Call sites replaced with the string they return {recovery.ConstantStringSites} " +
                 $"is below {folded}.");
         CheckVirtualization(sample, recovery, diagnostics);
+        var recoveredStrings = recovery.ConstantStringSites + recovery.ReplacedStringSites;
+        if (sample.MinimumRecoveredStringSites is int recovered && recoveredStrings < recovered)
+            diagnostics.Add($"Recovered string sites {recoveredStrings} is below {recovered}.");
     }
 
     /// <summary>

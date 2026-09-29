@@ -3456,6 +3456,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         "System.SystemException",
         "System.ApplicationException",
         "System.InvalidOperationException",
+        "System.Reflection.TargetInvocationException",
         "System.Delegate",
         "System.MulticastDelegate",
         "System.Reflection.MethodBase",
@@ -3507,6 +3508,10 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         ,"System.Diagnostics.FileVersionInfo"
         ,"System.Collections.ReadOnlyCollectionBase"
         ,"System.Collections.IEnumerator"
+        ,"System.Collections.IEnumerable"
+        ,"System.Collections.ICollection"
+        ,HashtableKeys.ViewType
+        ,HashtableKeys.EnumeratorType
         ,"System.IDisposable"
         ,"System.Security.Cryptography.X509Certificates.X509Certificate"
     };
@@ -3593,7 +3598,23 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (type is "System.Object" or "System.ValueType" &&
             name is "Equals" or "ReferenceEquals" && arguments.Count == 2)
             return ObjectEquality(context, name == "ReferenceEquals", arguments);
-        // An exception carries a message and nothing else the machine reasons about, so building
+        if (type == "System.Reflection.TargetInvocationException" && name == ".ctor" &&
+            arguments.Count == 2 && method.MethodSig is { Params.Count: 1 } signature && signature.Params[0].FullName == "System.Exception")
+        {
+            return context.State.Heap.TrySetModelValue(arguments[0], "InnerException", arguments[1])
+                ? IntrinsicResult.Completed()
+                : IntrinsicResult.Invalid("Reflection exception receiver is not modeled.");
+        }
+        if (type is "System.Exception" or "System.Reflection.TargetInvocationException" &&
+            name == "get_InnerException" && arguments.Count == 1)
+            return context.State.Heap.TryGetModelValue(arguments[0], "InnerException", out StaticValue inner)
+                ? IntrinsicResult.Completed(inner)
+                : IntrinsicResult.Unknown("The exception's inner value is not modeled.");
+        if (name == "get_Message" && arguments.Count == 1 &&
+            context.State.Heap.TryGetRuntimeTypeName(arguments[0], out var exceptionType) &&
+            exceptionType == "System.Reflection.TargetInvocationException")
+            return IntrinsicResult.Invalid("The localized reflection exception message is not modeled.");
+        // An exception carries a message, so building
         // one succeeds and asking for its message gives back what it was built with. Obfuscator
         // runtimes throw and catch as ordinary control flow, and refusing the constructor would
         // stop interpretation on a path the program takes deliberately.
@@ -3764,7 +3785,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return IntrinsicResult.Completed();
         }
         if (type is "System.Collections.Hashtable" or "System.Collections.SortedList")
-            return InvokeHashtable(context, name, arguments);
+            return InvokeHashtable(context, type, name, arguments);
+        if (type is "System.Collections.IEnumerable" or "System.Collections.ICollection" or
+                "System.Collections.IEnumerator" or HashtableKeys.ViewType or HashtableKeys.EnumeratorType &&
+            HashtableKeys.TryInvoke(context.State, name, arguments, out var keyResult))
+            return keyResult;
         if (type == "System.Diagnostics.Process")
             return InvokeProcess(context, name, arguments);
         if (type is "System.Diagnostics.ProcessModuleCollection" or
@@ -3856,9 +3881,13 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
             if (arguments.Count < 3)
                 return IntrinsicResult.Invalid("AppDomain.SetData was given nothing to store.");
-            return heap.TrySetModelValue(arguments[0], $"Data:{slot}", arguments[2])
-                ? IntrinsicResult.Completed()
-                : IntrinsicResult.Invalid("Application-domain data is not modeled.");
+            if (!heap.TrySetModelValue(arguments[0], $"Data:{slot}", arguments[2]))
+                return IntrinsicResult.Invalid("Application-domain data is not modeled.");
+            // This value survives outside managed static fields, just like a runtime
+            // subscription. Keep the effect for loader cleanup even though differential
+            // trials now capture domain data explicitly in their shared object graph.
+            context.State.RecordRegistration("AppDomain.SetData");
+            return IntrinsicResult.Completed();
         }
         if ((name.StartsWith("add_", StringComparison.Ordinal) ||
              name.StartsWith("remove_", StringComparison.Ordinal)) &&
@@ -8788,6 +8817,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
     private static IntrinsicResult InvokeHashtable(
         IntrinsicContext context,
+        string type,
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
@@ -8811,12 +8841,16 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         }
         if (name == "get_Count" && arguments.Count == 1)
             return IntrinsicResult.Completed(StaticValue.FromInt32(entries.Count));
+        if (type == "System.Collections.Hashtable" && name == "get_Keys" && arguments.Count == 1)
+            return HashtableKeys.View(heap, arguments[0]);
         if (name is "Add" or "set_Item" && arguments.Count == 3)
         {
             var key = UnboxKey(heap, arguments[1]);
             if (name == "Add" && entries.ContainsKey(key))
                 return IntrinsicResult.Invalid("Hashtable duplicate key.");
             entries[key] = arguments[2];
+            if (type == "System.Collections.Hashtable")
+                HashtableKeys.RecordWrite(heap, arguments[0], key, arguments[1]);
             return IntrinsicResult.Completed();
         }
         if (name == "get_Item" && arguments.Count == 2)

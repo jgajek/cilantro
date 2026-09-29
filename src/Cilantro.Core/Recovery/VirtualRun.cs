@@ -111,6 +111,7 @@ internal sealed class VirtualRunWatcher
     private readonly FieldDef _opcodeField;
     private readonly FieldDef? _operandField;
     private readonly string _instructionType;
+    private readonly IReadOnlyList<VirtualInstruction> _expected;
     private readonly Dictionary<long, int> _indices = [];
     private readonly Dictionary<int, (int Taken, int Seen)> _jumps = [];
     private readonly Dictionary<int, int> _targets = [];
@@ -134,6 +135,7 @@ internal sealed class VirtualRunWatcher
     private int _performing = -1;
     private int _performingDepth = -1;
     private int _depth;
+    private int _suspendedUntil = -1;
 
     public VirtualRunWatcher(
         ModuleDef module,
@@ -141,7 +143,8 @@ internal sealed class VirtualRunWatcher
         MethodDef dispatcher,
         FieldDef opcodeField,
         FieldDef? operandField,
-        string instructionType)
+        string instructionType,
+        IReadOnlyList<VirtualInstruction> expected)
     {
         _module = module;
         _state = state;
@@ -150,6 +153,7 @@ internal sealed class VirtualRunWatcher
         _opcodeField = opcodeField;
         _operandField = operandField;
         _instructionType = instructionType;
+        _expected = expected;
     }
 
     public VirtualRun Result()
@@ -269,10 +273,23 @@ internal sealed class VirtualRunWatcher
         if (method != _dispatcher || arguments.Count < 2)
             return;
 
+        // A nested VM invocation is not the completion of the outer operation. Decline the
+        // interrupted observation and its edges rather than mix two frames' stacks or jumps.
+        if (_suspendedUntil >= 0)
+            return;
+        if (_performing >= 0)
+        {
+            _suspendedUntil = _performingDepth;
+            _performing = -1;
+            _working = null;
+            _previous = -1;
+            return;
+        }
+
         var operation = arguments[^1];
         if (_indices.Count == 0 && !Learn(arguments[0]))
             return;
-        if (!_indices.TryGetValue(operation.Bits, out var index) ||
+        if (arguments[0] != Engine || !_indices.TryGetValue(operation.Bits, out var index) ||
             !_heap.TryReadField(operation, _opcodeField, out var code) ||
             code.Kind != StaticValueKind.Int32)
         {
@@ -367,6 +384,11 @@ internal sealed class VirtualRunWatcher
     public void Exited(MethodDef method)
     {
         var depth = _depth--;
+        if (_suspendedUntil == depth)
+        {
+            _suspendedUntil = -1;
+            _previous = -1;
+        }
         if (method != _dispatcher || _performing < 0 || depth != _performingDepth)
             return;
         var performing = _performing;
@@ -419,7 +441,8 @@ internal sealed class VirtualRunWatcher
     private bool Learn(StaticValue engine)
     {
         if (VirtualProgramRecovery.FindProgram(_heap, _module, engine, _instructionType) is not
-            { } items)
+            { } items || !VirtualProgramRecovery.MatchesProgram(
+                _heap, _opcodeField, _operandField, items, _expected))
         {
             return false;
         }

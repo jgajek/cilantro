@@ -1824,26 +1824,54 @@ public static class VirtualProgramRecovery
     private static Watched? Watch(
         ArtifactContext context,
         MethodDef root,
-        Attempt known)
+        Attempt known) => Watch(context, root, known.Dispatcher, known.OpcodeField,
+            known.InstructionType, known.Decoded);
+
+    internal static Watched? Watch(
+        ArtifactContext context,
+        MethodDef root,
+        MethodDef dispatcher,
+        FieldDef opcodeField,
+        string instructionType,
+        IReadOnlyList<VirtualInstruction> expected)
     {
-        if (!BootstrapMachine.TryRunInitializers(context, DecodeSteps, out var machine, out _) ||
-            machine is null || !TryBuildArguments(machine, root, out var arguments))
+        VirtualRunWatcher? watcher = null;
+        if (!BootstrapMachine.TryRunInitializers(context, DecodeSteps, out var machine, out _, candidate =>
+            {
+                // Initialization can run the entire VM program. Install before it starts, and
+                // create a fresh watcher if bootstrap retries with a different machine.
+                watcher = new VirtualRunWatcher(context.Module, candidate.State, dispatcher,
+                    opcodeField, OperandField(context.Module, opcodeField, instructionType),
+                    instructionType, expected);
+                candidate.FrameEntered = watcher.Entered;
+                candidate.FrameExited = watcher.Exited;
+                candidate.Stepped = watcher.Stepped;
+            }) || machine is null || watcher is null)
         {
             return null;
         }
 
-        var watcher = new VirtualRunWatcher(
-            context.Module, machine.State, known.Dispatcher, known.OpcodeField,
-            OperandField(context.Module, known.OpcodeField, known.InstructionType),
-            known.InstructionType);
+        var initialized = new Watched(watcher.Result(), machine, watcher.Engine, watcher.Program);
+        // A budget may interrupt the first engine during startup. Keep that observation, but
+        // give the explicit entry its own watcher so a short startup cannot hide a fuller run.
+        watcher = new VirtualRunWatcher(context.Module, machine.State, dispatcher, opcodeField,
+            OperandField(context.Module, opcodeField, instructionType), instructionType, expected);
         machine.FrameEntered = watcher.Entered;
         machine.FrameExited = watcher.Exited;
         machine.Stepped = watcher.Stepped;
-        machine.Execute(root, arguments);
-        machine.FrameEntered = null;
-        machine.FrameExited = null;
-        machine.Stepped = null;
-        return new Watched(watcher.Result(), machine, watcher.Engine, watcher.Program);
+        try
+        {
+            if (TryBuildArguments(machine, root, out var arguments))
+                machine.Execute(root, arguments);
+        }
+        finally
+        {
+            machine.FrameEntered = null;
+            machine.FrameExited = null;
+            machine.Stepped = null;
+        }
+        var entered = new Watched(watcher.Result(), machine, watcher.Engine, watcher.Program);
+        return initialized.Run.Watched > entered.Run.Watched ? initialized : entered;
     }
 
     /// <summary>
@@ -1893,7 +1921,7 @@ public static class VirtualProgramRecovery
     /// reaches for any of it faults or answers wrongly. The engine a real run leaves is the one the
     /// operations were written for, so it is kept rather than discarded with the machine.
     /// </remarks>
-    private sealed record Watched(
+    internal sealed record Watched(
         VirtualRun Run,
         StaticMachine Machine,
         StaticValue Engine,
@@ -2145,6 +2173,33 @@ public static class VirtualProgramRecovery
             decoded.Add(new VirtualInstruction(index, (int)opcode.Bits, operand));
         }
         return decoded;
+    }
+
+    internal static bool MatchesProgram(
+        StaticHeap heap, FieldDef opcodeField, FieldDef? operandField,
+        IReadOnlyList<StaticValue> items, IReadOnlyList<VirtualInstruction> expected)
+    {
+        if (items.Count != expected.Count)
+            return false;
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (!heap.TryReadField(items[index], opcodeField, out var opcode) ||
+                opcode.Kind != StaticValueKind.Int32 || opcode.Bits != expected[index].Opcode)
+                return false;
+            var operand = operandField is not null && heap.TryReadField(items[index], operandField, out var value)
+                ? Operand(heap, value) : new VirtualOperand.None();
+            var matches = (operand, expected[index].Operand) switch
+            {
+                (VirtualOperand.None, VirtualOperand.None) => true,
+                (VirtualOperand.Number left, VirtualOperand.Number right) => left == right,
+                (VirtualOperand.Text left, VirtualOperand.Text right) => left == right,
+                (VirtualOperand.Table left, VirtualOperand.Table right) => left.Values.SequenceEqual(right.Values),
+                _ => false
+            };
+            if (!matches)
+                return false;
+        }
+        return true;
     }
 
     private static VirtualOperand Operand(StaticHeap heap, StaticValue value)

@@ -1,6 +1,6 @@
 # Support and limitations
 
-CILantro 0.10.2 is a regular release for static recovery of supported .NET Reactor and ConfuserEx samples. Coverage follows the sample's protection configuration and implementation, not just the product name or version.
+CILantro 0.10.3 is a regular release for static recovery of supported .NET Reactor and ConfuserEx samples. Coverage follows the sample's protection configuration and implementation, not just the product name or version.
 
 ## Coverage
 
@@ -9,7 +9,7 @@ CILantro 0.10.2 is a regular release for static recovery of supported .NET React
 | Reactor method protection | Restore supported NecroBit/JIT-loader method bodies | Unrecognized loaders or bodies never supplied by the loader can remain unresolved |
 | Reactor strings and constants | Recover supported string decoders, numeric tables, and bounded pure helpers | Unknown state or side effects prevent folding |
 | ConfuserEx | Supported encrypted-section recovery, constants, control-flow cleanup, and resolvable proxies | Narrower corpus; forks, resource protection, and runtime-dependent binding need case-specific verification |
-| Control flow | Constant propagation, dispatcher solving, path simplification, and dead-code removal | Complex exception regions, shared state, and unknown expressions remain difficult |
+| Control flow | Constant propagation across stack/local state, dispatcher solving, and specialization of proven paths while retaining calls and field reads | Unknown selectors, unsupported paths, and exception-boundary cleanup remain; ordinary switches and async state machines must not be mistaken for protection |
 | VM reconstruction | Decode supported Reactor VM programs, infer operations, emit marked CIL bodies and helpers | Not a universal devirtualizer; unsupported semantics and unexercised paths remain |
 | Embedded assemblies | Supported load capture, resource decoding, Costura extraction, and bounded recursive recovery | No exhaustive extraction claim; no fetching downloaded stages |
 | Native wrappers | Extract the known Reactor bootstrap shape and continue managed recovery | Not arbitrary native unpacking, mixed-mode recovery, or NativeAOT decompilation |
@@ -25,7 +25,7 @@ The ordinary CLI run enables readability renaming and supported VM reconstructio
 
 ## Validation baseline
 
-Version 0.10.2 development validation recorded 859 passing selected regression tests, all 24 runnable corpus gates, two reconstruction cleanup gates, and ten matching runtime cases on a source-built benign Reactor 7.5 fixture. These measure different aspects of recovery and do not establish equivalence for all inputs. See the [release notes](releases/0.10.2.md) for results and limitations.
+The final pre-release recovery build passed 1,208 selected regression tests and all 24 standard corpus gates. All 25 standard assembly reports and nine reports from four additional recursive inputs verified structurally, with no extracted payload hashes lost against the preceding baseline. All 46 saved-output pass trials also verified. New behavioral tests execute generated benign CLR fixtures; malware trials remain static. These configurations and observations are distinct, not a single equivalence score. See the [0.10.3 release notes](releases/0.10.3.md) and [completion measurements](completion-progress.md).
 
 The corpus gates cover their manifest assertions. A decompiler accepting a file proves neither its behavior nor extraction completeness. Runtime-oracle trials execute only the benign programs built from repository source; they exercise selected inputs, not all reconstructed VM paths. See [corpus validation](corpus.md).
 
@@ -35,6 +35,8 @@ The corpus gates cover their manifest assertions. A decompiler accepting a file 
 - With the workstation profile and a declared 32-million-step budget, full-protection Reactor 7.5 benign probes for .NET Framework 4.8, .NET 8, and .NET 10 now agree on the repeat-call zero-stream fixture after identical original initialization. The comparison includes captured managed state, native regions, ordered writes, and image-protection records. Cold-start trials expose static-state differences and retain overall disagreement; their earlier inconclusive verdicts did not show those differences. Their cleaned outputs remain unchanged and pass structural verification. This is bounded evidence, not full equivalence. The default comparison budget remains four million steps; registrations without complete captured state still make a trial inconclusive.
 - `mc.dll` has one stub-shaped method that the recovery trace never writes: `EmptyList.Count()`, returning zero. That body is plausible for an empty list, so the heuristic does not by itself establish missing recovery. Do not substitute a guessed implementation.
 - Large Reactor outputs retain substantial dispatcher patterns and runtime infrastructure. Numeric token resolution and reflective construction restrict deletion.
+- The latest default Mlf payload run retains 23 switches in 16 methods, including functional choices and unresolved routing. It restores all 700 numeric-table constants and 172 strings and removes 561 runtime types; the older reconstruction cleanup gate still expects 564. Its 672 unreachable instructions are retained through the current exception-boundary cleanup policy. The 24 standard gates passing does not mean this separate cleanup gate passes.
+- WindowsManagement's managed stage retains 179 dispatcher-shaped methods in the standard configuration; `mc.dll` retains 26, and the full Reactor 7.5 fixtures retain three per framework. These heuristic counts include ordinary control flow and are not counts of proven protector dispatchers.
 - Some extraction passes remain unsupported or incomplete. Each recovered child needs its own result review.
 - Some reconstructed operations are retained as fail-fast placeholders in regions classified unreachable by the recovered graph. That classification depends on the recovered semantics.
 

@@ -27,7 +27,7 @@ public sealed class StringLookupRecoveryTests
             type.Methods.Add(Filler(module, "slot", (41, "first"), (42, "second")));
             var fetch = Fetcher(module, "Fetch", "slot");
             type.Methods.Add(fetch);
-            type.Methods.Add(Caller(module, "Uses", fetch, 42, 41, 42));
+            SyntheticContext.AddType(module, "Consumer").Methods.Add(Caller(module, "Uses", fetch, 42, 41, 42));
         });
 
         Triage(context);
@@ -41,10 +41,55 @@ public sealed class StringLookupRecoveryTests
             caller.Body.Instructions
                 .Where(instruction => instruction.OpCode == OpCodes.Ldstr)
                 .Select(instruction => (string?)instruction.Operand));
-        Assert.DoesNotContain(
+        Assert.Contains(
             caller.Body.Instructions,
             instruction => instruction.OpCode == OpCodes.Call &&
                 instruction.Operand is IMethod called && called.Name == "Fetch");
+        var machine = new StaticMachine(modelTypeInitialization: true);
+        Assert.True(machine.Execute(caller).Succeeded);
+        Assert.True(machine.State.TryGetOrAllocateRuntimeSingleton("System.AppDomain", out var domain));
+        Assert.True(machine.State.Heap.TryGetModelValue(domain, "Data:slot", out StaticValue _));
+    }
+
+    [Fact]
+    public void LookupRuntimeEffectsAreNotErasedByLiteralRecovery()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            // Run the domain write on every lookup, rather than once in a type initializer.
+            var fetch = Filler(module, "slot", (41, "first"));
+            fetch.Name = "Fetch";
+            fetch.Attributes = MethodAttributes.Public | MethodAttributes.Static;
+            fetch.MethodSig = MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32);
+            fetch.Body.Instructions.Insert(fetch.Body.Instructions.Count - 1, OpCodes.Ldstr.ToInstruction("first"));
+            type.Methods.Add(fetch);
+            type.Methods.Add(Caller(module, "Uses", fetch, 41));
+        });
+        Triage(context);
+        var result = new StringLookupRecoveryPass().Run(context);
+        Assert.Equal(PassStatus.Partial, result.Status);
+        Assert.Equal(0, result.Changes);
+        Assert.Contains(result.Diagnostics, value => value.Contains("runtime effects", StringComparison.Ordinal));
+        Assert.DoesNotContain(Method(context, "Uses").Body.Instructions, instruction => instruction.OpCode == OpCodes.Ldstr);
+    }
+
+    [Fact]
+    public void ALookupWithoutInitializationEffectsCanStillBeRemoved()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var type = SyntheticContext.AddType(module, "Holder");
+            var fetch = new MethodDefUser("Fetch", MethodSig.CreateStatic(module.CorLibTypes.String, module.CorLibTypes.Int32))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            fetch.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("plain"));
+            fetch.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            type.Methods.Add(fetch);
+            type.Methods.Add(Caller(module, "Uses", fetch, 41));
+        });
+        Triage(context);
+        Assert.Equal(1, new StringLookupRecoveryPass().Run(context).Changes);
+        Assert.DoesNotContain(Method(context, "Uses").Body.Instructions, instruction => instruction.OpCode == OpCodes.Call);
     }
 
     /// <summary>

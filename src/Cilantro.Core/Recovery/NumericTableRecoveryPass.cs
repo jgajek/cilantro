@@ -12,6 +12,8 @@ public class NumericTableRecoveryPass : DeobfuscationPass
     public override string Name => "numeric-tables";
     public override bool GatesEmission => false;
     public override IReadOnlyCollection<string> Dependencies => ["constant-strings"];
+    protected virtual bool RevisitModuleInitialization => false;
+    protected virtual bool ProveConstructedValues => false;
 
     private sealed record Getter(MethodDef Method, FieldDef Holder, FieldDef Table);
 
@@ -20,9 +22,11 @@ public class NumericTableRecoveryPass : DeobfuscationPass
         var methods = context.Module.GetTypes().SelectMany(t => t.Methods).ToArray();
         var getters = methods.Select(ReadGetter).OfType<Getter>().ToArray();
         var rejected = new List<string>();
+        var graphInputs = new Dictionary<FieldDef, SharedGraphReadOnly.Result>();
         getters = getters.Where(g =>
         {
             var accepted = Closed(g, getters, methods, out var reason);
+            if (accepted) accepted = ReadOnlyConstructionInputs(g, graphInputs, out reason);
             if (!accepted) rejected.Add($"{g.Method.MDToken}: {reason}");
             return accepted;
         }).ToArray();
@@ -44,11 +48,16 @@ public class NumericTableRecoveryPass : DeobfuscationPass
             for (var i = 1; i < instructions.Count; i++)
                 if (instructions[i].OpCode.Code == Code.Call && instructions[i].Operand is IMethod called &&
                     called.ResolveMethodDef() is { } definition && byMethod.TryGetValue(definition, out var getter) &&
-                    instructions[i - 1].IsLdcI4() && !targeted.Contains(instructions[i]))
-                    sites.Add((method, instructions[i - 1], instructions[i], getter, instructions[i - 1].GetLdcI4Value()));
+                    LiteralCallArgument.Int32(instructions, i, targeted) is { } key)
+                    sites.Add((method, key, instructions[i], getter, key.GetLdcI4Value()));
         }
         var asks = sites.Select(s => (s.Getter, s.Index)).Distinct().Take(2048).ToArray();
         if (asks.Length == 0) return (PassStatus.Success, 0, ["Integer table calls did not supply literal indexes."]);
+        // Reconstructed initializers can expose an integrity check that early bootstrap
+        // could not reach. Revisit the existing file-refusal policy, but discard this
+        // machine: constants still require two fresh, host-independent executions below.
+        if (RevisitModuleInitialization)
+            BootstrapMachine.TryRunInitializers(context, 4_000_000, out _, out _);
         if (!BootstrapMachine.TrySeed(context, 4_000_000, out var first, out var why) || first is null ||
             !BootstrapMachine.TrySeed(context, 4_000_000, out var second, out why) || second is null)
             return (PassStatus.Partial, 0, [why]);
@@ -61,14 +70,33 @@ public class NumericTableRecoveryPass : DeobfuscationPass
         var initializationFields = InitializationFields(context.Module, methods);
         var preserve = new HashSet<Getter>();
         var preservable = new HashSet<Getter>();
+        // Give loader cleanup the first opportunity to make initialization inert.
+        // Preserving its effects too early can strand otherwise removable dispatchers.
+        var constructedValues = ProveConstructedValues ? new Dictionary<TypeDef, ClosedInitializerValues.Result>() : null;
         foreach (var getter in getters)
         {
             if (CanPreserveInitialization(getter, initializationFields) ||
-                IndependentConstruction(getter, initializationFields, out var dependency)) preservable.Add(getter);
+                IndependentConstruction(getter, initializationFields, constructedValues, out var dependency)) preservable.Add(getter);
             else refusals.Add($"{getter.Method.MDToken}: initialization dependency proof refused: {dependency}");
         }
         var forward = Read(first, asks, refusals, initializationFields, preservable, preserve);
         var reverse = Read(second, asks.Reverse(), refusals, initializationFields, preservable, preserve);
+        foreach (var getter in getters)
+        {
+            var missing = asks.Where(a => a.Getter == getter &&
+                (forward.GetValueOrDefault(a) is null || reverse.GetValueOrDefault(a) is null)).Select(a => a.Index).ToArray();
+            if (missing.Length == 0 || FinalConstruction(getter) is not { } constructor) continue;
+            var initializer = getter.Holder.DeclaringType.FindStaticConstructor();
+            var isolatedForward = ClosedTableConstruction.Read(context, initializer, constructor, getter.Holder, getter.Method, missing);
+            var isolatedReverse = ClosedTableConstruction.Read(context, initializer, constructor, getter.Holder, getter.Method, missing.Reverse());
+            foreach (var index in missing)
+                if (isolatedForward.TryGetValue(index, out var value) && isolatedReverse.TryGetValue(index, out var other) && value == other)
+                {
+                    forward[(getter, index)] = value;
+                    reverse[(getter, index)] = other;
+                    preserve.Add(getter);
+                }
+        }
         using var transaction = new BodyMutationBatch();
         var folded = new HashSet<MethodDef>();
         var changes = 0;
@@ -122,11 +150,13 @@ public class NumericTableRecoveryPass : DeobfuscationPass
             method.MethodSig.Params.Count != 1 || method.MethodSig.Params[0].ElementType != ElementType.I4 ||
             method.ReturnType.ElementType != ElementType.I4 || method.Body.ExceptionHandlers.Count != 0) return null;
         var il = method.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+        var cast = il.Length == 6 && IsArrayCast(il[2], ElementType.I4);
+        if (cast) il = [il[0], il[1], .. il[3..]];
         return il.Length == 5 && il[0].OpCode.Code == Code.Ldsfld && il[1].OpCode.Code == Code.Ldfld &&
             il[2].OpCode.Code == Code.Ldarg_0 && il[3].OpCode.Code == Code.Ldelem_I4 && il[4].OpCode.Code == Code.Ret &&
             il[0].Operand is IField holderRef && holderRef.ResolveFieldDef() is { IsInitOnly: true } holder &&
             il[1].Operand is IField tableRef && tableRef.ResolveFieldDef() is { } table &&
-            table.FieldType is SZArraySig { Next.ElementType: ElementType.I4 } &&
+            (table.FieldType is SZArraySig { Next.ElementType: ElementType.I4 } || table.FieldType.ElementType == ElementType.Object) &&
             holder.DeclaringType == table.DeclaringType && holder.Module == method.Module
                 ? new(method, holder, table) : null;
     }
@@ -188,6 +218,8 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                     previous--;
                 }
                 if (previous < 0 || il[previous].OpCode.Code != Code.Newarr) return false;
+                if (table.FieldType.ElementType == ElementType.Object &&
+                    (il[previous].Operand is not ITypeDefOrRef element || element.ToTypeSig().ElementType != ElementType.I4)) return false;
                 continue;
             }
             if (il[at].OpCode.Code != (table.IsStatic ? Code.Ldsfld : Code.Ldfld)) return false;
@@ -209,6 +241,10 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                     }
                 if (usedArray)
                 {
+                    // A cast preserves the array identity. Keep following it until an
+                    // element operation consumes it; a cast must not hide an escape.
+                    if (IsArrayCast(instruction, ElementType.I4))
+                    { stack.Push(true); continue; }
                     if (readOnly ? instruction.OpCode.Code is not (Code.Ldelem_I1 or Code.Ldelem_U1 or Code.Ldelem_I2 or Code.Ldelem_U2 or Code.Ldelem_I4 or Code.Ldelem_U4 or Code.Ldelem_I8 or Code.Ldelem_R4 or Code.Ldelem_R8 or Code.Ldlen)
                         : instruction.OpCode.Code is not (Code.Stelem_I4 or Code.Ldelem_I4 or Code.Ldlen)) return false;
                     consumed = true;
@@ -234,6 +270,42 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                      (!method.IsStaticConstructor || method.DeclaringType != field.DeclaringType)))
                     allowed.Remove(field);
         return allowed.Select(f => f.FullName).ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static bool ReadOnlyConstructionInputs(Getter getter, Dictionary<FieldDef, SharedGraphReadOnly.Result> graphs, out string reason)
+    {
+        reason = "shared construction input closure exceeded its bound";
+        var owner = getter.Holder.DeclaringType;
+        var pending = new Stack<MethodDef>(owner.Methods.Where(m => m.IsInstanceConstructor));
+        var seen = new HashSet<MethodDef>();
+        while (pending.TryPop(out var method))
+        {
+            if (!seen.Add(method)) continue;
+            if (seen.Count > 512) return false;
+            if (!method.HasBody) continue;
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.OpCode.Code == Code.Ldsfld && instruction.Operand is IField reference &&
+                    reference.ResolveFieldDef() is { } field && field != getter.Holder &&
+                    field.FieldType.ToTypeDefOrRef()?.ResolveTypeDef() is { IsValueType: false } type && type.Module == owner.Module)
+                {
+                    if (type.BaseType?.FullName == "System.MulticastDelegate")
+                    {
+                        if (ReadonlyDelegateBinding.Target(field) is { } target) pending.Push(target);
+                        continue;
+                    }
+                    if (!graphs.TryGetValue(field, out var graph)) graphs[field] = graph = SharedGraphReadOnly.Check(field);
+                    if (!graph.Passed)
+                    {
+                        reason = $"shared reference consumers are not closed for {field.FullName}: {graph.Detail}";
+                        return false;
+                    }
+                }
+                if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj && instruction.Operand is IMethod called &&
+                    called.ResolveMethodDef() is { } callee && callee.Module == owner.Module) pending.Push(callee);
+            }
+        }
+        return true;
     }
 
     // Preserve effects only when the values cannot depend on mutable external static
@@ -274,7 +346,8 @@ public class NumericTableRecoveryPass : DeobfuscationPass
     // Slice the holder assignment away from earlier initializer side effects. The
     // initializer is still invoked at each rewritten site; only the newly constructed
     // table's inputs must be closed. Branching initialization and later mutations refuse.
-    private static bool IndependentConstruction(Getter getter, HashSet<string> immutable, out string reason)
+    private static bool IndependentConstruction(Getter getter, HashSet<string> immutable,
+        Dictionary<TypeDef, ClosedInitializerValues.Result>? constructedValues, out string reason)
     {
         reason = "initializer timing, generic context or exception regions are not closed";
         var owner = getter.Holder.DeclaringType;
@@ -294,6 +367,7 @@ public class NumericTableRecoveryPass : DeobfuscationPass
         var pending = new Stack<(MethodDef Method, string Path)>(); pending.Push((constructor, constructor.FullName));
         var seen = new HashSet<MethodDef>();
         var literalFields = new Dictionary<FieldDef, bool>();
+        var delegates = new Dictionary<FieldDef, MethodDef?>();
         while (pending.TryPop(out var item))
         {
             var (method, path) = item;
@@ -308,12 +382,25 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                 {
                     reason = $"unresolved mutable static read {reference.FullName}; conservative dependency path: {path} (not proof the table value depends on this read)";
                     if (reference.ResolveFieldDef() is not { } field || !immutable.Contains(field.FullName)) return false;
+                    if (!delegates.TryGetValue(field, out var bound))
+                        delegates[field] = bound = ReadonlyDelegateBinding.Target(field);
+                    if (bound is not null)
+                    {
+                        pending.Push((bound, Extend(path, "readonly delegate target", bound)));
+                        continue;
+                    }
                     // A literal lookup table can have unrelated loader work before its
                     // assignment. Prove its complete value expression instead of following
                     // that unrelated work as a dependency of every array element.
                     if (!literalFields.TryGetValue(field, out var literal))
                         literalFields[field] = literal = LiteralInitializerField(field);
                     if (literal) continue;
+                    if (constructedValues is not null)
+                    {
+                        if (!constructedValues.TryGetValue(field.DeclaringType, out var values))
+                            constructedValues[field.DeclaringType] = values = ClosedInitializerValues.Check(field.DeclaringType);
+                        if (values.Passed && values.Fields.Contains(field)) continue;
+                    }
                     if (field.DeclaringType.FindStaticConstructor() is { } init) pending.Push((init, Extend(path, "field initializer", init)));
                 }
                 if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj && instruction.Operand is IMethod called)
@@ -322,7 +409,16 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                     {
                         reason = $"virtual dispatch {target.FullName}";
                         // Unknown dispatch could introduce dependencies outside this slice.
-                        if (instruction.OpCode.Code == Code.Callvirt && target.IsVirtual) return false;
+                        if (instruction.OpCode.Code == Code.Callvirt && target.IsVirtual)
+                        {
+                            var receiver = ReadonlyDelegateBinding.Receiver(method, instruction);
+                            if (receiver is null) return false;
+                            if (!delegates.TryGetValue(receiver, out var bound))
+                                delegates[receiver] = bound = ReadonlyDelegateBinding.Target(receiver);
+                            if (bound is null) return false;
+                            pending.Push((bound, Extend(path, "readonly delegate invocation", bound)));
+                            continue;
+                        }
                         pending.Push((target, Extend(path, "call", target)));
                     }
                     else if (called.DeclaringType?.ResolveTypeDef()?.Module == owner.Module) return false;
@@ -330,6 +426,25 @@ public class NumericTableRecoveryPass : DeobfuscationPass
             }
         }
         return true;
+    }
+
+    private static MethodDef? FinalConstruction(Getter getter)
+    {
+        var owner = getter.Holder.DeclaringType;
+        for (var type = owner; type is not null; type = type.DeclaringType)
+            if (type.HasGenericParameters) return null;
+        for (var type = getter.Method.DeclaringType; type is not null; type = type.DeclaringType)
+            if (type.HasGenericParameters) return null;
+        if (owner.FindStaticConstructor() is not { HasBody: true } initializer ||
+            initializer.Body.ExceptionHandlers.Count != 0 || StraightLine(initializer) is not { Length: >= 3 } il ||
+            il[^1].OpCode.Code != Code.Ret || il[^2].OpCode.Code != Code.Stsfld ||
+            il[^2].Operand is not IField holder || holder.ResolveFieldDef() != getter.Holder ||
+            il[^3].OpCode.Code != Code.Newobj || il[^3].Operand is not IMethod reference ||
+            reference.ResolveMethodDef() is not { HasBody: true } constructor ||
+            constructor.DeclaringType != owner || constructor.MethodSig.Params.Count != 0 ||
+            il.Count(i => i.Operand is IField field && field.ResolveFieldDef() == getter.Holder) != 1) return null;
+        if (!ClosedTableConstruction.SafePrefix(initializer, il[..^3])) return null;
+        return constructor;
     }
 
     private static string Extend(string path, string edge, MethodDef method) =>
@@ -430,11 +545,24 @@ public class NumericTableRecoveryPass : DeobfuscationPass
     private static bool ReadsHolder(MethodDef method, FieldDef holder)
     {
         var il = method.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+        if (il.Length == 6 && IsArrayCast(il[2], il[4].OpCode.Code switch
+        {
+            Code.Ldelem_I4 => ElementType.I4,
+            Code.Ldelem_I8 => ElementType.I8,
+            Code.Ldelem_R4 => ElementType.R4,
+            Code.Ldelem_R8 => ElementType.R8,
+            _ => ElementType.End
+        }))
+            il = [il[0], il[1], .. il[3..]];
         return il.Length == 5 && il[0].OpCode.Code == Code.Ldsfld && il[0].Operand is IField reference &&
             reference.ResolveFieldDef() == holder && il[1].OpCode.Code == Code.Ldfld &&
             il[2].OpCode.Code == Code.Ldarg_0 && il[3].OpCode.Code is Code.Ldelem_I4 or Code.Ldelem_I8 or Code.Ldelem_R4 or Code.Ldelem_R8 &&
             il[4].OpCode.Code == Code.Ret;
     }
+
+    private static bool IsArrayCast(Instruction instruction, ElementType element) =>
+        instruction.OpCode.Code == Code.Castclass && instruction.Operand is TypeSpec { TypeSig: SZArraySig array } &&
+        array.Next.ElementType == element;
 
     private static Dictionary<(Getter, int), int?> Read(StaticMachine machine, IEnumerable<(Getter Getter, int Index)> asks, HashSet<string> refusals, HashSet<string> initializationFields, HashSet<Getter> preservable, HashSet<Getter> preserve)
     {
@@ -471,4 +599,29 @@ public sealed class NumericTableRecheckPass : NumericTableRecoveryPass
 {
     public override string Name => "numeric-tables-recheck";
     public override IReadOnlyCollection<string> Dependencies => ["method-inlining-recheck"];
+}
+
+/// <summary>Revisits tables whose getter and initializer shapes emerge during late cleanup.</summary>
+public sealed class NumericTableCompletionPass : NumericTableRecoveryPass
+{
+    protected override bool ProveConstructedValues => true;
+    protected override bool RevisitModuleInitialization => true;
+    public override string Name => "numeric-tables-completion";
+    public override IReadOnlyCollection<string> Dependencies => ["loader-call-recheck"];
+}
+
+/// <summary>Consumes construction shapes exposed by reachability and unwritten-guard cleanup.</summary>
+public sealed class NumericTableFinalizationPass : NumericTableRecoveryPass
+{
+    protected override bool ProveConstructedValues => true;
+    protected override bool RevisitModuleInitialization => true;
+    public override string Name => "numeric-tables-finalization";
+    public override IReadOnlyCollection<string> Dependencies => ["unwritten-guards-completion"];
+
+    protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
+    {
+        var result = base.Execute(context);
+        context.SetFact("numeric-tables.finalized", result.Item2 > 0);
+        return result;
+    }
 }

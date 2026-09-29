@@ -53,7 +53,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                     Name,
                     "complete-control-flow",
                     $"{method.MDToken} {method.FullName}",
-                    $"Folded {outcome.Value.Folded} constant branch(es) and removed " +
+                    $"Folded {outcome.Value.Folded} constant operation(s) and removed " +
                     $"{outcome.Value.Removed} unreachable instruction(s)."));
             }
         }
@@ -66,7 +66,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         Accumulate("cfg.methodsSimplified", rewrittenMethods);
         return (PassStatus.Success, foldedTotal + removedTotal,
         [
-            $"Folded {foldedTotal} constant branch(es) and removed {removedTotal} unreachable " +
+            $"Folded {foldedTotal} constant operation(s) and removed {removedTotal} unreachable " +
             $"instruction(s) across {rewrittenMethods} method(s)."
         ]);
 
@@ -96,7 +96,10 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             {
                 var foldedThisRound = LocalConstantPropagation.Fold(method) + FoldConstantLocals(method);
                 var discardedThisRound = RemoveDiscardedValues(method);
+                discardedThisRound += RedundantControlFlow.RemoveCarriedIntegerDiscards(method);
+                foldedThisRound += RedundantControlFlow.RemoveUnreadIntegerStores(method);
                 foldedThisRound += FoldConstantArithmetic(method) + FoldConstantBranches(method);
+                foldedThisRound += RedundantControlFlow.FoldConvergentBranches(method);
                 var removedThisRound = RemoveUnreachable(method) + discardedThisRound;
                 folded += foldedThisRound;
                 removed += removedThisRound;
@@ -160,9 +163,15 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                 var a = left.GetLdcI4Value();
                 value = code switch
                 {
-                    Code.Add => unchecked(a + b), Code.Sub => unchecked(a - b), Code.Mul => unchecked(a * b),
-                    Code.Xor => a ^ b, Code.And => a & b, Code.Or => a | b,
-                    Code.Shl => a << b, Code.Shr => a >> b, Code.Shr_Un => (int)((uint)a >> b),
+                    Code.Add => unchecked(a + b),
+                    Code.Sub => unchecked(a - b),
+                    Code.Mul => unchecked(a * b),
+                    Code.Xor => a ^ b,
+                    Code.And => a & b,
+                    Code.Or => a | b,
+                    Code.Shl => a << b,
+                    Code.Shr => a >> b,
+                    Code.Shr_Un => (int)((uint)a >> b),
                     _ => throw new InvalidOperationException()
                 };
             }
@@ -225,7 +234,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                     Code.Blt or Code.Blt_S or Code.Blt_Un or Code.Blt_Un_S
                     when numbered && branch.Operand is Instruction comparedTarget &&
                         Feeding(instructions, entered, instructions.IndexOf(producer)) is
-                            { } compared && compared.IsLdcI4():
+                        { } compared && compared.IsLdcI4():
                     var decided = Compares(branch.OpCode.Code, compared.GetLdcI4Value(), value);
                     Neutralize(producer);
                     Neutralize(compared);
@@ -272,7 +281,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     }
 
     /// <summary>Whether a comparison branch over two known numbers is taken.</summary>
-    private static bool Compares(Code code, int left, int right) => code switch
+    internal static bool Compares(Code code, int left, int right) => code switch
     {
         Code.Beq or Code.Beq_S => left == right,
         Code.Bne_Un or Code.Bne_Un_S => left != right,
@@ -848,4 +857,23 @@ public sealed class ControlFlowRecompletionPass : ControlFlowCompletionPass
     public override string Name => "control-flow-recompletion";
 
     public override IReadOnlyCollection<string> Dependencies => ["global-predicate-recheck"];
+}
+
+/// <summary>Consumes constants exposed by the final integer-helper recovery.</summary>
+public sealed class ControlFlowHelperCompletionPass : ControlFlowCompletionPass
+{
+    public override string Name => "control-flow-helper-completion";
+    public override IReadOnlyCollection<string> Dependencies => ["integer-helpers-completion"];
+}
+
+/// <summary>Consumes table constants exposed after final initialization cleanup.</summary>
+public sealed class ControlFlowTableFinalizationPass : ControlFlowCompletionPass
+{
+    public override string Name => "control-flow-table-finalization";
+    public override IReadOnlyCollection<string> Dependencies => ["numeric-tables-finalization"];
+
+    protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(ArtifactContext context) =>
+        context.TryGetFact<bool>("numeric-tables.finalized", out var changed) && changed
+            ? base.Execute(context)
+            : (PassStatus.Success, 0, ["No new table constants require control-flow completion."]);
 }

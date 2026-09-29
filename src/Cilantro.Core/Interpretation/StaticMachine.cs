@@ -1021,8 +1021,24 @@ public sealed class StaticMachine
                         }
                     case Code.Box:
                         {
-                            var typeName = ((ITypeDefOrRef)instruction.Operand).FullName;
-                            if (!State.Heap.TryAllocateBox(typeName, Pop(stack), out var boxed))
+                            var type = Denoted(instruction.Operand, generics) as TypeSig ??
+                                ((ITypeDefOrRef)instruction.Operand).ToTypeSig();
+                            var value = Pop(stack);
+                            // Boxing a reference type is an identity operation, including arrays
+                            // of structs and generic parameters instantiated with reference types.
+                            var referenceType = IsReferenceForBoxing(type, method.Module);
+                            if (referenceType is null)
+                                return FrameResult.Fail(StaticExecutionStatus.Unknown,
+                                    $"box cannot determine whether {type.FullName} is a value or reference type.");
+                            if (referenceType == true)
+                            {
+                                stack.Add(value);
+                                break;
+                            }
+                            if (type.ContainsGenericParameter)
+                                return FrameResult.Fail(StaticExecutionStatus.Unknown,
+                                    "box requires a concrete type argument.");
+                            if (!State.Heap.TryAllocateBox(type.FullName, value, out var boxed))
                                 return AllocationFailure(instruction, "box");
                             stack.Add(boxed);
                             break;
@@ -1057,30 +1073,26 @@ public sealed class StaticMachine
                     case Code.Unbox_Any:
                         {
                             var boxed = Pop(stack);
-                            if (State.Heap.TryUnbox(boxed, out var value))
+                            var type = Denoted(instruction.Operand, generics) as TypeSig ??
+                                ((ITypeDefOrRef)instruction.Operand).ToTypeSig();
+                            var referenceType = IsReferenceForBoxing(type, method.Module);
+                            if (referenceType is null || type.ContainsGenericParameter)
+                                return FrameResult.Fail(StaticExecutionStatus.Unknown,
+                                    $"unbox.any cannot classify the concrete target {type.FullName}.");
+                            // For reference targets this is castclass, even when the incoming
+                            // object happens to be a box. Unwrapping it would destroy aliases.
+                            if (referenceType == true)
                             {
-                                stack.Add(value);
+                                if (boxed.Kind != StaticValueKind.Null &&
+                                    !Castable(boxed, type.FullName, type.ToTypeDefOrRef()))
+                                    throw new InvalidOperationException(
+                                        $"Modeled object cannot be cast to {type.FullName}.");
+                                stack.Add(boxed);
                                 break;
                             }
-                            // A cast to a generic parameter is written as unbox.any whatever the
-                            // parameter turns out to be, and when it turns out to be a reference
-                            // type the instruction is a cast and nothing is unboxed. What the
-                            // parameter stands for is known here, so which of the two this is is
-                            // known too.
-                            var cast = Denoted(instruction.Operand, generics) as TypeSig ??
-                                (instruction.Operand as ITypeDefOrRef)?.ToTypeSig();
-                            if (cast is null || cast.IsValueType || cast.ContainsGenericParameter)
-                            {
-                                throw new InvalidOperationException(
-                                    "unbox.any target is not a concrete box.");
-                            }
-                            if (boxed.Kind != StaticValueKind.Null &&
-                                !Castable(boxed, cast.FullName, cast.ToTypeDefOrRef()))
-                            {
-                                throw new InvalidOperationException(
-                                    $"Modeled object cannot be cast to {cast.FullName}.");
-                            }
-                            stack.Add(boxed);
+                            if (!State.Heap.TryUnbox(boxed, out var value))
+                                throw new InvalidOperationException("unbox.any target is not a concrete box.");
+                            stack.Add(value);
                             break;
                         }
                     case Code.Unbox:
@@ -2055,6 +2067,8 @@ public sealed class StaticMachine
     /// </remarks>
     private static readonly Dictionary<string, string[]> ModelBaseTypes = new(StringComparer.Ordinal)
     {
+        [HashtableKeys.ViewType] = ["System.Collections.ICollection", "System.Collections.IEnumerable"],
+        [HashtableKeys.EnumeratorType] = ["System.Collections.IEnumerator"],
         ["System.Reflection.MethodInfo"] =
             ["System.Reflection.MethodBase", "System.Reflection.MemberInfo"],
         ["System.Reflection.ConstructorInfo"] =
@@ -2381,6 +2395,15 @@ public sealed class StaticMachine
             named?.ResolveTypeDef()?.BaseType?.FullName is
                 "System.MulticastDelegate" or "System.Delegate");
 
+    // A bare TypeRef does not encode class versus struct. dnlib's fallback ClassSig
+    // needs confirmation; ModuleHandle is a common unresolved framework value type.
+    private static bool? IsReferenceForBoxing(TypeSig type, ModuleDef module) =>
+        type.RemovePinnedAndModifiers() is ClassSig named
+            ? named.TypeDefOrRef.ResolveTypeDef() is { } definition
+                ? !definition.IsValueType
+                : LoaderFrameworkIntrinsic.WellKnown(type.FullName, module) is { } known
+                    ? !known.IsValueType : null
+            : StaticHeap.IsReferenceType(type);
     private static object Denoted(object operand, GenericScope? generics)
     {
         if (generics is null || operand is not ITypeDefOrRef named)
@@ -2461,7 +2484,10 @@ public sealed class StaticMachine
 
         State.Heap.TryGetModelValue<StaticValue>(callee, DelegateTargetKey, out var receiver);
         var definition = bound.ResolveMethodDef();
-        StaticValue[] callArguments = (definition?.IsStatic ?? bound.MethodSig?.HasThis != true)
+        // Framework callbacks use the same binding as an explicit delegate Invoke:
+        // an open instance delegate receives its receiver in the supplied arguments.
+        var open = State.Heap.TryGetModelValue<bool>(callee, DelegateOpenKey, out var isOpen) && isOpen;
+        StaticValue[] callArguments = open || (definition?.IsStatic ?? bound.MethodSig?.HasThis != true)
             ? [.. arguments]
             : [receiver, .. arguments];
         if (definition is { HasBody: true } && MayRun(definition))

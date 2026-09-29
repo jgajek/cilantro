@@ -20,7 +20,7 @@ public class IntegerHelperRecoveryPass : DeobfuscationPass
         if (helpers.Count == 0) return (PassStatus.Success, 0, ["No pure integer helper was found."]);
         var machine = new StaticMachine(BootstrapMachine.Limits(10_000));
         var answers = new Dictionary<(MethodDef, int), int?>();
-        using var transaction = new InstructionMutationTransaction();
+        using var transaction = new BodyMutationBatch();
         var folded = new HashSet<MethodDef>();
         var changes = 0;
         foreach (var method in methods)
@@ -37,10 +37,13 @@ public class IntegerHelperRecoveryPass : DeobfuscationPass
                     if (boundary is not null) targeted.Add(boundary);
             for (var at = 1; at < il.Count; at++)
             {
-                var call = il[at]; var key = il[at - 1];
+                var call = il[at];
                 if (call.OpCode.Code != Code.Call || call.Operand is not IMethod reference ||
                     reference.ResolveMethodDef() is not { } helper || !helpers.Contains(helper) ||
-                    !key.IsLdcI4() || targeted.Contains(call)) continue;
+                    LiteralCallArgument.Int32(il, at, targeted) is not { } key) continue;
+                // An already discarded result offers no additional constant information.
+                // This also keeps the later recheck from wrapping a preserved call again.
+                if (at + 1 < il.Count && il[at + 1].OpCode.Code == Code.Pop) continue;
                 var query = (helper, key.GetLdcI4Value());
                 if (!answers.TryGetValue(query, out var value))
                 {
@@ -50,24 +53,41 @@ public class IntegerHelperRecoveryPass : DeobfuscationPass
                     answers[query] = value;
                 }
                 if (value is null) continue;
-                transaction.Capture(key); transaction.Capture(call);
-                key.OpCode = OpCodes.Nop; key.Operand = null;
-                call.OpCode = OpCodes.Ldc_I4; call.Operand = value.Value;
+                transaction.Capture(method);
+                var preserveInitialization = helper.DeclaringType.FindStaticConstructor() is { } initializer &&
+                    (!initializer.HasBody || initializer.Body.Instructions.Any(i => i.OpCode.Code is not (Code.Nop or Code.Ret)));
+                if (preserveInitialization)
+                {
+                    // Keep the original call, arguments, and exact CLR initialization trigger.
+                    // The body is integer-only, so its answer is independent of initializer
+                    // state; discarding that answer exposes the constant without discarding
+                    // initialization effects, failures, or beforefieldinit timing.
+                    il.Insert(at + 1, OpCodes.Pop.ToInstruction());
+                    il.Insert(at + 2, Instruction.CreateLdcI4(value.Value));
+                    method.Body.SimplifyBranches();
+                    method.Body.KeepOldMaxStack = false;
+                    at += 2;
+                }
+                else
+                {
+                    key.OpCode = OpCodes.Nop; key.Operand = null;
+                    call.OpCode = OpCodes.Ldc_I4; call.Operand = value.Value;
+                    folded.Add(helper);
+                }
                 transaction.RecordChange(context, new ChangeRecord(Name, "restore-integer-helper", method.FullName,
-                    $"Replaced a pure helper call with Int32 constant {value.Value}."));
-                folded.Add(helper); changes++;
+                    $"Recovered Int32 constant {value.Value}" +
+                    (preserveInitialization ? "; retained the call to preserve type initialization." : "; removed the pure helper call.")));
+                changes++;
             }
         }
         if (!AssemblyVerifier.Verify(context.Module).Passed)
             return (PassStatus.Partial, 0, ["Integer helper rewrites failed verification and were rolled back."]);
         transaction.Commit();
         RecoveryOrphans.Declare(context, folded);
-        return (PassStatus.Success, changes, [$"Replaced {changes} calls to pure integer helpers."]);
+        return (PassStatus.Success, changes, [$"Recovered {changes} pure integer helper results, preserving calls where type initialization is required."]);
     }
 
     private static bool IsPure(MethodDef method) => method.IsStatic && !method.HasGenericParameters &&
-        (method.DeclaringType.FindStaticConstructor() is not { } initializer ||
-         initializer.HasBody && initializer.Body.Instructions.All(i => i.OpCode.Code is Code.Nop or Code.Ret)) &&
         method.MethodSig.Params.Count == 1 &&
         method.MethodSig.Params[0].ElementType == ElementType.I4 && method.ReturnType.ElementType == ElementType.I4 &&
         method.Body.InitLocals && method.Body.ExceptionHandlers.Count == 0 && method.Body.Instructions.Count <= 512 &&
@@ -86,4 +106,11 @@ public sealed class IntegerHelperRecheckPass : IntegerHelperRecoveryPass
 {
     public override string Name => "integer-helpers-recheck";
     public override IReadOnlyCollection<string> Dependencies => ["numeric-tables-recheck"];
+}
+
+/// <summary>Recovers helpers whose pure bodies only emerge after final control-flow and loader cleanup.</summary>
+public sealed class IntegerHelperCompletionPass : IntegerHelperRecoveryPass
+{
+    public override string Name => "integer-helpers-completion";
+    public override IReadOnlyCollection<string> Dependencies => ["numeric-tables-completion"];
 }

@@ -116,15 +116,16 @@ public sealed class StringRecoveryPass : DeobfuscationPass
     /// Split out from the proving above because a table of bytes is not the only thing a proof can
     /// come from. Where the strings are kept somewhere no run of bytes describes, they are read by
     /// asking the resolver instead, and what is then owed is this: the same all-or-nothing rewrite,
-    /// the same refusal to leave a reference to the resolver behind, and the same verification of
-    /// the module before anything is committed.
+    /// the same verification of the module before anything is committed. Calls whose initialization
+    /// effects must survive are retained explicitly; otherwise no resolver reference may remain.
     /// </remarks>
     internal static (PassStatus, int, IReadOnlyList<string>) Rewrite(
         ArtifactContext context,
         string pass,
         IReadOnlyCollection<MethodDef> aliases,
         int callSiteCount,
-        IReadOnlyList<(MethodDef Method, Instruction Call, string Value)> replacements)
+        IReadOnlyList<(MethodDef Method, Instruction Call, string Value)> replacements,
+        bool preserveCalls = false)
     {
         using var transactions = new BodyMutationBatch(replacements.Select(item => item.Method));
         try
@@ -135,12 +136,20 @@ public sealed class StringRecoveryPass : DeobfuscationPass
                 var callIndex = instructions.IndexOf(replacement.Call);
                 if (callIndex < 0)
                     throw new InvalidOperationException("Resolver call disappeared during rewrite.");
+                if (preserveCalls)
+                {
+                    // Retain the original argument evaluation and exact initialization trigger.
+                    instructions.Insert(callIndex + 1, Instruction.Create(OpCodes.Pop));
+                    instructions.Insert(callIndex + 2, Instruction.Create(OpCodes.Ldstr, replacement.Value));
+                    replacement.Method.Body.SimplifyBranches();
+                    replacement.Method.Body.KeepOldMaxStack = false;
+                    continue;
+                }
                 instructions.Insert(callIndex, Instruction.Create(OpCodes.Pop));
                 replacement.Call.OpCode = OpCodes.Ldstr;
                 replacement.Call.Operand = replacement.Value;
             }
-            // Every rewritten site is gone, so the only tolerable references left are the
-            // forwarding calls inside aliases that now have no callers at all.
+            // Only explicitly retained calls and internal forwarding references may remain.
             var remaining = context.Module.GetTypes()
                 .SelectMany(type => type.Methods)
                 .Where(method => method.HasBody)
@@ -151,7 +160,10 @@ public sealed class StringRecoveryPass : DeobfuscationPass
                     aliases.Contains(resolved))
                 .Where(item => !ResolverAliasAnalysis.IsInternalForwardingCall(item.Method, aliases))
                 .ToArray();
-            if (remaining.Length != 0)
+            var retained = preserveCalls ? replacements.Select(replacement => replacement.Call).ToHashSet() : [];
+            if (preserveCalls
+                ? remaining.Length != retained.Count || remaining.Any(site => !retained.Contains(site.Instruction))
+                : remaining.Length != 0)
                 throw new InvalidOperationException(
                     $"{remaining.Length} targeted resolver reference(s) remained after rewrite.");
             var verification = AssemblyVerifier.Verify(
@@ -187,8 +199,9 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         // and the cipher and reader behind both live on the same type. Naming only the methods
         // that lost their callers left that type standing, unattributed, which is the bulk of
         // what a strings-only build then still asked the reader to page through.
-        RecoveryOrphans.DeclareOwningTypes(context, aliases);
+        if (!preserveCalls) RecoveryOrphans.DeclareOwningTypes(context, aliases);
         return (PassStatus.Success, replacements.Count,
-            [$"Atomically restored all {replacements.Count} proven string sites."]);
+            [$"Atomically restored all {replacements.Count} proven string sites." +
+                (preserveCalls ? " Original calls were retained to preserve type initialization effects." : "")]);
     }
 }

@@ -1,10 +1,75 @@
 using Cilantro.Core.Interpretation;
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 
 namespace Cilantro.Tests;
 
 public sealed class AppDomainEventTests
 {
+    private static readonly string[] AnsweringOrder = ["Resolve0", "Resolve1"];
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResourceResolutionExecutesManagedHandlersAndStopsAfterTheAnswer(bool instance)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var owner = SyntheticContext.AddType(module, "Resolver");
+            var assembly = new FieldDefUser("Answer", new FieldSig(module.CorLibTypes.Object), FieldAttributes.Static);
+            owner.Fields.Add(assembly);
+            for (var index = 0; index < 3; index++)
+            {
+                var signature = instance
+                    ? MethodSig.CreateInstance(module.CorLibTypes.Object, module.CorLibTypes.Object, module.CorLibTypes.Object)
+                    : MethodSig.CreateStatic(module.CorLibTypes.Object, module.CorLibTypes.Object, module.CorLibTypes.Object);
+                var method = new MethodDefUser("Resolve" + index, signature)
+                    { Attributes = instance ? MethodAttributes.Public : MethodAttributes.Static, Body = new CilBody() };
+                owner.Methods.Add(method);
+                method.Body.Instructions.Add(index == 1 ? OpCodes.Ldsfld.ToInstruction(assembly) : OpCodes.Ldnull.ToInstruction());
+                method.Body.Instructions.Add(index == 2 ? OpCodes.Throw.ToInstruction() : OpCodes.Ret.ToInstruction());
+            }
+        });
+        using var payload = new ModuleDefUser("resolver-payload.dll");
+        new AssemblyDefUser("resolver-payload", new Version(1, 0)).Modules.Add(payload);
+        payload.Resources.Add(new EmbeddedResource("payload", new byte[] { 8, 13, 21 }, ManifestResourceAttributes.Public));
+        using var image = new MemoryStream();
+        payload.Write(image);
+        var machine = new StaticMachine();
+        var state = machine.State;
+        state.RegisterModuleMetadata(context.Module);
+        var heap = state.Heap;
+        Assert.True(state.TryGetOrAllocateRuntimeSingleton("System.AppDomain", out var domain));
+        Assert.True(heap.TryAllocateObject("System.Reflection.Assembly", out var answerAssembly));
+        Assert.True(heap.TrySetModelValue(answerAssembly, "LoadedImage", image.ToArray()));
+        var methods = context.Module.GetTypes().SelectMany(t => t.Methods).ToArray();
+        state.WriteStaticField(methods[0].DeclaringType.Fields.Single(), answerAssembly);
+        Assert.True(heap.TryAllocateObject(methods[0].DeclaringType.FullName, out var receiver));
+        foreach (var method in methods)
+            Assert.Equal(StaticExecutionStatus.Completed,
+                AppDomainEvents.Update(heap, domain, "ResourceResolve", Handler(state, method, receiver), true).Status);
+        var entered = new List<string>();
+        machine.FrameEntered = (method, arguments) =>
+        {
+            entered.Add(method.Name);
+            Assert.Equal(domain, arguments[instance ? 1 : 0]);
+            if (instance) Assert.Equal(receiver, arguments[0]);
+        };
+        Assert.True(heap.TryAllocateObject("System.Reflection.Assembly", out var requester));
+        Assert.True(heap.TryAllocateString("payload", out var name));
+        var call = new MemberRefUser(context.Module, "GetManifestResourceStream",
+            MethodSig.CreateInstance(context.Module.CorLibTypes.Object, context.Module.CorLibTypes.String),
+            context.Module.CorLibTypes.GetTypeRef("System.Reflection", "Assembly"));
+        var result = machine.Invoke(call, [requester, name]);
+        Assert.True(result.Status == StaticExecutionStatus.Completed, result.Diagnostic);
+        Assert.Equal(AnsweringOrder, entered);
+        Assert.True(heap.TryGetModelValue(result.Value, "Buffer", out StaticValue buffer));
+        // This image was built above from resources alone; no corpus assembly is loaded here.
+        using var oracle = System.Reflection.Assembly.Load(image.ToArray()).GetManifestResourceStream("payload")!;
+        using var oracleBytes = new MemoryStream();
+        oracle.CopyTo(oracleBytes);
+        Assert.Equal(oracleBytes.ToArray(), heap.GetBytesSnapshot(buffer));
+    }
+
     [Fact]
     public void RemovingAnEqualDelegateRemovesOnlyTheLastSubscription()
     {

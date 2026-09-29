@@ -495,7 +495,7 @@ public sealed class StaticHeap
     public bool TryGetLength(StaticValue reference, out int length)
     {
         length = 0;
-        if (!TryObject(reference, out var value))
+        if (!TryObject(reference, out var value) || value is not (HeapArray or HeapRegion))
             return false;
         length = value switch
         {

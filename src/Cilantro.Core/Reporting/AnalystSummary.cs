@@ -15,7 +15,9 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
         var detected = report.Protector != "none" || report.Evidence.Any(e => e.Category == "capability");
         var protection = report.Evidence.FirstOrDefault(e => e.Category == "protector-name")?.Message ?? (report.Protector switch
         {
-            "reactor" => ".NET Reactor", "reactor-bootstrap" => ".NET Reactor native wrapper", "confuserex" => "ConfuserEx",
+            "reactor" => ".NET Reactor",
+            "reactor-bootstrap" => ".NET Reactor native wrapper",
+            "confuserex" => "ConfuserEx",
             _ => detected ? "Unrecognized protector" : "No supported protection detected"
         });
         var outcome = !result.Success ? "Run incomplete" : result.OutputPath is not null ? "Cleaned assembly written"
@@ -94,7 +96,8 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
         Add(overview, r.RestoredMethodBodies, "encrypted method bodies restored", "encrypted method body restored");
         Add(overview, r.ReplacedStringSites, "encrypted string uses resolved (not unique strings)", "encrypted string use resolved");
         Add(overview, r.ConstantStringSites, "additional string decoder calls replaced", "additional string decoder call replaced");
-        Add(overview, result.Report.Passes.Where(p => p.Pass is "numeric-tables" or "integer-helpers" or "numeric-tables-recheck" or "integer-helpers-recheck").Sum(p => p.Changes),
+        Add(overview, result.Report.Passes.Where(p => p.Pass is "numeric-tables" or "integer-helpers" or "numeric-tables-recheck" or "integer-helpers-recheck" or
+            "numeric-tables-completion" or "integer-helpers-completion" or "numeric-tables-finalization").Sum(p => p.Changes),
             "numeric constant uses recovered", "numeric constant use recovered");
         Add(overview, result.RebuiltMethods, "virtualized methods reconstructed as .NET code", "virtualized method reconstructed as .NET code");
         Add(overview, result.LiftedPrograms, "additional interpreter programs reconstructed as helper methods", "additional interpreter program reconstructed as a helper method");
@@ -114,7 +117,7 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
         Add(counters, r.ControlFlowMethodsSimplified, "method simplifications across passes (a method can count more than once)", "method simplification across passes (a method can count more than once)");
         Add(counters, r.ConstantBranchesFolded, "constant branches resolved", "constant branch resolved");
         Add(counters, r.RedirectedDispatcherEdges, "dispatcher jumps made direct", "dispatcher jump made direct");
-        Add(counters, result.Report.Passes.Where(p => p.Pass == "dispatcher-paths").Sum(p => p.Changes),
+        Add(counters, result.Report.Passes.Where(p => p.Pass is "dispatcher-paths" or "dispatcher-paths-completion" or "dispatcher-effects-completion").Sum(p => p.Changes),
             "dispatcher path rewrites", "dispatcher path rewrite");
         Add(counters, r.UnreachableInstructionsRemoved, "unreachable instructions removed", "unreachable instruction removed");
         Add(counters, r.ResourcesRestored, "encrypted resources restored", "encrypted resource restored");

@@ -6,7 +6,9 @@ CILantro's distinguishing approach is to interpret the sample's own decoding and
 
 CILantro can reconstruct supported Reactor VM bytecode into ordinary CIL, unflatten control flow, resolve indirect calls, and remove protector infrastructure when its analysis establishes that removal is safe. It restores encrypted methods and strings, follows supported native wrappers and embedded assembly chains into their managed payloads, and produces decompiler-ready assemblies with readable replacement names, payload hashes, and offline HTML reports. Bounded comparisons of original and rebuilt methods expose reconstruction disagreements instead of treating readable output as proof of correctness.
 
-**0.10.2 is a regular release for analysts.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
+**0.10.3 is a regular release for analysts.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
+
+This release improves dispatcher unflattening, numeric-table recovery, and reconstruction of dynamically emitted decoding code. It preserves required initialization and call effects while simplifying supported paths, and expands the evidence used to compare original and rebuilt code. See the [0.10.3 release notes](docs/releases/0.10.3.md) for measured results and remaining gaps.
 
 ## Install
 
@@ -69,7 +71,7 @@ Read the [support and limitations](docs/compatibility.md) before adopting CILant
 - [Automation and MCP](docs/agents.md)
 - [Build, test, and release](docs/development.md)
 - [Complete documentation index](docs/README.md)
-- [0.10.2 release notes](docs/releases/0.10.2.md)
+- [0.10.3 release notes](docs/releases/0.10.3.md)
 
 ## Contributing and licence
 

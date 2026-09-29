@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using dnlib.DotNet;
@@ -14,15 +15,24 @@ internal static class RebuiltMethodTrial
         4_000_000, BootstrapMachine.Environment(context).Declarations.Budgets).MaximumSteps;
 
     internal sealed record Result(DevirtualizationCheck Verdict, string Detail,
-        bool NonVmStateMatched = false, bool? VmStateShared = null);
+        bool NonVmStateMatched = false, bool? VmStateShared = null,
+        IReadOnlyList<string>? DifferingRoots = null, IReadOnlyList<string>? NonVmDifferingRoots = null,
+        bool? NativeMemoryMatched = null);
     private sealed record Observation(string? Key, string Why, IReadOnlyList<string>? Names = null,
         IReadOnlyList<string?>? Values = null, int StaticStart = 0, IReadOnlySet<int>? VmRoots = null,
-        string? NonVmKey = null, bool? SharesVmState = null);
+        string? NonVmKey = null, bool? SharesVmState = null,
+        IReadOnlyList<string?>? NonVmValues = null, string? NativeSummary = null, string? NativeKey = null,
+        bool ResolverBehaviorUnproven = false);
+
+    private static bool IsResolverRegistration(string effect) =>
+        effect is "AppDomain.AssemblyResolve" or "AppDomain.ResourceResolve";
 
     internal static Result Compare(ArtifactContext context, MethodDef method, CilBody rebuilt, int scenario,
         uint? engineToken = null, bool warmOriginal = false, HostProfile? hostProfile = null,
-        uint? rebuiltEntryToken = null)
+        uint? rebuiltEntryToken = null, bool initializeModule = false)
     {
+        if (initializeModule && warmOriginal)
+            throw new ArgumentException("Module initialization and original-call warm-up are separate trials.", nameof(initializeModule));
         var shipped = method.Body;
         var maximumSteps = StepLimit(context);
         var outcomes = new List<StaticExecutionStatus>();
@@ -38,13 +48,27 @@ internal static class RebuiltMethodTrial
             if (left.Key is null || right.Key is null)
                 return new(DevirtualizationCheck.NotMade, $"original: {left.Why}; rebuilt: {right.Why}");
             if (left.Key == right.Key)
-                return new(DevirtualizationCheck.Agreed, "return/exception, arguments, observed static state, modeled network settings and modeled native memory matched");
+            {
+                if (left.ResolverBehaviorUnproven || right.ResolverBehaviorUnproven)
+                    return new(DevirtualizationCheck.NotMade,
+                        "Captured state, including ordered resolver delegates and their targets, matched; " +
+                        "resolver callback behavior remains outside this comparison. Matching registrations do not establish equivalence.");
+                return new(DevirtualizationCheck.Agreed, "return/exception, arguments, observed static state, modeled network settings, modeled native memory and application-domain data matched");
+            }
             var differences = Enumerable.Range(0, left.Values!.Count)
                 .Where(index => left.Values[index] != right.Values![index]).ToArray();
             var differing = differences[0];
+            var differingRoots = differences.Select(index => left.Names![index]).ToArray();
+            string[]? nonVmDifferences = null;
+            if (left.NonVmValues is { } leftNonVm && right.NonVmValues is { } rightNonVm)
+            {
+                var names = left.Names!.Where((_, index) => !left.VmRoots!.Contains(index)).ToArray();
+                nonVmDifferences = Enumerable.Range(0, leftNonVm.Count)
+                    .Where(index => leftNonVm[index] != rightNonVm[index]).Select(index => names[index]).ToArray();
+            }
             var boundary = left.NonVmKey is not null && left.NonVmKey == right.NonVmKey
                 ? ". A separate snapshot excluding VM-owned static roots matched return/exception, arguments, other static roots, " +
-                    "modeled network settings and native memory, preserving aliases among those roots. " +
+                    "modeled network settings, native memory and application-domain data, preserving aliases among those roots. " +
                     "This localizes the difference but does not prove the VM state is unobservable; disagreement is retained"
                 : DescribeVmBoundary(differences, left.VmRoots);
             if (left.NonVmKey is not null && left.NonVmKey == right.NonVmKey)
@@ -53,16 +77,35 @@ internal static class RebuiltMethodTrial
                     : left.SharesVmState == true || right.SharesVmState == true
                         ? ". VM static roots share modeled objects with captured non-VM roots; the VM state cannot be treated as isolated"
                         : ". VM-to-application object sharing could not be established within the snapshot limits";
+            if (nonVmDifferences is { Length: > 0 })
+                boundary += $". The separate non-VM snapshot differs at {nonVmDifferences.Length} root(s): " +
+                    string.Join("; ", nonVmDifferences.Take(8)) + (nonVmDifferences.Length > 8 ? "; additional roots omitted" : "") +
+                    ". These are snapshot differences, including aliases, not a claim that each root was independently modified";
+            if (nonVmDifferences?.Contains("modeled native memory") == true)
+            {
+                boundary += $". Native memory: original {left.NativeSummary}; rebuilt {right.NativeSummary}";
+                boundary += left.NativeKey is not null && right.NativeKey is not null
+                    ? left.NativeKey == right.NativeKey
+                        ? ". An independent native-memory snapshot matched; cross-root aliases remain covered by the differing combined snapshot"
+                        : ". An independent native-memory snapshot also differed"
+                    : ". An independent native-memory snapshot was inconclusive";
+            }
+            if (left.ResolverBehaviorUnproven || right.ResolverBehaviorUnproven)
+                boundary += ". Ordered resolver delegates and their targets were included; resolver callback behavior remains unproven";
             return new(DevirtualizationCheck.Disagreed, (left.Names![differing] == "modeled native memory"
                 ? "return/exception, arguments, observed static state and modeled network settings matched; modeled native memory differed"
                 : left.Names![differing] == "modeled network settings"
                 ? "return/exception, arguments and observed static state matched; modeled network settings differed"
+                : left.Names![differing] == "modeled application-domain data"
+                ? "preceding snapshots matched; modeled application-domain data differed"
                 : differing >= left.StaticStart
                 ? $"return/exception and argument snapshots matched; observed static state differed at {left.Names![differing]}"
                 : $"observed state differed at {left.Names![differing]}") + boundary,
                 NonVmStateMatched: left.NonVmKey is not null && left.NonVmKey == right.NonVmKey,
                 VmStateShared: left.SharesVmState == true || right.SharesVmState == true ? true
-                    : left.SharesVmState == false && right.SharesVmState == false ? false : null);
+                    : left.SharesVmState == false && right.SharesVmState == false ? false : null,
+                DifferingRoots: differingRoots, NonVmDifferingRoots: nonVmDifferences,
+                NativeMemoryMatched: left.NativeKey is not null && right.NativeKey is not null ? left.NativeKey == right.NativeKey : null);
         }
         finally { method.Body = shipped; }
 
@@ -87,6 +130,22 @@ internal static class RebuiltMethodTrial
             // The shared prelude/measurement budget must honor the same declarations as
             // the seeded machine. A fresh hard-coded budget would silently cap raised limits.
             var budget = new StaticWorkBudget(maximumSteps);
+            var resolverBehaviorUnproven = false;
+            if (initializeModule && context.Module.GlobalType.FindStaticConstructor() is { } initializer)
+            {
+                if (initializer == method)
+                    return new(null, "the requested method is the module initializer, so it cannot be measured after its own initialization");
+                // Each world initializes with its selected body installed. This is not a
+                // common original-method warm-up, which could conceal a startup difference.
+                var initialized = machine.Execute(initializer, [], budget);
+                if (initialized.Status != StaticExecutionStatus.Completed)
+                    return new(null, $"module initialization did not complete: {initialized.Status}: {Short(initialized.Diagnostic)}");
+                var initializerEffects = machine.State.LoaderEvidence.EffectsOf(initializer.MDToken.Raw).Registrations;
+                resolverBehaviorUnproven |= initializerEffects.Any(IsResolverRegistration);
+                var registrations = initializerEffects.Where(effect => effect != "AppDomain.SetData" && !IsResolverRegistration(effect)).ToArray();
+                if (registrations.Length != 0)
+                    return new(null, "module initialization registrations are outside this comparison: " + string.Join(", ", registrations.Take(4)));
+            }
             if (warmOriginal)
             {
                 // Independent machines execute the same original prelude. A successful
@@ -119,8 +178,10 @@ internal static class RebuiltMethodTrial
             if (answer.Status is not (StaticExecutionStatus.Completed or StaticExecutionStatus.Threw))
                 return new(null, $"{answer.Status}: {Short(answer.Diagnostic)}");
             var effects = machine.State.LoaderEvidence.EffectsOf(method.MDToken.Raw);
-            if (effects.Registrations.Count != 0)
-                return new(null, "registrations are outside this comparison: " + string.Join(", ", effects.Registrations.Take(4)));
+            resolverBehaviorUnproven |= effects.Registrations.Any(IsResolverRegistration);
+            var unmodeled = effects.Registrations.Where(effect => effect != "AppDomain.SetData" && !IsResolverRegistration(effect)).ToArray();
+            if (unmodeled.Length != 0)
+                return new(null, "registrations are outside this comparison: " + string.Join(", ", unmodeled.Take(4)));
             outcomes.Add(answer.Status);
             var roots = new List<StaticValue>();
             var names = new List<string>();
@@ -146,13 +207,15 @@ internal static class RebuiltMethodTrial
             names.AddRange(fields.Select(field => field.FullName));
             var snapshot = new Snapshot(machine.State.Heap, metadata);
             var values = roots.Select(snapshot.Read).ToArray();
-            values = [.. values, snapshot.ReadNetworkSettings(machine.State), snapshot.ReadNativeState(machine.State)];
+            values = [.. values, snapshot.ReadNetworkSettings(machine.State), snapshot.ReadNativeState(machine.State), snapshot.ReadDomainState(machine.State)];
             names.Add("modeled network settings");
             names.Add("modeled native memory");
+            names.Add("modeled application-domain data");
             var opaque = Array.FindIndex(values, v => v is null);
             var outcome = answer.Status == StaticExecutionStatus.Threw && machine.State.Heap.TryGetRuntimeTypeName(answer.Value, out var thrownName)
                 ? $"Threw ({thrownName}): {Short(answer.Diagnostic)}" : answer.Status.ToString();
             string? nonVmKey = null;
+            IReadOnlyList<string?>? nonVmValues = null;
             bool? sharesVmState = null;
             if (opaque < 0 && vmRoots.Count != 0)
             {
@@ -162,9 +225,11 @@ internal static class RebuiltMethodTrial
                 var observed = roots.Where((_, index) => !vmRoots.Contains(index)).Select(nonVm.Read).ToList();
                 observed.Add(nonVm.ReadNetworkSettings(machine.State));
                 observed.Add(nonVm.ReadNativeState(machine.State));
+                observed.Add(nonVm.ReadDomainState(machine.State));
                 if (observed.All(value => value is not null))
                 {
                     nonVmKey = JsonSerializer.Serialize(new { answer.Status, Values = observed });
+                    nonVmValues = observed;
                     var vm = new Snapshot(machine.State.Heap, metadata);
                     var vmValues = roots.Where((_, index) => vmRoots.Contains(index)).Select(vm.Read).ToArray();
                     if (vmValues.All(value => value is not null))
@@ -173,7 +238,10 @@ internal static class RebuiltMethodTrial
             }
             return opaque >= 0
                 ? new(null, $"{outcome}; opaque or over-budget state at {names[opaque]} ({snapshot.Failure ?? "node, depth or text budget exhausted"})")
-                : new(JsonSerializer.Serialize(new { answer.Status, Values = values }), outcome, names, values, roots.Count - fields.Length, vmRoots, nonVmKey, sharesVmState);
+                : new(JsonSerializer.Serialize(new { answer.Status, Values = values }), outcome, names, values, roots.Count - fields.Length, vmRoots, nonVmKey, sharesVmState, nonVmValues,
+                    $"{machine.State.Heap.NativeRegions.Count()} region(s), {machine.State.Heap.ImageWrites.Count} write(s), " +
+                    $"{machine.State.Heap.ImageWrites.Sum(write => (long)write.Bytes.Length)} written byte(s), {machine.State.ImageProtections.Count} protection change(s)",
+                    new Snapshot(machine.State.Heap, metadata).ReadNativeState(machine.State), resolverBehaviorUnproven);
         }
     }
 
@@ -181,7 +249,7 @@ internal static class RebuiltMethodTrial
     {
         if (differences.Count == 0 || vmRoots is null || !differences.All(vmRoots.Contains)) return string.Empty;
         return $". All {differences.Count} differing snapshot root(s) are static fields owned by the original VM type hierarchy; " +
-            "return/exception, arguments, other static roots, modeled network settings and native memory matched. " +
+            "return/exception, arguments, other static roots, modeled network settings, native memory and application-domain data matched. " +
             "This localizes the difference but does not prove the VM state is unobservable; disagreement is retained";
     }
 
@@ -253,6 +321,7 @@ internal static class RebuiltMethodTrial
         private int remaining = MaximumNodes;
         private int textRemaining = 4 * 1024 * 1024;
         internal const int MaximumBinaryBytes = 32 * 1024 * 1024;
+        internal const int MaximumNativeWrites = 262144;
         private int binaryBytesRemaining = MaximumBinaryBytes;
         private static string Digest(string value) => Convert.ToHexString(SHA256.HashData(MemoryMarshal.AsBytes(value.AsSpan())));
         private string? HashText(string value)
@@ -326,6 +395,19 @@ internal static class RebuiltMethodTrial
             return Convert.ToHexString(SHA256.HashData(bytes));
         }
 
+        internal string? ReadDomainState(StaticMachineState state)
+        {
+            // Capture through the same graph as statics/arguments so domain aliases remain visible.
+            // An unmaterialized current domain has the same empty model as a newly requested one.
+            if (!state.TryGetOrAllocateRuntimeSingleton("System.AppDomain", out var domain) ||
+                !heap.TryGetInstanceSnapshot(domain, out _, out _, out var model))
+                return Refuse("application-domain state unavailable");
+            // Slot names are caller-controlled text too, not just the values stored under them.
+            foreach (var key in model.Keys)
+                if (HashText(key) is null) return null;
+            return Read(domain);
+        }
+
         internal string? ReadNetworkSettings(StaticMachineState state)
         {
             var settings = new SortedDictionary<string, string>(StringComparer.Ordinal);
@@ -342,29 +424,47 @@ internal static class RebuiltMethodTrial
             // Include unreferenced regions and write history, not just pointers surviving in
             // statics. Keep absolute addresses: raw pointer bytes are not safely relocatable.
             var regions = heap.NativeRegions.Take(4097).ToArray();
-            if (regions.Length > 4096 || heap.ImageWrites.Count > 16384)
-                return Refuse("native region or write-count budget exhausted");
+            if (regions.Length > 4096)
+                return Refuse("native region budget exhausted (more than 4096 regions)");
+            if (heap.ImageWrites.Count > MaximumNativeWrites)
+                return Refuse($"native write-count budget exhausted ({heap.ImageWrites.Count} writes; limit {MaximumNativeWrites})");
             // The interpreter stops recording protection changes at 256 entries.
             if (state.ImageProtections.Count >= 256)
                 return Refuse("image protection history may be truncated");
-            var contents = new List<string>();
+            // Hash framed records incrementally instead of retaining and serializing the
+            // entire history. Byte and write-count bounds still apply to every record.
+            using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            void Append(string record)
+            {
+                var bytes = MemoryMarshal.AsBytes(record.AsSpan());
+                Span<byte> length = stackalloc byte[4];
+                BinaryPrimitives.WriteInt32LittleEndian(length, bytes.Length);
+                digest.AppendData(length);
+                digest.AppendData(bytes);
+            }
+            var targets = new Dictionary<StaticValue, string>();
             foreach (var region in regions.OrderBy(region =>
                          heap.TryGetRegionSnapshot(region, out _, out var address, out _) ? address : long.MaxValue))
             {
                 if (Read(region) is not { } captured) return null;
-                contents.Add(captured);
+                Append(captured);
+                // The region has been fully captured. Repeated writes refer to its
+                // canonical identity without spending another graph node per write.
+                targets.Add(region, $"ref:{ids[region.HeapId]}");
             }
             foreach (var write in heap.ImageWrites)
             {
                 // Offset in ImageRegionWrite is already relative to the region base.
                 var region = write.Region.Kind == StaticValueKind.NativePointer
                     ? StaticValue.FromHeapReference(write.Region.NativeRegionId) : write.Region;
-                if (Read(region) is not { } target || HashBytes(write.Bytes) is not { } data ||
+                if (!targets.TryGetValue(region, out var target))
+                    return Refuse("native write target is not a captured region");
+                if (HashBytes(write.Bytes) is not { } data ||
                     HashText(write.RegionKind) is not { } kind) return null;
-                contents.Add($"write:{target}:{kind}:{write.Offset}:{write.Bytes.Length}:{data}");
+                Append($"write:{target}:{kind}:{write.Offset}:{write.Bytes.Length}:{data}");
             }
-            contents.Add(JsonSerializer.Serialize(state.ImageProtections));
-            return Digest(JsonSerializer.Serialize(contents));
+            Append(JsonSerializer.Serialize(state.ImageProtections));
+            return Convert.ToHexString(digest.GetHashAndReset());
         }
 
         private string? ReadModel(object? value, int depth) => value switch

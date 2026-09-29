@@ -75,6 +75,55 @@ public sealed class VmStateBoundaryTests
         Assert.Equal(!changeAlias, result.NonVmStateMatched);
         Assert.False(result.VmStateShared);
         Assert.Equal(!changeAlias, result.Detail.Contains("A separate snapshot excluding VM-owned static roots matched"));
+        Assert.Contains(result.DifferingRoots!, name => name.EndsWith("AEngine::Cache", StringComparison.Ordinal));
+        Assert.NotNull(result.NonVmDifferingRoots);
+        if (changeAlias)
+        {
+            Assert.Contains(result.NonVmDifferingRoots, name => name.EndsWith("ZHost::B", StringComparison.Ordinal));
+            Assert.Contains("modeled native memory", result.NonVmDifferingRoots);
+            Assert.True(result.NativeMemoryMatched);
+            Assert.Contains("independent native-memory snapshot matched", result.Detail);
+            Assert.Contains("including aliases", result.Detail);
+        }
+        else Assert.Empty(result.NonVmDifferingRoots);
+    }
+
+    [Fact]
+    public void NonVmDiagnosticsIncludeEveryDifferingApplicationRoot()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var engine = SyntheticContext.AddType(module, "Engine");
+            var host = SyntheticContext.AddType(module, "Host");
+            var cache = new FieldDefUser("Cache", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            var a = new FieldDefUser("A", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            var b = new FieldDefUser("B", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            engine.Fields.Add(cache); host.Fields.Add(a); host.Fields.Add(b);
+            var entry = new MethodDefUser("Entry", MethodSig.CreateStatic(module.CorLibTypes.Void), MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            foreach (var instruction in new[] { OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Stsfld.ToInstruction(cache), OpCodes.Ret.ToInstruction() })
+                entry.Body.Instructions.Add(instruction);
+            engine.Methods.Add(entry);
+            var run = new MethodDefUser("Run", MethodSig.CreateStatic(module.CorLibTypes.Void), MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            foreach (var instruction in new[] { OpCodes.Call.ToInstruction(entry), OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Stsfld.ToInstruction(a), OpCodes.Ldc_I4_2.ToInstruction(), OpCodes.Stsfld.ToInstruction(b), OpCodes.Ret.ToInstruction() })
+                run.Body.Instructions.Add(instruction);
+            host.Methods.Add(run);
+        });
+        var methods = context.Module.GetTypes().SelectMany(type => type.Methods).ToArray();
+        var run = methods.Single(method => method.Name == "Run");
+        var entry = methods.Single(method => method.Name == "Entry");
+        var rebuilt = new CilBody();
+        foreach (var instruction in run.Body.Instructions.Skip(1))
+            rebuilt.Instructions.Add(new Instruction(instruction.OpCode, instruction.Operand));
+        rebuilt.Instructions[0].OpCode = OpCodes.Ldc_I4_3;
+        rebuilt.Instructions[2].OpCode = OpCodes.Ldc_I4_4;
+        var result = RebuiltMethodTrial.Compare(context, run, rebuilt, 0, entry.MDToken.Raw);
+        Assert.Equal(DevirtualizationCheck.Disagreed, result.Verdict);
+        Assert.Equal(3, result.DifferingRoots!.Count);
+        Assert.Equal(2, result.NonVmDifferingRoots!.Count);
+        Assert.Contains(result.NonVmDifferingRoots, name => name.EndsWith("Host::A", StringComparison.Ordinal));
+        Assert.Contains(result.NonVmDifferingRoots, name => name.EndsWith("Host::B", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.NonVmDifferingRoots, name => name.Contains("Engine::Cache", StringComparison.Ordinal));
+        Assert.True(result.NativeMemoryMatched);
     }
 
     [Fact]

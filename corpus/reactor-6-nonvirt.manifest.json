@@ -111,7 +111,7 @@
       "maximumRemainingStubs": 0,
       "maximumMutationCount": 20000,
       "maximumUnreachableInstructions": 0,
-      "minimumConstantStringSites": 153,
+      "minimumRecoveredStringSites": 153,
       "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
     },
     {
@@ -142,7 +142,7 @@
       "maximumRemainingStubs": 0,
       "minimumStringSiteCoverage": 1.0,
       "minimumTokensRestored": 44,
-      "minimumConstantStringSites": 153,
+      "minimumRecoveredStringSites": 178,
       "maximumMutationCount": 20000,
       "expectUnsupportedReason": "No payload could be recovered by interpreting the module's own unpacker."
     },

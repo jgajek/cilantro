@@ -493,6 +493,28 @@ public static class VirtualSemantics
                     continue;
                 }
                 found = Classify(opcode, operand, trials, shape);
+                if (shape.Plain && found is { Pops: 1, Pushes: 0, Name: null } &&
+                    IndexedStore(trials) is { } store)
+                {
+                    // A constant slot can look indexed at one operand. Require the same table
+                    // at a second index used by this program, without inventing an operand.
+                    var other = operations.FirstOrDefault(candidate =>
+                        heap.TryReadField(candidate, opcodeField, out var code) &&
+                        code.Kind == StaticValueKind.Int32 && code.Bits == opcode &&
+                        Operand(heap, candidate, operandField) is { } at && at != operand);
+                    if (other.Kind == StaticValueKind.HeapReference)
+                    {
+                        var confirmation = Trials(
+                            machine, module, heap, dispatcher, engine, factory, slotType, stack,
+                            other, Operand(heap, other, operandField), staging, null, shape, out _);
+                        if (IndexedStore(confirmation) == store)
+                            found = found with
+                            {
+                                Name = "stores where its operand indexes",
+                                Holding = store.Length
+                            };
+                    }
+                }
                 if (found is not null)
                     break;
             }
@@ -721,6 +743,9 @@ public static class VirtualSemantics
     {
         /// <summary>Whether an array offered to it came back holding the value at the index given.</summary>
         public bool Stored { get; init; }
+
+        /// <summary>The indexed slot that received the consumed value without other observed writes.</summary>
+        public (string Path, int Length)? IndexedStore { get; init; }
 
         /// <summary>
         /// The engine's tables that held what it left, at the place its operand names, and how
@@ -1018,12 +1043,29 @@ public static class VirtualSemantics
             var staged = Stage(heap, staging, engine, operation);
             var seeded = Sown(
                 machine, module, heap, factory, slotType, footprint, operand, trials.Count);
-            var was = (seeded.Count == 0 && !staged
+            var prepared = seeded.Count == 0 && !staged
                     ? footprint
-                    : Footprint(heap, module, engine, stack))
+                    : Footprint(heap, module, engine, stack);
+            var was = prepared
                 .ToDictionary(place => place.Path, place => place.Value.Bits);
-            var outcome = machine.Execute(
-                dispatcher, [engine, operation], new StaticWorkBudget(TrialSteps));
+            var top = stack[^1];
+            var writesStatic = false;
+            var previousStep = machine.Stepped;
+            machine.Stepped = (method, instruction) =>
+            {
+                previousStep?.Invoke(method, instruction);
+                writesStatic |= instruction.OpCode.Code is Code.Stsfld or Code.Ldsflda;
+            };
+            StaticExecutionResult outcome;
+            try
+            {
+                outcome = machine.Execute(
+                    dispatcher, [engine, operation], new StaticWorkBudget(TrialSteps));
+            }
+            finally
+            {
+                machine.Stepped = previousStep;
+            }
             if (outcome.Status != StaticExecutionStatus.Completed)
             {
                 refused = Refusal(outcome.Status, outcome.Diagnostic);
@@ -1076,6 +1118,11 @@ public static class VirtualSemantics
             {
                 Loaded = Fetched(heap, module, settled, stack, kept, operand),
                 Stored = stored,
+                IndexedStore = shape.Plain && kept == seeds.Length - 1 && after.Count == 0 &&
+                    !writesStatic && stack.Take(kept).Select((value, index) =>
+                        TryReadNumber(heap, module, value, out var number) && number == seeds[index]).All(same => same)
+                        ? StoredAt(heap, module, slotType, prepared, settled, seeded, top, seeds[^1])
+                        : null,
                 Where = where,
                 Kinds = kinds,
                 Identities = identities
@@ -1083,6 +1130,48 @@ public static class VirtualSemantics
             Restore(heap, footprint);
         }
         return trials;
+    }
+
+    private static (string Path, int Length)? IndexedStore(List<Trial> trials)
+    {
+        if (trials.Count < Seeds.Length || trials[0].IndexedStore is not { } store ||
+            trials.Any(trial => trial.IndexedStore != store) ||
+            trials.Select(trial => trial.Before[^1]).Distinct().Count() < 2)
+            return null;
+        return store;
+    }
+
+    private static (string Path, int Length)? StoredAt(
+        StaticHeap heap,
+        ModuleDef module,
+        string slotType,
+        List<Place> before,
+        List<Place> after,
+        Dictionary<string, long> seeded,
+        StaticValue top,
+        long expected)
+    {
+        var candidates = after.Where(place => place.Field is null &&
+            seeded.TryGetValue(place.Path, out var original) && original != expected &&
+            Tabled(heap, place.Owner, slotType) && Holds(heap, module, place.Value, top) &&
+            TryReadNumber(heap, module, place.Value, out var number) && number == expected).ToList();
+        if (candidates.Count != 1)
+            return null;
+        var candidate = candidates[0];
+        if (Element(candidate.Path) is not { } table)
+            return null;
+
+        // A copied wrapper may have different fields beneath the destination. Changes anywhere
+        // else (including another table, a branch counter or an alias) make a plain store unsafe.
+        bool Outside(Place place) => place.Path != candidate.Path &&
+            !place.Path.StartsWith(candidate.Path + ".", StringComparison.Ordinal) &&
+            !place.Path.StartsWith(candidate.Path + "[", StringComparison.Ordinal);
+        var originalPlaces = before.Where(Outside).ToDictionary(place => place.Path, place => place.Value);
+        var finalPlaces = after.Where(Outside).ToDictionary(place => place.Path, place => place.Value);
+        if (originalPlaces.Count != finalPlaces.Count || originalPlaces.Any(pair =>
+                !finalPlaces.TryGetValue(pair.Key, out var value) || value != pair.Value))
+            return null;
+        return (table, after.Count(place => place.Field is null && Element(place.Path) == table));
     }
 
     /// <summary>

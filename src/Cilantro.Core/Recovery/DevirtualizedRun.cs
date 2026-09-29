@@ -87,9 +87,11 @@ internal static class DevirtualizedRun
             cancellation.ThrowIfCancellationRequested();
             if (second.Module.ResolveToken(program.Method.Stub.MDToken.Raw) is not MethodDef stub ||
                 VirtualBody.Build(program, second.Module, stub).Body is not { } rebuilt) continue;
-            for (var scenario = 0; scenario < 8; scenario++)
+            for (var scenario = 0; scenario < 9; scenario++)
             {
                 cancellation.ThrowIfCancellationRequested();
+                var initializeModule = scenario == 8;
+                if (initializeModule && second.Module.GlobalType.FindStaticConstructor() is null) continue;
                 var configured = scenario >= 6;
                 var warm = scenario is 5 or 7;
                 var input = scenario >= 5 ? 3 : scenario;
@@ -97,11 +99,13 @@ internal static class DevirtualizedRun
                 var trial = engine is null
                     ? new RebuiltMethodTrial.Result(DevirtualizationCheck.NotMade, "the original VM entry could not be resolved")
                     : RebuiltMethodTrial.Compare(second, stub, rebuilt, input,
-                        engine.MDToken.Raw, warmOriginal: warm, hostProfile: configured ? world.Host.Profile : null);
+                        engine.MDToken.Raw, warmOriginal: warm, hostProfile: configured ? world.Host.Profile : null,
+                        initializeModule: initializeModule);
                 trials.Add(trial);
                 original.AddEvidence(new Evidence("reconstruction-method-trial",
                     $"{stub.MDToken}, controlled input {input}" +
                     (warm ? " after one original call on each independent machine (repeat-call trial)" : "") +
+                    (initializeModule ? " after module initialization with each side's body installed (module-initialized trial)" : "") +
                     (configured ? $" (32-byte zero streams; configured host profile {world.Host.Profile.Name}, SHA-256 {world.Host.Profile.Sha256}; strict interpretation, no declared call outcomes)"
                         : scenario >= 3 ? $" (32-byte zero streams for object/stream arguments; debugger attached={scenario == 4})" : " (no host facts)") + $": {trial.Verdict}. {trial.Detail}. " +
                     $"Bounded interpreter comparison ({RebuiltMethodTrial.StepLimit(second)} steps per machine, shared by warm-up and measurement), not proof for other inputs or initial states."));

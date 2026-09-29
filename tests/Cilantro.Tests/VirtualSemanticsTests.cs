@@ -2,6 +2,7 @@ using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Recovery;
+using Cilantro.Core.Interpretation;
 
 namespace Cilantro.Tests;
 
@@ -39,6 +40,244 @@ public sealed class VirtualSemanticsTests
 
     /// <summary>The number an operation carries where it carries nothing at all.</summary>
     private const int Bare = int.MinValue;
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void InitializationAndExplicitEntryAreObservedIndependently(bool initializationOnly)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            Engine(module, withValues: true);
+            var hidden = module.GetTypes().Single(type => type.Name == "Surface").Methods.Single();
+            var initializer = new MethodDefUser(".cctor", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Static | MethodAttributes.Private |
+                MethodAttributes.SpecialName | MethodAttributes.RTSpecialName) { Body = new CilBody() };
+            initializer.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+            initializer.Body.Instructions.Add(OpCodes.Ldc_I4_0.ToInstruction());
+            initializer.Body.Instructions.Add(OpCodes.Call.ToInstruction(hidden));
+            initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            module.GlobalType.Methods.Add(initializer);
+            var empty = new MethodDefUser("Empty", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Public | MethodAttributes.Static) { Body = new CilBody() };
+            empty.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            hidden.DeclaringType.Methods.Add(empty);
+            if (!initializationOnly)
+            {
+                // With no VM activity during startup, the explicit entry must still be watched.
+                initializer.Body.Instructions.Clear();
+                initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            }
+        });
+        var module = context.Module;
+        var step = module.GetTypes().Single(type => type.Name == "Step");
+        var machinery = module.GetTypes().Single(type => type.Name == "Machinery");
+        var expected = Program.Select((item, index) => new VirtualInstruction(index, item.Code,
+            item.Operand == Bare ? new VirtualOperand.None() :
+                new VirtualOperand.Number(item.Operand) { Type = "System.Int32" })).ToArray();
+        var observation = VirtualProgramRecovery.Watch(context,
+            module.GetTypes().Single(type => type.Name == "Surface").Methods.Single(method =>
+                method.Name == (initializationOnly ? "Empty" : "Hidden")),
+            machinery.Methods.Single(method => method.Name == "Perform"), step.Fields[0], step.FullName, expected);
+        Assert.NotNull(observation);
+        Assert.True(observation.Run.Watched > 10);
+        Assert.Equal(2, observation.Run.Targets[0]);
+        Assert.Null(observation.Machine.FrameEntered);
+        Assert.Null(observation.Machine.FrameExited);
+        Assert.Null(observation.Machine.Stepped);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnotherEngineCannotContributeJumpsEvenWhenItSharesTheProgram(bool nested)
+    {
+        using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
+        var module = context.Module;
+        var machinery = module.GetTypes().Single(type => type.Name == "Machinery");
+        var step = module.GetTypes().Single(type => type.Name == "Step");
+        var dispatcher = machinery.Methods.Single(method => method.Name == "Perform");
+        var machine = new StaticMachine();
+        var heap = machine.State.Heap;
+        var program = machinery.Fields.Single(field => field.Name == "Program");
+        Assert.True(heap.TryAllocateObject(program.FieldType.FullName, out var list));
+        var items = new List<StaticValue>();
+        var expected = new List<VirtualInstruction>();
+        for (var index = 0; index < 3; index++)
+        {
+            Assert.True(heap.TryAllocateObject(step.FullName, out var operation));
+            Assert.True(heap.TryWriteField(operation, step.Fields[0], StaticValue.FromInt32(Jump)));
+            Assert.True(heap.TryWriteField(operation, step.Fields[1], StaticValue.FromInt32(index)));
+            items.Add(operation);
+            expected.Add(new VirtualInstruction(index, Jump,
+                new VirtualOperand.Number(index) { Type = "System.Int32" }));
+        }
+        Assert.True(heap.TrySetModelValue(list, "Items", items));
+        Assert.True(heap.TryAllocateObject(machinery.FullName, out var first));
+        Assert.True(heap.TryAllocateObject(machinery.FullName, out var second));
+        Assert.True(heap.TryWriteField(first, program, list));
+        Assert.True(heap.TryWriteField(second, program, list));
+        var watcher = new VirtualRunWatcher(module, machine.State, dispatcher, step.Fields[0],
+            step.Fields[1], step.FullName, expected);
+        watcher.Entered(dispatcher, [first, items[0]]);
+        if (!nested) watcher.Exited(dispatcher);
+        watcher.Entered(dispatcher, [second, items[2]]);
+        watcher.Exited(dispatcher);
+        if (nested) watcher.Exited(dispatcher);
+        watcher.Entered(dispatcher, [first, items[1]]);
+        watcher.Exited(dispatcher);
+        var observed = watcher.Result();
+        Assert.Equal(2, observed.Watched);
+        Assert.Empty(observed.Targets);
+        Assert.Empty(observed.Jumps);
+    }
+
+    [Theory]
+    [InlineData("matching", true)]
+    [InlineData("opcode", false)]
+    [InlineData("operand", false)]
+    [InlineData("width", false)]
+    [InlineData("length", false)]
+    public void ProgramIdentityIncludesEveryOpcodeOperandAndNumericWidth(string variant, bool matches)
+    {
+        using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
+        var step = context.Module.GetTypes().Single(type => type.Name == "Step");
+        var heap = new StaticMachine().State.Heap;
+        Assert.True(heap.TryAllocateObject(step.FullName, out var operation));
+        Assert.True(heap.TryWriteField(operation, step.Fields[0], StaticValue.FromInt32(Jump)));
+        Assert.True(heap.TryWriteField(operation, step.Fields[1], StaticValue.FromInt32(2)));
+        var expected = new VirtualInstruction(0, variant == "opcode" ? Carry : Jump,
+            new VirtualOperand.Number(variant == "operand" ? 3 : 2)
+                { Type = variant == "width" ? "System.Int64" : "System.Int32" });
+        Assert.Equal(matches, VirtualProgramRecovery.MatchesProgram(heap, step.Fields[0], step.Fields[1],
+            [operation], variant == "length" ? [] : [expected]));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProgramIdentityComparesSwitchTableContents(bool different)
+    {
+        using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
+        var step = context.Module.GetTypes().Single(type => type.Name == "Step");
+        var heap = new StaticMachine().State.Heap;
+        Assert.True(heap.TryAllocateObject(step.FullName, out var operation));
+        Assert.True(heap.TryWriteField(operation, step.Fields[0], StaticValue.FromInt32(Jump)));
+        Assert.True(heap.TryAllocateArray(context.Module.CorLibTypes.Int32, 2, out var table));
+        Assert.True(heap.TryWriteArray(table, 0, StaticValue.FromInt32(1)));
+        Assert.True(heap.TryWriteArray(table, 1, StaticValue.FromInt32(2)));
+        Assert.True(heap.TryWriteField(operation, step.Fields[1], table));
+        Assert.Equal(!different, VirtualProgramRecovery.MatchesProgram(heap, step.Fields[0], step.Fields[1],
+            [operation], [new VirtualInstruction(0, Jump, new VirtualOperand.Table([1, different ? 3 : 2]))]));
+    }
+
+    [Theory]
+    [InlineData("direct", true)]
+    [InlineData("copy", true)]
+    [InlineData("fixed-index", false)]
+    [InlineData("extra-field", false)]
+    [InlineData("static-write", false)]
+    [InlineData("one-index", false)]
+    [InlineData("extra-slot", false)]
+    public void IsolatedStoresNeedVariedIndexesAndNoOtherWrites(string variant, bool identified)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            Engine(module, withValues: true);
+            var engine = module.GetTypes().Single(type => type.Name == "Machinery");
+            var body = engine.Methods.Single(method => method.Name == "Perform").Body.Instructions;
+            var store = body.Single(instruction => instruction.OpCode.Code == Code.Stelem_Ref);
+            var at = body.IndexOf(store);
+            if (variant == "copy")
+            {
+                var slot = module.GetTypes().Single(type => type.Name == "Slot");
+                var temporary = new Local(slot.ToTypeSig());
+                engine.Methods.Single(method => method.Name == "Perform").Body.Variables.Add(temporary);
+                foreach (var instruction in new[]
+                {
+                    OpCodes.Stloc.ToInstruction(temporary), OpCodes.Ldnull.ToInstruction(),
+                    OpCodes.Ldloc.ToInstruction(temporary), OpCodes.Ldfld.ToInstruction(slot.Fields[1]),
+                    OpCodes.Call.ToInstruction(slot.Methods.Single(method => method.Name == "Wrap"))
+                }) body.Insert(at++, instruction);
+            }
+            if (variant == "fixed-index")
+            {
+                var unbox = body.Take(at).Last(instruction => instruction.OpCode.Code == Code.Unbox_Any);
+                var index = body.IndexOf(unbox) + 1;
+                body.Insert(index++, OpCodes.Pop.ToInstruction());
+                body.Insert(index, OpCodes.Ldc_I4_0.ToInstruction());
+            }
+            if (variant == "extra-slot")
+            {
+                // Copy the store sequence, but write the arguments table too. Matching the
+                // expected local is insufficient when another slot also changes.
+                var start = body.Take(at).Select((instruction, index) => (instruction, index))
+                    .Last(pair => pair.instruction.OpCode.Code == Code.Ldfld &&
+                        pair.instruction.Operand == engine.Fields.Single(field => field.Name == "Locals")).index - 1;
+                var duplicate = body.Skip(start).Take(at - start + 1)
+                    .Select(instruction => new Instruction(instruction.OpCode, instruction.Operand)).ToArray();
+                duplicate[1].Operand = engine.Fields.Single(field => field.Name == "Arguments");
+                at++;
+                foreach (var instruction in duplicate) body.Insert(at++, instruction);
+            }
+            if (variant is "extra-field" or "static-write")
+            {
+                var target = engine.Fields.Single(field => field.Name == "Armed");
+                at = body.IndexOf(store) + 1;
+                if (variant == "static-write")
+                {
+                    target = new FieldDefUser("External", new FieldSig(module.CorLibTypes.Int32),
+                        FieldAttributes.Public | FieldAttributes.Static);
+                    engine.Fields.Add(target);
+                }
+                else body.Insert(at++, OpCodes.Ldarg_0.ToInstruction());
+                body.Insert(at++, OpCodes.Ldc_I4_1.ToInstruction());
+                body.Insert(at, (variant == "static-write" ? OpCodes.Stsfld : OpCodes.Stfld).ToInstruction(target));
+            }
+        });
+        var module = context.Module;
+        var machinery = module.GetTypes().Single(type => type.Name == "Machinery");
+        var slotType = module.GetTypes().Single(type => type.Name == "Slot");
+        var stepType = module.GetTypes().Single(type => type.Name == "Step");
+        var machine = new StaticMachine();
+        var heap = machine.State.Heap;
+        Assert.True(heap.TryAllocateObject(machinery.FullName, out var self));
+        foreach (var field in machinery.Fields.Where(field => !field.IsStatic))
+        {
+            var value = StaticValue.FromInt32(0);
+            if (field.Name == "Stack")
+            {
+                Assert.True(heap.TryAllocateObject(field.FieldType.FullName, out value));
+                Assert.True(heap.TrySetModelValue(value, "Items", new List<StaticValue>()));
+            }
+            else if (field.Name == "Locals" || field.Name == "Arguments")
+                Assert.True(heap.TryAllocateArray(slotType.ToTypeSig(), field.Name == "Locals" ? 4 : 2, out value));
+            Assert.True(heap.TryWriteField(self, field, value));
+        }
+        var code = stepType.Fields.Single(field => field.Name == "Code");
+        var operand = stepType.Fields.Single(field => field.Name == "Operand");
+        var operations = new List<StaticValue>();
+        foreach (var index in variant == "one-index" ? new[] { 0 } : new[] { 0, 1 })
+        {
+            Assert.True(heap.TryAllocateObject(stepType.FullName, out var operation));
+            Assert.True(heap.TryWriteField(operation, code, StaticValue.FromInt32(StoreLocal)));
+            Assert.True(heap.TryAllocateBox("System.Int32", StaticValue.FromInt32(index), out var boxed));
+            Assert.True(heap.TryWriteField(operation, operand, boxed));
+            operations.Add(operation);
+        }
+        var result = VirtualSemantics.Probe(machine, module,
+            machinery.Methods.Single(method => method.Name == "Perform"), self, code, operand, operations);
+        Assert.Equal(identified, result.Operations[StoreLocal].Name == "stores where its operand indexes");
+        if (identified) Assert.Equal(4, result.Operations[StoreLocal].Holding);
+        Assert.Null(machine.Stepped);
+        var locals = machinery.Fields.Single(field => field.Name == "Locals");
+        Assert.True(heap.TryReadField(self, locals, out var table));
+        for (var index = 0; index < 4; index++)
+        {
+            Assert.True(heap.TryReadArray(table, index, out var value));
+            Assert.Equal(StaticValue.Null, value);
+        }
+    }
 
     [Fact]
     public void ArithmeticIsIdentifiedFromWhatTheEngineComputes()
@@ -243,7 +482,7 @@ public sealed class VirtualSemanticsTests
     /// <summary>
     /// An engine keeps what its program is working on somewhere, and reaches it by number. Which
     /// operations put things there and take them back out is most of what a listing is worth, and
-    /// it can only be seen by watching, since the trials never vary an operand.
+    /// it can be established by watching or by isolated trials at distinct program indexes.
     /// </summary>
     [Fact]
     public void OperationsThatReachIntoTheEnginesTablesAreNamedForIt()

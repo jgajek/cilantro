@@ -294,9 +294,21 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
         StaticMachine machine,
         Lookup lookup)
     {
+        var preserveCalls = false;
+        foreach (var type in lookup.Aliases.Select(alias => alias.DeclaringType).Distinct())
+        {
+            if (type.FindStaticConstructor() is not { HasBody: true } initializer) continue;
+            if (machine.State.GetTypeInitializationStatus(type) == TypeInitializationStatus.Uninitialized &&
+                !machine.Execute(initializer).Succeeded)
+                return (PassStatus.Partial, 0, [$"{Say(lookup.Resolver)}: type initialization did not complete; calls were retained."]);
+            var effects = machine.State.LoaderEvidence.EffectsOf(initializer.MDToken.Raw);
+            preserveCalls |= effects.WroteMappedImage || effects.Registrations.Count != 0 ||
+                effects.StaticFieldsWritten.Any(field => !field.Contains($"{type.FullName}::", StringComparison.Ordinal));
+        }
         var answers = new Dictionary<int, string>();
         foreach (var key in lookup.Sites.Select(site => site.Key).Distinct())
         {
+            using var isolated = machine.State.Evidence.SetAside(lookup.Resolver.MDToken.Raw);
             var asked = machine.Execute(lookup.Resolver, [StaticValue.FromInt32(key)]);
             if (!asked.Succeeded)
             {
@@ -316,6 +328,9 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
                     $"Its {lookup.Sites.Count} use(s) were left as they were."
                 ]);
             }
+            var effects = machine.State.LoaderEvidence.EffectsOf(lookup.Resolver.MDToken.Raw);
+            if (effects.WroteStaticField || effects.WroteMappedImage || effects.Registrations.Count != 0)
+                return (PassStatus.Partial, 0, [$"{Say(lookup.Resolver)}: lookup has runtime effects; calls were retained without substituting answers."]);
             answers[key] = answer;
         }
 
@@ -323,7 +338,7 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
             .Select(site => (site.Method, site.Call, Value: answers[site.Key]))
             .ToArray();
         var (status, changes, said) = StringRecoveryPass.Rewrite(
-            context, "string-lookup-recovery", lookup.Aliases, lookup.Sites.Count, replacements);
+            context, "string-lookup-recovery", lookup.Aliases, lookup.Sites.Count, replacements, preserveCalls);
         if (status != PassStatus.Success)
             return (status, changes, said);
 

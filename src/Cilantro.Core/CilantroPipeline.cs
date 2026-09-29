@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.10.2";
+    public const string Version = "0.10.3";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -161,8 +161,22 @@ public sealed class CilantroPipeline
         // Reconstruction can expose loader-owned writes and let the predicate recheck remove
         // their readers. Revisit initialization before cleanup decides which runtime helpers live.
         new LoaderCallRecheckPass(),
+        new NumericTableCompletionPass(),
+        // Earlier integer-helper discovery can see an obfuscated body that only becomes
+        // provably pure after the final CFG and loader passes. Consume those constants now.
+        new IntegerHelperCompletionPass(),
+        new ControlFlowHelperCompletionPass(),
+        // Generated factories must first lose proven constant guards. Reconstruct before
+        // reachability cleanup so their discarded emitters no longer retain virtual targets.
+        new EmittedMethodReconstructionPass(),
+        new DispatcherPathCompletionPass(),
         new IntegrityVerdictPass(),
         new RuntimeCleanupPass(),
+        new UnwrittenGuardCompletionPass(),
+        new NumericTableFinalizationPass(),
+        new ControlFlowTableFinalizationPass(),
+        // Cloning effectful paths earlier can obscure shapes needed by dispatcher recovery.
+        new EffectfulDispatcherCompletionPass(),
         new SymbolRenamingPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it
         // and renaming has settled what everything is called, so the account names what a reader

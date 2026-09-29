@@ -34,4 +34,4 @@ Use `linux-x64` for the Linux archive. The single-file property enables self-con
 6. Commit the reviewed tree and create the matching version tag when ready to publish. The release workflow builds Windows/Linux archives and their SHA-256 checksums.
 7. Review release notes and downloaded assets before recommending the release to analysts. Do not turn pipeline success into a complete-unprotection claim.
 
-Preparing a release is separate from publishing it. Version 0.10.2 is a regular release with documented recovery limits. See [the release notes](releases/0.10.2.md).
+Preparing a release is separate from publishing it. Version 0.10.3 is a regular release with documented recovery limits. See [the release notes](releases/0.10.3.md).

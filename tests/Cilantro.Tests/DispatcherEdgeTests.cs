@@ -167,11 +167,21 @@ public sealed class DispatcherEdgeTests
         }
         var target = Cases(method)[1];
         var changed = Cilantro.Core.Passes.DispatcherPathPass.Rewrite(method);
-        Assert.Equal(withCall ? 0 : 1, changed);
+        Assert.Equal(1, changed);
         if (!withCall)
         {
             Assert.Same(target, branch.Operand);
             Assert.Equal(41, instructions[0].GetLdcI4Value());
+        }
+        else
+        {
+            // The entry still visits Observe. Only the edge after its state update
+            // can bypass the dispatcher using the newly proven store value.
+            Assert.Same(update, branch.Operand);
+            Assert.Equal(1, instructions[0].GetLdcI4Value());
+            Assert.Contains(instructions, i => i.OpCode.Code == Code.Call);
+            var exit = instructions[instructions.IndexOf(update) + 5];
+            Assert.Same(target, exit.Operand);
         }
     }
 
