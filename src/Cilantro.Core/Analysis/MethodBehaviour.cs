@@ -60,8 +60,8 @@ internal static class MethodBehaviour
         if (instructions.Length == 2 && instructions[1].OpCode == OpCodes.Ret)
         {
             if (instructions[0].OpCode == OpCodes.Ldnull) return Constant.Null;
-            if (instructions[0].OpCode == OpCodes.Ldc_I4_0) return Constant.False;
-            if (instructions[0].OpCode == OpCodes.Ldc_I4_1) return Constant.True;
+            if (instructions[0].IsLdcI4() && instructions[0].GetLdcI4Value() == 0) return Constant.False;
+            if (instructions[0].IsLdcI4() && instructions[0].GetLdcI4Value() == 1) return Constant.True;
         }
 
         return null;

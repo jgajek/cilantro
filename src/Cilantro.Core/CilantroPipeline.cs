@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.10.4";
+    public const string Version = "0.10.5";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -182,6 +182,8 @@ public sealed class CilantroPipeline
         new ControlFlowTableFinalizationPass(),
         // Cloning effectful paths earlier can obscure shapes needed by dispatcher recovery.
         new EffectfulDispatcherCompletionPass(),
+        new ReactorGuardCompletionPass(),
+        new ControlFlowFinalizationPass(),
         new SymbolRenamingPass(),
         new ReconstructionStateAuditPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it

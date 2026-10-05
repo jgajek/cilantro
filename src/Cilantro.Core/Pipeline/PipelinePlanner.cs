@@ -33,6 +33,8 @@ public static class PipelinePlanner
         "dispatcher-deobfuscation",
         "cfg-dead-code",
         "control-flow-completion",
+        "control-flow-finalization",
+        "reactor-guards-completion",
         "control-flow-recompletion",
         "token-recovery",
         "type-restoration",

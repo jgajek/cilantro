@@ -69,7 +69,7 @@ public sealed class EffectfulDispatcherTests
     [InlineData("unknown-condition", false)]
     [InlineData("address", false)]
     [InlineData("volatile", false)]
-    [InlineData("long-prefix", false)]
+    [InlineData("long-prefix", true)]
     [InlineData("dead-temporary", true)]
     [InlineData("live-temporary", true)]
     [InlineData("handler-temporary", true)]

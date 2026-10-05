@@ -29,7 +29,8 @@ public static class StackHandoff
     /// <remarks>
     /// The type has to come from somewhere, and the stack does not carry one that survives being
     /// asked about after the fact. It comes from the instruction that takes the value: a switch
-    /// takes an int32 and a store takes whatever the local holds. Anything else is declined rather
+    /// takes an int32 and a store takes whatever the local holds. A pop can instead be moved to
+    /// the incoming edges without storing the value or needing its type. Anything else is declined rather
     /// than guessed at, because a local of the wrong type is worse than the depth it would fix.
     /// </remarks>
     public static bool Repair(MethodDef method, Instruction head)
@@ -62,7 +63,9 @@ public static class StackHandoff
             return false;
         }
 
-        if (Handed(head, method) is not { } handed)
+        var discard = head.OpCode.Code == Code.Pop;
+        var handed = Handed(head, method);
+        if (!discard && handed is null)
             return false;
 
         // Where the value comes from, gathered before anything moves.
@@ -83,7 +86,40 @@ public static class StackHandoff
             return false;
         }
 
-        var local = new Local(handed);
+        if (discard)
+        {
+            // Folding a stack-fed switch can leave only its pop, reached from below.
+            // Discard on the incoming edges instead; unlike a spill/reload, this needs
+            // no guess about the type of the value being discarded.
+            var graph = ControlFlowGraph.Build(method);
+            if (branches.Any(branch => !graph.HaveIdenticalExceptionRegions(branch, head)))
+                return false;
+            head.OpCode = OpCodes.Nop;
+            head.Operand = null;
+            if (falls) instructions.Insert(instructions.IndexOf(head), OpCodes.Pop.ToInstruction());
+            foreach (var branch in branches)
+            {
+                if (!analysis.Depths.ContainsKey(branch)) continue;
+                var index = instructions.IndexOf(branch);
+                if (branch.OpCode.Code is Code.Br or Code.Br_S)
+                {
+                    branch.OpCode = OpCodes.Pop;
+                    branch.Operand = null;
+                    instructions.Insert(index + 1, OpCodes.Br.ToInstruction(head));
+                }
+                else
+                {
+                    var pop = OpCodes.Pop.ToInstruction();
+                    instructions.Insert(index + 1, OpCodes.Br.ToInstruction(instructions[index + 1]));
+                    instructions.Insert(index + 2, pop);
+                    instructions.Insert(index + 3, OpCodes.Br.ToInstruction(head));
+                    Retarget(branch, head, pop);
+                }
+            }
+            return true;
+        }
+
+        var local = new Local(handed!);
         body.Variables.Add(local);
         body.InitLocals = true;
 

@@ -158,9 +158,8 @@ public sealed class CorpusTests
                 result.Report.Passes,
                 pass => pass.Pass == "dispatcher-recheck");
             Assert.Equal(PassStatus.Success, recheck.Status);
-            Assert.Contains(
-                recheck.Diagnostics,
-                said => said.Contains("Asked again until a round found nothing", StringComparison.Ordinal));
+            // Earlier simplification can now finish these dispatchers before a second
+            // round is needed. The emitted-code check below is the completion gate.
 
             using var cleaned = dnlib.DotNet.ModuleDefMD.Load(outputPath);
             var analyzer = new DispatcherAnalyzer();

@@ -18,8 +18,8 @@ namespace Cilantro.Core.Passes;
 ///
 /// Correctness rests on two invariants. Deletion only removes instructions outside the reachable
 /// set, and that set is seeded from the method entry and every exception-clause entry, so live
-/// handlers are never touched. Exception-clause boundary instructions are pinned even when
-/// unreachable, so a try or handler extent can never be left dangling. Each method is rewritten in
+/// handlers are never touched. Exclusive exception-clause ends move across deleted instructions
+/// to preserve the region membership of every retained instruction. Each method is rewritten in
 /// its own transaction and rolled back unless structural verification passes, so a method this pass
 /// cannot prove safe is preserved exactly as it was.
 /// </remarks>
@@ -90,6 +90,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         var folded = 0;
         var removed = 0;
         var wasDisputed = EvaluationStackAnalyzer.Analyze(method).Diagnostics.Count;
+        var wasUnnameable = ForwardScan.Unnameable(method);
         try
         {
             for (var round = 0; round < MaximumRounds; round++)
@@ -111,13 +112,17 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                 transaction.Rollback();
                 return (0, 0);
             }
+            // Late cleanup also runs after stack-handoff. A folded switch can strand
+            // its pop or another stack-fed head with only backward entries. Repair
+            // those entries here rather than relying on a pass that already ran.
+            foreach (var head in ForwardScan.Unnamed(method))
+                StackHandoff.Repair(method, head);
+            method.Body.SimplifyBranches();
             method.Body.OptimizeBranches();
             if (!IsStructurallySound(method))
                 throw new InvalidOperationException("Rewrite left the method body structurally invalid.");
-            // Folding an entry edge can leave a dispatcher head that only a branch from below
-            // reaches, which no single forward pass can name the stack at. That is not a reason to
-            // keep the dispatcher: refusing the fold costs about seven in ten of them across the
-            // corpus. StackHandoffPass moves the state into a local at the end of the run instead.
+            if (ForwardScan.Unnameable(method) > wasUnnameable)
+                throw new InvalidOperationException("Rewrite left a new backward stack handoff that could not be repaired.");
 
             // The shape check above says the branches and boundaries land somewhere; it says
             // nothing about what the stack holds when they do. A fold that deletes the arm which
@@ -211,6 +216,21 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             var branch = instructions[index];
             if (Feeding(instructions, entered, index) is not { } producer)
                 continue;
+            // Reconstructed truth tests duplicate a reference before testing it, leaving
+            // the original for the selected arm. Remove only the duplicate and its test.
+            if (producer.OpCode.Code == Code.Dup &&
+                branch.OpCode.Code is Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S &&
+                branch.Operand is Instruction duplicateTarget &&
+                Feeding(instructions, entered, instructions.IndexOf(producer)) is { } original &&
+                (original.IsLdcI4() || original.OpCode.Code == Code.Ldnull))
+            {
+                var truth = original.IsLdcI4() && original.GetLdcI4Value() != 0;
+                var taken = branch.OpCode.Code is Code.Brtrue or Code.Brtrue_S ? truth : !truth;
+                Neutralize(producer);
+                Retarget(branch, taken, duplicateTarget);
+                folded++;
+                continue;
+            }
             var numbered = producer.IsLdcI4();
             if (!numbered && producer.OpCode.Code != Code.Ldnull)
                 continue;
@@ -726,7 +746,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     }
 
     /// <summary>
-    /// Deletes instructions the reachability walk cannot reach, keeping exception boundaries pinned.
+    /// Deletes unreachable instructions while preserving retained instructions' exception regions.
     /// </summary>
     private static int RemoveUnreachable(MethodDef method)
     {
@@ -754,13 +774,30 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             trimmed = suffix.Count;
             for (var i = instructions.Count - 1; i >= tail; i--) instructions.RemoveAt(i);
         }
-        var pinned = CollectExceptionBoundaries(method);
-        // A pinned end boundary can itself fall through or branch. Preserve its
-        // continuation as well: leaving only a terminal nop is rejected by the
-        // Framework JIT even when no ordinary entry can reach that suffix.
-        var reachable = CfgDeadCodePass.ComputeReachable(method, pinned);
+        // Exclusive ends are positions, not execution roots. Keeping their dead
+        // continuation can preserve an entire dispatcher (and invalid backward
+        // stack edges). Move an end to the next retained instruction: this crosses
+        // only dead instructions, so every retained instruction keeps its original
+        // membership in every exception region. Starts and filters are seeded by
+        // ComputeReachable and never moved.
+        var reachable = CfgDeadCodePass.ComputeReachable(method);
+        var nextRetained = new Dictionary<Instruction, Instruction?>();
+        Instruction? next = null;
+        for (var index = instructions.Count - 1; index >= 0; index--)
+        {
+            var instruction = instructions[index];
+            if (reachable.Contains(instruction)) next = instruction;
+            nextRetained[instruction] = next;
+        }
+        foreach (var handler in method.Body.ExceptionHandlers)
+        {
+            if (handler.TryEnd is { } tryEnd && nextRetained.TryGetValue(tryEnd, out var newTryEnd))
+                handler.TryEnd = newTryEnd;
+            if (handler.HandlerEnd is { } handlerEnd && nextRetained.TryGetValue(handlerEnd, out var newHandlerEnd))
+                handler.HandlerEnd = newHandlerEnd;
+        }
         var doomed = method.Body.Instructions
-            .Where(instruction => !reachable.Contains(instruction) && !pinned.Contains(instruction))
+            .Where(instruction => !reachable.Contains(instruction))
             .ToArray();
         foreach (var instruction in doomed)
             method.Body.Instructions.Remove(instruction);

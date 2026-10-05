@@ -12,6 +12,7 @@ public sealed class EffectfulDispatcherChainTests
     [InlineData("throws")]
     [InlineData("unknown")]
     [InlineData("unsupported")]
+    [InlineData("long")]
     [InlineData("limit")]
     public void ContinuesThroughProvenBranchesAndFallsBackBeforeAnUnprovenSuffix(string scenario)
     {
@@ -44,7 +45,12 @@ public sealed class EffectfulDispatcherChainTests
             OpCodes.Ldloc.ToInstruction(state), OpCodes.Switch.ToInstruction([second]), OpCodes.Br.ToInstruction(zero),
             second, OpCodes.Stloc.ToInstruction(state));
         if (scenario == "unsupported") Add(method, OpCodes.Ldloca.ToInstruction(scratch), OpCodes.Pop.ToInstruction());
-        if (scenario == "limit") for (var n = 0; n < 40; n++) Add(method, OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Pop.ToInstruction());
+        if (scenario is "limit" or "long")
+            for (var n = 0; n < (scenario == "limit" ? 300 : 40); n++)
+            {
+                var next = OpCodes.Ldc_I4_1.ToInstruction();
+                Add(method, OpCodes.Br.ToInstruction(next), next, OpCodes.Pop.ToInstruction());
+            }
         Add(method, OpCodes.Ldc_I4_2.ToInstruction(), OpCodes.Call.ToInstruction(observe),
             scenario == "unknown" ? OpCodes.Ldarg_0.ToInstruction() : OpCodes.Ldloc.ToInstruction(state),
             OpCodes.Switch.ToInstruction([zero, one]), OpCodes.Br.ToInstruction(zero),
@@ -59,7 +65,7 @@ public sealed class EffectfulDispatcherChainTests
         Assert.Equal(expected, before.Select(r => r.Result));
         Assert.All(before, r => Assert.Equal(12, r.Trace));
         Assert.Equal(1, DispatcherPathPass.Rewrite(method, preserveEffects: true));
-        Assert.Same(scenario is "known" or "throws" ? one : second, source.Operand);
+        Assert.Same(scenario is "known" or "throws" or "long" ? one : second, source.Operand);
         Assert.Equal(before, new[] { Execute(0), Execute(1) });
         Assert.NotNull(ControlFlowCompletionPass.TryComplete(method));
         Assert.Equal(before, new[] { Execute(0), Execute(1) });

@@ -71,7 +71,10 @@ internal static class EffectfulDispatcherPath
         Plan? best = null;
         var effect = false;
         var examined = 0;
-        for (var hops = 0; hops < 16; hops++)
+        // Nested Reactor dispatchers can cross dozens of branch-only blocks and
+        // repeated field reads before testing the state. Bound both graph travel
+        // and the copied instruction prefix, without dropping any of those reads.
+        for (var hops = 0; hops < 128; hops++)
         {
             if (!seen.Add(current) || !graph.HaveIdenticalExceptionRegions(source, current)) return best;
             var block = graph.BlockOf(current);
@@ -79,7 +82,7 @@ internal static class EffectfulDispatcherPath
             Instruction? next = null;
             foreach (var i in block.Instructions)
             {
-                if (examined >= 64) return best;
+                if (examined >= 512) return best;
                 if (i.OpCode.Code == Code.Nop) continue;
                 if (i.OpCode.Code is Code.Br or Code.Br_S) { next = i.Operand as Instruction; break; }
                 if (i.OpCode.FlowControl == FlowControl.Cond_Branch)

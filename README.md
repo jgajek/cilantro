@@ -6,9 +6,9 @@ CILantro's distinguishing approach is to interpret the sample's own decoding and
 
 CILantro can reconstruct supported Reactor VM bytecode into ordinary CIL, unflatten control flow, resolve indirect calls, and remove protector infrastructure when its analysis establishes that removal is safe. It restores encrypted methods and strings, follows supported native wrappers and embedded assembly chains into their managed payloads, and produces decompiler-ready assemblies with readable replacement names, payload hashes, and offline HTML reports. Bounded comparisons of original and rebuilt methods expose reconstruction disagreements instead of treating readable output as proof of correctness.
 
-**0.10.4 is a regular release for analysts.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
+**0.10.5 is a regular release for analysts.** A cleaned file is an analysis artifact, not a claim of complete unprotection or behavioral equivalence. The report separates structural checks, reconstruction comparisons, assumptions, and remaining work.
 
-This release removes the VM machinery from all 14 intact virtualized inputs in the current corpus, retaining readable reconstructed CIL and captured payloads. It also improves native dependency extraction, damaged-metadata handling, Windows paths, and reconstruction validation. Inputs damaged by other tools may remain unsupported and carry an explicit warning. See the [0.10.4 release notes](docs/releases/0.10.4.md) for measured results and remaining gaps.
+This release completes the identified dispatcher and opaque-guard cleanup across the current intact managed corpus while preserving application switches. The native managed stage loses 62,470 opaque guard reads and 100 protector fields, with initialization effects retained. The 14 intact virtualized inputs remain VM-free. Inputs damaged by other tools may remain unsupported and carry an explicit warning. See the [0.10.5 release notes](docs/releases/0.10.5.md) for measured results, the protector-metadata cleanup contract, and remaining gaps.
 
 ## Install
 
@@ -71,7 +71,7 @@ Read the [support and limitations](docs/compatibility.md) before adopting CILant
 - [Automation and MCP](docs/agents.md)
 - [Build, test, and release](docs/development.md)
 - [Complete documentation index](docs/README.md)
-- [0.10.4 release notes](docs/releases/0.10.4.md)
+- [0.10.5 release notes](docs/releases/0.10.5.md)
 
 ## Contributing and licence
 
