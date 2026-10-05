@@ -365,7 +365,7 @@ public sealed class ReconstructionCoverageTests
         Assert.Contains(redirected.Body.Instructions, i => i.Operand == helper);
         Assert.DoesNotContain(redirected.Body.Instructions, i => i.Operand is IMethod m && m.Name == "Engine");
         var checkedCalls = DevirtualizedRun.CompareLiftedCallers(copy, copy, originalBodies);
-        Assert.Equal(2, checkedCalls.Count);
+        Assert.Equal(3, checkedCalls.Count);
         Assert.All(checkedCalls, trial => Assert.Equal(DevirtualizationCheck.Agreed, trial.Verdict));
         var helperCall = redirected.Body.Instructions.Single(i => i.Operand == helper);
         helperCall.OpCode = OpCodes.Nop;

@@ -7,6 +7,40 @@ namespace Cilantro.Tests;
 
 public sealed class ModuleInitializedTrialTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CoupledStartupInstallsRebuiltCompanionsBeforeInitialization(bool changesHelper)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            var value = new FieldDefUser("Value", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            host.Fields.Add(value);
+            var helper = AddMethod(host, "Configure", module.CorLibTypes.Void);
+            foreach (var i in new[] { OpCodes.Ldc_I4_7.ToInstruction(), OpCodes.Stsfld.ToInstruction(value), OpCodes.Ret.ToInstruction() }) helper.Body.Instructions.Add(i);
+            var run = AddMethod(host, "Run", module.CorLibTypes.Int32);
+            run.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(value));
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            var initializer = module.GlobalType.FindOrCreateStaticConstructor();
+            initializer.Body.Instructions.Clear();
+            initializer.Body.Instructions.Add(OpCodes.Call.ToInstruction(helper));
+            initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        });
+        var host = context.Module.GetTypes().Single(type => type.Name == "Host");
+        var run = host.Methods.Single(method => method.Name == "Run");
+        var helper = host.Methods.Single(method => method.Name == "Configure");
+        var original = helper.Body;
+        var replacement = new CilBody();
+        foreach (var i in new[] { OpCodes.Ldc_I4.ToInstruction(changesHelper ? 9 : 7), OpCodes.Stsfld.ToInstruction(host.Fields.Single()), OpCodes.Ret.ToInstruction() }) replacement.Instructions.Add(i);
+        Assert.Equal(DevirtualizationCheck.Agreed,
+            RebuiltMethodTrial.Compare(context, run, run.Body, 0, initializeModule: true).Verdict);
+        var trial = RebuiltMethodTrial.Compare(context, run, run.Body, 0, initializeModule: true,
+            rebuiltCompanions: new Dictionary<MethodDef, CilBody> { [helper] = replacement });
+        Assert.Equal(changesHelper ? DevirtualizationCheck.Disagreed : DevirtualizationCheck.Agreed, trial.Verdict);
+        Assert.Same(original, helper.Body);
+    }
+
     [Fact]
     public void ModuleInitializationIsASeparateTrialAndDoesNotEraseTheColdDifference()
     {
@@ -63,7 +97,7 @@ public sealed class ModuleInitializedTrialTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void FailedOrRegisteringModuleInitializersRemainInconclusive(bool registers)
+    public void FailedInitializersRemainInconclusiveButNullSubscriptionsAreInert(bool registers)
     {
         using var context = SyntheticContext.Build(module =>
         {
@@ -88,8 +122,8 @@ public sealed class ModuleInitializedTrialTests
         });
         var run = context.Module.GetTypes().SelectMany(t => t.Methods).Single(m => m.Name == "Run");
         var result = RebuiltMethodTrial.Compare(context, run, run.Body, 0, initializeModule: true);
-        Assert.Equal(DevirtualizationCheck.NotMade, result.Verdict);
-        Assert.Contains(registers ? "resolver callback behavior remains outside" : "module initialization did not complete", result.Detail);
+        Assert.Equal(registers ? DevirtualizationCheck.Agreed : DevirtualizationCheck.NotMade, result.Verdict);
+        Assert.Contains(registers ? "0 callbacks" : "module initialization did not complete", result.Detail);
     }
 
     [Fact]

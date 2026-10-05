@@ -15,7 +15,7 @@ public sealed class ResolverTrialSnapshotTests
     [InlineData("method", true)]
     [InlineData("order", false)]
     [InlineData("remove", false)]
-    public void TrialsCompareSubscriptionsWithoutClaimingCallbackEquivalence(string change, bool initialize)
+    public void TrialsCompareSubscriptionsAndExerciseMatchingCallbacks(string change, bool initialize)
     {
         using var context = SyntheticContext.Build(module =>
         {
@@ -58,8 +58,8 @@ public sealed class ResolverTrialSnapshotTests
             (rebuilt.Instructions[7].Operand, rebuilt.Instructions[2].Operand);
         if (change == "remove") { rebuilt.Instructions.Clear(); rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction()); }
         var result = RebuiltMethodTrial.Compare(context, method, rebuilt, 0, initializeModule: initialize);
-        Assert.Equal(change == "same" ? DevirtualizationCheck.NotMade : DevirtualizationCheck.Disagreed, result.Verdict);
-        Assert.Contains("resolver", result.Detail);
+        Assert.Equal(change == "same" ? DevirtualizationCheck.Agreed : DevirtualizationCheck.Disagreed, result.Verdict);
+        Assert.Contains("resolver", result.Detail, StringComparison.OrdinalIgnoreCase);
         if (change != "same") Assert.Contains("modeled application-domain data", result.DifferingRoots!);
     }
 

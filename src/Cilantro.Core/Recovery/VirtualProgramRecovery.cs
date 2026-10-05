@@ -81,6 +81,12 @@ public sealed record VirtualProgram(
     /// <summary>Where each branch was seen to go, by the index of the operation that jumped.</summary>
     public IReadOnlyDictionary<int, int> Targets { get; init; } = new Dictionary<int, int>();
 
+    /// <summary>Individual targets measured in isolated taken/untaken branch trials with a calibrated engine position.</summary>
+    public IReadOnlyDictionary<int, int> ProbedTargets { get; init; } = new Dictionary<int, int>();
+
+    /// <summary>Switch sites whose every entry and boundary selectors were measured against the calibrated engine position.</summary>
+    public IReadOnlySet<int> ProbedTables { get; init; } = new HashSet<int>();
+
     /// <summary>The jumping operations whose target was, every time it was watched, their operand.</summary>
     public IReadOnlySet<int> TargetIsOperand { get; init; } = new HashSet<int>();
 
@@ -449,6 +455,24 @@ public static class VirtualProgramRecovery
                         "something else of the engine's and nothing here is known to be guarded.";
         var settled = Settled(program, context.Module);
         NameHandlerEnds(settled, regions, program);
+        var probedTables = new HashSet<int>();
+        var targetDiagnostics = new List<string>();
+        var probedTargets = VirtualSemantics.ProbeBranchTargets(attempt.Machine, context.Module,
+            attempt.Dispatcher, attempt.Engine, operandField, attempt.Program, attempt.Decoded,
+            settled, flow.Targets, byOperand, probedTables, targetDiagnostics);
+        foreach (var note in targetDiagnostics)
+            context.AddEvidence(new Evidence("vm-target-trial-incomplete", $"Program {method.ProgramId}: {note}"));
+        if (probedTables.Count > 0)
+            context.AddEvidence(new Evidence("vm-switch-target-trials",
+                $"Program {method.ProgramId}: measured every table entry and four out-of-range selectors at switch sites " +
+                string.Join(", ", probedTables.Order()) + "; destinations and fallthrough matched the calibrated engine position. Bounded engine trials, not a universal proof."));
+        if (probedTargets.Count > 0)
+            context.AddEvidence(new Evidence("vm-branch-target-trials",
+                $"Program {method.ProgramId}: measured {probedTargets.Count} previously inferred target(s) across separating stack inputs (both outcomes for conditional branches), " +
+                "using a position field calibrated against two distinct observed destinations: " +
+                string.Join(", ", probedTargets.Select(pair => $"{pair.Key}->{pair.Value}")) +
+                ". These are bounded engine trials, not a universal semantics proof."));
+
         var left = refused
             .Where(entry => !settled.TryGetValue(entry.Key, out var known) || !known.Identified)
             .ToDictionary(entry => entry.Key, entry => entry.Value);
@@ -457,6 +481,8 @@ public static class VirtualProgramRecovery
             Regions = regions,
             Guarding = guarding,
             Operations = settled,
+            ProbedTargets = probedTargets,
+            ProbedTables = probedTables,
             Declined = VirtualSemantics.Wording(VirtualSemantics.Counted(left))
         };
     }

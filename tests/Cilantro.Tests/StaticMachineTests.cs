@@ -591,6 +591,26 @@ public sealed class StaticMachineTests
     }
 
     [Fact]
+    public void NullBinaryReaderInputIsAKnownExceptionRatherThanInvalidIl()
+    {
+        using var module = NewModule();
+        var constructor = new MemberRefUser(module, ".ctor",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.GetTypeRef("System.IO", "Stream").ToTypeSig()),
+            module.CorLibTypes.GetTypeRef("System.IO", "BinaryReader"));
+        var state = new StaticMachineState(new StaticMachineLimits());
+        Assert.True(state.Heap.TryAllocateObject("System.IO.BinaryReader", out var reader));
+        var intrinsic = new LoaderFrameworkIntrinsic();
+        var result = intrinsic.Invoke(new IntrinsicContext(state), constructor, [reader, StaticValue.Null]);
+        Assert.Equal(StaticExecutionStatus.Threw, result.Status);
+        Assert.True(state.Heap.TryGetRuntimeTypeName(result.Value, out var name));
+        Assert.Equal("System.ArgumentNullException", name);
+        Assert.True(state.Heap.TryGetModelValue(result.Value, "ParamName", out string? parameter));
+        Assert.Equal("input", parameter);
+        Assert.Equal(StaticExecutionStatus.Unknown,
+            intrinsic.Invoke(new IntrinsicContext(state), constructor, [reader, StaticValue.Unknown]).Status);
+    }
+
+    [Fact]
     public void RejectsExternalCallsThatAreNotAllowlisted()
     {
         using var module = NewModule();

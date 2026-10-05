@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.10.3";
+    public const string Version = "0.10.4";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -71,6 +71,9 @@ public sealed class CilantroPipeline
         // most of it is flattened.
         new ControlFlowAnalysisPass(),
         new MethodBodyRecoveryPass(),
+        // Repair invalid attribute references before IL transforms invoke the verifier;
+        // otherwise unrelated body rewrites roll back because of damaged input metadata.
+        new MetadataSanitizationPass(),
         new StringTableRecoveryPass(),
         new BooleanRecoveryPass(),
         new AntiTamperNeutralizationPass(),
@@ -131,6 +134,7 @@ public sealed class CilantroPipeline
         new IntegerHelperRecheckPass(),
         new PayloadExtractionPass(),
         new CosturaExtractionPass(),
+        new ResourceEntryExtractionPass(),
         // Building the read-back methods precedes cleanup, which would otherwise delete the very
         // stubs the bodies go into, and follows the payload passes, which have to see the module
         // doing its own work rather than the tool's account of it.
@@ -171,6 +175,7 @@ public sealed class CilantroPipeline
         new EmittedMethodReconstructionPass(),
         new DispatcherPathCompletionPass(),
         new IntegrityVerdictPass(),
+        new ReactorTrialGuardRemovalPass(),
         new RuntimeCleanupPass(),
         new UnwrittenGuardCompletionPass(),
         new NumericTableFinalizationPass(),
@@ -178,11 +183,11 @@ public sealed class CilantroPipeline
         // Cloning effectful paths earlier can obscure shapes needed by dispatcher recovery.
         new EffectfulDispatcherCompletionPass(),
         new SymbolRenamingPass(),
+        new ReconstructionStateAuditPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it
         // and renaming has settled what everything is called, so the account names what a reader
         // will actually find rather than what the module said several passes ago.
-        new RebuiltBodyDigestPass(),
-        new MetadataSanitizationPass()
+        new RebuiltBodyDigestPass()
     ];
 
     /// <summary>Runs the pipeline over one assembly.</summary>

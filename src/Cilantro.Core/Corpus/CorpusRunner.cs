@@ -363,8 +363,8 @@ public static class CorpusRunner
 
     private static OracleComparison CompareAssemblies(string protectedPath, string oraclePath)
     {
-        using var outputModule = ModuleDefMD.Load(protectedPath);
-        using var oracleModule = ModuleDefMD.Load(oraclePath);
+        using var outputModule = ModuleDefMD.Load(File.ReadAllBytes(protectedPath));
+        using var oracleModule = ModuleDefMD.Load(File.ReadAllBytes(oraclePath));
         var outputName = outputModule.Assembly?.Name.String ?? outputModule.Name.String;
         var oracleName = oracleModule.Assembly?.Name.String ?? oracleModule.Name.String;
         var outputMembers = PreservedNameMembers(outputModule);

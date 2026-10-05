@@ -1090,6 +1090,8 @@ public static class VirtualLift
     {
         var going = program.Targets.ToDictionary(
             seen => seen.Key, seen => new List<int> { seen.Value });
+        foreach (var (index, target) in program.ProbedTargets)
+            going.TryAdd(index, [target]);
         foreach (var instruction in program.Instructions)
         {
             var name = program.Operations.TryGetValue(instruction.Opcode, out var known)
@@ -1117,7 +1119,7 @@ public static class VirtualLift
                 else if (!going.ContainsKey(instruction.Index))
                 {
                     going[instruction.Index] = places;
-                    conjectured.Add(instruction.Index);
+                    if (!program.ProbedTables.Contains(instruction.Index)) conjectured.Add(instruction.Index);
                 }
                 continue;
             }

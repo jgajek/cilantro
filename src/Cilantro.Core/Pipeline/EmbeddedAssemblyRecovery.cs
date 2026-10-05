@@ -85,6 +85,14 @@ internal static class EmbeddedAssemblyRecovery
             }
             processed++;
             bytes += length;
+            if (nodes[next.Parent].Run?.Payloads.Any(payload =>
+                    payload.WrittenTo == next.Path && payload.Origin == PayloadOrigin.NativeDependency) == true)
+            {
+                nodes.Add(new(next.Path, hash, next.Depth, "extracted", null,
+                    "Native dependency extracted intact; native unpacking and deprotection have not been performed."));
+                complete = false;
+                continue;
+            }
             var childDirectory = Path.Combine(directory, hash);
             var childOptions = options with
             {

@@ -1,11 +1,12 @@
 using dnlib.DotNet;
+using Cilantro.Core.Verification;
 
 namespace Cilantro.Core;
 
 public sealed class MetadataSanitizationPass : DeobfuscationPass
 {
     public override string Name => "metadata-sanitization";
-    public override IReadOnlyCollection<string> Dependencies => ["string-recovery"];
+    public override IReadOnlyCollection<string> Dependencies => ["method-body-recovery"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
@@ -27,7 +28,25 @@ public sealed class MetadataSanitizationPass : DeobfuscationPass
             }
         }
 
-        return (PassStatus.Success, 0, [$"Identified {poisoned} poisoned assembly references."]);
+        var removed = 0;
+        foreach (var owner in CustomAttributeValidation.Owners(context.Module))
+        {
+            foreach (var attribute in owner.CustomAttributes.ToArray())
+            {
+                // An absent constructor cannot name an attribute. Do not guess a replacement
+                // from its blob or remove valid attributes whose external types are unavailable.
+                if (attribute.Constructor is not null)
+                    continue;
+                owner.CustomAttributes.Remove(attribute);
+                context.AddChange(new ChangeRecord(Name, "remove-invalid-custom-attribute",
+                    owner.MDToken.ToString(),
+                    $"Removed a custom attribute with no valid constructor reference (blob offset {attribute.BlobOffset})."));
+                removed++;
+            }
+        }
+        return (PassStatus.Success, removed,
+            [$"Identified {poisoned} poisoned assembly references.",
+             $"Removed {removed} custom attributes with invalid constructor references."]);
     }
 
     private static bool IsReferenced(ModuleDef module, AssemblyRef target) =>

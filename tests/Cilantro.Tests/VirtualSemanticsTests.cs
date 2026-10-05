@@ -42,6 +42,138 @@ public sealed class VirtualSemanticsTests
     private const int Bare = int.MinValue;
 
     [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    public void IndividualBranchTargetsRequireCalibratedPositionAndBothArms(bool wrongTarget, bool oneAnchor, bool expected)
+    {
+        const int conditional = 199;
+        const int tableJump = 200;
+        using var context = SyntheticContext.Build(module =>
+        {
+            Engine(module, withValues: true);
+            var engine = module.GetTypes().Single(type => type.Name == "Machinery");
+            var step = module.GetTypes().Single(type => type.Name == "Step");
+            var slot = module.GetTypes().Single(type => type.Name == "Slot");
+            var cell = module.GetTypes().Single(type => type.Name == "Cell");
+            var perform = engine.Methods.Single(method => method.Name == "Perform");
+            var body = perform.Body;
+            var members = body.Instructions.Select(instruction => instruction.Operand).OfType<IMethod>().ToArray();
+            var count = members.First(member => member.Name == "get_Count");
+            var item = members.First(member => member.Name == "get_Item");
+            var remove = members.First(member => member.Name == "RemoveAt");
+            var stack = engine.Fields.Single(field => field.Name == "Stack");
+            var prefix = new List<Instruction>();
+            var value = new Local(module.CorLibTypes.Int32);
+            body.Variables.Add(value);
+            prefix.Add(OpCodes.Ldarg_1.ToInstruction());
+            prefix.Add(OpCodes.Ldfld.ToInstruction(step.Fields.Single(field => field.Name == "Code")));
+            prefix.Add(OpCodes.Ldc_I4.ToInstruction(conditional));
+            prefix.Add(OpCodes.Bne_Un.ToInstruction(body.Instructions[0]));
+            Peek(prefix, stack, slot.Fields.Single(field => field.Name == "Held"), cell.Fields.Single(field => field.Name == "Low"), count, item, 1);
+            prefix.Add(OpCodes.Stloc.ToInstruction(value));
+            Drop(prefix, stack, count, remove);
+            prefix.Add(OpCodes.Ldloc.ToInstruction(value));
+            prefix.Add(OpCodes.Brfalse.ToInstruction(body.Instructions.Last(instruction => instruction.OpCode == OpCodes.Ret)));
+            prefix.Add(OpCodes.Ldarg_0.ToInstruction());
+            prefix.Add(OpCodes.Ldarg_1.ToInstruction());
+            prefix.Add(OpCodes.Ldfld.ToInstruction(step.Fields.Single(field => field.Name == "Operand")));
+            prefix.Add(OpCodes.Unbox_Any.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+            if (wrongTarget)
+            {
+                prefix.Add(OpCodes.Ldc_I4_1.ToInstruction());
+                prefix.Add(OpCodes.Add.ToInstruction());
+            }
+            prefix.Add(OpCodes.Stfld.ToInstruction(engine.Fields.Single(field => field.Name == "Position")));
+            prefix.Add(OpCodes.Ret.ToInstruction());
+            var tablePrefix = new List<Instruction>
+            {
+                OpCodes.Ldarg_1.ToInstruction(), OpCodes.Ldfld.ToInstruction(step.Fields.Single(field => field.Name == "Code")),
+                OpCodes.Ldc_I4.ToInstruction(tableJump), OpCodes.Bne_Un.ToInstruction(prefix[0])
+            };
+            Peek(tablePrefix, stack, slot.Fields.Single(field => field.Name == "Held"), cell.Fields.Single(field => field.Name == "Low"), count, item, 1);
+            tablePrefix.Add(OpCodes.Stloc.ToInstruction(value));
+            Drop(tablePrefix, stack, count, remove);
+            var done = body.Instructions.Last(instruction => instruction.OpCode == OpCodes.Ret);
+            tablePrefix.Add(OpCodes.Ldloc.ToInstruction(value));
+            tablePrefix.Add(OpCodes.Ldc_I4_0.ToInstruction());
+            tablePrefix.Add(OpCodes.Blt.ToInstruction(done));
+            tablePrefix.Add(OpCodes.Ldloc.ToInstruction(value));
+            tablePrefix.Add(OpCodes.Ldarg_1.ToInstruction());
+            tablePrefix.Add(OpCodes.Ldfld.ToInstruction(step.Fields.Single(field => field.Name == "Operand")));
+            tablePrefix.Add(OpCodes.Castclass.ToInstruction(new TypeSpecUser(new SZArraySig(module.CorLibTypes.Int32))));
+            tablePrefix.Add(OpCodes.Ldlen.ToInstruction());
+            tablePrefix.Add(OpCodes.Conv_I4.ToInstruction());
+            tablePrefix.Add(OpCodes.Bge.ToInstruction(done));
+            tablePrefix.Add(OpCodes.Ldarg_0.ToInstruction());
+            tablePrefix.Add(OpCodes.Ldarg_1.ToInstruction());
+            tablePrefix.Add(OpCodes.Ldfld.ToInstruction(step.Fields.Single(field => field.Name == "Operand")));
+            tablePrefix.Add(OpCodes.Castclass.ToInstruction(new TypeSpecUser(new SZArraySig(module.CorLibTypes.Int32))));
+            tablePrefix.Add(OpCodes.Ldloc.ToInstruction(value));
+            tablePrefix.Add(OpCodes.Ldelem_I4.ToInstruction());
+            if (wrongTarget) { tablePrefix.Add(OpCodes.Ldc_I4_1.ToInstruction()); tablePrefix.Add(OpCodes.Add.ToInstruction()); }
+            tablePrefix.Add(OpCodes.Stfld.ToInstruction(engine.Fields.Single(field => field.Name == "Position")));
+            tablePrefix.Add(OpCodes.Ret.ToInstruction());
+            prefix.InsertRange(0, tablePrefix);
+            for (var index = 0; index < prefix.Count; index++) body.Instructions.Insert(index, prefix[index]);
+        });
+        var module = context.Module;
+        var machinery = module.GetTypes().Single(type => type.Name == "Machinery");
+        var stepType = module.GetTypes().Single(type => type.Name == "Step");
+        var machine = new StaticMachine();
+        var heap = machine.State.Heap;
+        Assert.True(heap.TryAllocateObject(machinery.FullName, out var self));
+        foreach (var field in machinery.Fields.Where(field => !field.IsStatic))
+        {
+            var value = StaticValue.FromInt32(-100);
+            if (field.Name == "Stack")
+            {
+                Assert.True(heap.TryAllocateObject(field.FieldType.FullName, out value));
+                Assert.True(heap.TrySetModelValue(value, "Items", new List<StaticValue>()));
+            }
+            else if (field.Name == "Locals" || field.Name == "Arguments")
+                Assert.True(heap.TryAllocateArray(module.GetTypes().Single(type => type.Name == "Slot").ToTypeSig(), 4, out value));
+            Assert.True(heap.TryWriteField(self, field, value));
+        }
+        var code = stepType.Fields.Single(field => field.Name == "Code");
+        var operand = stepType.Fields.Single(field => field.Name == "Operand");
+        var decoded = new[] { new VirtualInstruction(0, Jump, new VirtualOperand.Number(2)),
+            new VirtualInstruction(1, Jump, new VirtualOperand.Number(4)),
+            new VirtualInstruction(2, conditional, new VirtualOperand.Number(3)),
+            new VirtualInstruction(3, Idle, new VirtualOperand.None()), new VirtualInstruction(4, Idle, new VirtualOperand.None()),
+            new VirtualInstruction(5, tableJump, new VirtualOperand.Table([2, 4])),
+            new VirtualInstruction(6, Jump, new VirtualOperand.Number(3)) };
+        var program = new List<StaticValue>();
+        foreach (var instruction in decoded)
+        {
+            Assert.True(heap.TryAllocateObject(stepType.FullName, out var operation));
+            Assert.True(heap.TryWriteField(operation, code, StaticValue.FromInt32(instruction.Opcode)));
+            Assert.True(heap.TryAllocateBox("System.Int32", StaticValue.FromInt32(instruction.Operand is VirtualOperand.Number number ? (int)number.Value : 0), out var boxed));
+            if (instruction.Operand is VirtualOperand.Table table)
+            {
+                Assert.True(heap.TryAllocateArray(module.CorLibTypes.Int32, table.Values.Count, out boxed));
+                for (var index = 0; index < table.Values.Count; index++)
+                    Assert.True(heap.TryWriteArray(boxed, index, StaticValue.FromInt32((int)table.Values[index])));
+            }
+            Assert.True(heap.TryWriteField(operation, operand, boxed));
+            program.Add(operation);
+        }
+        var observed = new Dictionary<int, int> { [0] = 2, [5] = 3 };
+        var reading = VirtualSemantics.Probe(machine, module, machinery.Methods.Single(method => method.Name == "Perform"), self, code, operand, program);
+        Assert.True(reading.Operations.ContainsKey(conditional), reading.Summary + string.Join(";", reading.Refused.Values));
+        if (!oneAnchor) observed[1] = 4;
+        var tables = new HashSet<int>();
+        var targets = VirtualSemantics.ProbeBranchTargets(machine, module, machinery.Methods.Single(method => method.Name == "Perform"),
+            self, operand, program, decoded, new Dictionary<int, VirtualOperation>
+            { [Jump] = new(Jump, 0, 0, "branch"), [conditional] = new(conditional, 1, 0, "branch if") { Decides = "brtrue" },
+                [tableJump] = new(tableJump, 1, 0, "branch by table") }, observed, new HashSet<int>(), tables);
+        Assert.Equal(expected, targets.ContainsKey(2));
+        Assert.Equal(expected, tables.Contains(5));
+        Assert.Equal(!oneAnchor, targets.ContainsKey(6));
+        if (expected) Assert.Equal(3, targets[2]);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void InitializationAndExplicitEntryAreObservedIndependently(bool initializationOnly)

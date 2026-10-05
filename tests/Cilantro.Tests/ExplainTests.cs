@@ -242,6 +242,24 @@ public sealed class ExplainTests
         Assert.Contains("Debugger-present trial", html, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    public void UnreconstructedVmLogicWarnsEvenWhenEmissionSucceeded(int methods, int additionalPrograms)
+    {
+        using var directory = Temporary();
+        var sample = WritePlain(directory.Path);
+        var basis = new CilantroPipeline().Run(sample, new PipelineOptions(AnalyzeOnly: true, ReportDirectory: directory.Path));
+        var result = AnalystReport.Write(basis with
+        {
+            Success = true, AnalyzeOnly = false, OutputPath = Path.Combine(directory.Path, "cleaned.dll"),
+            VirtualizedMethods = methods, ProgramsRunElsewhere = additionalPrograms,
+            Report = basis.Report with { VerificationPassed = true }
+        }, false);
+        Assert.Contains("VM reconstruction is incomplete", Shown(result, sample), StringComparison.Ordinal);
+        Assert.Contains("retry from the intact original", File.ReadAllText(result.ReadableReportPath!), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ChildReconstructionDisagreementIsVisibleInTheParentSummary()
     {

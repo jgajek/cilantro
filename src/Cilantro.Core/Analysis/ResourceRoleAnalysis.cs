@@ -15,7 +15,8 @@ public enum ResourceRole
     EncryptedResourceBundle,
 
     /// <summary>An application resource lifted back out of a decrypted bundle.</summary>
-    RestoredApplicationResource
+    RestoredApplicationResource,
+    NativePayload
 }
 
 public sealed record ResourceRoleFact(
@@ -66,7 +67,22 @@ public static class ResourceRoleAnalyzer
             var evidence = new List<string>();
             var role = ResourceRole.Unknown;
             var confidence = 0.25;
-            if (calls.Any(call => call.Name.String.StartsWith("ResolveMethod", StringComparison.Ordinal)))
+            var costuraRole = Recovery.CosturaResource.Classify(resource);
+            if (costuraRole != ResourceRole.Unknown)
+            {
+                role = costuraRole;
+                confidence = 1.0;
+                evidence.Add(role == ResourceRole.NativePayload
+                    ? "Costura resource contains a native PE image"
+                    : "Costura resource contains a validated managed assembly");
+            }
+            else if (Recovery.CosturaResource.HasPrefix(resource.Name))
+            {
+                // Costura also stores symbols and indexes. Sharing its loader's type is not
+                // evidence that these are Reactor encrypted resource bundles.
+                evidence.Add("Costura-named resource; content was not classified as a PE dependency");
+            }
+            else if (calls.Any(call => call.Name.String.StartsWith("ResolveMethod", StringComparison.Ordinal)))
             {
                 role = ResourceRole.ProxyMap;
                 confidence = 0.9;

@@ -22,6 +22,7 @@ public static class PipelinePlanner
 {
     private static readonly HashSet<string> MutatingPasses =
     [
+        "metadata-sanitization",
         "boolean-recovery",
         "antitamper-neutralization",
         "loader-call-elision",
@@ -43,6 +44,7 @@ public static class PipelinePlanner
         "stack-handoff",
         "resource-hook-elision",
         "runtime-cleanup",
+        "reactor-trial-guard-removal",
         "symbol-renaming"
     ];
 
@@ -85,7 +87,8 @@ public static class PipelinePlanner
         "method-body-recovery" or
         "string-table-recovery" or
         "global-state-capture" or
-        "boolean-recovery" => PipelinePhase.OriginalByteRecovery,
+        "boolean-recovery" or
+        "metadata-sanitization" => PipelinePhase.OriginalByteRecovery,
         "antitamper-neutralization" or
         "constant-predicates" or
         "constant-strings" or

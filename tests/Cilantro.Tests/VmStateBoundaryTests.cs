@@ -9,6 +9,94 @@ namespace Cilantro.Tests;
 public sealed class VmStateBoundaryTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void DebuggerGateAttributionStillChecksEarlierApplicationEffects(bool changesApplication, bool continuesApplication)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var importer = new Importer(module);
+            var engine = SyntheticContext.AddType(module, "Engine");
+            var cache = new FieldDefUser("Cache", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            engine.Fields.Add(cache);
+            var entry = new MethodDefUser("Entry", MethodSig.CreateStatic(module.CorLibTypes.Void), MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            foreach (var instruction in new[] { OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Stsfld.ToInstruction(cache), OpCodes.Ret.ToInstruction() }) entry.Body.Instructions.Add(instruction);
+            engine.Methods.Add(entry);
+            var host = SyntheticContext.AddType(module, "Host");
+            var state = new FieldDefUser("State", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            host.Fields.Add(state);
+            var gate = new MethodDefUser("Gate", MethodSig.CreateStatic(module.CorLibTypes.Void), MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            host.Methods.Add(gate);
+            var done = OpCodes.Ret.ToInstruction();
+            foreach (var instruction in new[] { OpCodes.Call.ToInstruction(importer.Import(typeof(System.Diagnostics.Debugger).GetProperty(nameof(System.Diagnostics.Debugger.IsAttached))!.GetMethod!)),
+                OpCodes.Brfalse.ToInstruction(done), OpCodes.Ldstr.ToInstruction("Debugger Detected"),
+                OpCodes.Newobj.ToInstruction(importer.Import(typeof(Exception).GetConstructor([typeof(string)])!)), OpCodes.Throw.ToInstruction(), done }) gate.Body.Instructions.Add(instruction);
+            var run = new MethodDefUser("Run", MethodSig.CreateStatic(module.CorLibTypes.Void), MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            host.Methods.Add(run);
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(entry));
+            if (changesApplication)
+            {
+                run.Body.Instructions.Add(OpCodes.Ldc_I4_1.ToInstruction());
+                run.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(state));
+            }
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(gate));
+            if (continuesApplication)
+            {
+                run.Body.Instructions.Add(OpCodes.Ldc_I4_2.ToInstruction());
+                run.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(state));
+            }
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        });
+        var methods = context.Module.GetTypes().SelectMany(type => type.Methods).ToArray();
+        var rebuilt = new CilBody();
+        if (continuesApplication)
+        {
+            rebuilt.Instructions.Add(OpCodes.Ldc_I4_2.ToInstruction());
+            rebuilt.Instructions.Add(OpCodes.Stsfld.ToInstruction(context.Module.GetTypes().Single(type => type.Name == "Host").Fields.Single()));
+        }
+        rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var result = RebuiltMethodTrial.Compare(context, methods.Single(method => method.Name == "Run"), rebuilt, 4,
+            methods.Single(method => method.Name == "Entry").MDToken.Raw);
+        Assert.Equal(DevirtualizationCheck.Disagreed, result.Verdict);
+        Assert.Equal(!changesApplication, result.ProtectorGateToken is not null);
+        Assert.True(RebuiltMethodTrial.IsIsolatedDebuggerGate(methods.Single(method => method.Name == "Gate")));
+        if (continuesApplication) Assert.Contains("Separate trial with only that guard neutralized", result.Detail);
+    }
+
+    [Fact]
+    public void EscapedVmMethodHandleIsNotHiddenByHeapIsolation()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var engine = SyntheticContext.AddType(module, "Engine");
+            var cache = new FieldDefUser("Cache", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            engine.Fields.Add(cache);
+            var entry = new MethodDefUser("Entry", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            foreach (var instruction in new[] { OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Stsfld.ToInstruction(cache), OpCodes.Ret.ToInstruction() })
+                entry.Body.Instructions.Add(instruction);
+            engine.Methods.Add(entry);
+            var host = SyntheticContext.AddType(module, "Host");
+            var run = new MethodDefUser("Run", MethodSig.CreateStatic(new ValueTypeSig(module.CorLibTypes.GetTypeRef("System", "RuntimeMethodHandle"))),
+                MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            foreach (var instruction in new[] { OpCodes.Call.ToInstruction(entry), OpCodes.Ldtoken.ToInstruction(entry), OpCodes.Ret.ToInstruction() })
+                run.Body.Instructions.Add(instruction);
+            host.Methods.Add(run);
+        });
+        var entry = context.Module.GetTypes().SelectMany(type => type.Methods).Single(method => method.Name == "Entry");
+        var run = context.Module.GetTypes().SelectMany(type => type.Methods).Single(method => method.Name == "Run");
+        var rebuilt = new CilBody();
+        rebuilt.Instructions.Add(OpCodes.Ldtoken.ToInstruction(entry));
+        rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var result = RebuiltMethodTrial.Compare(context, run, rebuilt, 0, entry.MDToken.Raw);
+        Assert.Equal(DevirtualizationCheck.Disagreed, result.Verdict);
+        Assert.True(result.NonVmStateMatched);
+        Assert.False(result.VmStateShared);
+        Assert.True(result.VmMetadataEscaped);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void ObjectSharingFollowsNestedReferencesRatherThanEqualContents(bool shared)
@@ -77,6 +165,9 @@ public sealed class VmStateBoundaryTests
         Assert.Equal(!changeAlias, result.Detail.Contains("A separate snapshot excluding VM-owned static roots matched"));
         Assert.Contains(result.DifferingRoots!, name => name.EndsWith("AEngine::Cache", StringComparison.Ordinal));
         Assert.NotNull(result.NonVmDifferingRoots);
+        Assert.NotNull(result.VmDifferingRoots);
+        Assert.Contains(result.VmDifferingRoots, name => name.EndsWith("AEngine::Cache", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.VmDifferingRoots, name => name.Contains("ZHost::", StringComparison.Ordinal));
         if (changeAlias)
         {
             Assert.Contains(result.NonVmDifferingRoots, name => name.EndsWith("ZHost::B", StringComparison.Ordinal));

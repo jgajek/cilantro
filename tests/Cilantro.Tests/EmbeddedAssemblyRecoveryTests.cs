@@ -6,6 +6,30 @@ namespace Cilantro.Tests;
 
 public sealed class EmbeddedAssemblyRecoveryTests
 {
+    [Fact]
+    public void NativeDependenciesAreRecordedWithoutClaimingManagedRecovery()
+    {
+        using var fixture = new Fixture();
+        var child = fixture.File("native.dll", "native bytes");
+        var root = fixture.Root with
+        {
+            ExtractedPayloadPaths = [child],
+            Report = fixture.Root.Report with
+            {
+                Payloads = [new PayloadInfo("costura32.native.dll", "", 12, "", 12, "",
+                    "native", "native.dll", 0, [], child, PayloadOrigin.NativeDependency)]
+            }
+        };
+        var result = EmbeddedAssemblyRecovery.Run(root, new PipelineOptions(),
+            (_, _) => throw new InvalidOperationException("Native dependency must not enter managed recovery."));
+        Assert.False(result.Success);
+        var node = result.EmbeddedRecovery!.Nodes[1];
+        Assert.Equal("extracted", node.Status);
+        Assert.Null(node.Run);
+        Assert.Contains("not been performed", node.Diagnostic!);
+        Assert.Equal("native bytes", System.IO.File.ReadAllText(child));
+    }
+
     [Theory]
     [InlineData(false, false, true)]
     [InlineData(true, false, false)]

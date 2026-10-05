@@ -49,12 +49,14 @@ internal sealed record AnalystArtifact(
             PayloadOrigin.AssemblyLoad => "Captured from an assembly load while interpreting the parent.",
             PayloadOrigin.ResourceBundle => "Decrypted resource bundle; resources were restored to the parent assembly.",
             PayloadOrigin.EmbeddedDependency => "Extracted from a bundled dependency resource.",
+            PayloadOrigin.NativeDependency => "Native PE extracted from an embedded resource; native unpacking has not been performed.",
             PayloadOrigin.NativeWrapper => "Unpacked from the native wrapper.",
             PayloadOrigin.ResourceCodec => "Decoded from an embedded resource.",
             _ => "Extraction mechanism not recorded; role undetermined."
         };
         var run = node?.Run;
-        var status = run?.Wrote.Cleaned is not null ? "Cleaned assembly available"
+        var status = origin == PayloadOrigin.NativeDependency ? "Native DLL extracted; not deprotected"
+            : run?.Wrote.Cleaned is not null ? "Cleaned assembly available"
             : node?.Status == "limited" ? "Not processed: traversal limit"
             : node?.Status == "failed" ? "Recovery failed"
             : run is { Success: true } ? "Analyzed; no cleaned copy requested"

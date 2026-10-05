@@ -78,7 +78,7 @@ public sealed class NativeTrialSnapshotTests
     }
 
     [Fact]
-    public void MatchingRegistrationDescriptionsDoNotEstablishAgreement()
+    public void NullResolverRegistrationsHaveNoCallbacksToExercise()
     {
         using var context = SyntheticContext.Build(module =>
         {
@@ -95,8 +95,8 @@ public sealed class NativeTrialSnapshotTests
         });
         var method = context.Module.GetTypes().SelectMany(t => t.Methods).Single();
         var result = RebuiltMethodTrial.Compare(context, method, method.Body, 0);
-        Assert.Equal(DevirtualizationCheck.NotMade, result.Verdict);
-        Assert.Contains("resolver callback behavior remains outside", result.Detail);
+        Assert.Equal(DevirtualizationCheck.Agreed, result.Verdict);
+        Assert.Contains("0 callbacks", result.Detail);
     }
 
     [Theory]

@@ -1,6 +1,7 @@
 using dnlib.DotNet;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Verification;
+using System.Security.Cryptography;
 
 namespace Cilantro.Core.Recovery;
 
@@ -70,18 +71,34 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             context.Module,
             typeInitializersAlwaysRun: false,
             RebuiltMethods.Of(context));
+        // This only admits positively identified VM/proxy types whose uses recovery replaced.
+        // Application types are never candidates merely because their references form an island.
+        // Dynamic reflection over deliberately removed protector metadata is not preserved.
+        var islands = ProtectorIslands.Find(context);
+        context.TryGetFact<IReadOnlySet<uint>>(ProtectorIslands.VmTypesFact, out var vmTokens);
+        var vmTypes = context.Module.GetTypes().Where(type => vmTokens?.Contains(type.MDToken.Raw) == true).ToArray();
+        var vmMethods = vmTypes.SelectMany(ProtectorIslands.Nest).SelectMany(type => type.Methods).ToHashSet();
+        var resourceNames = context.Module.Resources.Select(resource => resource.Name.String).ToHashSet(StringComparer.Ordinal);
+        var vmResourceNames = vmMethods.Where(method => method.HasBody).SelectMany(method => method.Body.Instructions)
+            .Select(instruction => instruction.Operand).OfType<string>().Where(resourceNames.Contains).ToHashSet(StringComparer.Ordinal);
+        foreach (var method in context.Module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody && !vmMethods.Contains(method)))
+            vmResourceNames.ExceptWith(method.Body.Instructions.Select(instruction => instruction.Operand).OfType<string>());
+        if (islands.Count != 0) reachability = ProtectorIslands.Without(context, islands);
         // Numeric tokens can come from encrypted tables, rather than ldtoken operands. Until
         // those consumers are eliminated, ordinary reference analysis cannot identify their
         // targets, and deleting rows would also change the meaning of every later token.
         var tokenConsumer = context.Module.GetTypes().SelectMany(type => type.Methods)
             .Where(method => reachability.IsReachable(method) ||
                 reachability.IsReflectivelyExposed(method.DeclaringType))
-            .FirstOrDefault(method => method.HasBody && method.Body.Instructions.Any(instruction =>
-                instruction.Operand is IMethod called &&
-                called.DeclaringType?.FullName is "System.Reflection.Module" or "System.ModuleHandle" &&
-                called.Name.String is "ResolveMethod" or "ResolveField" or "ResolveType" or
-                    "ResolveMember" or "ResolveSignature" or "ResolveString" or
-                    "ResolveMethodHandle" or "ResolveFieldHandle" or "ResolveTypeHandle"));
+            .FirstOrDefault(method =>
+            {
+                if (!method.HasBody) return false;
+                var uses = method.Body.Instructions.Where(instruction =>
+                    instruction.Operand is IMethod called && NumericTokenUses.IsResolution(called)).ToArray();
+                if (uses.Length == 0) return false;
+                var roundTrips = NumericTokenUses.MemberRoundTrips(method);
+                return uses.Any(instruction => !roundTrips.Contains(instruction));
+            });
         if (tokenConsumer is not null)
             return (PassStatus.Success, 0,
                 [$"Metadata declarations retained because {tokenConsumer.FullName} still resolves numeric metadata tokens."]);
@@ -95,7 +112,7 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             .Where(type => type != context.Module.GlobalType)
             .ToArray();
         var deadTypes = considered
-            .Where(type => IsProvenDead(type, reachability) && IsAttributable(type, orphans))
+            .Where(type => islands.Contains(type) || IsProvenDead(type, reachability) && IsAttributable(type, orphans))
             .ToHashSet();
         var retained = RetentionSummary(considered, deadTypes, reachability);
         var removableTypes = deadTypes.Count == 0
@@ -116,6 +133,33 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         var remainingDead = context.Module.GetTypes().Where(deadTypes.Contains).ToHashSet();
         if (remainingDead.Count != 0 && removedMethodCount != 0)
             RemoveTypes(ComputeUnreferenced(context.Module, remainingDead));
+        var survivingTypes = context.Module.GetTypes().ToHashSet();
+        if (vmTypes.Length != 0)
+        {
+            var retainedEngines = vmTypes.Count(survivingTypes.Contains);
+            context.SetFact("cleanup.retainedVmEngines", retainedEngines);
+            context.AddEvidence(new Evidence("vm-machinery-removal",
+                $"Identified {vmTypes.Length} replaced VM engine(s): {vmTypes.Length - retainedEngines} removed, {retainedEngines} retained. " +
+                "Removal is checked against actual declarations, not reconstruction-trial agreement."));
+            if (retainedEngines == 0)
+            {
+                context.TryGetFact<IReadOnlyList<ResourceRoleFact>>("resource.roles", out var roles);
+                var applicationResources = (roles ?? []).Where(role => role.Role is ResourceRole.ManagedPayload or ResourceRole.NativePayload or
+                    ResourceRole.RestoredApplicationResource or ResourceRole.EncryptedResourceBundle).Select(role => role.Resource).ToHashSet(StringComparer.Ordinal);
+                context.TryGetFact<IReadOnlySet<string>>("cleanup.removedResources", out var priorRemoved);
+                var removedResources = (priorRemoved ?? new HashSet<string>()).ToHashSet(StringComparer.Ordinal);
+                foreach (var resource in context.Module.Resources.Where(resource => vmResourceNames.Contains(resource.Name.String) && !applicationResources.Contains(resource.Name.String)).ToArray())
+                {
+                    if (resource is not EmbeddedResource embedded) continue;
+                    var hash = Convert.ToHexStringLower(SHA256.HashData(embedded.CreateReader().ToArray()));
+                    context.Module.Resources.Remove(resource);
+                    removedResources.Add(resource.Name.String);
+                    context.AddChange(new ChangeRecord(Name, "remove-vm-resource", resource.Name,
+                        $"Removed VM data referenced only by removed engine methods; SHA-256 {hash}. The input retains the original bytes."));
+                }
+                if (removedResources.Count != 0) context.SetFact<IReadOnlySet<string>>("cleanup.removedResources", removedResources);
+            }
+        }
         var attribution = unattributed == 0
             ? "Every dead method of a surviving type was attributable to the protector."
             : $"Left {unattributed} dead method(s) of surviving types in place, because nothing " +

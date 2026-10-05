@@ -87,24 +87,26 @@ internal static class DevirtualizedRun
             cancellation.ThrowIfCancellationRequested();
             if (second.Module.ResolveToken(program.Method.Stub.MDToken.Raw) is not MethodDef stub ||
                 VirtualBody.Build(program, second.Module, stub).Body is not { } rebuilt) continue;
-            for (var scenario = 0; scenario < 9; scenario++)
+            for (var scenario = 0; scenario < 11; scenario++)
             {
                 cancellation.ThrowIfCancellationRequested();
                 var initializeModule = scenario == 8;
                 if (initializeModule && second.Module.GlobalType.FindStaticConstructor() is null) continue;
-                var configured = scenario >= 6;
+                var configured = scenario >= 6 && scenario != 9;
                 var warm = scenario is 5 or 7;
+                var warmSelected = scenario is 9 or 10;
                 var input = scenario >= 5 ? 3 : scenario;
                 var engine = (second.Module.ResolveToken(program.Method.Entry.MDToken.Raw) as IMethod)?.ResolveMethodDef();
                 var trial = engine is null
                     ? new RebuiltMethodTrial.Result(DevirtualizationCheck.NotMade, "the original VM entry could not be resolved")
                     : RebuiltMethodTrial.Compare(second, stub, rebuilt, input,
                         engine.MDToken.Raw, warmOriginal: warm, hostProfile: configured ? world.Host.Profile : null,
-                        initializeModule: initializeModule);
+                        initializeModule: initializeModule, warmSelected: warmSelected);
                 trials.Add(trial);
                 original.AddEvidence(new Evidence("reconstruction-method-trial",
                     $"{stub.MDToken}, controlled input {input}" +
                     (warm ? " after one original call on each independent machine (repeat-call trial)" : "") +
+                    (warmSelected ? " after each side executes its own first call (independently evolved repeat-call trial)" : "") +
                     (initializeModule ? " after module initialization with each side's body installed (module-initialized trial)" : "") +
                     (configured ? $" (32-byte zero streams; configured host profile {world.Host.Profile.Name}, SHA-256 {world.Host.Profile.Sha256}; strict interpretation, no declared call outcomes)"
                         : scenario >= 3 ? $" (32-byte zero streams for object/stream arguments; debugger attached={scenario == 4})" : " (no host facts)") + $": {trial.Verdict}. {trial.Detail}. " +
@@ -112,6 +114,17 @@ internal static class DevirtualizedRun
             }
         }
         var payload = ComparePayload(original, programs, second, asked, trials);
+        original.SetFact(ReconstructionStateAuditPass.TrialsFact, new ReconstructionStateAuditPass.TrialAudit(trials, payload.Verdict));
+        // Independent non-VM snapshots avoid treating numbering shifts introduced by VM
+        // allocations as changes to application fields. Keep the full comparison verdict.
+        var differingNames = trials.SelectMany(trial => trial.NonVmDifferingRoots is not null
+                ? (trial.VmDifferingRoots ?? []).Concat(trial.NonVmDifferingRoots)
+                : trial.DifferingRoots ?? [])
+            .ToHashSet(StringComparer.Ordinal);
+        original.SetFact<IReadOnlyList<uint>>(ReconstructionStateAuditPass.FieldsFact,
+            original.Module.GetTypes().SelectMany(type => type.Fields)
+                .Where(field => differingNames.Contains(field.FullName))
+                .Select(field => field.MDToken.Raw).ToArray());
         if (DescribeStateDifferences(trials) is { } stateDifferences)
             original.AddEvidence(new Evidence("reconstruction-state-boundary", stateDifferences));
         var differing = trials.Count(t => t.Verdict == DevirtualizationCheck.Disagreed);
@@ -148,6 +161,7 @@ internal static class DevirtualizedRun
         requested ??= programs.Select(program => program.Method.Stub.MDToken.Raw).ToHashSet();
         original.TryGetFact<int>(VirtualizationRebuildPass.LiftedFact, out var lifted);
         var built = new HashSet<uint>();
+        var originalBodies = new Dictionary<MethodDef, CilBody>();
         foreach (var program in programs)
         {
             if (!requested.Contains(program.Method.Stub.MDToken.Raw))
@@ -156,6 +170,7 @@ internal static class DevirtualizedRun
                 continue;
             if (VirtualBody.Build(program, second.Module, stub).Body is not { } body)
                 continue;
+            originalBodies.TryAdd(stub, stub.Body);
             stub.Body = body;
             built.Add(stub.MDToken.Raw);
         }
@@ -166,7 +181,10 @@ internal static class DevirtualizedRun
             .ToDictionary(m => m.MDToken.Raw,
                 m => MethodBodyRecoveryInfrastructure.CloneBody(m, m, second.Module));
         var installedLifted = VirtualizationRebuildPass.InstallLiftedCopies(original, second);
+        foreach (var (token, body) in originalCallers)
+            if (second.Module.ResolveToken(token) is MethodDef caller) originalBodies.TryAdd(caller, body);
         trials.AddRange(CompareLiftedCallers(original, second, originalCallers));
+        trials.AddRange(CompareCoupledStartup(original, second, programs, originalBodies));
         if (shipped.Count == 0)
             return (DevirtualizationCheck.NotMade, [NothingToWatch(whyShipped)]);
         built.UnionWith(installedLifted);
@@ -224,15 +242,15 @@ internal static class DevirtualizedRun
             try
             {
                 caller.Body = original;
-                foreach (var warm in new[] { false, true })
+                for (var prelude = 0; prelude < 3; prelude++)
                 {
                     var trial = RebuiltMethodTrial.Compare(copy, caller, rewritten, 3,
-                        recipe.Entry, warmOriginal: warm, hostProfile: BootstrapMachine.Environment(copy).Host.Profile,
-                        rebuiltEntryToken: recipe.Holder.MDToken.Raw);
+                        recipe.Entry, warmOriginal: prelude == 1, hostProfile: BootstrapMachine.Environment(copy).Host.Profile,
+                        rebuiltEntryToken: recipe.Holder.MDToken.Raw, warmSelected: prelude == 2);
                     trials.Add(trial);
                     report.AddEvidence(new Evidence("reconstruction-method-trial",
                         $"{caller.MDToken}, lifted program {recipe.Program.Method.ProgramId}, " +
-                        $"actual argument construction in its parameterless caller, {(warm ? "repeat call" : "cold start")}: " +
+                        $"actual argument construction in its parameterless caller, {(prelude == 0 ? "cold start" : prelude == 1 ? "repeat after original warm-up" : "independently evolved repeat call")}: " +
                         $"{trial.Verdict}. {trial.Detail}. Both original VM entry and rebuilt helper must be exercised. " +
                         $"Configured host profile {BootstrapMachine.Environment(copy).Host.Profile.Name}, " +
                         $"{RebuiltMethodTrial.StepLimit(copy)} steps per machine; bounded interpretation, not full equivalence."));
@@ -240,6 +258,37 @@ internal static class DevirtualizedRun
             }
             finally { caller.Body = rewritten; }
         }
+        return trials;
+    }
+
+    private static List<RebuiltMethodTrial.Result> CompareCoupledStartup(ArtifactContext report,
+        ArtifactContext copy, IReadOnlyList<VirtualProgram> programs, Dictionary<MethodDef, CilBody> originals)
+    {
+        if (originals.Count < 2) return [];
+        var rewritten = originals.ToDictionary(pair => pair.Key, pair => pair.Key.Body);
+        var trials = new List<RebuiltMethodTrial.Result>();
+        try
+        {
+            foreach (var (method, body) in originals) method.Body = body;
+            foreach (var program in programs.Take(8))
+            {
+                if (copy.Module.ResolveToken(program.Method.Stub.MDToken.Raw) is not MethodDef stub ||
+                    !rewritten.TryGetValue(stub, out var body)) continue;
+                var trial = RebuiltMethodTrial.Compare(copy, stub, body, 3, program.Method.Entry.MDToken.Raw,
+                    hostProfile: BootstrapMachine.Environment(copy).Host.Profile,
+                    initializeModule: copy.Module.GlobalType.FindStaticConstructor() is not null,
+                    rebuiltCompanions: rewritten);
+                trials.Add(trial);
+                report.AddEvidence(new Evidence("reconstruction-method-trial",
+                    $"{stub.MDToken}, coupled startup with all {rewritten.Count} reconstructed bodies/callers selected independently before module initialization: " +
+                    $"{trial.Verdict}. {trial.Detail}. " +
+                    $"Captured non-VM state matched={trial.NonVmStateMatched}; VM object sharing={trial.VmStateShared?.ToString() ?? "unknown"}; " +
+                    $"escaped VM metadata={trial.VmMetadataEscaped?.ToString() ?? "unknown"}; " +
+                    $"resolver fixtures incomplete={trial.ResolverBehaviorUnproven}; native memory matched={trial.NativeMemoryMatched?.ToString() ?? "unknown"}. " +
+                    "Bounded configured-host trial, not every startup input."));
+            }
+        }
+        finally { foreach (var (method, body) in rewritten) method.Body = body; }
         return trials;
     }
 
@@ -328,9 +377,10 @@ internal static class DevirtualizedRun
         "string-table-relearning",
         "payload-extraction",
         "costura-extraction",
+        "resource-entry-extraction",
         "runtime-cleanup",
-        "symbol-renaming",
-        "metadata-sanitization"
+        "reactor-trial-guard-removal",
+        "symbol-renaming"
     };
 
     private static void Prepare(ArtifactContext built, CancellationToken cancellation)

@@ -381,6 +381,8 @@ public sealed class VirtualizationRebuildPass : DeobfuscationPass
             return;
 
         RecoveryOrphans.DeclareSubtree(context, idle);
+        context.SetFact<IReadOnlySet<uint>>(ProtectorIslands.VmTypesFact,
+            idle.Select(entry => entry.DeclaringType.MDToken.Raw).ToHashSet());
         said.Add(
             $"Nothing asks the interpreter for anything now: all {entries.Length} of the entry " +
             $"point(s) it was called through are unreferenced, {idle.Length} of them because this " +

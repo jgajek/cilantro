@@ -36,6 +36,9 @@ public sealed class StaticMachine
 
     public StaticMachineState State { get; }
 
+    internal IntrinsicResult InvokeCallback(StaticValue callback, IReadOnlyList<StaticValue> arguments,
+        StaticWorkBudget budget) => CallDelegate(callback, arguments, budget, 0);
+
     public StaticExecutionResult Execute(
         MethodDef method,
         IReadOnlyList<StaticValue>? arguments = null) =>

@@ -44,7 +44,8 @@ public enum PayloadOrigin
     ResourceBundle,
     EmbeddedDependency,
     NativeWrapper,
-    ResourceCodec
+    ResourceCodec,
+    NativeDependency
 }
 
 /// <param name="WrittenTo">

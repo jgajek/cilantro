@@ -47,6 +47,8 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
         if (result.ConfigReportPath is { } config) open.Add(new("Recovered constants", config));
         sections.Add(new("Open", open));
         var attention = new List<AnalystItem>();
+        if (result.VirtualizedMethods > result.RebuiltMethods || result.ProgramsRunElsewhere > result.LiftedPrograms)
+            attention.Add(new("VM reconstruction is incomplete; the output is not fully unprotected. If another tool rewrote this sample, retry from the intact original."));
         if (result.DevirtualizationCheck == DevirtualizationCheck.Disagreed)
             attention.Add(new("Reconstruction check disagreed with the original. Treat reconstructed methods as unverified; inspect the comparison details before relying on them."));
         foreach (var artifact in artifacts.Where(a => a.Run?.RebuiltCheck == DevirtualizationCheck.Disagreed))

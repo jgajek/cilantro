@@ -415,6 +415,137 @@ public static class VirtualSemantics
         new("a value of the kind its operand names", [false, false, false, false]) { Named = true }
     ];
 
+    // Validate individual unobserved edges rather than extrapolating an opcode rule
+    // from one sighting. Two distinct real destinations calibrate the engine's PC and
+    // its post-dispatch increment; both arms of each condition must then agree.
+    internal static IReadOnlyDictionary<int, int> ProbeBranchTargets(
+        StaticMachine machine, ModuleDef module, MethodDef dispatcher, StaticValue engine,
+        FieldDef? operandField, IReadOnlyList<StaticValue> program,
+        IReadOnlyList<VirtualInstruction> decoded, IReadOnlyDictionary<int, VirtualOperation> operations,
+        IReadOnlyDictionary<int, int> observed, IReadOnlySet<int> operandRules, ISet<int>? measuredTables = null,
+        ICollection<string>? diagnostics = null)
+    {
+        var result = new Dictionary<int, int>();
+        var wanted = decoded.Where(instruction => !observed.ContainsKey(instruction.Index) &&
+            !operandRules.Contains(instruction.Opcode) && instruction.Operand is VirtualOperand.Number &&
+            operations.TryGetValue(instruction.Opcode, out var operation) &&
+            (operation.Name == "branch" && operation.Pops == 0 || operation.Name == "branch if" &&
+            operation.Decides is not null)).Take(128).ToArray();
+        // One observed switch destination says nothing about its other entries.
+        var tables = decoded.Where(instruction => instruction.Operand is VirtualOperand.Table &&
+            operations.TryGetValue(instruction.Opcode, out var operation) &&
+            operation.Name == "branch by table").Take(8).ToArray();
+        if (wanted.Length == 0 && (tables.Length == 0 || measuredTables is null)) return result;
+        var heap = machine.State.Heap;
+        if (SlotType(heap, module, engine) is not { } slotType ||
+            Factory(module, slotType) is not { } factory || FindStack(heap, module, engine, slotType) is not { } stack)
+            return result;
+        var staging = Staging(dispatcher);
+        using var trying = machine.State.Blockers.Trying();
+        HashSet<(string Path, int Offset)>? candidates = null;
+        var calibrated = new HashSet<int>();
+        foreach (var instruction in decoded.Where(instruction =>
+            observed.ContainsKey(instruction.Index) && operations.TryGetValue(instruction.Opcode, out var operation) &&
+            operation.Name == "branch" && operation.Pops == 0).Take(16))
+        {
+            var destination = observed[instruction.Index];
+            if (calibrated.Contains(destination) || instruction.Index >= program.Count) continue;
+            var trials = Trials(machine, module, heap, dispatcher, engine, factory, slotType, stack,
+                program[instruction.Index], Operand(heap, program[instruction.Index], operandField),
+                staging, null, Shapes[0], out _);
+            if (trials.Count != Seeds.Length) continue;
+            var sites = trials.Select(trial => trial.Where.Select(ParseWrite)
+                .Where(write => write is { } value && !value.Path.Contains('[', StringComparison.Ordinal) &&
+                    (value.Value == destination || value.Value == destination - 1L))
+                .Select(write => (write!.Value.Path, (int)(destination - write.Value.Value))).ToHashSet()).ToArray();
+            var common = sites[0];
+            foreach (var site in sites.Skip(1)) common.IntersectWith(site);
+            if (common.Count == 0) continue;
+            if (candidates is null) candidates = common;
+            else candidates.IntersectWith(common);
+            calibrated.Add(destination);
+            if (candidates.Count == 0) return result;
+            if (calibrated.Count >= 2 && candidates.Count == 1) break;
+        }
+        if (calibrated.Count < 2 || candidates?.Count != 1)
+        {
+            diagnostics?.Add($"Position calibration incomplete: {calibrated.Count} distinct destinations, {candidates?.Count ?? 0} candidate fields; {tables.Length} table sites remain unmeasured.");
+            return result;
+        }
+        var pc = candidates.Single();
+        if (measuredTables is not null)
+        {
+            foreach (var instruction in tables)
+            {
+                var table = ((VirtualOperand.Table)instruction.Operand).Values;
+                if (instruction.Index >= program.Count || table.Count == 0 || table.Count > 1024 ||
+                    table.Any(target => target < 0 || target >= decoded.Count)) continue;
+                var selectors = Enumerable.Range(0, table.Count).Concat([-1, int.MinValue, table.Count, int.MaxValue]).ToArray();
+                var seeds = selectors.Select(selector => new[] { 13, 11, 7, selector }).ToArray();
+                var trials = Trials(machine, module, heap, dispatcher, engine, factory, slotType, stack,
+                    program[instruction.Index], null, staging, null, Shapes[0], out var refusal, seeds);
+                if (trials.Count != seeds.Length)
+                {
+                    diagnostics?.Add($"Switch {instruction.Index} trials incomplete: {refusal}.");
+                    continue;
+                }
+                var valid = true;
+                for (var index = 0; index < trials.Count; index++)
+                {
+                    var trial = trials[index];
+                    var writes = trial.Where.Select(ParseWrite).Where(write => write?.Path == pc.Path).ToArray();
+                    valid &= trial.Before.Count - trial.Kept == 1 && trial.After.Count == 0;
+                    valid &= index < table.Count
+                        ? writes.Length == 1 && writes[0]!.Value.Value + pc.Offset == table[index]
+                        : writes.Length == 0;
+                }
+                if (valid) measuredTables.Add(instruction.Index);
+                else diagnostics?.Add($"Switch {instruction.Index}: stack effects or position writes did not match every table entry and boundary selector.");
+            }
+        }
+        foreach (var instruction in wanted)
+        {
+            if (instruction.Index >= program.Count || instruction.Operand is not VirtualOperand.Number number ||
+                number.Value < 0 || number.Value >= decoded.Count) continue;
+            var operation = operations[instruction.Opcode];
+            var unconditional = operation.Name == "branch";
+            var condition = Conditions.SingleOrDefault(condition => condition.Name == operation.Decides && condition.Pops == operation.Pops);
+            if (!unconditional && condition.Holds is null) continue;
+            var trials = Trials(machine, module, heap, dispatcher, engine, factory, slotType, stack,
+                program[instruction.Index], number.Value, staging, null, Shapes[0], out _, Deciders);
+            if (trials.Count != Deciders.Length) continue;
+            var taken = false;
+            var stayed = false;
+            var valid = true;
+            for (var index = 0; index < trials.Count; index++)
+            {
+                var trial = trials[index];
+                var writes = trial.Where.Select(ParseWrite).Where(write => write?.Path == pc.Path).ToArray();
+                var goes = unconditional || condition.Holds!(Deciders[index][^2], Deciders[index][^1]);
+                valid &= trial.Before.Count - trial.Kept == operation.Pops && trial.After.Count == 0;
+                if (goes)
+                {
+                    taken = true;
+                    valid &= writes.Length == 1 && writes[0]!.Value.Value + pc.Offset == number.Value;
+                }
+                else
+                {
+                    stayed = true;
+                    valid &= writes.Length == 0;
+                }
+            }
+            if (valid && taken && (unconditional || stayed)) result[instruction.Index] = (int)number.Value;
+        }
+        return result;
+    }
+
+    private static (string Path, long Value)? ParseWrite(string write)
+    {
+        var split = write.LastIndexOf('=');
+        return split > 0 && long.TryParse(write.AsSpan(split + 1), NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out var value) ? (write[..split], value) : null;
+    }
+
     public static VirtualSemanticsReport Probe(
         StaticMachine machine,
         ModuleDef module,

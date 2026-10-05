@@ -3135,6 +3135,8 @@ public sealed class BitConverterIntrinsic : IStaticIntrinsic
                     "BitConverter result exceeded the allocation budget.");
         }
 
+        if (arguments.Count == 2 && arguments[0].Kind == StaticValueKind.Null)
+            return ArgumentFailure("System.ArgumentNullException", "value", "Value cannot be null.");
         if (arguments.Count != 2 ||
             !arguments[1].IsInteger ||
             !context.State.Heap.TryGetLength(arguments[0], out _) ||
@@ -3151,10 +3153,25 @@ public sealed class BitConverterIntrinsic : IStaticIntrinsic
         if (!context.State.Heap.TryReadBytes(arguments[0], offset, bytesToRead))
         {
             context.State.Heap.TryGetLength(arguments[0], out var available);
+            if (offset < 0 || offset >= available)
+                return ArgumentFailure("System.ArgumentOutOfRangeException", "startIndex", "Index was out of range.");
+            if (width > available - offset)
+                return ArgumentFailure("System.ArgumentException", "value", "The byte array is too small for the requested value.");
             return IntrinsicResult.Invalid(
                 $"{method.FullName} read {width} bytes at {offset} of {available}.");
         }
 
+
+        IntrinsicResult ArgumentFailure(string type, string parameter, string message)
+        {
+            var heap = context.State.Heap;
+            if (!heap.TryAllocateObject(type, out var exception))
+                return new(StaticExecutionStatus.AllocationLimitExceeded, StaticValue.Unknown, "Could not model the BitConverter argument exception.");
+            heap.TrySetModelValue(exception, "Message", message);
+            heap.TrySetModelValue(exception, "ParamName", parameter);
+            heap.TrySetModelValue(exception, "InnerException", StaticValue.Null);
+            return new(StaticExecutionStatus.Threw, exception, $"BitConverter argument '{parameter}' is invalid.");
+        }
 
         return name switch
         {
@@ -3496,6 +3513,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         "System.Security.Cryptography.CryptoConfig",
         "System.Reflection.Assembly",
         "System.Reflection.AssemblyName",
+        "System.Globalization.CultureInfo",
         "System.Reflection.Module",
         "System.AppDomain",
         "System.ResolveEventHandler",
@@ -3605,6 +3623,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? IntrinsicResult.Completed()
                 : IntrinsicResult.Invalid("Reflection exception receiver is not modeled.");
         }
+
         if (type is "System.Exception" or "System.Reflection.TargetInvocationException" &&
             name == "get_InnerException" && arguments.Count == 1)
             return context.State.Heap.TryGetModelValue(arguments[0], "InnerException", out StaticValue inner)
@@ -3760,9 +3779,13 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (type == "System.IO.File")
             return InvokeFile(context, name, arguments);
         if (type == "System.Reflection.Assembly")
-            return InvokeAssembly(context, name, arguments);
+            return InvokeAssembly(context, method, arguments);
         if (type == "System.Reflection.AssemblyName")
             return InvokeAssemblyName(context, name, arguments);
+        if (type == "System.Globalization.CultureInfo" && name == "get_Name" && arguments.Count == 1 &&
+            context.State.Heap.TryGetModelValue(arguments[0], "Name", out string? cultureName) && cultureName is not null)
+            return context.State.Heap.TryAllocateString(cultureName, out var cultureText)
+                ? IntrinsicResult.Completed(cultureText) : AllocationFailure("culture name");
         if (type == "System.Reflection.Module")
             return InvokeModule(context, name, arguments);
         if (type == "System.Resources.ResourceManager")
@@ -3855,6 +3878,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
+        if (name == "GetAssemblies" && arguments.Count == 1)
+            return AppDomainAssemblyInventory.Read(context.State, arguments[0]);
         if (name == "get_CurrentDomain" && arguments.Count == 0)
         {
             return context.State.TryGetOrAllocateRuntimeSingleton(
@@ -6622,8 +6647,6 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (name is "Equals" or "Compare" or "CompareTo" && arguments.Count is 2 or 3)
         {
             var (left, right) = (arguments[0], arguments[1]);
-            if (!Comparing(method, arguments, out var how))
-                return Culturally(name);
             string? one = null;
             string? other = null;
             if (left.Kind != StaticValueKind.Null &&
@@ -6632,6 +6655,18 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             if (right.Kind != StaticValueKind.Null &&
                 !context.State.Heap.TryGetString(right, out other))
                 return IntrinsicResult.Invalid($"String.{name} requires concrete strings.");
+            if (!Comparing(method, arguments, out var how))
+            {
+                // Equality of ASCII identifier characters has no culture-specific collation
+                // ambiguity. Keep Unicode, control characters and ordering unsupported.
+                static bool Identifier(string? value) => value is null || value.All(character =>
+                    char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-');
+                if (name != "Equals" || arguments.Count != 3 ||
+                    method.MethodSig?.Params.LastOrDefault()?.FullName != "System.StringComparison" ||
+                    arguments[2].AsInt32() is not (2 or 3) || !Identifier(one) || !Identifier(other))
+                    return Culturally(name);
+                how = arguments[2].AsInt32() == 3 ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            }
             return IntrinsicResult.Completed(StaticValue.FromInt32(name == "Equals"
                 ? string.Equals(one, other, how) ? 1 : 0
                 : string.Compare(one, other, how)));
@@ -7441,6 +7476,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         var heap = context.State.Heap;
         if (name == ".ctor" && arguments.Count >= 2)
         {
+            if (arguments[1].Kind == StaticValueKind.Null)
+            {
+                if (!heap.TryAllocateObject("System.ArgumentNullException", out var exception))
+                    return new(StaticExecutionStatus.AllocationLimitExceeded, StaticValue.Unknown, "Could not model the null BinaryReader input exception.");
+                heap.TrySetModelValue(exception, "Message", "Value cannot be null.");
+                heap.TrySetModelValue(exception, "ParamName", "input");
+                heap.TrySetModelValue(exception, "InnerException", StaticValue.Null);
+                return new(StaticExecutionStatus.Threw, exception, "BinaryReader input is null.");
+            }
             if (!heap.TryGetModelValue(arguments[1], "Buffer", out StaticValue _))
                 return IntrinsicResult.Invalid("BinaryReader requires a modeled stream.");
             heap.TrySetModelValue(arguments[0], "Stream", arguments[1]);
@@ -8454,9 +8498,10 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
     private static IntrinsicResult InvokeAssembly(
         IntrinsicContext context,
-        string name,
+        IMethod method,
         IReadOnlyList<StaticValue> arguments)
     {
+        var name = method.Name.String;
         // One assembly is modelled, so both of these name the same object rather than two objects
         // that describe the same thing. Only one assembly is visible to an interpretation, so a
         // caller is always in it, which is the case the runtime answers identically too. The
@@ -8483,21 +8528,30 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         // decrypted, decompressed, or reassembled, this is the call in which it names the result as
         // the thing to run. The bytes are taken and the load is not performed, and the caller gets a
         // model assembly so that interpretation can carry on to whatever the loader does next.
-        if (name == "Load" && arguments.Count == 1 &&
+        if (name == "Load" && arguments.Count is 1 or 2 &&
+            (arguments.Count == 1 || method.MethodSig?.Params.ElementAtOrDefault(1)?.FullName == "System.Byte[]") &&
             context.State.Heap.GetBytesSnapshot(arguments[0]) is { Length: > 0 } image)
         {
+            var symbols = arguments.Count == 2 && arguments[1].Kind != StaticValueKind.Null
+                ? context.State.Heap.GetBytesSnapshot(arguments[1]) : null;
+            if (arguments.Count == 2 && arguments[1].Kind != StaticValueKind.Null && symbols is null)
+                return IntrinsicResult.Unknown("Assembly symbol bytes are not concrete.");
             context.State.CaptureAssemblyLoad(image);
             if (!context.State.Heap.TryAllocateObject("System.Reflection.Assembly", out var loaded))
                 return AllocationFailure("loaded assembly model");
             // A loader that decrypts an assembly often goes on to read something out of it rather
             // than only running it, so the model remembers which bytes it stands for.
             context.State.Heap.TrySetModelValue(loaded, LoadedImage, image);
+            if (symbols is not null) context.State.Heap.TrySetModelValue(loaded, "LoadedSymbols", symbols);
+            if (!AppDomainAssemblyInventory.RecordLoad(context.State, loaded))
+                return AllocationFailure("assembly inventory");
             return IntrinsicResult.Completed(loaded);
         }
         // An assembly loaded from bytes has no location, and the framework says so with an empty
         // string rather than by failing, so that is what the machine says too.
         if (name == "get_Location" && arguments.Count == 1)
             return context.State.Heap.TryAllocateString(
+                context.State.Heap.TryGetModelValue(arguments[0], LoadedImage, out byte[]? locationImage) && locationImage is not null ||
                 context.State.ModuleFileIsAbsent
                     ? string.Empty
                     : context.State.ModulePath.Length != 0
@@ -8540,11 +8594,22 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 : AllocationFailure("resource stream");
         }
         if (name == "GetName" && arguments.Count is 1 or 2)
-            return context.State.Heap.TryAllocateObject(
-                "System.Reflection.AssemblyName",
-                out var assemblyName)
-                ? IntrinsicResult.Completed(assemblyName)
-                : AllocationFailure("assembly name model");
+        {
+            var heap = context.State.Heap;
+            if (!heap.TryAllocateObject("System.Reflection.AssemblyName", out var assemblyName))
+                return AllocationFailure("assembly name model");
+            var identity = context.State.ModuleMetadata?.Assembly?.FullName;
+            if (heap.TryGetModelValue(arguments[0], LoadedImage, out byte[]? bytes) && bytes is not null)
+            {
+                try { using var loadedModule = ModuleDefMD.Load(bytes); identity = loadedModule.Assembly?.FullName; }
+                catch (Exception exception) when (exception is BadImageFormatException or IOException or ArgumentException)
+                { return IntrinsicResult.Invalid("Loaded assembly identity cannot be read from its captured metadata."); }
+                if (identity is null) return IntrinsicResult.Invalid("The captured image does not define an assembly identity.");
+            }
+            if (identity is not null && !SetAssemblyIdentity(heap, assemblyName, identity, out _))
+                return IntrinsicResult.Invalid("Assembly identity could not be modeled.");
+            return IntrinsicResult.Completed(assemblyName);
+        }
         if (name == "GetModules" && arguments.Count is 1 or 2)
         {
             var heap = context.State.Heap;
@@ -8623,16 +8688,26 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         // A name built from a string is a name of some other assembly, most often one the loader
         // has just read out of its own table of what it carries. It is a parsed string and nothing
         // more, so it is modeled as the string it was given.
-        if (name == ".ctor" && arguments.Count == 2 &&
-            heap.TryGetString(arguments[1], out var spelled))
+        if (name == ".ctor" && arguments.Count == 2)
         {
-            heap.TrySetModelValue(arguments[0], "FullName", spelled);
-            var comma = spelled.IndexOf(',', StringComparison.Ordinal);
-            heap.TrySetModelValue(
-                arguments[0],
-                "Name",
-                comma < 0 ? spelled : spelled[..comma].Trim());
-            return IntrinsicResult.Completed();
+            string? spelled = null;
+            if (arguments[1].Kind != StaticValueKind.Null && !heap.TryGetString(arguments[1], out spelled))
+                return IntrinsicResult.Unknown("AssemblyName text is not concrete.");
+            var framework = context.State.ModuleMetadata?.CorLibTypes.AssemblyRef.Name == "mscorlib";
+            if (SetAssemblyIdentity(heap, arguments[0], spelled, out var error, framework))
+                return IntrinsicResult.Completed();
+            if (error is null) return AllocationFailure("assembly identity");
+            if (framework && error is FileLoadException && spelled?.Contains("65535", StringComparison.Ordinal) == true)
+                return IntrinsicResult.Unknown("Legacy wildcard assembly-name syntax could not be modeled.");
+            if (!heap.TryAllocateObject(error.GetType().FullName!, out var exception))
+                return AllocationFailure("assembly-name exception");
+            heap.TrySetModelValue(exception, "Message", error.Message);
+            heap.TrySetModelValue(exception, "InnerException", StaticValue.Null);
+            if (error is ArgumentException argument)
+                heap.TrySetModelValue(exception, "ParamName", argument.ParamName);
+            if (error is FileLoadException file)
+                heap.TrySetModelValue(exception, "FileName", file.FileName);
+            return new(StaticExecutionStatus.Threw, exception, "AssemblyName rejected the supplied display name.");
         }
         if (arguments.Count == 1 &&
             name is "get_Name" or "get_FullName" or "ToString" &&
@@ -8648,13 +8723,27 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         }
         if (arguments.Count != 1)
             return IntrinsicResult.Invalid($"AssemblyName operation {name} is denied.");
+        if (name == "get_Flags" && heap.TryGetModelValue(arguments[0], "Flags", out int flags))
+            return IntrinsicResult.Completed(StaticValue.FromInt32(flags));
+        if (name is "get_CultureInfo" or "get_CultureName")
+        {
+            if (!heap.TryGetModelValue(arguments[0], "Culture", out string? culture) || culture is null)
+                return IntrinsicResult.Completed(StaticValue.Null);
+            if (name == "get_CultureName")
+                return heap.TryAllocateString(culture, out var text) ? IntrinsicResult.Completed(text) : AllocationFailure("culture name");
+            if (!heap.TryAllocateObject("System.Globalization.CultureInfo", out var model) || !heap.TrySetModelValue(model, "Name", culture))
+                return AllocationFailure("assembly culture");
+            return IntrinsicResult.Completed(model);
+        }
         if (name == "GetPublicKeyToken")
         {
+            var bytes = heap.TryGetModelValue(arguments[0], "PublicKeyToken", out byte[]? carriedToken) && carriedToken is not null
+                ? carriedToken : context.State.PublicKeyToken;
             context.State.Observe(
                 LoaderObservationKind.StrongNameProbe,
-                $"AssemblyName.GetPublicKeyToken of {context.State.PublicKeyToken.Length} byte(s)");
+                $"AssemblyName.GetPublicKeyToken of {bytes.Length} byte(s)");
             return context.State.Heap.TryAllocateByteArray(
-                context.State.PublicKeyToken,
+                bytes,
                 out var token)
                 ? IntrinsicResult.Completed(token)
                 : AllocationFailure("public key token");
@@ -8669,12 +8758,64 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         // pass; the neighbouring System.Version intrinsic then serves get_Major and the comparisons.
         if (name == "get_Version")
         {
+            if (heap.TryGetModelValue(arguments[0], "NullVersion", out bool absent) && absent)
+                return IntrinsicResult.Completed(StaticValue.Null);
             if (!heap.TryAllocateObject("System.Version", out var version))
                 return AllocationFailure("assembly version");
             heap.TrySetModelValue(version, "Components", AssemblyVersionComponents(context, arguments[0]));
             return IntrinsicResult.Completed(version);
         }
         return IntrinsicResult.Invalid($"AssemblyName operation {name} is denied.");
+    }
+
+    private static bool SetAssemblyIdentity(StaticHeap heap, StaticValue receiver, string? identity, out Exception? error,
+        bool framework = false)
+    {
+        // Parsing an assembly display name does not load or execute the assembly.
+        error = null;
+        try
+        {
+            var normalized = identity;
+            int[]? legacyVersion = null;
+            if (framework && identity is not null)
+                normalized = FrameworkAssemblyDisplayName(identity, out legacyVersion);
+            var parsed = new System.Reflection.AssemblyName(normalized!);
+            var version = legacyVersion ?? (parsed.Version is { } v ? new[] { v.Major, v.Minor, v.Build, v.Revision } : null);
+            return heap.TrySetModelValue(receiver, "Name", parsed.Name ?? "") &&
+                heap.TrySetModelValue(receiver, "FullName", parsed.FullName ?? identity) &&
+                heap.TrySetModelValue(receiver, "Culture", parsed.CultureName) &&
+                heap.TrySetModelValue(receiver, "Flags", (int)parsed.Flags) &&
+                heap.TrySetModelValue(receiver, "NullVersion", version is null) &&
+                heap.TrySetModelValue(receiver, "VersionComponents", version ?? []) &&
+                heap.TrySetModelValue(receiver, "PublicKeyToken", parsed.GetPublicKeyToken() ?? []);
+        }
+        catch (Exception exception) when (exception is ArgumentException or System.IO.FileLoadException)
+        { error = exception; return false; }
+    }
+
+    // Fusion display-name parsing treats 0xFFFF version parts as unspecified.
+    // CoreCLR handles those sentinels differently. Only normalize simple, four-part legacy
+    // display names; let the normal parser validate every remaining component.
+    private static string FrameworkAssemblyDisplayName(string identity, out int[]? version)
+    {
+        version = null;
+        if (identity.IndexOfAny(['"', '\'', '\\']) >= 0) return identity;
+        var fields = identity.Split(',');
+        var versions = fields.Select((field, index) => (Value: field.Trim(), Index: index))
+            .Where(field => field.Index > 0 && field.Value.StartsWith("Version=", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (versions.Length != 1) return identity;
+        var text = versions[0].Value[8..];
+        var parts = text.Split('.');
+        if (parts.Length != 4 || parts.Any(part => part.Length == 0 || part.Any(c => !char.IsAsciiDigit(c))) ||
+            !System.Version.TryParse(text, out var parsed)) return identity;
+        var values = new[] { parsed.Major, parsed.Minor, parsed.Build, parsed.Revision };
+        if (values.Any(value => value > ushort.MaxValue) || !values.Contains(ushort.MaxValue)) return identity;
+        if (values[0] == ushort.MaxValue || values[1] == ushort.MaxValue)
+            return string.Join(',', fields.Where((_, index) => index != versions[0].Index));
+        version = values;
+        var count = values[2] == ushort.MaxValue ? 2 : 3;
+        fields[versions[0].Index] = " Version=" + string.Join('.', values.Take(count));
+        return string.Join(',', fields);
     }
 
     /// <summary>
@@ -8684,6 +8825,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// </summary>
     private static int[] AssemblyVersionComponents(IntrinsicContext context, StaticValue assemblyName)
     {
+        if (context.State.Heap.TryGetModelValue(assemblyName, "VersionComponents", out int[]? carried) && carried is { Length: 4 })
+            return carried;
         if (context.State.Heap.TryGetModelValue(assemblyName, "FullName", out string? full) &&
             full is not null &&
             TryParseFullNameVersion(full, out var parsed))

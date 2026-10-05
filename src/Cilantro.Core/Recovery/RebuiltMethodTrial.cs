@@ -17,23 +17,54 @@ internal static class RebuiltMethodTrial
     internal sealed record Result(DevirtualizationCheck Verdict, string Detail,
         bool NonVmStateMatched = false, bool? VmStateShared = null,
         IReadOnlyList<string>? DifferingRoots = null, IReadOnlyList<string>? NonVmDifferingRoots = null,
-        bool? NativeMemoryMatched = null);
+        bool? NativeMemoryMatched = null, IReadOnlyList<string>? VmDifferingRoots = null,
+        bool ResolverBehaviorUnproven = false, bool? VmMetadataEscaped = null, uint? ProtectorGateToken = null);
     private sealed record Observation(string? Key, string Why, IReadOnlyList<string>? Names = null,
-        IReadOnlyList<string?>? Values = null, int StaticStart = 0, IReadOnlySet<int>? VmRoots = null,
+        IReadOnlyList<string?>? Values = null, int StaticStart = 0, HashSet<int>? VmRoots = null,
         string? NonVmKey = null, bool? SharesVmState = null,
         IReadOnlyList<string?>? NonVmValues = null, string? NativeSummary = null, string? NativeKey = null,
-        bool ResolverBehaviorUnproven = false);
+        bool ResolverBehaviorUnproven = false, bool? VmMetadataEscaped = null, uint? ProtectorGateToken = null,
+        string? GateStateKey = null);
 
     private static bool IsResolverRegistration(string effect) =>
         effect is "AppDomain.AssemblyResolve" or "AppDomain.ResourceResolve";
 
+    private static Observation Combine(Observation before, Observation after)
+    {
+        if (after.Key is null) return after;
+        string? Pair(string? a, string? b) => a is null || b is null ? null : JsonSerializer.Serialize(new[] { a, b });
+        bool? Any(bool? a, bool? b) => a == true || b == true ? true : a == false && b == false ? false : null;
+        var offset = before.Values!.Count;
+        return after with
+        {
+            Key = Pair(before.Key, after.Key), Names = [.. before.Names!, .. after.Names!],
+            Values = [.. before.Values!, .. after.Values!], StaticStart = before.StaticStart,
+            VmRoots = (before.VmRoots ?? new HashSet<int>()).Concat((after.VmRoots ?? new HashSet<int>()).Select(index => index + offset)).ToHashSet(),
+            NonVmKey = Pair(before.NonVmKey, after.NonVmKey),
+            NonVmValues = before.NonVmValues is null || after.NonVmValues is null ? null : [.. before.NonVmValues, .. after.NonVmValues],
+            SharesVmState = Any(before.SharesVmState, after.SharesVmState),
+            VmMetadataEscaped = Any(before.VmMetadataEscaped, after.VmMetadataEscaped),
+            NativeKey = Pair(before.NativeKey, after.NativeKey)
+        };
+    }
+
     internal static Result Compare(ArtifactContext context, MethodDef method, CilBody rebuilt, int scenario,
         uint? engineToken = null, bool warmOriginal = false, HostProfile? hostProfile = null,
-        uint? rebuiltEntryToken = null, bool initializeModule = false)
+        uint? rebuiltEntryToken = null, bool initializeModule = false, bool warmSelected = false,
+        bool normalizeProtectorGate = true, IReadOnlyDictionary<MethodDef, CilBody>? rebuiltCompanions = null)
     {
-        if (initializeModule && warmOriginal)
+        if (warmOriginal && warmSelected)
+            throw new ArgumentException("Original and selected-body warm-up are separate trials.", nameof(warmSelected));
+        if (initializeModule && (warmOriginal || warmSelected))
             throw new ArgumentException("Module initialization and original-call warm-up are separate trials.", nameof(initializeModule));
         var shipped = method.Body;
+        var companionOriginals = (rebuiltCompanions ?? new Dictionary<MethodDef, CilBody>())
+            .Where(pair => pair.Key != method).ToDictionary(pair => pair.Key, pair => pair.Key.Body);
+        void SelectCompanions(bool rebuiltSide)
+        {
+            foreach (var (companion, originalBody) in companionOriginals)
+                companion.Body = rebuiltSide ? rebuiltCompanions![companion] : originalBody;
+        }
         var maximumSteps = StepLimit(context);
         var outcomes = new List<StaticExecutionStatus>();
         // Both trials use the same loaded metadata. Shared reference identities distinguish
@@ -42,18 +73,78 @@ internal static class RebuiltMethodTrial
         try
         {
             var left = Run(shipped);
-            var right = Run(rebuilt);
+            var right = Run(rebuilt, rebuiltSide: true);
+            if ((left.ResolverBehaviorUnproven || right.ResolverBehaviorUnproven) &&
+                left.Key is not null && right.Key is not null &&
+                (left.Key == right.Key || left.NonVmKey is not null && left.NonVmKey == right.NonVmKey))
+            {
+                var beforeLeft = left;
+                var beforeRight = right;
+                outcomes.Clear();
+                left = Combine(beforeLeft, Run(shipped, exerciseResolvers: true));
+                right = Combine(beforeRight, Run(rebuilt, exerciseResolvers: true, rebuiltSide: true));
+            }
             if (outcomes.Count == 2 && outcomes[0] != outcomes[1])
-                return new(DevirtualizationCheck.Disagreed, $"terminal outcomes differ: original {left.Why}; rebuilt {right.Why}");
+            {
+                // A guard can abort before application initialization that the rebuilt body
+                // legitimately completes. Compare that work too, by rerunning both cold
+                // machines with only the identified guard neutralized. This is a separate
+                // contract comparison; the original terminal disagreement remains recorded.
+                Result? normalized = null;
+                if (normalizeProtectorGate && outcomes[0] == StaticExecutionStatus.Threw &&
+                    outcomes[1] == StaticExecutionStatus.Completed && left.ProtectorGateToken is { } gateToken &&
+                    context.Module.ResolveToken(gateToken) is MethodDef guard && IsIsolatedDebuggerGate(guard))
+                {
+                    var guardBody = guard.Body;
+                    try
+                    {
+                        guard.Body = new CilBody();
+                        guard.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+                        method.Body = shipped;
+                        SelectCompanions(false);
+                        normalized = Compare(context, method, rebuilt, scenario, engineToken, warmOriginal, hostProfile,
+                            rebuiltEntryToken, initializeModule, warmSelected, normalizeProtectorGate: false,
+                            rebuiltCompanions: rebuiltCompanions);
+                    }
+                    finally
+                    {
+                        guard.Body = guardBody;
+                        method.Body = rebuilt;
+                        SelectCompanions(true);
+                    }
+                }
+                var normalizedMatch = normalized is { ResolverBehaviorUnproven: false,
+                    VmStateShared: false, VmMetadataEscaped: false } &&
+                    (normalized.Verdict == DevirtualizationCheck.Agreed ||
+                     normalized is { Verdict: DevirtualizationCheck.Disagreed, NonVmStateMatched: true,
+                         VmStateShared: false, VmMetadataEscaped: false });
+                return new(DevirtualizationCheck.Disagreed, $"terminal outcomes differ: original {left.Why}; rebuilt {right.Why}" +
+                    (left.ProtectorGateToken is { } gate ? $". Original throw came from the isolated debugger gate 0x{gate:X8} on the VM wrapper; final removal must be checked separately" : "") +
+                    (normalized is null ? "" : $". Separate trial with only that guard neutralized: {normalized.Verdict}; {normalized.Detail}"),
+                    DifferingRoots: normalized?.DifferingRoots, NonVmDifferingRoots: normalized?.NonVmDifferingRoots,
+                    VmDifferingRoots: normalized?.VmDifferingRoots,
+                    ProtectorGateToken: normalizedMatch || outcomes[0] == StaticExecutionStatus.Threw && outcomes[1] == StaticExecutionStatus.Completed &&
+                        left.GateStateKey is not null && left.GateStateKey == right.GateStateKey &&
+                        left.SharesVmState == false && right.SharesVmState == false && left.VmMetadataEscaped == false && right.VmMetadataEscaped == false &&
+                        !left.ResolverBehaviorUnproven && !right.ResolverBehaviorUnproven ? left.ProtectorGateToken : null);
+            }
             if (left.Key is null || right.Key is null)
-                return new(DevirtualizationCheck.NotMade, $"original: {left.Why}; rebuilt: {right.Why}");
+                return new(DevirtualizationCheck.NotMade, $"original: {left.Why}; rebuilt: {right.Why}",
+                    ResolverBehaviorUnproven: left.ResolverBehaviorUnproven || right.ResolverBehaviorUnproven);
             if (left.Key == right.Key)
             {
                 if (left.ResolverBehaviorUnproven || right.ResolverBehaviorUnproven)
                     return new(DevirtualizationCheck.NotMade,
                         "Captured state, including ordered resolver delegates and their targets, matched; " +
-                        "resolver callback behavior remains outside this comparison. Matching registrations do not establish equivalence.");
-                return new(DevirtualizationCheck.Agreed, "return/exception, arguments, observed static state, modeled network settings, modeled native memory and application-domain data matched");
+                        "resolver callback behavior remains outside this comparison. Matching registrations do not establish equivalence.",
+                        ResolverBehaviorUnproven: true);
+                return new(DevirtualizationCheck.Agreed, "return/exception, arguments, observed static state, modeled network settings, modeled native memory and application-domain data matched" +
+                    (left.Why.Contains("Resolver fixtures", StringComparison.Ordinal) ? ". " + left.Why : ""),
+                    NonVmStateMatched: left.NonVmKey is not null && left.NonVmKey == right.NonVmKey,
+                    VmStateShared: left.SharesVmState == false && right.SharesVmState == false ? false :
+                        left.SharesVmState == true || right.SharesVmState == true ? true : null,
+                    VmMetadataEscaped: left.VmMetadataEscaped == false && right.VmMetadataEscaped == false ? false :
+                        left.VmMetadataEscaped == true || right.VmMetadataEscaped == true ? true : null);
             }
             var differences = Enumerable.Range(0, left.Values!.Count)
                 .Where(index => left.Values[index] != right.Values![index]).ToArray();
@@ -92,6 +183,7 @@ internal static class RebuiltMethodTrial
             }
             if (left.ResolverBehaviorUnproven || right.ResolverBehaviorUnproven)
                 boundary += ". Ordered resolver delegates and their targets were included; resolver callback behavior remains unproven";
+            else if (left.Why.Contains("Resolver fixtures", StringComparison.Ordinal)) boundary += ". " + left.Why;
             return new(DevirtualizationCheck.Disagreed, (left.Names![differing] == "modeled native memory"
                 ? "return/exception, arguments, observed static state and modeled network settings matched; modeled native memory differed"
                 : left.Names![differing] == "modeled network settings"
@@ -105,13 +197,19 @@ internal static class RebuiltMethodTrial
                 VmStateShared: left.SharesVmState == true || right.SharesVmState == true ? true
                     : left.SharesVmState == false && right.SharesVmState == false ? false : null,
                 DifferingRoots: differingRoots, NonVmDifferingRoots: nonVmDifferences,
-                NativeMemoryMatched: left.NativeKey is not null && right.NativeKey is not null ? left.NativeKey == right.NativeKey : null);
+                NativeMemoryMatched: left.NativeKey is not null && right.NativeKey is not null ? left.NativeKey == right.NativeKey : null,
+                VmDifferingRoots: differences.Where(index => left.VmRoots?.Contains(index) == true)
+                    .Select(index => left.Names![index]).ToArray(),
+                ResolverBehaviorUnproven: left.ResolverBehaviorUnproven || right.ResolverBehaviorUnproven,
+                VmMetadataEscaped: left.VmMetadataEscaped == true || right.VmMetadataEscaped == true ? true :
+                    left.VmMetadataEscaped == false && right.VmMetadataEscaped == false ? false : null);
         }
-        finally { method.Body = shipped; }
+        finally { method.Body = shipped; SelectCompanions(false); }
 
-        Observation Run(CilBody body)
+        Observation Run(CilBody body, bool exerciseResolvers = false, bool rebuiltSide = false)
         {
             method.Body = warmOriginal ? shipped : body;
+            SelectCompanions(!warmOriginal && rebuiltSide);
             if (!BootstrapMachine.TrySeed(context, maximumSteps, out var machine, out var why) || machine is null)
                 return new(null, why);
             // Keep trials strict and independent, even when the recovery run permits unknown
@@ -131,6 +229,8 @@ internal static class RebuiltMethodTrial
             // the seeded machine. A fresh hard-coded budget would silently cap raised limits.
             var budget = new StaticWorkBudget(maximumSteps);
             var resolverBehaviorUnproven = false;
+            var priorRoots = new List<StaticValue>();
+            var priorNames = new List<string>();
             if (initializeModule && context.Module.GlobalType.FindStaticConstructor() is { } initializer)
             {
                 if (initializer == method)
@@ -146,14 +246,30 @@ internal static class RebuiltMethodTrial
                 if (registrations.Length != 0)
                     return new(null, "module initialization registrations are outside this comparison: " + string.Join(", ", registrations.Take(4)));
             }
-            if (warmOriginal)
+            if (warmOriginal || warmSelected)
             {
-                // Independent machines execute the same original prelude. A successful
-                // repeat-call trial must never erase a cold-start difference.
+                // Selected-body trials evolve independently from cold state; the common
+                // original prelude is retained as a separate, narrower comparison.
                 var warmup = machine.Execute(method, arguments, budget);
                 if (warmup.Status != StaticExecutionStatus.Completed)
-                    return new(null, $"original warm-up did not complete: {warmup.Status}: {Short(warmup.Diagnostic)}");
+                    return new(null, $"{(warmOriginal ? "original" : "selected-body")} warm-up did not complete: {warmup.Status}: {Short(warmup.Diagnostic)}");
+                var warmEffects = machine.State.LoaderEvidence.EffectsOf(method.MDToken.Raw).Registrations;
+                resolverBehaviorUnproven |= warmEffects.Any(IsResolverRegistration);
+                var unsupportedWarmEffects = warmEffects.Where(effect => effect != "AppDomain.SetData" && !IsResolverRegistration(effect)).ToArray();
+                if (unsupportedWarmEffects.Length != 0)
+                    return new(null, "warm-up registrations are outside this comparison: " + string.Join(", ", unsupportedWarmEffects.Take(4)));
+                // A caller may retain the first result and arguments across later calls.
+                // Keep them in the same graph snapshot as the second call's roots so
+                // both mutations and aliases across the call boundary are compared.
+                if (method.ReturnType.ElementType != ElementType.Void)
+                {
+                    priorRoots.Add(warmup.Value);
+                    priorNames.Add("first-call return value");
+                }
+                priorRoots.AddRange(arguments);
+                priorNames.AddRange(arguments.Select((_, index) => $"first-call argument {index}"));
                 method.Body = body;
+                SelectCompanions(rebuiltSide);
                 arguments.Clear();
                 foreach (var type in method.MethodSig.Params)
                 {
@@ -165,13 +281,24 @@ internal static class RebuiltMethodTrial
             var stepped = false;
             var enteredEngine = false;
             var enteredRebuilt = false;
-            machine.Stepped = (frame, _) =>
+            MethodDef? lastGate = null;
+            uint lastGateOffset = 0;
+            machine.Stepped = (frame, instruction) =>
             {
                 if (frame == method) stepped = true;
                 if (frame.MDToken.Raw == engineToken) enteredEngine = true;
                 if (frame.MDToken.Raw == rebuiltEntryToken) enteredRebuilt = true;
+                if (engineToken is not null && instruction.OpCode.Code == Code.Throw &&
+                    frame.DeclaringType == method.DeclaringType && IsIsolatedDebuggerGate(frame))
+                {
+                    lastGate = frame;
+                    lastGateOffset = instruction.Offset;
+                }
             };
             var answer = machine.Execute(method, arguments, budget);
+            uint? protectorGate = answer.Status == StaticExecutionStatus.Threw && lastGate is not null &&
+                answer.Diagnostic?.Contains($"{lastGate.FullName} IL_{lastGateOffset:X4}", StringComparison.Ordinal) == true
+                ? lastGate.MDToken.Raw : null;
             if (!stepped || body == shipped && engineToken is not null && !enteredEngine ||
                 body == rebuilt && rebuiltEntryToken is not null && !enteredRebuilt)
                 return new(null, $"comparison body/engine was not exercised: {answer.Status}: {Short(answer.Diagnostic)}");
@@ -192,6 +319,18 @@ internal static class RebuiltMethodTrial
             }
             roots.AddRange(arguments);
             names.AddRange(arguments.Select((_, index) => $"argument {index}"));
+            roots.AddRange(priorRoots);
+            names.AddRange(priorNames);
+            var resolverNote = "";
+            if (exerciseResolvers)
+            {
+                if (!ResolverCallbackTrial.Exercise(machine, context.Module, budget, engineToken, roots, metadata,
+                    out var callbackRoots, out resolverNote))
+                    return new(null, "resolver fixtures incomplete: " + resolverNote, ResolverBehaviorUnproven: true);
+                roots.AddRange(callbackRoots.Select(root => root.Value));
+                names.AddRange(callbackRoots.Select(root => root.Name));
+                resolverBehaviorUnproven = false;
+            }
             // Include every materialized static, including mutations through a reference. Do not
             // silently ignore VM-private state: an opaque/different state remains inconclusive/different.
             var fields = context.Module.GetTypes().SelectMany(t => t.Fields).Where(f => f.IsStatic)
@@ -214,9 +353,12 @@ internal static class RebuiltMethodTrial
             var opaque = Array.FindIndex(values, v => v is null);
             var outcome = answer.Status == StaticExecutionStatus.Threw && machine.State.Heap.TryGetRuntimeTypeName(answer.Value, out var thrownName)
                 ? $"Threw ({thrownName}): {Short(answer.Diagnostic)}" : answer.Status.ToString();
+            if (resolverNote.Length > 0) outcome += ". " + resolverNote;
             string? nonVmKey = null;
             IReadOnlyList<string?>? nonVmValues = null;
             bool? sharesVmState = null;
+            bool? vmMetadataEscaped = null;
+            string? gateStateKey = null;
             if (opaque < 0 && vmRoots.Count != 0)
             {
                 // Independent numbering avoids shifts caused by omitted VM objects. Shared
@@ -230,19 +372,54 @@ internal static class RebuiltMethodTrial
                 {
                     nonVmKey = JsonSerializer.Serialize(new { answer.Status, Values = observed });
                     nonVmValues = observed;
+                    vmMetadataEscaped = nonVm.MetadataHandles.Any(handle => handle switch
+                    {
+                        IMethod member => VmOwned(member.ResolveMethodDef()?.DeclaringType),
+                        IField member => VmOwned(member.ResolveFieldDef()?.DeclaringType),
+                        ITypeDefOrRef type => VmOwned(type.ResolveTypeDef()),
+                        _ => false
+                    });
                     var vm = new Snapshot(machine.State.Heap, metadata);
                     var vmValues = roots.Where((_, index) => vmRoots.Contains(index)).Select(vm.Read).ToArray();
                     if (vmValues.All(value => value is not null))
                         sharesVmState = vm.SharesCapturedObjectsWith(nonVm);
+                    if (method.ReturnType.ElementType == ElementType.Void &&
+                        (protectorGate is not null || answer.Status == StaticExecutionStatus.Completed))
+                    {
+                        // A pure guard is not enough: earlier initialization may have written
+                        // application state. Compare every other observable root independently,
+                        // omitting only the attributed guard exception and VM-owned roots.
+                        var gateSnapshot = new Snapshot(machine.State.Heap, metadata);
+                        var gateValues = roots.Where((_, index) => !vmRoots.Contains(index) && names[index] != "exception")
+                            .Select(gateSnapshot.Read).ToList();
+                        gateValues.Add(gateSnapshot.ReadNetworkSettings(machine.State));
+                        gateValues.Add(gateSnapshot.ReadNativeState(machine.State));
+                        gateValues.Add(gateSnapshot.ReadDomainState(machine.State));
+                        if (gateValues.All(value => value is not null)) gateStateKey = JsonSerializer.Serialize(gateValues);
+                    }
                 }
             }
             return opaque >= 0
-                ? new(null, $"{outcome}; opaque or over-budget state at {names[opaque]} ({snapshot.Failure ?? "node, depth or text budget exhausted"})")
+                ? new(null, $"{outcome}; opaque or over-budget state at {names[opaque]} ({snapshot.Failure ?? "node, depth or text budget exhausted"})", ProtectorGateToken: protectorGate)
                 : new(JsonSerializer.Serialize(new { answer.Status, Values = values }), outcome, names, values, roots.Count - fields.Length, vmRoots, nonVmKey, sharesVmState, nonVmValues,
                     $"{machine.State.Heap.NativeRegions.Count()} region(s), {machine.State.Heap.ImageWrites.Count} write(s), " +
                     $"{machine.State.Heap.ImageWrites.Sum(write => (long)write.Bytes.Length)} written byte(s), {machine.State.ImageProtections.Count} protection change(s)",
-                    new Snapshot(machine.State.Heap, metadata).ReadNativeState(machine.State), resolverBehaviorUnproven);
+                    new Snapshot(machine.State.Heap, metadata).ReadNativeState(machine.State), resolverBehaviorUnproven, vmMetadataEscaped, protectorGate, gateStateKey);
         }
+    }
+
+    internal static bool IsIsolatedDebuggerGate(MethodDef method)
+    {
+        if (!method.IsStatic || !method.HasBody || method.MethodSig.Params.Count != 0 ||
+            method.ReturnType.ElementType != ElementType.Void || method.Body.HasExceptionHandlers) return false;
+        var code = method.Body.Instructions.Where(instruction => instruction.OpCode.Code != Code.Nop).ToArray();
+        return code.Length == 6 && code[0].OpCode.Code == Code.Call &&
+            code[0].Operand is IMethod call && call.FullName == "System.Boolean System.Diagnostics.Debugger::get_IsAttached()" &&
+            code[1].OpCode.Code is Code.Brfalse or Code.Brfalse_S && code[1].Operand == code[5] &&
+            code[2].OpCode.Code == Code.Ldstr && code[2].Operand is string message && message == "Debugger Detected" &&
+            code[3].OpCode.Code == Code.Newobj && code[3].Operand is IMethod ctor &&
+            ctor.FullName == "System.Void System.Exception::.ctor(System.String)" &&
+            code[4].OpCode.Code == Code.Throw && code[5].OpCode.Code == Code.Ret;
     }
 
     internal static string DescribeVmBoundary(IReadOnlyList<int> differences, IReadOnlySet<int>? vmRoots)
@@ -303,6 +480,7 @@ internal static class RebuiltMethodTrial
     // strings, boxes and arrays; refuse opaque models instead of comparing allocation IDs.
     internal sealed class Snapshot(StaticHeap heap, Dictionary<object, int>? metadata = null)
     {
+        internal HashSet<IMDTokenProvider> MetadataHandles { get; } = [];
         // Only compare graphs from the same machine; heap IDs have no cross-machine meaning.
         private StaticHeap SourceHeap => heap;
         internal bool SharesCapturedObjectsWith(Snapshot other)
@@ -476,6 +654,8 @@ internal static class RebuiltMethodTrial
             bool or int or long or uint or ulong => value.GetType().FullName + ":" + JsonSerializer.Serialize(value),
             StaticValue nested => Read(nested, depth),
             IMDTokenProvider member => ReadMetadata(member),
+            byte[] bytes => ReadModelBytes(bytes, bytes, "System.Byte", depth),
+            int[] integers => ReadModelBytes(integers, MemoryMarshal.AsBytes(integers.AsSpan()), "System.Int32", depth),
             List<StaticValue> list => ReadCollection(list, list, list.Count, "list", depth),
             List<KeyValuePair<StaticValue, StaticValue>> pairs => ReadCollection(pairs,
                 pairs.SelectMany(pair => new[] { pair.Key, pair.Value }), (long)pairs.Count * 2, "pairs", depth),
@@ -484,10 +664,21 @@ internal static class RebuiltMethodTrial
             _ => Refuse($"unsupported model value {value.GetType().FullName}")
         };
 
+        private string? ReadModelBytes(object identity, ReadOnlySpan<byte> bytes, string elementType, int depth)
+        {
+            if (--remaining < 0) return Refuse("node budget exhausted");
+            if (depth > 64) return Refuse("depth budget exhausted");
+            if (modelIds.TryGetValue(identity, out var seen)) return $"model-ref:{seen}";
+            var id = modelIds.Count;
+            modelIds.Add(identity, id);
+            return HashBytes(bytes) is { } hash ? $"model:{id}:{elementType}[]:{bytes.Length}:{hash}" : null;
+        }
+
         private string? ReadMetadata(object? value)
         {
             if (--remaining < 0) return Refuse("node budget exhausted");
-            if (metadata is null || value is not IMDTokenProvider) return Refuse("metadata identity unavailable");
+            if (metadata is null || value is not IMDTokenProvider member) return Refuse("metadata identity unavailable");
+            MetadataHandles.Add(member);
             if (!metadata.TryGetValue(value, out var id))
             {
                 id = metadata.Count;

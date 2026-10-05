@@ -21,6 +21,14 @@ The tool interprets the sample's decoder to recover programs, observes handlers 
 
 A stack-consistent graph is useful evidence, not behavioral proof. An operation's stack effect alone does not establish its semantics. Operations that remain unresolved can prevent reconstruction; unreachable regions may retain fail-fast placeholders rather than invented implementations.
 
+For otherwise inferred branches, additional trials calibrate the interpreter's position
+field against two distinct observed destinations and check the particular instruction
+with separating stack values. Conditional trials must exercise both outcomes. Switch
+trials check every table entry plus negative and upper-bound selectors, even if one
+destination was already observed. These measurements are recorded as
+`vm-branch-target-trials` and `vm-switch-target-trials`; they do not establish behavior
+for arbitrary engine state.
+
 ## How to judge the result
 
 When the supplementary non-VM snapshot matches, trials also check whether the VM and non-VM root graphs share modeled heap objects or collection state within each machine. A successful bounded traversal can establish absence of such sharing in that captured state; unsupported or over-budget graphs cannot. This does not rule out reflection, unmodeled external state, or aliases created by later calls, so it does not change the full-state verdict.
@@ -38,13 +46,26 @@ Read **Validation** and **Needs review** before treating a reconstructed body as
 | Payload comparison | Original and reconstructed paths produce the same extracted bytes in bounded interpretation | Every VM method was exercised or all application behavior agrees |
 | Controlled method trials | Selected input/state combinations have matching observable outcomes | All inputs, complete external state, or native runtime behavior |
 | Repeat-call trial | After one original call on each independent machine, a second original call and a rebuilt call match on fresh controlled arguments and captured state | Cold-start equivalence, safe removal of initializer effects, or other inputs |
+| Independent repeat-call trial | Each side evolves through its own first call; the second call also compares retained first-call arguments/results and aliases | Arbitrary call sequences or external callbacks |
+| Coupled-startup trial | Original bodies initialize one machine; all reconstructed bodies/callers are installed before the other machine initializes | Every startup input, final cleanup effects or native runtime execution |
+| Resolver-callback trial | Ordered requests for declared assembly/resource names and a missing name, with null/home requesters and a closed home/observed-load inventory; captures state before callbacks and at each response | Arbitrary requested names, external requesters, other preloaded assemblies or unsupported callback paths |
+| Application-contract assessment | Completed trials preserve captured application state while allowing confirmed protector-metadata removal; checks VM sharing, escaped handles and final field removal | Full-state equality, inconclusive fixtures or untested paths |
 | Modeled native-memory comparison | Captured region bytes, addresses, pointer offsets and aliases, ordered writes, and image-protection records match | Native execution, unmodeled external effects, or equivalence after relocating raw pointer bytes |
 
 An `agreed` verdict is limited to the checks and coverage described. `notMade` includes inconclusive comparisons, such as unsupported state or unexercised bodies. `disagreed` requires investigation even if structural verification and the overall run succeeded.
 
-Controlled trials include bounded snapshots of modeled lists, dictionaries, and hashtables, preserving collection order, contents, aliases, and cycles. Metadata handles are compared using shared identities within the loaded module context, rather than names or heap allocation numbers. Snapshots allow up to 65,536 nodes, retain depth and text limits, and distinguish node exhaustion from depth exhaustion. Unsupported state and exhausted budgets still make a comparison inconclusive. State mismatches identify the first differing root and say when the return/exception and argument snapshots matched; thrown outcomes retain their diagnostic location.
+Keep artificial cold-state fixtures separate from application startup. A trial that calls
+a method while skipping the module initializer deliberately examines a state that normal
+CLR execution cannot enter from outside that initializer. The [.NET module-initialization
+guarantees](https://github.com/dotnet/runtime/blob/main/docs/design/specs/Ecma-335-Augments.md#module-initialization-guarantees)
+require initialization before ordinary method execution or static-field access. Such a
+fixture can expose a dependency, but a startup conclusion requires the coupled-startup
+trial, including effects of reconstructed methods called during initialization. Neither
+kind of trial replaces validation of the final emitted assembly.
 
-Native snapshots include all modeled regions, even those no longer referenced by managed objects, and the ordered write history. Matching final bytes alone does not hide different writes. Absolute addresses remain part of the comparison; heap allocation IDs are normalized, but bytes that might contain pointers are not rewritten. Native regions, write records, and managed byte arrays share a 32 MiB byte allowance; native snapshots also limit work to 4,096 regions and 16,384 writes. Byte arrays are compared in full by content hash, retaining their identity without spending a graph node per byte. Potentially truncated image-protection histories remain inconclusive. Registrations recorded only as descriptions also remain inconclusive: identical descriptions do not establish identical handlers, arguments, or external effects.
+Controlled trials include bounded snapshots of modeled lists, dictionaries, and hashtables, preserving collection order, contents, aliases, and cycles. Raw byte and integer arrays carried by framework models are also compared in full, including loaded assembly images, symbols and version components; their aliases are retained and their bytes count against the binary budget. Metadata handles are compared using shared identities within the loaded module context, rather than names or heap allocation numbers. Snapshots allow up to 65,536 nodes, retain depth and text limits, and distinguish node exhaustion from depth exhaustion. Unsupported state and exhausted budgets still make a comparison inconclusive. State mismatches identify the first differing root and say when the return/exception and argument snapshots matched; thrown outcomes retain their diagnostic location.
+
+Native snapshots include all modeled regions, even those no longer referenced by managed objects, and the ordered write history. Matching final bytes alone does not hide different writes. Absolute addresses remain part of the comparison; heap allocation IDs are normalized, but bytes that might contain pointers are not rewritten. Native regions, write records, and managed byte arrays share a 32 MiB byte allowance; native snapshots also limit work to 4,096 regions and 262,144 writes. Byte arrays are compared in full by content hash, retaining their identity without spending a graph node per byte. Potentially truncated image-protection histories remain inconclusive. Registrations recorded only as descriptions also remain inconclusive: identical descriptions do not establish identical handlers, arguments, or external effects.
 
 For example, tracing the Mlfhntkcvb debugger-present trial identifies an original protector initializer calling `nHl4SRTNAC` (`060002B7`), which throws `System.Exception("Debugger Detected")` at `IL_0014` before VM dispatch. The rebuilt path bypasses that initializer and completes. With the debugger absent, both paths complete and their return/argument snapshots match, but VM-engine static state differs. Qbjuef also has this static-state difference. Both pass the repeat-call trial on the 32-byte zero-stream fixture after identical original setup, including captured static state. This narrows the observed discrepancy; it does not establish equivalence for other inputs or justify discarding startup effects. Cold-start differences retain the overall `disagreed` verdict even when a repeat-call trial agrees.
 
@@ -80,6 +101,23 @@ The final cleanup trials removed 200 protector support types and 1,444 methods f
 Validation passed all 24 runnable corpus gates, 859 selected regression tests, and ten runtime comparisons against a source-built benign Reactor 7.5 fixture. Malware corpus trials remained static. Separate [reconstruction cleanup gates](corpus.md#reconstruction-cleanup-gates) enforce the removal counts and helper comparison evidence while requiring the full-state disagreement to remain visible. These results establish the stated checks, not equivalence for every input or complete unprotection of the corpus.
 
 Reports now summarize the localized trials separately from other disagreements, using `reconstruction-state-boundary` evidence in the analysis JSON and the Validation section of analyst output. These findings close the diagnosis of the observed warning; they do not claim complete unprotection or whole-corpus equivalence.
+
+VM removal is checked separately from reconstruction agreement. Cleanup can remove a
+positively identified, replaced engine and its nested types when surviving declarations
+no longer reference them, even when unrelated application reflection prevents precise
+general reachability. Recognized, fully recovered delegate-proxy types receive the same
+reference check. Reconstructed application methods remain roots. Opaque numeric metadata
+lookups still prevent row deletion; a proved lookup using the same live member's `Module`
+and `MetadataToken` can tolerate row compaction.
+
+Cleanup also removes embedded VM data referenced exclusively by the removed engine,
+excluding resources identified as application payloads or restored application resources.
+Removal records retain resource hashes, and the original input retains the bytes. The
+`vm-machinery-removal` evidence counts declarations actually removed or retained. Neither
+successful reconstruction trials nor successful emission mean the VM is gone: use the
+[emitted-metadata removal gate](corpus.md#reconstruction-cleanup-gates), inspect the cleaned
+CIL, and separately check application behavior and payload preservation. A previously
+rewritten assembly with stale VM tokens can still require its intact original.
 
 Complex exception paths, reflection, unknown state, and sample-specific handlers can prevent complete lifting or validation. “No direct callers” does not exclude reflective calls. A remaining dispatcher is not necessarily a protection artifact, and a decompiler's readable C# is not the original source.
 

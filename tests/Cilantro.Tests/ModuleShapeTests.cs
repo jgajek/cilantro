@@ -16,6 +16,41 @@ namespace Cilantro.Tests;
 public sealed class ModuleShapeTests
 {
     [Fact]
+    public void DeepPayloadPathsStillVerifyAndDetectChangedOrInvalidFiles()
+    {
+        using var context = SyntheticContext.Build(module =>
+            SyntheticContext.AddType(module, "Host").Methods.Add(NewMethod(module, "Kept")));
+        var root = Path.Combine(Path.GetTempPath(), $"Cilantro.LongPath.{Guid.NewGuid():N}");
+        var directory = Path.Combine(root, new string('a', 100), new string('b', 100), new string('c', 100));
+        var path = Path.Combine(directory, "payload.cleaned.dll");
+        Assert.True(path.Length > 260);
+        try
+        {
+            Directory.CreateDirectory(directory);
+            context.Module.Write(path);
+            var expected = ModuleShape.Capture(context.Module);
+            var verified = AssemblyVerifier.VerifyFile(path);
+            var roundTrip = AssemblyVerifier.VerifyRoundTrip(path, expected);
+            Assert.True(verified.Passed, string.Join("; ", verified.Diagnostics));
+            Assert.True(roundTrip.Passed, string.Join("; ", roundTrip.Diagnostics));
+
+            context.Module.GetTypes().Single(type => type.Name == "Host").Methods.Clear();
+            context.Module.Write(path);
+            Assert.False(AssemblyVerifier.VerifyRoundTrip(path, expected).Passed);
+
+            File.WriteAllBytes(path, [0, 1, 2, 3]);
+            Assert.False(AssemblyVerifier.VerifyFile(path).Passed);
+            Assert.False(AssemblyVerifier.VerifyRoundTrip(path, expected).Passed);
+            File.Delete(path);
+            Assert.False(AssemblyVerifier.VerifyFile(path).Passed);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ARoundTripAgreesWithTheModuleItCameFrom()
     {
         using var context = SyntheticContext.Build(module =>

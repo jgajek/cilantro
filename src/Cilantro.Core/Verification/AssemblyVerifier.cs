@@ -16,6 +16,10 @@ public static class AssemblyVerifier
         RewriteAllowance? allowance = null)
     {
         var diagnostics = new List<string>();
+        foreach (var owner in CustomAttributeValidation.Owners(module))
+            foreach (var attribute in owner.CustomAttributes)
+                if (attribute.Constructor is null)
+                    diagnostics.Add($"{owner.MDToken}: custom attribute has an invalid constructor reference.");
         foreach (var method in module.GetTypes().SelectMany(type => type.Methods).Where(method => method.HasBody))
         {
             var instructions = method.Body.Instructions;
@@ -189,7 +193,9 @@ public static class AssemblyVerifier
     {
         try
         {
-            using var module = ModuleDefMD.Load(path);
+            // dnlib's native file mapping does not support every Windows long path.
+            // Use the same managed read as ArtifactContext, including for nested payloads.
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(path));
             return Verify(module, originalIdentity, originalStructure, allowance);
         }
         catch (Exception ex)
@@ -213,7 +219,7 @@ public static class AssemblyVerifier
     {
         try
         {
-            using var module = ModuleDefMD.Load(path);
+            using var module = ModuleDefMD.Load(File.ReadAllBytes(path));
             var diagnostics = new List<string>(Verify(module).Diagnostics);
             diagnostics.AddRange(expected.DifferencesFrom(ModuleShape.Capture(module)));
             return new VerificationResult(diagnostics.Count == 0, diagnostics);
