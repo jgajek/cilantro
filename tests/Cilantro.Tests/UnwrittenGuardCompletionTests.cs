@@ -9,6 +9,53 @@ namespace Cilantro.Tests;
 public sealed class UnwrittenGuardCompletionTests
 {
     [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void TypedNullReturnKeepsInitializationAndVerifies(bool throws)
+    {
+        using var context = Fixture(false, throws);
+        context.SetFact("options.foldUnwrittenState", true);
+        var getter = Method(context, "Guard");
+        getter.MethodSig.RetType = context.Module.CorLibTypes.String;
+        var before = Run(context, getter);
+        Assert.Equal(1, new UnwrittenReferenceCompletionPass().Run(context).Changes);
+        Assert.Equal(new[] { Code.Ldsfld, Code.Pop, Code.Ldnull, Code.Ret },
+            getter.Body.Instructions.Select(i => i.OpCode.Code));
+        var after = Run(context, getter);
+        Assert.Equal(before.Result.Status, after.Result.Status);
+        Assert.Equal(throws ? StaticExecutionStatus.Threw : StaticExecutionStatus.Completed, after.Result.Status);
+        Assert.Contains(after.Machine.State.StaticFields,
+            p => p.Key.Contains("Observed", StringComparison.Ordinal) && p.Value.AsInt32() == 7);
+        if (!throws) Assert.Equal(before.Result.Value, after.Result.Value);
+        else
+        {
+            Assert.True(before.Machine.State.Heap.TryGetRuntimeTypeName(before.Result.Value, out var original));
+            Assert.True(after.Machine.State.Heap.TryGetRuntimeTypeName(after.Result.Value, out var rewritten));
+            Assert.Equal(original, rewritten);
+        }
+        var written = Path.GetTempFileName();
+        try
+        {
+            context.Module.Write(written);
+            Assert.DoesNotContain("StackUnexpected", IlVerification.Read(written).Findings.Values.SelectMany(v => v));
+        }
+        finally { File.Delete(written); }
+        Assert.Equal(0, new UnwrittenReferenceCompletionPass().Run(context).Changes);
+    }
+
+    [Theory]
+    [InlineData("disabled")] [InlineData("write")] [InlineData("address")] [InlineData("effect")]
+    public void NullReturnRequiresProofAndExactGetter(string refusal)
+    {
+        using var context = Fixture(false, false, refusal);
+        context.SetFact("options.foldUnwrittenState", refusal != "disabled");
+        var getter = Method(context, "Guard");
+        getter.MethodSig.RetType = context.Module.CorLibTypes.String;
+        var before = getter.Body;
+        Assert.Equal(0, new UnwrittenReferenceCompletionPass().Run(context).Changes);
+        Assert.Same(before, getter.Body);
+    }
+
+    [Theory]
     [InlineData(false, false)] [InlineData(true, false)]
     [InlineData(false, true)] [InlineData(true, true)]
     public void ConstantGuardRetainsInitializationAndItsFailure(bool boolean, bool throws)

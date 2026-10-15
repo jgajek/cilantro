@@ -4467,6 +4467,9 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         // A runtime that resolved a member by token then asks what shape it is. Every answer is in
         // the metadata the model already carries, so describing the signature is reading the file
         // rather than assuming anything about the machine.
+        if (name == "Invoke" && arguments.Count >= 2 &&
+            heap.TryGetModelValue(arguments[0], "CapturedEntryPoint", out bool capturedEntry) && capturedEntry)
+            return IntrinsicResult.Invalid("Invocation crosses into a captured assembly; recover that payload in its own module context.");
         if (name == "Invoke" && arguments.Count >= 2 && context.Call is { } call &&
             Callable(heap, arguments[0]) is { } called)
         {
@@ -5485,6 +5488,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 return Describing(heap, "System.Type", parameter.Type);
             case "get_ReturnType" when described is MethodDef method:
                 return Describing(heap, "System.Type", method.ReturnType);
+            case "get_ReturnType" when described is MemberRef { IsMethodRef: true, MethodSig: { } signature }:
+                return Describing(heap, "System.Type", signature.RetType);
             // A definition names its parameters; a reference only lists their types. Either way the
             // caller is asking how many there are and what they are, which both can answer.
             case "GetParameters" when
@@ -5986,6 +5991,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     private static string? Called(object member) => member switch
     {
         IMemberDef defined => defined.Name?.String,
+        MemberRef reference => reference.Name?.String,
         Bound bound => Called(bound.Of),
         MemberInfo present => present.Name,
         _ => null
@@ -8589,9 +8595,83 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             }
 
             context.State.RegisterResource(resourceName, contents);
-            return context.State.TryOpenResource(resourceName, out var stream)
-                ? IntrinsicResult.Completed(stream)
-                : AllocationFailure("resource stream");
+            if (!context.State.TryOpenResource(resourceName, out var stream))
+                return AllocationFailure("resource stream");
+            context.State.Observe(LoaderObservationKind.ManagedResourceRead,
+                System.Text.Json.JsonSerializer.Serialize(new ManagedResourceRead(resourceName,
+                    Convert.ToHexStringLower(SHA256.HashData(contents)), contents.Length)));
+            return IntrinsicResult.Completed(stream);
+        }
+        if (name == "GetReferencedAssemblies" && arguments.Count == 1 &&
+            method.MethodSig is { HasThis: true, Params.Count: 0, RetType: SZArraySig referenceArray } &&
+            referenceArray.Next.FullName == "System.Reflection.AssemblyName")
+        {
+            var heap = context.State.Heap;
+            System.Reflection.AssemblyName[] identities;
+            if (heap.TryGetModelValue(arguments[0], LoadedImage, out byte[]? referenceImage) && referenceImage is not null)
+            {
+                try
+                {
+                    using var capturedModule = ModuleDefMD.Load(referenceImage);
+                    if (capturedModule.Assembly is null) return IntrinsicResult.Invalid("The captured image is not an assembly.");
+                    identities = capturedModule.GetAssemblyRefs().Select(ReferenceIdentity).ToArray();
+                }
+                catch (Exception exception) when (exception is BadImageFormatException or IOException or ArgumentException)
+                { return IntrinsicResult.Invalid("Referenced assembly identities cannot be read from the captured metadata: " + exception.Message); }
+            }
+            else if (heap.TryGetModelValue<bool>(arguments[0], HomeModuleMark, out var home) && home &&
+                context.State.ModuleMetadata is { Assembly: not null } metadata)
+            {
+                try { identities = metadata.GetAssemblyRefs().Select(ReferenceIdentity).ToArray(); }
+                catch (Exception exception) when (exception is ArgumentException or IOException)
+                { return IntrinsicResult.Invalid("Referenced assembly identities cannot be read from the home metadata: " + exception.Message); }
+            }
+            else return IntrinsicResult.Unknown("Referenced assembly identities require captured or home-module metadata.");
+
+            // Read declarations only; do not resolve or load any dependency. Each query
+            // gets independent mutable AssemblyName objects and its own result array.
+            if (!heap.TryAllocateArray(referenceArray.Next, identities.Length, out var references))
+                return AllocationFailure("referenced assembly names");
+            for (var index = 0; index < identities.Length; index++)
+            {
+                if (!heap.TryAllocateObject("System.Reflection.AssemblyName", out var identity))
+                    return AllocationFailure("referenced assembly identity");
+                var captured = identities[index];
+                var version = captured.Version;
+                if (!heap.TrySetModelValue(identity, "Name", captured.Name ?? "") ||
+                    !heap.TrySetModelValue(identity, "FullName", captured.FullName) ||
+                    !heap.TrySetModelValue(identity, "Culture", captured.CultureName) ||
+                    !heap.TrySetModelValue(identity, "Flags", (int)captured.Flags) ||
+                    !heap.TrySetModelValue(identity, "NullVersion", version is null) ||
+                    !heap.TrySetModelValue(identity, "VersionComponents", version is null ? Array.Empty<int>() : [version.Major, version.Minor, version.Build, version.Revision]) ||
+                    !heap.TrySetModelValue(identity, "PublicKeyToken", captured.GetPublicKeyToken() ?? []))
+                    return AllocationFailure("referenced assembly identity data");
+                if (!heap.TryWriteArray(references, index, identity)) return AllocationFailure("referenced assembly array");
+            }
+            return IntrinsicResult.Completed(references);
+
+            static System.Reflection.AssemblyName ReferenceIdentity(AssemblyRef reference)
+            {
+                // Reference enumeration exposes 0xffff as an unspecified version part.
+                // Construct the identity from metadata; parsing a display string uses
+                // different validation and can reject these valid reference rows.
+                var version = reference.Version;
+                version = version.Major == ushort.MaxValue || version.Minor == ushort.MaxValue ? null :
+                    version.Build == ushort.MaxValue ? new Version(version.Major, version.Minor) :
+                    version.Revision == ushort.MaxValue ? new Version(version.Major, version.Minor, version.Build) : version;
+                var identity = new System.Reflection.AssemblyName
+                {
+                    Name = reference.Name.String, Version = version, CultureName = reference.Culture.String,
+                    Flags = (System.Reflection.AssemblyNameFlags)reference.Attributes,
+                    ContentType = reference.IsContentTypeWindowsRuntime ? System.Reflection.AssemblyContentType.WindowsRuntime : System.Reflection.AssemblyContentType.Default
+                };
+                if (reference.HasPublicKey) identity.SetPublicKey(reference.PublicKeyOrToken?.Data ?? []);
+                else identity.SetPublicKeyToken(reference.PublicKeyOrToken?.Token?.Data ?? []);
+                try { _ = identity.FullName; }
+                catch (System.Security.SecurityException exception)
+                { throw new ArgumentException($"Invalid public key in {reference.Name}: flags {reference.Attributes}, key length {reference.PublicKeyOrToken?.Data?.Length}, token length {reference.PublicKeyOrToken?.Token?.Data?.Length}.", exception); }
+                return identity;
+            }
         }
         if (name == "GetName" && arguments.Count is 1 or 2)
         {
@@ -8655,6 +8735,28 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (name == "get_EntryPoint" && arguments.Count == 1)
         {
             var heap = context.State.Heap;
+            if (heap.TryGetModelValue(arguments[0], LoadedImage, out byte[]? entryImage) && entryImage is not null)
+            {
+                try
+                {
+                    using var imageModule = ModuleDefMD.Load(entryImage);
+                    if (imageModule.Assembly is null || imageModule.IsNativeEntryPointValid)
+                        return IntrinsicResult.Invalid("The captured image does not define a managed assembly entry point.");
+                    if (imageModule.EntryPoint is not { } captured)
+                        return IntrinsicResult.Completed(StaticValue.Null);
+                    // Copy the signature/reference while the image is open. Never retain lazy
+                    // metadata from a disposed module or bind this method to the home module.
+                    var reference = new Importer(new ModuleDefUser("captured-entry-metadata")).Import(captured);
+                    var result = Describing(heap, "System.Reflection.MethodInfo", reference);
+                    if (result.Status == StaticExecutionStatus.Completed)
+                        heap.TrySetModelValue(result.Value, "CapturedEntryPoint", true);
+                    return result;
+                }
+                catch (Exception error) when (ManagedImage.Rejects(error))
+                {
+                    return IntrinsicResult.Invalid("The captured assembly entry-point metadata could not be read.");
+                }
+            }
             if (!heap.TryGetModelValue<bool>(arguments[0], HomeModuleMark, out var home) || !home)
             {
                 return IntrinsicResult.Invalid(

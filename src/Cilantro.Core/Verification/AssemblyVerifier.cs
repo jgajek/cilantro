@@ -16,6 +16,12 @@ public static class AssemblyVerifier
         RewriteAllowance? allowance = null)
     {
         var diagnostics = new List<string>();
+        if (allowance?.UnresolvedLocalTypesBeforeRename is { } previouslyUnresolved)
+            foreach (var name in LocalTypeReferenceValidation.NewlyUnresolved(module, previouslyUnresolved))
+                diagnostics.Add($"Local type reference no longer resolves after renaming: {name}.");
+        if (allowance?.UnresolvedLocalMembersBeforeRename is { } previouslyUnresolvedMembers)
+            foreach (var name in LocalMemberReferenceValidation.NewlyUnresolved(module, previouslyUnresolvedMembers))
+                diagnostics.Add($"Local member reference no longer resolves after renaming: {name}.");
         foreach (var owner in CustomAttributeValidation.Owners(module))
             foreach (var attribute in owner.CustomAttributes)
                 if (attribute.Constructor is null)
@@ -106,7 +112,7 @@ public static class AssemblyVerifier
             {
                 diagnostics.Add("Method count changed during rewriting.");
             }
-            if (current.FieldCount != originalStructure.FieldCount - effective.RemovedFieldCount)
+            if (current.FieldCount != originalStructure.FieldCount - effective.RemovedFieldCount + effective.AddedFieldCount)
                 diagnostics.Add("Field count changed during rewriting.");
             if (current.ResourceCount != originalStructure.ResourceCount + resourceDelta)
                 diagnostics.Add("Resource count changed during rewriting.");

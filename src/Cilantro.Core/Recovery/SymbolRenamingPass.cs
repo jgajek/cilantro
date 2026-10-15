@@ -9,8 +9,8 @@ namespace Cilantro.Core.Recovery;
 /// Deterministic renaming of Reactor's machine-generated symbols, done on a triage run.
 /// </summary>
 /// <remarks>
-/// Renaming is reference-safe within a module because dnlib resolves call sites, overrides, and
-/// interface implementations through the member object rather than its name. The risk is elsewhere:
+/// Definition operands follow their member object, while name-based local type and member
+/// references are bound before renaming and updated afterwards. Other risks remain:
 /// implicit virtual-override and interface-implementation matching is by name and signature, native
 /// entry points are keyed by name, and public API is a contract. This pass therefore renames only
 /// non-public, non-virtual, non-P/Invoke members whose names it can structurally prove are
@@ -45,6 +45,8 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
         if (targets.Count == 0 && namespaces.Count == 0)
             return (PassStatus.Success, 0, ["No provably generated symbols were found."]);
 
+        var references = new ModuleRenameReferences(context.Module);
+
         var map = new SortedDictionary<string, string>(StringComparer.Ordinal);
         // Namespaces go first because a member's new key spells out the type that declares it, and
         // that spelling includes the namespace: renaming them afterwards would leave the map
@@ -57,9 +59,12 @@ public sealed class SymbolRenamingPass : DeobfuscationPass
                 "Renamed a namespace whose name the protector generated."));
         }
 
+        foreach (var target in targets) target.Member.Name = target.NewName;
+        references.Apply();
+        context.SetFact(LocalTypeReferenceValidation.BeforeRenameFact, references.UnresolvedBefore);
+        context.SetFact(LocalMemberReferenceValidation.BeforeRenameFact, references.UnresolvedMembersBefore);
         foreach (var target in targets)
         {
-            target.Member.Name = target.NewName;
             map[target.OldKey] = KeyFor(target.Member);
             context.AddChange(new ChangeRecord(
                 Name, "rename-generated-symbol", target.OldKey,

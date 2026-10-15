@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.10.5";
+    public const string Version = "0.10.6";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -175,6 +175,8 @@ public sealed class CilantroPipeline
         new EmittedMethodReconstructionPass(),
         new DispatcherPathCompletionPass(),
         new IntegrityVerdictPass(),
+        new MemoryIntegrityCompletionPass(),
+        new StringLookupCompletionPass(),
         new ReactorTrialGuardRemovalPass(),
         new RuntimeCleanupPass(),
         new UnwrittenGuardCompletionPass(),
@@ -183,8 +185,48 @@ public sealed class CilantroPipeline
         // Cloning effectful paths earlier can obscure shapes needed by dispatcher recovery.
         new EffectfulDispatcherCompletionPass(),
         new ReactorGuardCompletionPass(),
+        new UnusedReactorPoolRemovalPass(),
+        new LoaderCleanupFinalizationPass(),
+        new LoaderRuntimeCleanupPass(),
+        new StringLookupFinalizationPass(),
+        new StringRuntimeCleanupPass(),
+        new DelegateStringCompletionPass(),
+        new NumericInitializationCompletionPass(),
+        new NumericRuntimeCleanupPass(),
+        new EmbeddedDependencyRecoveryPass(),
+        new DependencyDecoderCompletionPass(),
+        new DependencyIndexCompletionPass(),
+        new DependencyInputCompletionPass(),
+        new DependencyRuntimeCleanupPass(),
+        new IntegerHelperFinalizationPass(),
+        new IntegerHelperRuntimeCleanupPass(),
+        new SharedInitializationCompletionPass(),
+        new SharedInitializerRuntimeCleanupPass(),
+        new NumericBridgeCompletionPass(),
+        new NumericBridgeRuntimeCleanupPass(),
+        // Fall-through branches can split otherwise closed argument expressions.
+        // Compact them before collecting caller evidence; retain final compaction too.
+        new TypingPreparationPass(),
+        new UnusedPrivateHelperCleanupPass(),
+        new ArrayParameterTypingPass(),
+        new ReferenceParameterTypingPass(),
+        new ArrayFieldTypingPass(),
+        new ReferenceFieldTypingPass(),
+        new ThisCastCompletionPass(),
+        new UnwrittenReferenceCompletionPass(),
+        new ResourceEnumerationCompletionPass(),
+        new ResourceEnumerationRuntimeCleanupPass(),
+        new ProtectorResourceCleanupPass(),
         new ControlFlowFinalizationPass(),
+        new IlCompactionPass(),
+        // Compaction exposes the exact pure handle-initializer shape. Resolve remaining
+        // constants before emission can renumber the original metadata tokens.
+        new TokenCompletionPass(),
+        new TokenRuntimeCleanupPass(),
+        new TypeRecoveryCompletionPass(),
+        new BranchCompletionPass(),
         new SymbolRenamingPass(),
+        new AntiDisassemblyMetadataPass(),
         new ReconstructionStateAuditPass(),
         // What a rebuilt body reaches is written down last, after cleanup has settled what calls it
         // and renaming has settled what everything is called, so the account names what a reader
@@ -289,6 +331,8 @@ public sealed class CilantroPipeline
         using var context = ArtifactContext.Load(
             inputPath,
             [.. options.LibraryPaths ?? [], .. declarations.Libraries]);
+        if (options.ManagedBootstrapReplacement is { } replacement)
+            context.AddPassResult(ManagedBootstrapReassembly.Apply(context, replacement));
         context.SetFact("options.removeRuntime", options.RemoveRuntime);
 
         // What the caller did not decide, the mode decides: a triage run does the things that make
@@ -969,15 +1013,26 @@ public sealed class CilantroPipeline
         context.TryGetFact<int>("cleanup.removedFieldCount", out var removedFieldCount);
         context.TryGetFact<IReadOnlySet<string>>("rename.removedPublicApi", out var renameRemovedApi);
         context.TryGetFact<IReadOnlySet<string>>("rename.addedPublicApi", out var renameAddedApi);
+        context.TryGetFact<IReadOnlySet<string>>(LocalTypeReferenceValidation.BeforeRenameFact, out var unresolvedLocalTypes);
+        context.TryGetFact<IReadOnlySet<string>>(LocalMemberReferenceValidation.BeforeRenameFact, out var unresolvedLocalMembers);
         context.TryGetFact<int>(
             VirtualizationRebuildPass.AddedMethodsFact, out var addedMethodCount);
         context.TryGetFact<int>(VirtualizationRebuildPass.AddedTypesFact, out var addedTypeCount);
+        context.TryGetFact<int>(NumericTableRecoveryPass.AddedInitializationMethodsFact, out var numericInitializationMethods);
+        addedMethodCount += numericInitializationMethods;
+        context.TryGetFact<int>(DependencyDecoderCompletionPass.AddedMethodsFact, out var dependencyMethods);
+        context.TryGetFact<int>(DependencyDecoderCompletionPass.AddedTypesFact, out var dependencyTypes);
+        context.TryGetFact<int>(DependencyDecoderCompletionPass.AddedFieldsFact, out var addedFieldCount);
+        addedMethodCount += dependencyMethods;
+        addedTypeCount += dependencyTypes;
+        context.TryGetFact<int>("cleanup.removedAddedMethodCount", out var removedAddedMethodCount);
+        addedMethodCount -= removedAddedMethodCount;
 
         var removedApi = Union(cleanupRemovedApi, renameRemovedApi);
         var addedApi = renameAddedApi;
         if (removedResources is null && addedResources is null && removedApi is null &&
             addedApi is null && removedMethods is null && removedTypeCount == 0 &&
-            removedFieldCount == 0 && addedMethodCount == 0 && addedTypeCount == 0)
+            removedFieldCount == 0 && addedMethodCount == 0 && addedTypeCount == 0 && addedFieldCount == 0 && unresolvedLocalTypes is null && unresolvedLocalMembers is null)
         {
             return RewriteAllowance.None;
         }
@@ -991,7 +1046,10 @@ public sealed class CilantroPipeline
             RemovedFieldCount: removedFieldCount,
             AddedPublicApi: addedApi,
             AddedMethodCount: addedMethodCount,
-            AddedTypeCount: addedTypeCount);
+            AddedTypeCount: addedTypeCount,
+            AddedFieldCount: addedFieldCount,
+            UnresolvedLocalTypesBeforeRename: unresolvedLocalTypes,
+            UnresolvedLocalMembersBeforeRename: unresolvedLocalMembers);
     }
 
     private static IReadOnlySet<string>? Union(IReadOnlySet<string>? left, IReadOnlySet<string>? right)

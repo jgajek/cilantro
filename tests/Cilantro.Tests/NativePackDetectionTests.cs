@@ -23,6 +23,27 @@ public sealed class NativePackDetectionTests
         Assert.Contains("IL-only", reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(0u, "IL-only")]
+    [InlineData(0x10u, "native entry point")]
+    public void NativeHeadersRefuseManagedRewriteWithoutClaimingProtection(uint flags, string detail)
+    {
+        using var synthetic = new ModuleDefUser("ordinary.dll") { Kind = ModuleKind.Dll };
+        new AssemblyDefUser("Ordinary", new Version(1, 0)).Modules.Add(synthetic);
+        using var stream = new MemoryStream();
+        synthetic.Write(stream);
+        var bytes = stream.ToArray();
+        var pe = BitConverter.ToInt32(bytes, 0x3c);
+        var optional = pe + 24;
+        var directories = optional + (BitConverter.ToUInt16(bytes, optional) == 0x20b ? 112 : 96);
+        var cor = RvaToFileOffset(bytes, pe, BitConverter.ToUInt32(bytes, directories + 14 * 8));
+        BitConverter.GetBytes(flags).CopyTo(bytes, cor + 16);
+        using var module = ModuleDefMD.Load(bytes);
+        Assert.True(NativePackDetector.TryDescribe(module, out var reason));
+        Assert.Contains(detail, reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("packed", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Reactor", reason, StringComparison.OrdinalIgnoreCase);
+    }
     private static byte[] ClearIlOnly(byte[] original)
     {
         var bytes = (byte[])original.Clone();

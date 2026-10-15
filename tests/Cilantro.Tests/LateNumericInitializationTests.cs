@@ -86,6 +86,13 @@ public sealed class LateNumericInitializationTests
         Assert.True(AssemblyVerifier.Verify(context.Module).Passed);
         Assert.True(BootstrapMachine.TrySeed(context, 100_000, out var machine, out _));
         Assert.Equal(!acceptedSignature && readFile, machine!.State.ModuleFileIsAbsent);
+        var refused = context.TryGetFact<LoaderInterpretationEvidence>("bootstrap.moduleFileRefusalEvidence", out var refusalEvidence);
+        Assert.Equal(!acceptedSignature && readFile, refused);
+        if (refused)
+        {
+            Assert.Contains(refusalEvidence!.Observations, o => o.Kind == LoaderObservationKind.ModuleFileRead);
+            Assert.Contains(refusalEvidence.Observations, o => o.Kind == LoaderObservationKind.SignatureVerification && o.Verdict == false);
+        }
         if (folds)
         {
             var caller = context.Module.GetTypes().SelectMany(t => t.Methods).Single(m => m.Name == "Caller");

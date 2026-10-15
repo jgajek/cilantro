@@ -57,4 +57,45 @@ public sealed class ResourceEntryExtractionTests
         Assert.Equal(PassStatus.Partial, result.Status);
         Assert.Equal(0, result.Changes);
     }
+    [Fact]
+    public void ExtractsGzipImagesWithoutChangingResourcesAndContinuesPastBadEntries()
+    {
+        using var module = new ModuleDefUser("compressed.dll") { Kind = ModuleKind.Dll };
+        new AssemblyDefUser("Compressed", new Version(1, 0)).Modules.Add(module);
+        using var imageStream = new MemoryStream(); module.Write(imageStream); var image = imageStream.ToArray();
+        using var resourceStream = new MemoryStream();
+        using (var writer = new ResourceWriter(resourceStream))
+        {
+            writer.AddResource("bad-gzip", new byte[] { 0x1f, 0x8b, 8, 0 });
+            writer.AddResource("compressed-assembly", Gzip(image));
+            writer.AddResource("ordinary-compressed-data", Gzip([1, 2, 3, 4]));
+            writer.AddResourceData("custom-object", "Missing.Type, Missing.Assembly", Gzip(image));
+            writer.Generate();
+        }
+        var resource = resourceStream.ToArray();
+        using var context = SyntheticContext.Build(host => host.Resources.Add(new EmbeddedResource("Compressed.resources", resource, ManifestResourceAttributes.Private)));
+        var result = new ResourceEntryExtractionPass().Run(context);
+        Assert.Equal(PassStatus.Partial, result.Status);
+        Assert.Equal(1, result.Changes);
+        Assert.True(context.TryGetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", out var payloads));
+        Assert.Equal(image, Assert.Single(payloads!).Bytes);
+        Assert.Equal("Compressed.resources/compressed-assembly", payloads![0].Info.SourceResource);
+        Assert.Equal(resource, context.Module.Resources.OfType<EmbeddedResource>().Single().CreateReader().ToArray());
+    }
+
+    [Fact]
+    public void CompressedEntriesShareTheInflatedByteBudget()
+    {
+        var compressed = Gzip(new byte[48]); var decoded = 0;
+        Assert.Equal(48, ResourceEntryExtractionPass.InflateGzip(compressed, ref decoded, 64).Length);
+        Assert.Throws<InvalidDataException>(() => ResourceEntryExtractionPass.InflateGzip(compressed, ref decoded, 64));
+        Assert.Equal(64, decoded);
+    }
+
+    private static byte[] Gzip(byte[] bytes)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.SmallestSize, leaveOpen: true)) gzip.Write(bytes);
+        return output.ToArray();
+    }
 }

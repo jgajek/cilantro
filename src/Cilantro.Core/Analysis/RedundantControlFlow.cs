@@ -5,36 +5,88 @@ namespace Cilantro.Core.Analysis;
 
 internal static class RedundantControlFlow
 {
-    internal static int RemoveCarriedIntegerDiscards(MethodDef method)
+    internal static int ThreadBranches(MethodDef method)
     {
-        var pairs = new List<(Instruction Producer, Instruction Consumer)>();
-        foreach (var block in ControlFlowGraph.Build(method).Blocks)
+        var il = method.Body.Instructions;
+        if (!il.Any(i => i.OpCode.Code is Code.Br or Code.Br_S && i.Operand is Instruction)) return 0;
+        var graph = ControlFlowGraph.Build(method);
+        var positions = il.Select((instruction, index) => (instruction, index)).ToDictionary(p => p.instruction, p => p.index);
+        Instruction? Next(Instruction instruction) => instruction.OpCode.Code is Code.Br or Code.Br_S
+            ? instruction.Operand as Instruction
+            : instruction.OpCode.Code == Code.Nop && instruction.SequencePoint is null &&
+              positions[instruction] + 1 < il.Count ? il[positions[instruction] + 1] : null;
+        var resolved = new Dictionary<Instruction, Instruction>();
+        foreach (var start in il.Where(i => i.OpCode.Code is Code.Br or Code.Br_S or Code.Nop))
         {
-            // Track only values produced in this block. Incoming values are unknown;
-            // exception and branch entries must never inherit producer identities.
-            var stack = new List<Instruction?>();
-            foreach (var instruction in block.Instructions)
+            if (resolved.ContainsKey(start)) continue;
+            var path = new List<Instruction>();
+            var visited = new HashSet<Instruction>();
+            var current = start;
+            while (!resolved.ContainsKey(current) && Next(current) is { } next &&
+                   graph.HaveIdenticalExceptionRegions(current, next))
             {
-                if (instruction.OpCode.OpCodeType == OpCodeType.Prefix)
-                { stack.Clear(); continue; }
-                instruction.CalculateStackUsage(out var pushes, out var pops);
-                if (pops < 0 || pushes < 0)
-                { stack.Clear(); continue; }
-                if (instruction.OpCode.Code == Code.Pop && stack.Count > 0 && stack[^1] is { } producer)
-                    pairs.Add((producer, instruction));
-                var removed = Math.Min(pops, stack.Count);
-                stack.RemoveRange(stack.Count - removed, removed);
-                // Dup deliberately loses identity: neither copy is independently dead.
-                for (var index = 0; index < pushes; index++)
-                    stack.Add(instruction.IsLdcI4() ? instruction : null);
+                if (!visited.Add(current)) break;
+                path.Add(current);
+                current = next;
             }
+            // A branch-only cycle must remain a cycle, not become fall-through.
+            if (visited.Contains(current))
+            {
+                foreach (var member in path) resolved[member] = member;
+                continue;
+            }
+            var destination = resolved.GetValueOrDefault(current, current);
+            foreach (var member in path) resolved[member] = destination;
         }
-        foreach (var (producer, consumer) in pairs)
+        var changes = 0;
+        foreach (var branch in il)
         {
-            producer.OpCode = consumer.OpCode = OpCodes.Nop;
-            producer.Operand = consumer.Operand = null;
+            // Leave and switch have separate semantics. In particular, preserve every
+            // application switch target and its ordering exactly as written.
+            if (branch.OpCode.Code is Code.Leave or Code.Leave_S ||
+                branch.OpCode.FlowControl is not (FlowControl.Branch or FlowControl.Cond_Branch) ||
+                branch.Operand is not Instruction target || !resolved.TryGetValue(target, out var destination) ||
+                destination == target || !graph.HaveIdenticalExceptionRegions(branch, destination)) continue;
+            branch.Operand = destination;
+            changes++;
         }
-        return pairs.Count;
+        return changes;
+    }
+
+    internal static int FoldBooleanDiamonds(MethodDef method)
+    {
+        var il = method.Body.Instructions;
+        ControlFlowGraph? graph = null;
+        var plans = new List<(Instruction Branch, Instruction Taken, Instruction Fallthrough)>();
+        // Preserve the original condition and all alternate entries into the diamond.
+        // Only this edge pair bypasses the literal materialization and immediate test.
+        for (var at = il.Count - 6; at >= 0; at--)
+        {
+            var branch = il[at];
+            if (branch.OpCode.Code is not (Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S) ||
+                branch.Operand != il[at + 3] || !il[at + 1].IsLdcI4() || !il[at + 3].IsLdcI4() ||
+                il[at + 2].OpCode.Code is not (Code.Br or Code.Br_S) || il[at + 2].Operand != il[at + 4]) continue;
+            var test = il[at + 4];
+            if (test.OpCode.Code is not (Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S) ||
+                test.Operand is not Instruction destination) continue;
+            graph ??= ControlFlowGraph.Build(method);
+            if (!Enumerable.Range(at, 6).All(index => graph.HaveIdenticalExceptionRegions(branch, il[index])) ||
+                !graph.HaveIdenticalExceptionRegions(branch, destination)) continue;
+            var taken = Target(il[at + 3].GetLdcI4Value());
+            var fallthrough = Target(il[at + 1].GetLdcI4Value());
+            // Avoid creating a loop back into the bypassed expression.
+            if (Enumerable.Range(at, 5).Any(index => il[index] == taken || il[index] == fallthrough)) continue;
+            plans.Add((branch, taken, fallthrough));
+
+            Instruction Target(int value) => (value != 0) == (test.OpCode.Code is Code.Brtrue or Code.Brtrue_S)
+                ? destination : il[at + 5];
+        }
+        foreach (var (branch, taken, fallthrough) in plans)
+        {
+            branch.Operand = taken;
+            il.Insert(il.IndexOf(branch) + 1, OpCodes.Br.ToInstruction(fallthrough));
+        }
+        return plans.Count;
     }
 
     internal static int RemoveUnreadIntegerStores(MethodDef method)

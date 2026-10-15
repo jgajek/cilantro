@@ -66,6 +66,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
             .Where(field => field.IsStatic)
             .ToDictionary(field => field.MDToken.Raw);
         string mapSource;
+        RecoveredResourceOrigin? resourceOrigin = null;
         IReadOnlyList<ProxyBinding> bindings;
         var profileSource = "structural";
         context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var structureFacts);
@@ -77,6 +78,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
             discovered is not null)
         {
             mapSource = discovered.Resource.Name;
+            resourceOrigin = RecoveredResourceOrigin.Capture(discovered.Resource);
             bindings = discovered.Bindings;
             context.AddEvidence(new Evidence(
                 "stream-constants",
@@ -88,6 +90,8 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         {
             profileSource = "loader-table";
             mapSource = table;
+            if (context.TryGetFact<IReadOnlyList<RecoveredResourceOrigin>>("proxy.loaderResources", out var origins) && origins is { Count: 1 })
+                resourceOrigin = origins[0];
             context.AddEvidence(new Evidence(
                 "proxy-table",
                 $"Read {bindings.Count} field-to-method bindings out of the table the loader built, " +
@@ -105,6 +109,7 @@ public sealed class DelegateProxyPass : DeobfuscationPass
                     profile.ResourceSha256)
                 ?? throw new InvalidDataException("The profiled proxy mapping resource was not found.");
             mapSource = resource.Name;
+            resourceOrigin = RecoveredResourceOrigin.Capture(resource);
             var decoded = ProxyResourceCodec.Decode(resource.CreateReader().ToArray(), profile);
             if (Convert.ToHexStringLower(SHA256.HashData(decoded)) != profile.DecodedSha256)
                 return (PassStatus.Failed, 0, ["Decoded proxy map failed its regression hash."]);
@@ -205,6 +210,11 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         // and the initialization behind them exists only to populate those fields.
         RecoveryOrphans.DeclareSubtree(context, bypassedAdapters);
         context.SetFact("proxy.bindings", bindings);
+        if (resourceOrigin is not null)
+        {
+            context.SetFact("proxy.validatedResource", resourceOrigin);
+            if (changes != 0) DecodedResourceOwnership.Remember(context, resourceOrigin, resolverCandidates, proxyTypes);
+        }
         context.SetFact("proxy.restoredCallSites", changes);
         context.SetFact("proxy.narrowings", (IReadOnlyList<ProxyNarrowingSite>)narrowings);
         context.AddEvidence(new Evidence(

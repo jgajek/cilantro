@@ -393,6 +393,17 @@ public sealed class MethodBodyRecoveryPass : DeobfuscationPass
         var complete = recovered.Count == stubs.Count;
         context.SetFact("method-protection.complete", complete);
         context.SetFact("method-protection.restored", recovered.Count);
+        if (complete)
+        {
+            context.SetFact("method-protection.necroBitTables", rewrite.NecroBitTables);
+            var ownership = NecroBitResourceOwnership.Capture(context, rewrite);
+            context.SetFact("method-protection.necroBitResources", ownership);
+            foreach (var item in ownership)
+                context.AddEvidence(new Evidence("necrobit-resource-ownership",
+                    $"The generated writer directly names and was observed reading {item.Resource.Name} (SHA-256 {item.Resource.Sha256}), " +
+                    $"and assigns the captured decrypt table {item.Table.FullName}. Cleanup still requires physical removal of both writer and table.",
+                    item.Writer.FullName));
+        }
         context.AddEvidence(new Evidence(
             "method-recovery",
             $"Captured NecroBit's decrypt table from two agreeing bootstrap interpretations and " +

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Cilantro.Cli;
 using Cilantro.Core;
 using Cilantro.Core.Corpus;
@@ -39,6 +39,7 @@ internal static class CilantroCommand
         string? reportDirectory = null;
         string? hostProfile = null;
         string? declarations = null;
+        string? reviewedDependencies = null;
         var allowDeclaredCalls = false;
         var strict = false;
         bool? devirtualize = null;
@@ -98,6 +99,10 @@ internal static class CilantroCommand
                         return Fail($"{args[index]} needs a file path after it.");
                     libraries.Add(library!);
                     break;
+                case "--reviewed-dependencies":
+                    if (!TryTakeValue(args, ref index, out reviewedDependencies))
+                        return Fail("--reviewed-dependencies needs a manifest path.");
+                    break;
                 case "--declarations":
                     if (!TryTakeValue(args, ref index, out declarations))
                         return Fail($"{args[index]} needs a file path after it.");
@@ -127,6 +132,8 @@ internal static class CilantroCommand
             }
         }
 
+        if (reviewedDependencies is not null && !recoverEmbedded)
+            return Fail("--reviewed-dependencies requires --recover-embedded.");
         if (input is null)
             return Fail("Tell me which file to look at.");
         if (Directory.Exists(input))
@@ -152,7 +159,8 @@ internal static class CilantroCommand
                 Devirtualize: devirtualize,
                 StatusPath: status ? RunStatus.PathFor(input, reportDirectory) : null,
                 GenericRecovery: genericRecovery,
-                RecoverEmbeddedAssemblies: recoverEmbedded));
+                RecoverEmbeddedAssemblies: recoverEmbedded,
+                ReviewedDependencyManifest: reviewedDependencies));
 
             if (_json)
             {
@@ -305,6 +313,7 @@ internal static class CilantroCommand
                   --analyze-only       Write reports/extracted files, but no cleaned assembly
                   --generic-recovery   Allow verified rewrites when the protector is unrecognized
                   --recover-embedded   Continue recovery into extracted assemblies (bounded)
+                  --reviewed-dependencies PATH  Preserve matches to reviewed unprotected references
               -o, --output PATH        Write the clean copy somewhere else
                   --report-dir DIR     Write the report somewhere else
                   --keep-runtime       Leave the protector's own code in place instead of removing it

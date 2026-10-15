@@ -22,6 +22,43 @@ namespace Cilantro.Tests;
 public sealed class LoaderCallElisionTests
 {
     [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    public void FinalCleanupStillRequiresUnobservedEffects(bool observed, bool registers, bool removed)
+    {
+        using var context = LoaderContext(observed, registers);
+        context.SetFact("options.removeRuntime", true);
+        Assert.Equal(0, new LoaderCleanupFinalizationPass().Run(context).Changes);
+        context.AddChange(new("runtime-cleanup", "remove-orphaned-rebuilt-method", "fixture", "Already removed."));
+        var result = new LoaderCleanupFinalizationPass().Run(context);
+        Assert.Equal(removed, result.Changes != 0);
+        Assert.True(context.TryGetFact<bool>(LoaderCleanupFinalizationPass.ChangedFact, out var changed));
+        Assert.Equal(removed, changed);
+        var cleanup = new LoaderRuntimeCleanupPass().Run(context);
+        Assert.Equal(removed, cleanup.Changes != 0);
+        var check = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity,
+            context.OriginalStructure, CilantroPipeline.BuildRewriteAllowance(context));
+        Assert.True(check.Passed, string.Join("; ", check.Diagnostics));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void OnlyCommittedLoaderElisionAttributesLaterReconstructedSubtrees(bool observed, bool registers)
+    {
+        using var context = LoaderContext(observed, registers, reserveReadingMarker: true);
+        var result = new LoaderCallElisionPass().Run(context);
+        var helper = Method(context, "ReadState");
+        // Reconstruction occurs later in the real pipeline; the attribution must
+        // survive that transition without granting ordinary orphaned bodies access.
+        ReadingMarker.Add(context.Module).Mark(helper);
+        Assert.Equal(!observed && !registers, RebuiltMethods.CleanupCandidates(context).Contains(helper));
+        Assert.Equal(!observed && !registers, result.Changes > 0);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
@@ -323,12 +360,13 @@ public sealed class LoaderCallElisionTests
     /// </param>
     private static ArtifactContext LoaderContext(
         bool observeFromProgram = false,
-        bool registers = false)
+        bool registers = false, bool reserveReadingMarker = false)
     {
         FieldDef? state = null;
         MethodDef? install = null;
         var context = SyntheticContext.Build(module =>
         {
+            if (reserveReadingMarker) ReadingMarker.Add(module);
             var runtime = SyntheticContext.AddType(module, "Runtime");
             state = new FieldDefUser(
                 "state",

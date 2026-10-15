@@ -9,6 +9,8 @@ namespace Cilantro.Core.Passes;
 /// <summary>Removes reconstructed Reactor guard decisions under the protector-cleanup contract.</summary>
 public sealed class ReactorGuardCompletionPass : DeobfuscationPass
 {
+    internal const string CompletedPoolsFact = "cleanup.completedReactorPools";
+    internal sealed record CompletedPool(TypeDef Owner, FieldDef Root, MethodDef Initializer, MethodDef Touch);
     public override string Name => "reactor-guards-completion";
     public override bool GatesEmission => false;
     public override IReadOnlyCollection<string> Dependencies => ["dispatcher-effects-completion"];
@@ -17,6 +19,7 @@ public sealed class ReactorGuardCompletionPass : DeobfuscationPass
     {
         if (!context.TryGetFact<bool>("options.removeRuntime", out var enabled) || !enabled)
             return (PassStatus.Success, 0, ["Protector metadata cleanup is disabled; guard pools retained."]);
+        CompleteOrdinaryInitializers(context);
         var pools = ReactorGuardPool.Find(context.Module);
         var replaced = 0;
         var refused = 0;
@@ -64,7 +67,7 @@ public sealed class ReactorGuardCompletionPass : DeobfuscationPass
                 transaction.Commit();
                 poolChanges += group.Count();
                 context.AddChange(new ChangeRecord(Name, "remove-reactor-guard", method.FullName,
-                    $"Replaced {group.Count()} closed Reactor pool read(s) with reconstructed literals; retained initialization/null-check effects. " +
+                    $"Replaced {group.Count()} closed Reactor pool read(s) with proven literals; retained initialization/null-check effects. " +
                     "Uses the protector-metadata cleanup contract, excluding computed reflection over that protector pool."));
             }
             if (poolChanges == 0 && added) pool.Owner.Methods.Remove(touch);
@@ -91,9 +94,12 @@ public sealed class ReactorGuardCompletionPass : DeobfuscationPass
                 touch.Body.Instructions.Add(OpCodes.Throw.ToInstruction());
                 touch.Body.Instructions.Add(done);
                 foreach (var field in pool.Values.Keys) pool.Owner.Fields.Remove(field);
+                if (!context.TryGetFact<List<CompletedPool>>(CompletedPoolsFact, out var completed) || completed is null)
+                    context.SetFact(CompletedPoolsFact, completed = []);
+                completed.Add(new(pool.Owner, pool.Root, pool.Initializer, touch));
                 removedFields += pool.Values.Count;
                 context.AddChange(new ChangeRecord(Name, "remove-reactor-guard-fields", pool.Owner.FullName,
-                    $"Removed {pool.Values.Count} reconstructed constant fields and their assignments; retained the original object publication and initializer prefix/suffix. " +
+                    $"Removed {pool.Values.Count} proven constant fields and their assignments; retained the original object publication and initializer prefix/suffix. " +
                     $"{touch.FullName} retains initialization and null-check exceptions. Removed field tokens: " +
                     string.Join(", ", pool.Values.Keys.Select(f => $"0x{f.MDToken.Raw:X8}")) + "."));
             }
@@ -103,8 +109,67 @@ public sealed class ReactorGuardCompletionPass : DeobfuscationPass
         context.SetFact("cleanup.removedFieldCount", previousRemoved + removedFields);
         context.SetFact("cfg.reactorGuardReadsReplaced", replaced);
         return (refused == 0 ? PassStatus.Success : PassStatus.Partial, replaced,
-            [$"Removed {replaced} Reactor guard read(s) and {removedFields} protector integer field(s) in {pools.Count} closed reconstructed pool(s); retained initialization effects; rolled back {refused} method(s). " +
+            [$"Removed {replaced} Reactor guard read(s) and {removedFields} protector integer field(s) in {pools.Count} closed Reactor pool(s); retained initialization effects; rolled back {refused} method(s). " +
              "Computed reflection over the identified protector pool is excluded by protector-metadata cleanup; general field-write safety was not relaxed."]);
+    }
+
+    private void CompleteOrdinaryInitializers(ArtifactContext context)
+    {
+        var methods = context.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody).ToArray();
+        foreach (var owner in context.Module.GetTypes().Where(ReactorGuardPool.IsOrdinaryPool))
+        {
+            // Only fold same-owner helper calls inside the pool initializer. Its
+            // cctor is already running, so these reads add no initialization trigger.
+            // General application field reasoning retains its reflection refusal.
+            var nulls = owner.Fields.Where(f => f.IsStatic && !f.HasConstant && !f.HasFieldRVA &&
+                f.FieldType.ToTypeDefOrRef()?.ResolveTypeDef() == owner &&
+                !methods.Any(m => m.Body.Instructions.Any(i => i.Operand is IField r && r.ResolveFieldDef() == f &&
+                    i.OpCode.Code != Code.Ldsfld))).ToHashSet();
+            var helpers = new Dictionary<MethodDef, bool>();
+            foreach (var helper in owner.Methods.Where(m => m.HasBody && m.IsStatic && !m.HasGenericParameters &&
+                m.MethodSig.Params.Count == 0 && !m.Body.HasExceptionHandlers))
+            {
+                var il = helper.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+                if (il.Length < 2 || il[^1].OpCode.Code != Code.Ret) continue;
+                // Earlier unwritten-state folding may already have replaced the
+                // load with null. It remains a same-owner, effect-free helper.
+                var loadsNull = il[0].OpCode.Code == Code.Ldnull ||
+                    il[0].OpCode.Code == Code.Ldsfld && il[0].Operand is IField field &&
+                    field.ResolveFieldDef() is { } definition && nulls.Contains(definition);
+                if (!loadsNull)
+                {
+                    if (il.Length == 2 && il[0].IsLdcI4() && il[0].GetLdcI4Value() == 1 &&
+                        helper.ReturnType.ElementType == ElementType.Boolean) helpers.Add(helper, true);
+                    continue;
+                }
+                if (il.Length == 2 && helper.ReturnType.ToTypeDefOrRef()?.ResolveTypeDef() == owner) helpers.Add(helper, false);
+                else if (il.Length == 4 && il[1].OpCode.Code == Code.Ldnull && il[2].OpCode.Code == Code.Ceq &&
+                    helper.ReturnType.ElementType == ElementType.Boolean) helpers.Add(helper, true);
+            }
+            if (helpers.Count == 0) continue;
+            foreach (var initializer in owner.Methods.Where(m => m.HasBody && m.IsStatic && !m.HasGenericParameters &&
+                m.MethodSig.Params.Count == 0 && m.ReturnType.ElementType == ElementType.Void && !m.IsStaticConstructor))
+            {
+                using var transaction = new BodyMutationTransaction(initializer);
+                var calls = 0;
+                foreach (var i in initializer.Body.Instructions)
+                {
+                    if (i.OpCode.Code != Code.Call || i.Operand is not IMethod call || call is MethodSpec ||
+                        call.ResolveMethodDef() is not { } helper || !helpers.TryGetValue(helper, out var value)) continue;
+                    i.OpCode = value ? OpCodes.Ldc_I4_1 : OpCodes.Ldnull;
+                    i.Operand = null;
+                    calls++;
+                }
+                if (calls == 0 || ControlFlowCompletionPass.TryComplete(initializer) is null ||
+                    // Reconstruction can put the writes in a lifted child while
+                    // the original wrapper retains the guard calls. The same
+                    // closed construction proof must include the edited wrapper.
+                    !ReactorGuardPool.Find(context.Module, includeUnused: true).Any(p => p.InitializerChain.Contains(initializer))) continue;
+                transaction.Commit();
+                context.AddChange(new ChangeRecord(Name, "complete-reactor-pool-initializer", initializer.FullName,
+                    $"Folded {calls} same-owner null-state helper calls after proving the Reactor pool's closed construction and uses."));
+            }
+        }
     }
 
     private static void RemoveRepeatedChecks(MethodDef method, MethodDef touch)

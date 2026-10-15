@@ -111,7 +111,10 @@ public sealed record RewriteAllowance(
     int RemovedFieldCount = 0,
     IReadOnlySet<string>? AddedPublicApi = null,
     int AddedMethodCount = 0,
-    int AddedTypeCount = 0)
+    int AddedTypeCount = 0,
+    int AddedFieldCount = 0,
+    IReadOnlySet<string>? UnresolvedLocalTypesBeforeRename = null,
+    IReadOnlySet<string>? UnresolvedLocalMembersBeforeRename = null)
 {
     public static RewriteAllowance None { get; } = new();
 
@@ -182,11 +185,18 @@ public sealed record ArtifactIdentitySnapshot(
     /// puts the locals of a rewritten method into a nested class and declares every one of them
     /// public, on classes no other assembly can so much as name.
     ///
-    /// Unless the assembly hands its internals to a friend, in which case they can name all of it
+    /// Unless the assembly hands its internals to a friend, in which case they can name its internal surface
     /// and the older, broader reading is the right one. This narrows the recorded surface and never
-    /// widens it, so an assembly with an <c>InternalsVisibleTo</c> is treated exactly as before.
+    /// widens it, so friend-visible internals remain protected; a private enclosing type still prevents access.
     /// </remarks>
-    private static bool Reachable(TypeDef type) => Friendly(type.Module) || Nameable(type);
+    private static bool Reachable(TypeDef type)
+    {
+        // InternalsVisibleTo grants internal access, never access through a private
+        // containing type. Preserve the broad friend gate everywhere else.
+        for (var owner = type; owner is not null; owner = owner.DeclaringType)
+            if (owner.IsNestedPrivate) return false;
+        return Friendly(type.Module) || Nameable(type);
+    }
 
     private static bool Nameable(TypeDef type) =>
         type.DeclaringType is not { } enclosing

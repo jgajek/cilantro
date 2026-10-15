@@ -97,10 +97,12 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             {
                 var foldedThisRound = LocalConstantPropagation.Fold(method) + FoldConstantLocals(method);
                 var discardedThisRound = RemoveDiscardedValues(method);
-                discardedThisRound += RedundantControlFlow.RemoveCarriedIntegerDiscards(method);
+                discardedThisRound += DiscardedStackValues.Remove(method);
                 foldedThisRound += RedundantControlFlow.RemoveUnreadIntegerStores(method);
                 foldedThisRound += FoldConstantArithmetic(method) + FoldConstantBranches(method);
+                foldedThisRound += RedundantControlFlow.FoldBooleanDiamonds(method);
                 foldedThisRound += RedundantControlFlow.FoldConvergentBranches(method);
+                foldedThisRound += RedundantControlFlow.ThreadBranches(method);
                 var removedThisRound = RemoveUnreachable(method) + discardedThisRound;
                 folded += foldedThisRound;
                 removed += removedThisRound;
@@ -421,7 +423,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// without the assignment having run, so a read among them is a read of the local's initial
     /// value and the number the assignment writes is not the answer everywhere.
     /// </remarks>
-    private static bool StoredBeforeEveryRead(
+    internal static bool StoredBeforeEveryRead(
         MethodDef method,
         Instruction store,
         IReadOnlyCollection<Instruction> reads)

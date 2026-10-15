@@ -3,6 +3,7 @@ using dnlib.DotNet.Emit;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Passes;
 using Cilantro.Core.Verification;
+using Cilantro.Core.Interpretation;
 
 namespace Cilantro.Core.Recovery;
 
@@ -100,6 +101,11 @@ public class MethodInliningPass : DeobfuscationPass
                     continue;
                 }
 
+                // The forwarded operand is written in the wrapper's generic scope.
+                // Preserve the target declaration's signature, but instantiate its owner
+                // and method arguments in the original caller's scope before moving it.
+                var target = BindTarget(forward.Target, GenericScope.For(called, null), context.Module);
+
                 var initialize = forward.Chain.Where(link => !CanSkipInitializer(link, method)).ToArray();
                 // Only materialize the original call's own initialization trigger. Intermediate
                 // owners may not be nameable here, and open generic owners need a closed token.
@@ -113,7 +119,7 @@ public class MethodInliningPass : DeobfuscationPass
                     continue;
                 transaction.Capture(method);
                 instruction.OpCode = forward.InnerOpCode;
-                instruction.Operand = forward.InnerOpCode == OpCodes.Nop ? null : forward.Target;
+                instruction.Operand = forward.InnerOpCode == OpCodes.Nop ? null : target;
                 if (initialize.Length != 0)
                 {
                     // Keep the original instruction as the branch/EH entry. Arguments have
@@ -171,6 +177,19 @@ public class MethodInliningPass : DeobfuscationPass
     private static bool HasGenericOwner(TypeDef type) =>
         type.HasGenericParameters || type.DeclaringType is { } parent && HasGenericOwner(parent);
 
+    private static IMethod BindTarget(IMethod target, GenericScope? scope, ModuleDef module)
+    {
+        if (scope is null) return target;
+        if (target is MethodSpec specification)
+            return new MethodSpecUser((IMethodDefOrRef)BindTarget(specification.Method, scope, module),
+                new GenericInstMethodSig(specification.GenericInstMethodSig.GenericArguments
+                    .Select(argument => scope.Bind(argument)!).ToArray()));
+        if (target.DeclaringType is TypeSpec owner)
+            return new MemberRefUser(module, target.Name, target.MethodSig,
+                new TypeSpecUser(scope.Bind(owner.TypeSig)!));
+        return target;
+    }
+
     /// <summary>
     /// Rewrites each forwarder's target to the end of its chain, so one redirection at a call site
     /// skips the whole run of them.
@@ -204,6 +223,7 @@ public class MethodInliningPass : DeobfuscationPass
             while (final.Target.ResolveMethodDef() is { } next &&
                    seen.Add(next) &&
                    immediateTargets.TryGetValue(next, out var onward) &&
+                   !HasGenericOwner(next.DeclaringType) &&
                    CanSkipInitializer(next, forwarder) &&
                    ArgumentsPassStraightThrough(forwarder, onward.Target, onward.InnerOpCode) &&
                    ReturnTypeSurvives(forwarder, onward.Target, onward.InnerOpCode))

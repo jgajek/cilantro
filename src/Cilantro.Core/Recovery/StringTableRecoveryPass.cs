@@ -9,7 +9,9 @@ public sealed record CapturedStringTable(
     string Source,
     byte[] Bytes,
     IReadOnlyList<DecodedStringRecord> Records,
-    IReadOnlyDictionary<uint, int> IntegerFields);
+    IReadOnlyDictionary<uint, int> IntegerFields,
+    Analysis.RecoveredResourceOrigin? Resource = null,
+    IReadOnlyList<string>? TableFields = null);
 
 public sealed class StringTableRecoveryPass : DeobfuscationPass
 {
@@ -239,7 +241,8 @@ public sealed class StringTableRecoveryPass : DeobfuscationPass
                 interpreted.Source,
                 interpreted.Bytes,
                 interpreted.Records,
-                interpreted.IntegerFields));
+                interpreted.IntegerFields,
+                interpreted.Resource, interpreted.TableFields));
         return true;
     }
 

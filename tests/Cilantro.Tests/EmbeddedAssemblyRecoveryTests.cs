@@ -258,6 +258,34 @@ public sealed class EmbeddedAssemblyRecoveryTests
             fixture.Root with { ExtractedPayloadPaths = [child] }, new(), (_, _) => throw new OperationCanceledException()));
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void ReviewedDependenciesAreExplicitlyPreservedAndUnknownChildrenStillRecover(bool match, bool rootSuccess)
+    {
+        using var fixture = new Fixture();
+        var reference = fixture.File("reference.bin", "reviewed upstream bytes");
+        var child = fixture.File("child.bin", match ? "reviewed upstream bytes" : "different bytes");
+        var manifest = fixture.File("reviewed.json", System.Text.Json.JsonSerializer.Serialize(new[] {
+            new ReviewedDependencyCatalog.Reference(Hash(reference), reference, "Reviewed fixture", "unprotected-dependency") }));
+        var root = fixture.Root with { Success = rootSuccess, ExtractedPayloadPaths = [child] };
+        var calls = 0;
+        var result = EmbeddedAssemblyRecovery.Run(root, new(ReviewedDependencyManifest: manifest), (path, _) =>
+        { calls++; return fixture.Result(path) with { Success = false }; });
+        Assert.Equal(match && rootSuccess, result.Success);
+        Assert.Equal(match ? 0 : 1, calls);
+        var node = result.EmbeddedRecovery!.Nodes[1];
+        Assert.Equal(match ? "preserved-reference" : "incomplete", node.Status);
+        if (match)
+        {
+            Assert.Null(node.Run);
+            Assert.Equal(Hash(child), node.Reference!.Sha256);
+            Assert.Equal("Reviewed fixture", node.Reference.Source);
+            Assert.Equal(System.IO.File.ReadAllBytes(reference), System.IO.File.ReadAllBytes(child));
+        }
+        else Assert.Null(node.Reference);
+    }
     private static string Hash(string path) => Convert.ToHexStringLower(SHA256.HashData(System.IO.File.ReadAllBytes(path)));
 
     private sealed class Fixture : IDisposable

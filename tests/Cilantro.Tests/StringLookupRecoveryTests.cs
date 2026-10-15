@@ -1,6 +1,7 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Cilantro.Core;
+using Cilantro.Core.Analysis;
 using Cilantro.Core.Interpretation;
 using Cilantro.Core.Recovery;
 
@@ -18,6 +19,208 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class StringLookupRecoveryTests
 {
+    [Fact]
+    public void SharedDecoderInitializationSurvivesRemovalOfOwnedStringCalls()
+    {
+        using var context = CompletionFixture("shared-initializer");
+        Triage(context);
+        Assert.Equal(3, new StringLookupRecoveryPass().Run(context).Changes);
+        context.SetFact("options.removeRuntime", true);
+        var result = new StringLookupCompletionPass().Run(context);
+        Assert.Equal(3, result.Changes);
+        var caller = Method(context, "Uses");
+        Assert.DoesNotContain(caller.Body.Instructions, i => i.Operand is IMethod m && m.Name == "Fetch");
+        Assert.Equal(3, caller.Body.Instructions.Count(i => i.Operand is IMethod m && m.Name == "RunClassConstructor"));
+        new RuntimeCleanupPass().Run(context);
+        Assert.DoesNotContain(context.Module.GetTypes(), t => t.Name == "Holder");
+        var decoder = context.Module.GetTypes().Single(t => t.Name == "PrivateDecoder");
+        var machine = new StaticMachine(modelTypeInitialization: true);
+        Assert.True(machine.Execute(caller).Succeeded);
+        Assert.Equal(7, machine.State.ReadStaticField(decoder.Fields.Single()).AsInt32());
+        Assert.True(AssemblyVerifier.Verify(context.Module, context.OriginalIdentity, context.OriginalStructure,
+            CilantroPipeline.BuildRewriteAllowance(context)).Passed);
+    }
+
+    [Theory]
+    [InlineData("normal")]
+    [InlineData("private-helper")]
+    [InlineData("resource")]
+    public void CompletedOwnedLookupRemovesCallsAndTheWholeHolder(string scenario)
+    {
+        using var context = CompletionFixture(scenario);
+        Triage(context);
+        Assert.Equal(3, new StringLookupRecoveryPass().Run(context).Changes);
+        context.SetFact("options.removeRuntime", true);
+        var result = new StringLookupCompletionPass().Run(context);
+        Assert.Equal(3, result.Changes);
+        Assert.Equal(PassStatus.Success, result.Status);
+        var caller = Method(context, "Uses");
+        Assert.DoesNotContain(caller.Body.Instructions, i => i.Operand is IMethod m && m.Name == "Fetch");
+        new RuntimeCleanupPass().Run(context);
+        Assert.DoesNotContain(context.Module.GetTypes(), t => t.Name == "Holder");
+        Assert.DoesNotContain(context.Module.GetTypes(), t => t.Name == "PrivateDecoder");
+        Assert.Contains(context.Module.GetTypes(), t => t.Name == "Consumer");
+        if (scenario == "resource")
+        {
+            Assert.Equal(1, new ProtectorResourceCleanupPass().Run(context).Changes);
+            Assert.Empty(context.Module.Resources);
+        }
+        Assert.Equal(["second", "first", "second"], caller.Body.Instructions
+            .Where(i => i.OpCode.Code == Code.Ldstr).Select(i => (string)i.Operand));
+    }
+
+    [Fact]
+    public void LateLookupCompletionRemovesHelpersAfterTheirLastOtherConsumerWasRecovered()
+    {
+        using var context = CompletionFixture("orphan-helper-consumer");
+        Triage(context);
+        Assert.Equal(3, new StringLookupRecoveryPass().Run(context).Changes);
+        context.SetFact("options.removeRuntime", true);
+        Assert.Equal(0, new StringLookupCompletionPass().Run(context).Changes);
+        RecoveryOrphans.DeclareSubtree(context, [Method(context, "OldNumericLookup")]);
+        new RuntimeCleanupPass().Run(context);
+        Assert.Equal(3, new StringLookupFinalizationPass().Run(context).Changes);
+        Assert.True(new StringRuntimeCleanupPass().Run(context).Changes > 0);
+        var check = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity,
+            context.OriginalStructure, CilantroPipeline.BuildRewriteAllowance(context));
+        Assert.True(check.Passed, string.Join("; ", check.Diagnostics));
+        Assert.DoesNotContain(context.Module.GetTypes(), t => t.Name == "Holder" || t.Name == "PrivateDecoder");
+        Assert.Equal(0, new StringLookupFinalizationPass().Run(context).Changes);
+        Assert.Equal(0, new StringRuntimeCleanupPass().Run(context).Changes);
+    }
+
+    [Theory]
+    [InlineData("public")]
+    [InlineData("other-reader")]
+    [InlineData("slot-name")]
+    [InlineData("holder-name")]
+    [InlineData("observable-write")]
+    [InlineData("table-escape")]
+    [InlineData("handle")]
+    [InlineData("metadata-escape")]
+    [InlineData("shared-helper")]
+    [InlineData("shared-initializer-and-write")]
+    [InlineData("changed-literal")]
+    public void OwnedLookupCompletionKeepsObservableOrExposedState(string scenario)
+    {
+        using var context = CompletionFixture(scenario);
+        Triage(context);
+        Assert.Equal(3, new StringLookupRecoveryPass().Run(context).Changes);
+        if (scenario == "public") Method(context, "Fetch").DeclaringType.Attributes = TypeAttributes.Public | TypeAttributes.Sealed;
+        var caller = Method(context, "Uses");
+        if (scenario == "changed-literal")
+            caller.Body.Instructions.First(i => i.OpCode.Code == Code.Ldstr).Operand = "not the recovered answer";
+        var before = Cilantro.Core.Verification.MethodBodySnapshot.Capture(caller);
+        context.SetFact("options.removeRuntime", true);
+        Assert.Equal(0, new StringLookupCompletionPass().Run(context).Changes);
+        Assert.True(before.StructurallyEquals(caller));
+        Assert.Contains(caller.Body.Instructions, i => i.Operand is IMethod m && m.Name == "Fetch");
+    }
+
+    private static ArtifactContext CompletionFixture(string scenario) => SyntheticContext.Build(module =>
+    {
+        var holder = SyntheticContext.AddType(module, "Holder");
+        holder.Attributes = TypeAttributes.Sealed | TypeAttributes.NotPublic;
+        var key = new FieldDefUser("SlotKey", new FieldSig(module.CorLibTypes.String), FieldAttributes.Private | FieldAttributes.Static);
+        holder.Fields.Add(key);
+        var filler = Filler(module, "private-string-slot", (41, "first"), (42, "second")); holder.Methods.Add(filler);
+        filler.Body.Instructions.Insert(0, OpCodes.Ldstr.ToInstruction("private-string-slot"));
+        filler.Body.Instructions.Insert(1, OpCodes.Stsfld.ToInstruction(key));
+        var fetch = Fetcher(module, "Fetch", "private-string-slot"); holder.Methods.Add(fetch);
+        if (scenario == "resource")
+        {
+            module.Resources.Add(new EmbeddedResource("strings", new byte[] { 1, 2 }, ManifestResourceAttributes.Private));
+            var assembly = module.CorLibTypes.GetTypeRef("System.Reflection", "Assembly");
+            filler.Body.Instructions.Insert(0, OpCodes.Call.ToInstruction(new MemberRefUser(module, "GetExecutingAssembly", MethodSig.CreateStatic(assembly.ToTypeSig()), assembly)));
+            filler.Body.Instructions.Insert(1, OpCodes.Ldstr.ToInstruction("strings"));
+            filler.Body.Instructions.Insert(2, OpCodes.Callvirt.ToInstruction(new MemberRefUser(module, "GetManifestResourceStream", MethodSig.CreateInstance(module.CorLibTypes.GetTypeRef("System.IO", "Stream").ToTypeSig(), module.CorLibTypes.String), assembly)));
+            filler.Body.Instructions.Insert(3, OpCodes.Pop.ToInstruction());
+        }
+        var getKey = fetch.Body.Instructions.Single(i => i.OpCode.Code == Code.Ldstr);
+        getKey.OpCode = OpCodes.Ldsfld; getKey.Operand = key;
+        var consumer = SyntheticContext.AddType(module, "Consumer"); consumer.Attributes = TypeAttributes.Public;
+        var caller = Caller(module, "Uses", fetch, 42, 41, 42); consumer.Methods.Add(caller);
+        if (scenario == "observable-write")
+        {
+            var field = new FieldDefUser("ApplicationCount", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Public | FieldAttributes.Static);
+            consumer.Fields.Add(field);
+            filler.Body.Instructions.Insert(0, OpCodes.Ldc_I4_7.ToInstruction());
+            filler.Body.Instructions.Insert(1, OpCodes.Stsfld.ToInstruction(field));
+        }
+        if (scenario == "table-escape")
+        {
+            var field = new FieldDefUser("ApplicationTable", new FieldSig(module.CorLibTypes.Object), FieldAttributes.Public | FieldAttributes.Static);
+            consumer.Fields.Add(field);
+            filler.Body.Instructions.Insert(filler.Body.Instructions.Count - 1, OpCodes.Ldloc_0.ToInstruction());
+            filler.Body.Instructions.Insert(filler.Body.Instructions.Count - 1, OpCodes.Stsfld.ToInstruction(field));
+        }
+        if (scenario == "metadata-escape")
+        {
+            var field = new FieldDefUser("ApplicationHandle", new FieldSig(new ValueTypeSig(new TypeRefUser(module,
+                "System", "RuntimeTypeHandle", module.CorLibTypes.AssemblyRef))), FieldAttributes.Public | FieldAttributes.Static);
+            consumer.Fields.Add(field);
+            filler.Body.Instructions.Insert(0, OpCodes.Ldtoken.ToInstruction(holder));
+            filler.Body.Instructions.Insert(1, OpCodes.Stsfld.ToInstruction(field));
+        }
+        if (scenario is "private-helper" or "shared-helper" or "orphan-helper-consumer" or "shared-initializer" or "shared-initializer-and-write")
+        {
+            var helper = SyntheticContext.AddType(module, "PrivateDecoder");
+            helper.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed;
+            var field = new FieldDefUser("Cache", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static | FieldAttributes.Assembly);
+            helper.Fields.Add(field);
+            var initialize = new MethodDefUser("Decode", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Assembly | MethodAttributes.Static) { Body = new CilBody() };
+            initialize.Body.Instructions.Add(OpCodes.Ldc_I4_7.ToInstruction());
+            initialize.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(field));
+            initialize.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            helper.Methods.Add(initialize);
+            if (scenario.StartsWith("shared-initializer", StringComparison.Ordinal))
+            {
+                var cctor = new MethodDefUser(".cctor", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                    MethodImplAttributes.IL, MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.SpecialName |
+                    MethodAttributes.RTSpecialName) { Body = new CilBody() };
+                cctor.Body.Instructions.Add(OpCodes.Ldc_I4_7.ToInstruction());
+                cctor.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(field));
+                cctor.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+                helper.Methods.Add(cctor);
+                initialize.Body.Instructions.Clear();
+                if (scenario == "shared-initializer-and-write")
+                {
+                    initialize.Body.Instructions.Add(OpCodes.Ldc_I4_8.ToInstruction());
+                    initialize.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(field));
+                }
+                initialize.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            }
+            filler.Body.Instructions.Insert(0, OpCodes.Call.ToInstruction(initialize));
+            if (scenario == "shared-helper" || scenario.StartsWith("shared-initializer", StringComparison.Ordinal))
+            {
+                caller.Body.Instructions.Insert(0, OpCodes.Ldsfld.ToInstruction(field));
+                caller.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+            }
+            if (scenario == "orphan-helper-consumer")
+            {
+                var oldOwner = SyntheticContext.AddType(module, "OldNumericHolder");
+                oldOwner.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed;
+                var oldLookup = new MethodDefUser("OldNumericLookup", MethodSig.CreateStatic(module.CorLibTypes.Int32),
+                    MethodImplAttributes.IL, MethodAttributes.Assembly | MethodAttributes.Static) { Body = new CilBody() };
+                oldLookup.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(field));
+                oldLookup.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+                oldOwner.Methods.Add(oldLookup);
+            }
+        }
+        if (scenario is "slot-name" or "holder-name" or "handle")
+        {
+            caller.Body.Instructions.Insert(0, scenario == "handle" ? OpCodes.Ldtoken.ToInstruction(holder) :
+                OpCodes.Ldstr.ToInstruction(scenario == "slot-name" ? "private-string-slot" : holder.FullName));
+            caller.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+        }
+        if (scenario == "other-reader")
+        {
+            var other = Fetcher(module, "Other", "private-string-slot");
+            consumer.Methods.Add(other);
+        }
+    });
+
     [Fact]
     public void StringsKeptInADomainSlotAreRestoredByAskingTheMethodThatFetchesThem()
     {

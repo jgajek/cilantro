@@ -17,6 +17,102 @@ namespace Cilantro.Tests;
 public sealed class ModuleReachabilityTests : IDisposable
 {
     [Theory]
+    [InlineData("distinct", false)]
+    [InlineData("generic-call", false)]
+    [InlineData("member-ref", true)]
+    [InlineData("same", true)]
+    [InlineData("not-sealed", true)]
+    [InlineData("foreign-base", true)]
+    [InlineData("managed-slot", true)]
+    public void SealedRuntimeDelegateSlotsDoNotDispatchAcrossUnrelatedDelegateTypes(string scenario, bool expected)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var left = SyntheticContext.AddType(module, "LeftDelegate");
+            var right = SyntheticContext.AddType(module, "RightDelegate");
+            foreach (var type in new[] { left, right })
+            {
+                type.Attributes = TypeAttributes.NotPublic | TypeAttributes.Sealed;
+                type.BaseType = module.CorLibTypes.GetTypeRef("System", "MulticastDelegate");
+                type.Methods.Add(new MethodDefUser("Invoke", MethodSig.CreateInstance(module.CorLibTypes.Void),
+                    MethodImplAttributes.Runtime, MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.NewSlot));
+            }
+            if (scenario == "not-sealed") right.Attributes &= ~TypeAttributes.Sealed;
+            if (scenario == "foreign-base") right.BaseType = new TypeRefUser(module, "System", "MulticastDelegate", new AssemblyRefUser("Foreign"));
+            if (scenario == "managed-slot") { right.Methods[0].ImplAttributes = MethodImplAttributes.IL; right.Methods[0].Body = new CilBody(); right.Methods[0].Body.Instructions.Add(OpCodes.Ret.ToInstruction()); }
+            var api = SyntheticContext.AddType(module, "Api");
+            api.Attributes = TypeAttributes.Public;
+            var inputType = new FieldDefUser("InputType", new FieldSig(module.Import(typeof(Type)).ToTypeSig()), FieldAttributes.Public | FieldAttributes.Static);
+            api.Fields.Add(inputType);
+            var run = AddMethod(api, "Run", MethodAttributes.Public | MethodAttributes.Static);
+            run.Body.Instructions.Clear();
+            // Unknown construction forces the conservative instance-analysis fallback.
+            run.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(inputType));
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(module.Import(typeof(Activator).GetMethod("CreateInstance", [typeof(Type)])!)));
+            run.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            run.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+            IMethod target = scenario == "same" ? right.Methods[0] : left.Methods[0];
+            if (scenario == "member-ref") target = new MemberRefUser(module, "Invoke", right.Methods[0].MethodSig, right);
+            if (scenario == "generic-call")
+            {
+                left.GenericParameters.Add(new GenericParamUser(0, GenericParamAttributes.NonVariant, "T"));
+                target = new MemberRefUser(module, "Invoke", left.Methods[0].MethodSig,
+                    new TypeSpecUser(new GenericInstSig(new ClassSig(left), module.CorLibTypes.Object)));
+            }
+            run.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(target));
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        });
+        var candidate = context.Module.GetTypes().Single(t => t.Name == "RightDelegate").Methods[0];
+        Assert.Equal(expected, ModuleReachability.Compute(context.Module, false).IsReachable(candidate));
+        var withInstances = ModuleReachability.ComputeWithInstances(context.Module, false);
+        Assert.NotNull(withInstances.InstanceRefusal);
+        Assert.Equal(expected, withInstances.IsReachable(candidate));
+    }
+
+    [Theory]
+    [InlineData("direct", false)]
+    [InlineData("duplicate", true)]
+    [InlineData("local-impostor", true)]
+    [InlineData("wrong-signature", true)]
+    public void ClassInitializationKeepsInitializerDependenciesWithoutExposingOrdinaryMembers(string shape, bool exposed)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var hidden = SyntheticContext.AddType(module, "Hidden");
+            var dependency = AddMethod(hidden, "InitializeState", MethodAttributes.Private | MethodAttributes.Static);
+            var initializer = AddMethod(hidden, ".cctor", MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName);
+            initializer.Body.Instructions.Insert(0, OpCodes.Call.ToInstruction(dependency));
+            AddMethod(hidden, "Unused", MethodAttributes.Private | MethodAttributes.Static);
+            var api = SyntheticContext.AddType(module, "Api");
+            api.Attributes = TypeAttributes.Public;
+            var run = AddMethod(api, "Run", MethodAttributes.Public | MethodAttributes.Static);
+            IMethod called = module.Import(typeof(System.Runtime.CompilerServices.RuntimeHelpers).GetMethod("RunClassConstructor")!);
+            if (shape == "local-impostor")
+            {
+                var fake = SyntheticContext.AddType(module, "RuntimeHelpers");
+                fake.Namespace = "System.Runtime.CompilerServices";
+                called = new MethodDefUser("RunClassConstructor", called.MethodSig, MethodImplAttributes.Runtime, MethodAttributes.Static | MethodAttributes.Public);
+                fake.Methods.Add((MethodDef)called);
+            }
+            if (shape == "wrong-signature") called = new MemberRefUser(module, called.Name,
+                MethodSig.CreateStatic(module.CorLibTypes.Object, module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle").ToTypeSig()), called.DeclaringType);
+            run.Body.Instructions.Clear();
+            run.Body.Instructions.Add(OpCodes.Ldtoken.ToInstruction(hidden));
+            if (shape == "duplicate") run.Body.Instructions.Add(OpCodes.Dup.ToInstruction());
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(called));
+            if (shape is "duplicate" or "wrong-signature") run.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        });
+        var target = context.Module.GetTypes().Single(t => t.Name == "Hidden");
+        foreach (var reach in new[] { ModuleReachability.Compute(context.Module, false), ModuleReachability.ComputeWithInstances(context.Module, false) })
+        {
+            Assert.Equal(exposed, reach.IsReflectivelyExposed(target));
+            Assert.True(reach.IsReachable(target.Methods.Single(m => m.Name == ".cctor")));
+            Assert.True(reach.IsReachable(target.Methods.Single(m => m.Name == "InitializeState")));
+        }
+    }
+
+    [Theory]
     [InlineData(0, false)]
     [InlineData(1, true)]
     [InlineData(2, true)]
@@ -67,6 +163,59 @@ public sealed class ModuleReachabilityTests : IDisposable
                 run.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
                 run.Body.Instructions.Add(OpCodes.Br.ToInstruction(getter));
             }
+        });
+        var target = context.Module.GetTypes().Single(t => t.Name == "Hidden");
+        Assert.Equal(exposed, ModuleReachability.Compute(context.Module).IsReflectivelyExposed(target));
+        Assert.Equal(exposed, ModuleReachability.ComputeWithInstances(context.Module, false).IsReflectivelyExposed(target));
+    }
+
+    [Theory]
+    [InlineData("direct", false)]
+    [InlineData("typeinfo", false)]
+    [InlineData("escape", true)]
+    [InlineData("branch", true)]
+    [InlineData("foreign", true)]
+    public void AssemblyWrapperRequiresEntireNonExposingBody(string shape, bool exposed)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var target = SyntheticContext.AddType(module, "Hidden");
+            var api = SyntheticContext.AddType(module, "Api");
+            api.Attributes = TypeAttributes.Public;
+            var wrapper = new MethodDefUser("Lookup", MethodSig.CreateStatic(
+                module.Import(typeof(System.Reflection.Assembly)).ToTypeSig(), module.Import(typeof(Type)).ToTypeSig()))
+                { Attributes = MethodAttributes.Static | MethodAttributes.Private, Body = new CilBody() };
+            api.Methods.Add(wrapper);
+            wrapper.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction());
+            if (shape == "escape")
+            {
+                wrapper.Body.Instructions.Add(OpCodes.Dup.ToInstruction());
+                wrapper.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(module.Import(typeof(Type).GetMethod("GetMethods", Type.EmptyTypes)!)));
+                wrapper.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            }
+            if (shape == "typeinfo")
+            {
+                wrapper.Body.Instructions.Add(OpCodes.Call.ToInstruction(module.Import(typeof(System.Reflection.IntrospectionExtensions).GetMethod("GetTypeInfo")!)));
+                wrapper.Body.Instructions.Add(OpCodes.Castclass.ToInstruction(module.Import(typeof(System.Reflection.TypeInfo))));
+            }
+            var owner = shape == "typeinfo" ? typeof(System.Reflection.TypeInfo) : typeof(Type);
+            IMethod getter = module.Import(owner.GetProperty("Assembly")!.GetMethod!);
+            // Reflection may return the inherited Type declaration; use the legal TypeInfo MemberRef explicitly.
+            if (shape == "typeinfo") getter = new MemberRefUser(module, "get_Assembly",
+                MethodSig.CreateInstance(module.Import(typeof(System.Reflection.Assembly)).ToTypeSig()), module.Import(owner));
+            if (shape == "foreign") getter = new MemberRefUser(module, "get_Assembly", getter.MethodSig,
+                new TypeRefUser(module, "System", "Type", new AssemblyRefUser("Untrusted")));
+            var call = OpCodes.Callvirt.ToInstruction(getter);
+            if (shape == "branch") wrapper.Body.Instructions.Add(OpCodes.Br.ToInstruction(call));
+            wrapper.Body.Instructions.Add(call);
+            wrapper.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            var run = AddMethod(api, "Run", MethodAttributes.Public | MethodAttributes.Static);
+            run.Body.Instructions.Clear();
+            run.Body.Instructions.Add(OpCodes.Ldtoken.ToInstruction(target));
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(module.Import(typeof(Type).GetMethod(nameof(Type.GetTypeFromHandle))!)));
+            run.Body.Instructions.Add(OpCodes.Call.ToInstruction(wrapper));
+            run.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
         });
         var target = context.Module.GetTypes().Single(t => t.Name == "Hidden");
         Assert.Equal(exposed, ModuleReachability.Compute(context.Module).IsReflectivelyExposed(target));

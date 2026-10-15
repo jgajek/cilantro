@@ -54,6 +54,16 @@ public static class RecoveryOrphans
     public static void DeclareSubtree(ArtifactContext context, IEnumerable<MethodDef> roots) =>
         DeclareSubtree(context, roots, accept: null);
 
+    internal static void DeclareLocalDependencies(ArtifactContext context, MethodDef root)
+    {
+        var owner = root.DeclaringType;
+        if (owner is null || owner.Module != context.Module) return;
+        // This does not attribute unused siblings or follow calls into application
+        // types. Only same-owner methods on the removed helper's actual call graph
+        // inherit its ownership evidence.
+        DeclareSubtree(context, [root], method => method.DeclaringType == owner);
+    }
+
     /// <summary>
     /// Records <paramref name="roots"/>, everything they call, and every method of the types
     /// that hold them — but only where those types are the protector's.

@@ -65,7 +65,10 @@ public sealed record InterpretedRewrite(
     IReadOnlyDictionary<uint, int> IntegerFields,
     IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>> TokenMaps,
     IReadOnlyList<NecroBitBody> NecroBitBodies,
-    LoaderInterpretationEvidence Evidence);
+    LoaderInterpretationEvidence Evidence)
+{
+    public IReadOnlyList<NecroBitTable> NecroBitTables { get; init; } = [];
+}
 
 /// <summary>
 /// What a replayed rewrite restored, and which of its candidates it turned out not to cover.
@@ -154,7 +157,8 @@ public static class ImageRewriteRecovery
                 "observations or effects.";
             return false;
         }
-        if (!NecroBitBodyRecovery.CapturesAgree(first.NecroBitBodies, second.NecroBitBodies))
+        if (!NecroBitBodyRecovery.CapturesAgree(first.NecroBitBodies, second.NecroBitBodies) ||
+            !NecroBitBodyRecovery.TablesAgree(first.NecroBitTables, second.NecroBitTables))
         {
             diagnostic = "The two bounded bootstrap interpretations disagreed on the NecroBit " +
                 "decrypt table.";
@@ -390,7 +394,7 @@ public static class ImageRewriteRecovery
         if (machine.State.TypeInitializationEvents.Count != 0)
             result = result with { Diagnostic = DescribeTypeInitialization(machine, result) };
 
-        var necroBitBodies = NecroBitBodyRecovery.Harvest(context.Module, machine.State);
+        var necroBitBodies = NecroBitBodyRecovery.Harvest(context.Module, machine.State, out var necroBitTables);
 
         rewrite = new InterpretedRewrite(
             result,
@@ -404,7 +408,7 @@ public static class ImageRewriteRecovery
             integerFields,
             tokenMaps,
             necroBitBodies,
-            evidence);
+            evidence) { NecroBitTables = necroBitTables };
         diagnostic = null;
         return true;
     }

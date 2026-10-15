@@ -11,8 +11,10 @@ public sealed record EmbeddedRecoveryReport(
     IReadOnlyList<EmbeddedRecoveryNode> Nodes,
     IReadOnlyList<EmbeddedRecoveryLink> Links);
 
+public sealed record DependencyReferenceEvidence(string Sha256, string Source, string ReferencePath, string Classification);
+
 public sealed record EmbeddedRecoveryNode(
-    string InputPath, string? Sha256, int Depth, string Status, RunManifest? Run, string? Diagnostic = null);
+    string InputPath, string? Sha256, int Depth, string Status, RunManifest? Run, string? Diagnostic = null, DependencyReferenceEvidence? Reference = null);
 
 public sealed record EmbeddedRecoveryLink(int Parent, int Child, string ExtractedPath);
 
@@ -26,6 +28,8 @@ internal static class EmbeddedAssemblyRecovery
     internal static PipelineResult Run(PipelineResult root, PipelineOptions options,
         Func<string, PipelineOptions, PipelineResult> recover, bool nativeOnly = false)
     {
+        var references = options.ReviewedDependencyManifest is { } manifest
+            ? ReviewedDependencyCatalog.Load(manifest, options.Cancellation) : null;
         var nodes = new List<EmbeddedRecoveryNode>
         {
             new(root.Report.InputPath, root.Report.InputSha256, 0, root.Success ? "recovered" : "incomplete", RunManifest.Of(root))
@@ -85,6 +89,13 @@ internal static class EmbeddedAssemblyRecovery
             }
             processed++;
             bytes += length;
+            if (references?.Match(hash) is { } reviewed)
+            {
+                nodes.Add(new(next.Path, hash, next.Depth, "preserved-reference", null,
+                    "Preserved byte-for-byte against an explicitly reviewed unprotected dependency reference; no cleanup performed.",
+                    new(reviewed.Sha256, reviewed.Source, reviewed.Path, reviewed.Classification)));
+                continue;
+            }
             if (nodes[next.Parent].Run?.Payloads.Any(payload =>
                     payload.WrittenTo == next.Path && payload.Origin == PayloadOrigin.NativeDependency) == true)
             {
@@ -128,6 +139,12 @@ internal static class EmbeddedAssemblyRecovery
                 nodes.Add(new(next.Path, hash, next.Depth, "failed", null, exception.Message));
                 complete = false;
             }
+        }
+        if (ManagedBootstrapReassembly.TryComplete(root,options,nodes,links,recover) is { } rebuilt)
+        {
+            root = rebuilt;
+            nodes[0] = new(root.Report.InputPath,root.Report.InputSha256,0,root.Success ? "recovered" : "incomplete",RunManifest.Of(root));
+            complete = root.Success && nodes.Skip(1).All(n=>n.Status is "recovered" or "preserved-reference");
         }
         var report = new EmbeddedRecoveryReport(complete, MaximumDepth, MaximumArtifacts, MaximumInputBytes, nodes, links);
         var path = Path.Combine(Path.GetDirectoryName(root.AnalysisReportPath)!,

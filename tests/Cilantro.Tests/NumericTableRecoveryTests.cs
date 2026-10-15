@@ -1,4 +1,5 @@
 using Cilantro.Core;
+using Cilantro.Core.Analysis;
 using Cilantro.Core.Recovery;
 using Cilantro.Core.Interpretation;
 using Cilantro.Core.Verification;
@@ -9,6 +10,93 @@ namespace Cilantro.Tests;
 
 public sealed class NumericTableRecoveryTests
 {
+    [Theory]
+    [InlineData("i8", long.MinValue, false, false)]
+    [InlineData("i8", long.MaxValue, true, false)]
+    [InlineData("r4", 0x80000000L, false, false)]
+    [InlineData("r4", 0x7FC00123L, true, false)]
+    [InlineData("r8", long.MinValue, false, false)]
+    [InlineData("r8", 0x7FF8000000000123L, true, false)]
+    [InlineData("i8", 123L, false, true)]
+    [InlineData("r4", 0x3F800000L, true, true)]
+    [InlineData("r8", 0x3FF0000000000000L, false, true)]
+    [InlineData("r8", 0x3FF0000000000000L, false, false, true)]
+    [InlineData("r8", 0x3FF0000000000000L, false, false, true, true)]
+    public void WideNumericTablesPreserveBitsAndRejectMutableStorage(string kind, long bits, bool objectBacked, bool mutation,
+        bool holderTrigger = false, bool holderEscape = false)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var element = kind switch { "i8" => module.CorLibTypes.Int64, "r4" => module.CorLibTypes.Single, _ => module.CorLibTypes.Double };
+            var load = kind switch { "i8" => OpCodes.Ldelem_I8, "r4" => OpCodes.Ldelem_R4, _ => OpCodes.Ldelem_R8 };
+            var store = kind switch { "i8" => OpCodes.Stelem_I8, "r4" => OpCodes.Stelem_R4, _ => OpCodes.Stelem_R8 };
+            Instruction Literal() => kind switch { "i8" => OpCodes.Ldc_I8.ToInstruction(bits),
+                "r4" => OpCodes.Ldc_R4.ToInstruction(BitConverter.Int32BitsToSingle(unchecked((int)bits))),
+                _ => OpCodes.Ldc_R8.ToInstruction(BitConverter.Int64BitsToDouble(bits)) };
+            var owner = SyntheticContext.AddType(module, "Table");
+            var holder = new FieldDefUser("Instance", new FieldSig(owner.ToTypeSig()), FieldAttributes.Static | FieldAttributes.Assembly | FieldAttributes.InitOnly);
+            var arrayType = new SZArraySig(element);
+            var array = new FieldDefUser("Values", new FieldSig(objectBacked ? module.CorLibTypes.Object : arrayType), FieldAttributes.Assembly);
+            owner.Fields.Add(holder); owner.Fields.Add(array);
+            var ctor = new MethodDefUser(".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void))
+            { Attributes = MethodAttributes.Private | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, Body = new CilBody() };
+            Add(ctor, OpCodes.Ldarg_0.ToInstruction(), OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Newarr.ToInstruction(element.TypeDefOrRef),
+                OpCodes.Stfld.ToInstruction(array), OpCodes.Ldarg_0.ToInstruction(), OpCodes.Ldfld.ToInstruction(array));
+            if (objectBacked) Add(ctor, OpCodes.Castclass.ToInstruction(new TypeSpecUser(arrayType)));
+            Add(ctor, OpCodes.Ldc_I4_0.ToInstruction(), Literal(), store.ToInstruction(), OpCodes.Ret.ToInstruction()); owner.Methods.Add(ctor);
+            var cctor = new MethodDefUser(".cctor", MethodSig.CreateStatic(module.CorLibTypes.Void))
+            { Attributes = MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, Body = new CilBody() };
+            Add(cctor, OpCodes.Newobj.ToInstruction(ctor), OpCodes.Stsfld.ToInstruction(holder), OpCodes.Ret.ToInstruction()); owner.Methods.Add(cctor);
+            var getter = new MethodDefUser("Get", MethodSig.CreateStatic(element, module.CorLibTypes.Int32))
+            { Attributes = MethodAttributes.Static | MethodAttributes.Assembly, Body = new CilBody() };
+            Add(getter, OpCodes.Ldsfld.ToInstruction(holder), OpCodes.Ldfld.ToInstruction(array));
+            if (objectBacked) Add(getter, OpCodes.Castclass.ToInstruction(new TypeSpecUser(arrayType)));
+            Add(getter, OpCodes.Ldarg_0.ToInstruction(), load.ToInstruction(), OpCodes.Ret.ToInstruction()); owner.Methods.Add(getter);
+            var sibling = new MethodDefUser("UnusedGet", MethodSig.CreateStatic(element, module.CorLibTypes.Int32))
+                { Attributes = MethodAttributes.Static | MethodAttributes.Assembly, Body = new CilBody() };
+            foreach (var instruction in getter.Body.Instructions)
+                sibling.Body.Instructions.Add(new Instruction(instruction.OpCode, instruction.Operand));
+            owner.Methods.Add(sibling);
+            var application = new MethodDefUser("UnusedApplication", MethodSig.CreateStatic(element))
+                { Attributes = MethodAttributes.Static | MethodAttributes.Assembly, Body = new CilBody() };
+            Add(application, Literal(), OpCodes.Ret.ToInstruction()); owner.Methods.Add(application);
+            var host = SyntheticContext.AddType(module, "Host");
+            var run = new MethodDefUser("Run", MethodSig.CreateStatic(element))
+            { Attributes = MethodAttributes.Public | MethodAttributes.Static, Body = new CilBody() };
+            Add(run, OpCodes.Ldc_I4_0.ToInstruction(), OpCodes.Call.ToInstruction(getter), OpCodes.Ret.ToInstruction()); host.Methods.Add(run);
+            if (holderTrigger)
+            {
+                run.Body.Instructions.Insert(0, OpCodes.Ldsfld.ToInstruction(holder));
+                if (holderEscape)
+                {
+                    var exposed = new FieldDefUser("EscapedHolder", new FieldSig(module.CorLibTypes.Object), FieldAttributes.Public | FieldAttributes.Static);
+                    host.Fields.Add(exposed);
+                    run.Body.Instructions.Insert(1, OpCodes.Stsfld.ToInstruction(exposed));
+                }
+                else run.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+            }
+            if (mutation)
+            {
+                var mutate = new MethodDefUser("Mutate", MethodSig.CreateStatic(module.CorLibTypes.Void))
+                { Attributes = MethodAttributes.Public | MethodAttributes.Static, Body = new CilBody() };
+                Add(mutate, OpCodes.Ldsfld.ToInstruction(holder), OpCodes.Ldfld.ToInstruction(array));
+                if (objectBacked) Add(mutate, OpCodes.Castclass.ToInstruction(new TypeSpecUser(arrayType)));
+                Add(mutate, OpCodes.Ldc_I4_0.ToInstruction(), Literal(), store.ToInstruction(), OpCodes.Ret.ToInstruction()); host.Methods.Add(mutate);
+            }
+        });
+        var result = new NumericTableRecoveryPass().Run(context);
+        Assert.Equal(mutation || holderEscape ? 0 : 1, result.Changes);
+        if (mutation || holderEscape) return;
+        var siblings = context.Module.GetTypes().SelectMany(t => t.Methods).ToArray();
+        Assert.Contains(siblings.Single(m => m.Name == "UnusedGet").MDToken.Raw, RecoveryOrphans.Of(context));
+        Assert.DoesNotContain(siblings.Single(m => m.Name == "UnusedApplication").MDToken.Raw, RecoveryOrphans.Of(context));
+        var literal = context.Module.GetTypes().SelectMany(t => t.Methods).Single(m => m.Name == "Run").Body.Instructions
+            .Single(i => i.OpCode.Code is Code.Ldc_I8 or Code.Ldc_R4 or Code.Ldc_R8);
+        var actual = kind switch { "i8" => (long)literal.Operand,
+            "r4" => unchecked((uint)BitConverter.SingleToInt32Bits((float)literal.Operand)),
+            _ => BitConverter.DoubleToInt64Bits((double)literal.Operand) };
+        Assert.Equal(bits, actual);
+    }
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
@@ -37,6 +125,10 @@ public sealed class NumericTableRecoveryTests
     public void OtherTypedGettersCanReadTheSameObjectBackedHolder() =>
         FoldsOnlyClosedInitializedTables(false, false, 0, true, false, objectTable: true, siblingGetter: true);
 
+    [Fact]
+    public void PrivateNestedHolderInitializationStaysInsideAccessibleGetterOwner() =>
+        FoldsOnlyClosedInitializedTables(false, true, 0, true, false, privateHolder: true);
+
     [Theory]
     [InlineData(false, false, false, false, false, true)]
     [InlineData(true, false, false, false, false, false)]
@@ -64,13 +156,19 @@ public sealed class NumericTableRecoveryTests
     [InlineData(false, false, 0, true, false, false, false, false, false, false, true)]
     [InlineData(false, false, 0, false, false, false, false, false, false, false, true, true)]
     [InlineData(false, false, 0, true, false, false, false, false, false, false, false, false, true)]
-    public void FoldsOnlyClosedInitializedTables(bool mutation, bool outsideWrite, int index, bool expected, bool alias, bool ambient = false, bool mutableInput = false, bool incidentalRead = false, bool beforeFieldInit = false, bool threaded = false, bool literalDependency = false, bool dependencyEscapes = false, bool nops = false, bool objectTable = false, bool wrongCast = false, bool castEscape = false, bool siblingGetter = false, bool omitCast = false, bool delegateFactory = false, bool mutableDelegateTarget = false, bool sharedGraphDependency = false, bool mutableGraph = false)
+    public void FoldsOnlyClosedInitializedTables(bool mutation, bool outsideWrite, int index, bool expected, bool alias, bool ambient = false, bool mutableInput = false, bool incidentalRead = false, bool beforeFieldInit = false, bool threaded = false, bool literalDependency = false, bool dependencyEscapes = false, bool nops = false, bool objectTable = false, bool wrongCast = false, bool castEscape = false, bool siblingGetter = false, bool omitCast = false, bool delegateFactory = false, bool mutableDelegateTarget = false, bool sharedGraphDependency = false, bool mutableGraph = false, bool privateHolder = false)
     {
         using var context = SyntheticContext.Build(module =>
         {
             var owner = SyntheticContext.AddType(module, "Table");
             if (beforeFieldInit) owner.IsBeforeFieldInit = true;
             var host = SyntheticContext.AddType(module, "Host");
+            if (privateHolder)
+            {
+                module.Types.Remove(owner);
+                owner.Namespace = ""; owner.Attributes = TypeAttributes.NestedPrivate;
+                host.NestedTypes.Add(owner);
+            }
             var holder = new FieldDefUser("Instance", new FieldSig(owner.ToTypeSig()), FieldAttributes.Static | FieldAttributes.Assembly | FieldAttributes.InitOnly);
             var array = new FieldDefUser("Values", new FieldSig(new SZArraySig(module.CorLibTypes.Int32)), FieldAttributes.Assembly);
             owner.Fields.Add(holder); owner.Fields.Add(array);
@@ -164,6 +262,13 @@ public sealed class NumericTableRecoveryTests
                 cctor.Body.Instructions.Insert(2, OpCodes.Ldc_I4_1.ToInstruction());
                 cctor.Body.Instructions.Insert(3, OpCodes.Stsfld.ToInstruction(state));
             }
+            if (privateHolder)
+            {
+                var allocation = cctor.Body.Instructions[0];
+                var publication = cctor.Body.Instructions[1];
+                cctor.Body.Instructions.RemoveAt(0); cctor.Body.Instructions.RemoveAt(0);
+                Add(cctor, allocation, publication);
+            }
             Add(cctor, OpCodes.Ret.ToInstruction()); owner.Methods.Add(cctor);
             if (delegateFactory)
             {
@@ -196,10 +301,12 @@ public sealed class NumericTableRecoveryTests
             }
             var getter = new MethodDefUser("Read", MethodSig.CreateStatic(module.CorLibTypes.Int32, module.CorLibTypes.Int32))
             { Attributes = MethodAttributes.Assembly | MethodAttributes.Static, Body = new CilBody() };
-            Add(getter, OpCodes.Ldsfld.ToInstruction(holder), OpCodes.Ldfld.ToInstruction(array), OpCodes.Ldarg_0.ToInstruction(), OpCodes.Ldelem_I4.ToInstruction(), OpCodes.Ret.ToInstruction()); owner.Methods.Add(getter);
+            Add(getter, OpCodes.Ldsfld.ToInstruction(holder), OpCodes.Ldfld.ToInstruction(array), OpCodes.Ldarg_0.ToInstruction(), OpCodes.Ldelem_I4.ToInstruction(), OpCodes.Ret.ToInstruction());
+            (privateHolder ? host : owner).Methods.Add(getter);
             var caller = new MethodDefUser("Caller", MethodSig.CreateStatic(module.CorLibTypes.Int32))
             { Attributes = MethodAttributes.Public | MethodAttributes.Static, Body = new CilBody() };
-            Add(caller, Instruction.CreateLdcI4(index), OpCodes.Call.ToInstruction(getter), OpCodes.Ret.ToInstruction()); host.Methods.Add(caller);
+            Add(caller, Instruction.CreateLdcI4(index), OpCodes.Call.ToInstruction(getter), OpCodes.Ret.ToInstruction());
+            (privateHolder ? SyntheticContext.AddType(module, "Application") : host).Methods.Add(caller);
             if (nops) caller.Body.Instructions.Insert(1, OpCodes.Nop.ToInstruction());
             if (mutation)
             {
@@ -248,11 +355,29 @@ public sealed class NumericTableRecoveryTests
             Assert.True(changedAnswer.Succeeded, changedAnswer.Diagnostic);
             Assert.Equal(2, changedAnswer.Value.AsInt32());
         }
+        if (privateHolder) Assert.True(result.Changes == 1, string.Join("; ", result.Diagnostics));
         Assert.Equal(expected ? 1 : 0, result.Changes);
         Assert.True(AssemblyVerifier.Verify(context.Module).Passed);
         var caller = context.Module.GetTypes().SelectMany(t => t.Methods).Single(m => m.Name == "Caller");
         Assert.Equal(!expected, caller.Body.Instructions.Any(i => i.OpCode.Code == Code.Call && i.Operand is IMethod m && m.Name == "Read"));
-        if (outsideWrite && expected)
+        if (privateHolder && expected)
+        {
+            Assert.DoesNotContain(caller.Body.Instructions, i => i.OpCode.Code == Code.Ldsfld);
+            var bridge = Assert.Single(context.Module.GetTypes().SelectMany(t => t.Methods), m => m.Name == "InitializeNumericTable");
+            Assert.Equal("Host", bridge.DeclaringType.Name.String);
+            Assert.True(bridge.IsAssembly && bridge.IsStatic);
+            Assert.Contains(caller.Body.Instructions, i => i.Operand == bridge);
+            Assert.True(AssemblyVerifier.Verify(context.Module, context.OriginalIdentity, context.OriginalStructure,
+                Cilantro.Core.CilantroPipeline.BuildRewriteAllowance(context)).Passed);
+            var written = Path.GetTempFileName();
+            try
+            {
+                context.Module.Write(written);
+                Assert.DoesNotContain("FieldAccess", IlVerification.Read(written).Findings.Values.SelectMany(v => v));
+            }
+            finally { File.Delete(written); }
+        }
+        if (outsideWrite && expected && !privateHolder)
             Assert.Contains(caller.Body.Instructions, i => i.OpCode.Code == Code.Ldsfld && i.Operand is IField f && f.Name == "Instance");
         if (expected)
         {
@@ -322,6 +447,21 @@ public sealed class NumericTableRecoveryTests
         if (hasInitializer && !empty)
             Assert.Equal(1, machine.State.ReadStaticField(context.Module.GetTypes().SelectMany(t => t.Fields).Single()).AsInt32());
         Assert.Equal(0, new IntegerHelperRecoveryPass().Run(context).Changes);
+        if (hasInitializer && !empty)
+        {
+            // Earlier recovery deliberately retained the call. Once a separately
+            // proved cleanup empties the initializer, the discarded result must
+            // no longer pin its helper. Before that cleanup it remains intact.
+            Assert.Equal(0, new IntegerHelperCompletionPass().Run(context).Changes);
+            Assert.Equal(0, new IntegerHelperFinalizationPass().Run(context).Changes);
+            var initializer = context.Module.GetTypes().Single(t => t.Name == "Arithmetic").FindStaticConstructor();
+            initializer.Body.Instructions.Clear(); initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            Assert.Equal(1, new IntegerHelperFinalizationPass().Run(context).Changes);
+            Assert.DoesNotContain(caller.Body.Instructions, i => i.OpCode.Code == Code.Call);
+            Assert.True(AssemblyVerifier.Verify(context.Module).Passed);
+            Assert.Equal(int.MinValue, new StaticMachine(modelTypeInitialization: true).Execute(caller).Value.AsInt32());
+            Assert.Equal(0, new IntegerHelperFinalizationPass().Run(context).Changes);
+        }
     }
 
     [Fact]

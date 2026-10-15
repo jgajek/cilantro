@@ -7,6 +7,91 @@ namespace Cilantro.Tests;
 
 public sealed class TokenRecoveryPassTests
 {
+    [Theory]
+    [InlineData("pure", 1)]
+    [InlineData("foreign", 0)]
+    [InlineData("effect", 0)]
+    [InlineData("writer", 0)]
+    [InlineData("escape", 0)]
+    [InlineData("alternate-entry", 0)]
+    [InlineData("prior-cleanup", 1)]
+    [InlineData("initializer-call", 1)]
+    [InlineData("foreign-initializer", 0)]
+    [InlineData("foreign-resolver", 0)]
+    public void LateCompletionRequiresPureClosedHandleInitialization(string scenario, int expected)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            SyntheticContext.AddType(module, "Target");
+            SyntheticContext.AddType(module, "Removed");
+            BuildHandleForwarder(module, scenario != "foreign");
+            // Bind framework references to this fixture's corlib, not the test host's.
+            foreach (var instruction in module.Types.Single(t => t.Name == "Anchor").FindStaticConstructor().Body.Instructions)
+                if (instruction.Operand is IMethod { DeclaringType: TypeRef framework }) framework.ResolutionScope = module.CorLibTypes.AssemblyRef;
+        });
+        var anchor = context.Module.Types.Single(t => t.Name == "Anchor");
+        var field = anchor.Fields.Single();
+        var site = SiteOf(context);
+        BindConstant(site, (int)context.Module.Types.Single(t => t.Name == "Target").MDToken.Raw);
+        if (scenario == "effect")
+        {
+            var initializer = anchor.FindStaticConstructor();
+            initializer.Body.Instructions.Insert(0, OpCodes.Ldstr.ToInstruction("side effect"));
+            initializer.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+        }
+        if (scenario == "writer")
+        {
+            site.Body.Instructions.Insert(0, OpCodes.Ldsfld.ToInstruction(field));
+            site.Body.Instructions.Insert(1, OpCodes.Stsfld.ToInstruction(field));
+        }
+        if (scenario == "escape")
+        {
+            site.Body.Instructions.Insert(0, OpCodes.Ldsflda.ToInstruction(field));
+            site.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+        }
+        if (scenario == "alternate-entry")
+        {
+            var call = site.Body.Instructions[1];
+            site.Body.Instructions.Insert(0, OpCodes.Ldc_I4.ToInstruction((int)context.Module.Types.Single(t => t.Name == "Removed").MDToken.Raw));
+            site.Body.Instructions.Insert(1, OpCodes.Br.ToInstruction(call));
+        }
+        if (scenario == "prior-cleanup")
+        {
+            context.Module.Types.Remove(context.Module.Types.Single(t => t.Name == "Removed"));
+            context.SetFact("cleanup.removedTypeCount", 1);
+        }
+        if (scenario is "initializer-call" or "foreign-initializer")
+        {
+            var runtime = new TypeRefUser(context.Module, "System.Runtime.CompilerServices", "RuntimeHelpers",
+                scenario == "foreign-initializer" ? new AssemblyRefUser("Foreign") : context.Module.CorLibTypes.AssemblyRef);
+            site.Body.Instructions.Insert(1, OpCodes.Ldtoken.ToInstruction(anchor));
+            site.Body.Instructions.Insert(2, OpCodes.Call.ToInstruction(new MemberRefUser(context.Module, "RunClassConstructor",
+                MethodSig.CreateStatic(context.Module.CorLibTypes.Void, context.Module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle").ToTypeSig()), runtime)));
+        }
+        if (scenario == "foreign-resolver")
+        {
+            var call = anchor.Methods.Single(m => m.Name == "Forward").Body.Instructions[2];
+            var original = (IMethod)call.Operand;
+            call.Operand = new MemberRefUser(context.Module, original.Name, original.MethodSig,
+                new TypeRefUser(context.Module, "System", "ModuleHandle", new AssemblyRefUser("Foreign")));
+        }
+        context.SetFact("tokens.restored", 7);
+        var result = new TokenCompletionPass().Run(context);
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(expected, result.Changes);
+        if (scenario == "initializer-call")
+        {
+            var preserved = Assert.Single(site.Body.Instructions, i => i.Operand is IMethod call && call.Name == "RunClassConstructor");
+            Assert.Equal(Code.Call, preserved.OpCode.Code);
+            var input = site.Body.Instructions[site.Body.Instructions.IndexOf(preserved) - 1];
+            Assert.Equal(Code.Ldtoken, input.OpCode.Code);
+            Assert.Same(anchor, input.Operand);
+        }
+        Assert.True(context.TryGetFact<int>("tokens.restored", out var count));
+        Assert.Equal(7 + expected, count);
+        Assert.Equal(0, new TokenCompletionPass().Run(context).Changes);
+    }
+
     [Fact]
     public void RewritesConstantTypeTokenProxyToDirectHandleLoad()
     {
@@ -163,7 +248,7 @@ public sealed class TokenRecoveryPassTests
         var resolve = new MemberRefUser(
             module,
             "GetRuntimeTypeHandleFromMetadataToken",
-            MethodSig.CreateStatic(typeHandleSig, module.CorLibTypes.Int32),
+            MethodSig.CreateInstance(typeHandleSig, module.CorLibTypes.Int32),
             module.CorLibTypes.GetTypeRef("System", "ModuleHandle"));
 
         var forward = new MethodDefUser(

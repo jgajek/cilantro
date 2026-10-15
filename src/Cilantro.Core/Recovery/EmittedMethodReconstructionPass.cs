@@ -112,10 +112,7 @@ public sealed class EmittedMethodReconstructionPass : DeobfuscationPass
             !captured.IsStatic || captured.MethodSig.Params.Count != 1 ||
             captured.MethodSig.Params[0].FullName != "System.IO.Stream" || captured.ReturnType.ElementType != ElementType.String ||
             captured.Body.ExceptionHandlers.Count != 0) return null;
-        var tail = factory.Body.Instructions.Skip(factory.Body.Instructions.IndexOf(invocation) + 1)
-            .Where(i => i.OpCode.Code != Code.Nop).Take(2).ToArray();
-        if (tail.Length != 2 || tail[0].OpCode.Code != Code.Castclass ||
-            tail[0].Operand is not ITypeDefOrRef type || type.FullName != "System.String" || tail[1].OpCode.Code != Code.Ret)
+        if (!HasUnmodifiedReturn(factory, invocation))
         { why = "the reflected invocation is not an unmodified tail return"; return null; }
         // Reject host/state-dependent construction even when the observed path happened to work.
         foreach (var method in visited)
@@ -139,6 +136,55 @@ public sealed class EmittedMethodReconstructionPass : DeobfuscationPass
         return captured;
     }
 
+    // Follow only unconditional transport of the reflected result. Debug compilers
+    // commonly spill that result and branch to a shared return. No computation,
+    // side effect, conditional path, address escape or replacement value is allowed.
+    internal static bool HasUnmodifiedReturn(MethodDef factory, Instruction invocation)
+    {
+        if (!factory.HasBody || factory.Body.ExceptionHandlers.Count != 0) return false;
+        var il = factory.Body.Instructions;
+        var index = il.IndexOf(invocation) + 1;
+        if (index == 0) return false;
+        var visited = new HashSet<Instruction>();
+        Local? spill = null;
+        var cast = false;
+        var onStack = true;
+        while (index < il.Count && visited.Count < 256)
+        {
+            var instruction = il[index++];
+            if (!visited.Add(instruction)) return false;
+            if (instruction.OpCode.Code == Code.Nop) continue;
+            if (instruction.OpCode.Code is Code.Br or Code.Br_S)
+            {
+                if (instruction.Operand is not Instruction target || (index = il.IndexOf(target)) < 0) return false;
+                continue;
+            }
+            if (!cast)
+            {
+                if (instruction.OpCode.Code != Code.Castclass || instruction.Operand is not ITypeDefOrRef type ||
+                    !new SigComparer().Equals(type.ToTypeSig(), factory.Module.CorLibTypes.String)) return false;
+                cast = true;
+                continue;
+            }
+            if (instruction.OpCode.Code == Code.Ret) return onStack;
+            if (instruction.IsStloc() && onStack && spill is null)
+            {
+                spill = instruction.GetLocal(factory.Body.Variables);
+                if (spill is null || !new SigComparer().Equals(spill.Type, factory.Module.CorLibTypes.String)) return false;
+                var uses = il.Where(i => i.GetLocal(factory.Body.Variables) == spill).ToArray();
+                if (uses.Length != 2 || uses.Count(i => i.IsStloc()) != 1 || uses.Count(i => i.IsLdloc()) != 1) return false;
+                onStack = false;
+                continue;
+            }
+            if (instruction.IsLdloc() && !onStack && instruction.GetLocal(factory.Body.Variables) == spill)
+            {
+                onStack = true;
+                continue;
+            }
+            return false;
+        }
+        return false;
+    }
     private static bool ConstructionCall(IMethod method)
     {
         var owner = method.DeclaringType.FullName;

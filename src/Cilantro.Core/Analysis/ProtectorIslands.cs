@@ -11,6 +11,12 @@ internal static class ProtectorIslands
     internal static HashSet<TypeDef> Find(ArtifactContext context)
     {
         var candidates = new HashSet<TypeDef>();
+        if (context.TryGetFact<IReadOnlySet<uint>>(ReactorRuntimeFallbacks.OwnersFact, out var runtimeOwners) && runtimeOwners is not null)
+            candidates.UnionWith(context.Module.GetTypes().Where(type => runtimeOwners.Contains(type.MDToken.Raw)).SelectMany(Nest));
+        if (context.TryGetFact<IReadOnlySet<uint>>(SharedInitializationCompletionPass.TypesFact, out var sharedTypes) && sharedTypes is not null)
+            candidates.UnionWith(context.Module.GetTypes().Where(type => sharedTypes.Contains(type.MDToken.Raw)));
+        if (context.TryGetFact<IReadOnlySet<uint>>(StringLookupCompletionPass.TypesFact, out var stringTypes) && stringTypes is not null)
+            candidates.UnionWith(context.Module.GetTypes().Where(type => stringTypes.Contains(type.MDToken.Raw)));
         if (context.TryGetFact<IReadOnlySet<uint>>(VmTypesFact, out var engines) && engines is not null)
             candidates.UnionWith(context.Module.GetTypes().Where(type => engines.Contains(type.MDToken.Raw)));
         var orphans = RecoveryOrphans.Of(context);
@@ -23,7 +29,7 @@ internal static class ProtectorIslands
                 type.Fields.Where(field => field.IsStatic).All(field => bound.Contains(field.MDToken.Raw)) &&
                 type.Methods.Any(method => orphans.Contains(method.MDToken.Raw))));
         }
-        var rebuilt = RebuiltMethods.Of(context).ToHashSet();
+        var rebuilt = RebuiltMethods.CleanupRoots(context).ToHashSet();
         candidates.RemoveWhere(type => type.IsGlobalModuleType || Nest(type).Any(member =>
             MemberVisibility.IsExternallyVisible(member) || member.Methods.Any(rebuilt.Contains)));
         return RuntimeCleanupPass.ComputeUnreferenced(context.Module, candidates);
@@ -43,7 +49,7 @@ internal static class ProtectorIslands
     /// </summary>
     internal static ModuleReachability Without(ArtifactContext context, HashSet<TypeDef> islands)
     {
-        var roots = RebuiltMethods.Of(context);
+        var roots = RebuiltMethods.CleanupRoots(context);
         var detached = islands.Where(type => type.DeclaringType is null || !islands.Contains(type.DeclaringType))
             .Select(type =>
             {

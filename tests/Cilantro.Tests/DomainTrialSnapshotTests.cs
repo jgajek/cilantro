@@ -7,6 +7,30 @@ namespace Cilantro.Tests;
 
 public sealed class DomainTrialSnapshotTests
 {
+    [Fact]
+    public void AnOwnedSlotExclusionDoesNotHideOtherSlotsOrEscapedTableReferences()
+    {
+        var state = new StaticMachineState(new StaticMachineLimits());
+        Assert.True(state.TryGetOrAllocateRuntimeSingleton("System.AppDomain", out var domain));
+        Assert.True(state.Heap.TryAllocateByteArray([42], out var table));
+        Assert.True(state.Heap.TrySetModelValue(domain, "Data:owned", table));
+        Assert.True(state.Heap.TrySetModelValue(domain, "Data:application", StaticValue.FromInt32(7)));
+        var excluded = new RebuiltMethodTrial.Snapshot(state.Heap, excludedDomainSlots: new HashSet<string> { "owned" });
+        var original = excluded.ReadDomainState(state);
+        Assert.NotNull(original);
+        Assert.False(excluded.Captures(table));
+        Assert.NotEqual(original, new RebuiltMethodTrial.Snapshot(state.Heap).ReadDomainState(state));
+
+        Assert.True(state.Heap.TrySetModelValue(domain, "Data:application", StaticValue.FromInt32(8)));
+        Assert.NotEqual(original, new RebuiltMethodTrial.Snapshot(state.Heap,
+            excludedDomainSlots: new HashSet<string> { "owned" }).ReadDomainState(state));
+
+        Assert.True(state.Heap.TrySetModelValue(domain, "Data:application", table));
+        var escaped = new RebuiltMethodTrial.Snapshot(state.Heap, excludedDomainSlots: new HashSet<string> { "owned" });
+        Assert.NotNull(escaped.ReadDomainState(state));
+        Assert.True(escaped.Captures(table));
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

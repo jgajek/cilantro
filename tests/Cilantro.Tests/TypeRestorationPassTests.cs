@@ -7,6 +7,60 @@ namespace Cilantro.Tests;
 
 public sealed class TypeRestorationPassTests
 {
+    [Theory]
+    [InlineData("argument", 1)] [InlineData("literal", 1)]
+    [InlineData("branch", 0)] [InlineData("field-address", 0)]
+    [InlineData("argument-address", 0)] [InlineData("argument-write", 0)]
+    [InlineData("member-reference", 0)]
+    public void TypedStoresRequireAnUnaliasedUnambiguousSource(string variant, int expected)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Host");
+            var field = new FieldDefUser("Value", new FieldSig(module.CorLibTypes.Object),
+                FieldAttributes.Private | FieldAttributes.Static);
+            host.Fields.Add(field);
+            var writer = new MethodDefUser("Store", MethodSig.CreateStatic(module.CorLibTypes.Void, module.CorLibTypes.String))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            host.Methods.Add(writer);
+            var il = writer.Body.Instructions;
+            if (variant == "field-address")
+            { il.Add(OpCodes.Ldsflda.ToInstruction(field)); il.Add(OpCodes.Pop.ToInstruction()); }
+            if (variant == "argument-address")
+            { il.Add(OpCodes.Ldarga.ToInstruction(writer.Parameters[0])); il.Add(OpCodes.Pop.ToInstruction()); }
+            if (variant == "argument-write")
+            { il.Add(OpCodes.Ldnull.ToInstruction()); il.Add(OpCodes.Starg.ToInstruction(writer.Parameters[0])); }
+            var padding = OpCodes.Nop.ToInstruction();
+            if (variant == "branch")
+            {
+                il.Add(OpCodes.Newobj.ToInstruction(new MemberRefUser(module, ".ctor",
+                    MethodSig.CreateInstance(module.CorLibTypes.Void), module.CorLibTypes.Object.TypeDefOrRef)));
+                il.Add(OpCodes.Br.ToInstruction(padding));
+            }
+            il.Add(variant == "literal" ? OpCodes.Ldstr.ToInstruction("value") : OpCodes.Ldarg_0.ToInstruction());
+            il.Add(padding);
+            il.Add(OpCodes.Stsfld.ToInstruction(variant == "member-reference"
+                ? new MemberRefUser(module, field.Name, new FieldSig(module.CorLibTypes.Object), host) : field));
+            il.Add(OpCodes.Ret.ToInstruction());
+            var getter = new MethodDefUser("Get", MethodSig.CreateStatic(module.CorLibTypes.String))
+                { Attributes = MethodAttributes.Static, Body = new CilBody() };
+            host.Methods.Add(getter);
+            getter.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(field));
+            getter.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        });
+        var result = new TypeRestorationPass().Run(context);
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(expected, result.Changes);
+        if (expected == 0) return;
+        var written = Path.GetTempFileName();
+        try
+        {
+            context.Module.Write(written);
+            Assert.DoesNotContain("StackUnexpected", IlVerification.Read(written).Findings.Values.SelectMany(v => v));
+        }
+        finally { File.Delete(written); }
+    }
+
     [Fact]
     public void PromotesObjectFieldWhenEveryWriterAgrees()
     {

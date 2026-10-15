@@ -3,7 +3,7 @@ using dnlib.DotNet.Emit;
 
 namespace Cilantro.Core.Analysis;
 
-/// <summary>A reconstructed Reactor integer pool whose direct object flow is closed.</summary>
+/// <summary>A Reactor integer pool whose initialization and direct object flow are closed.</summary>
 /// <remarks>
 /// This is protector cleanup, not a general immutable-field theorem. As with removal of
 /// isolated VM types, computed reflection over the identified protector metadata is outside
@@ -11,9 +11,10 @@ namespace Cilantro.Core.Analysis;
 /// writers still refuse cleanup. FieldWriteSafety's general reflection rule is unchanged.
 /// </remarks>
 internal sealed record ReactorGuardPool(TypeDef Owner, FieldDef Root, MethodDef Initializer,
-    IReadOnlyDictionary<FieldDef, int> Values, IReadOnlyList<(MethodDef Method, Instruction Root, Instruction Read)> Reads)
+    IReadOnlyDictionary<FieldDef, int> Values, IReadOnlyList<(MethodDef Method, Instruction Root, Instruction Read)> Reads,
+    IReadOnlySet<MethodDef> InitializerChain)
 {
-    internal static IReadOnlyList<ReactorGuardPool> Find(ModuleDef module)
+    internal static IReadOnlyList<ReactorGuardPool> Find(ModuleDef module, bool includeUnused = false)
     {
         var methods = module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody).ToArray();
         var reachability = ModuleReachability.Compute(module);
@@ -37,7 +38,7 @@ internal sealed record ReactorGuardPool(TypeDef Owner, FieldDef Root, MethodDef 
             if (owner.Fields.Any(f => !integers.Contains(f) && (!f.IsStatic || f.FieldType.ToTypeDefOrRef()?.ResolveTypeDef() != owner))) continue;
             foreach (var initializer in owner.Methods.Where(m => m.HasBody && m.IsStatic && !m.HasGenericParameters && m.MethodSig.Params.Count == 0 &&
                 m.ReturnType.ElementType == ElementType.Void &&
-                m.CustomAttributes.Any(a => a.TypeFullName == "Cilantro.RebuiltFromReadingAttribute")))
+                (IsOrdinaryPool(owner) || m.CustomAttributes.Any(a => a.TypeFullName == "Cilantro.RebuiltFromReadingAttribute"))))
             {
                 var sequence = Linear(initializer);
                 if (sequence is null || sequence.Length < 3 || sequence[0].OpCode.Code != Code.Newobj ||
@@ -118,10 +119,23 @@ internal sealed record ReactorGuardPool(TypeDef Owner, FieldDef Root, MethodDef 
                     }
                     if (!valid) break;
                 }
-                if (valid && reads.Count != 0) pools.Add(new(owner, root, initializer, values, reads));
+                if (valid && (includeUnused || reads.Count != 0)) pools.Add(new(owner, root, initializer, values, reads, chain));
             }
         }
         return pools;
+    }
+
+    // Ordinary Reactor pools do not carry a VM reconstruction marker. Require both
+    // the generated module/GUID owner and the complete hashed integer-field family;
+    // the construction, use and exposure proofs above still apply independently.
+    internal static bool IsOrdinaryPool(TypeDef owner)
+    {
+        var name = owner.Name.String;
+        var integers = owner.Fields.Where(f => !f.IsStatic && f.FieldType.ElementType == ElementType.I4).ToArray();
+        return owner.Namespace.String.Length == 0 && name.StartsWith("<Module>{", StringComparison.Ordinal) &&
+            Guid.TryParseExact(name[8..], "B", out _) && integers.Length >= 16 &&
+            integers.All(f => f.Name.String.Length == 34 && f.Name.String.StartsWith("m_", StringComparison.Ordinal) &&
+                f.Name.String[2..].All(Uri.IsHexDigit));
     }
 
     // Follow the actual branch chain, rejecting conditional paths, loops, EH and dead
@@ -144,6 +158,18 @@ internal sealed record ReactorGuardPool(TypeDef Owner, FieldDef Root, MethodDef 
             if (i.OpCode.Code == Code.Ret) break;
             at++;
         }
-        return il.All(i => seen.Contains(i) || i.OpCode.Code == Code.Nop) && result.LastOrDefault()?.OpCode.Code == Code.Ret ? result.ToArray() : null;
+        if (!il.All(i => seen.Contains(i) || i.OpCode.Code == Code.Nop) || result.LastOrDefault()?.OpCode.Code != Code.Ret) return null;
+        // Unflattening can leave discarded dispatcher literals and folded null
+        // predicates. Only erase balanced literal/pop pairs on the unique proven
+        // execution path; calls, loads, stores and all other effects stay visible.
+        var normalized = new List<Instruction>();
+        foreach (var instruction in result)
+        {
+            if (instruction.OpCode.Code == Code.Pop && normalized.Count != 0 &&
+                (normalized[^1].IsLdcI4() || normalized[^1].OpCode.Code == Code.Ldnull))
+                normalized.RemoveAt(normalized.Count - 1);
+            else normalized.Add(instruction);
+        }
+        return normalized.ToArray();
     }
 }

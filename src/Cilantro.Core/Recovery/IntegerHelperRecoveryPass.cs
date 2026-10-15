@@ -41,9 +41,12 @@ public class IntegerHelperRecoveryPass : DeobfuscationPass
                 if (call.OpCode.Code != Code.Call || call.Operand is not IMethod reference ||
                     reference.ResolveMethodDef() is not { } helper || !helpers.Contains(helper) ||
                     LiteralCallArgument.Int32(il, at, targeted) is not { } key) continue;
-                // An already discarded result offers no additional constant information.
-                // This also keeps the later recheck from wrapping a preserved call again.
-                if (at + 1 < il.Count && il[at + 1].OpCode.Code == Code.Pop) continue;
+                var preserveInitialization = helper.DeclaringType.FindStaticConstructor() is { } initializer &&
+                    (!initializer.HasBody || initializer.Body.Instructions.Any(i => i.OpCode.Code is not (Code.Nop or Code.Ret)));
+                // Do not wrap a retained initialization call twice. Once cleanup has
+                // removed that initializer, its discarded result no longer prevents
+                // removal of a successfully evaluated, effect-free call.
+                if (preserveInitialization && at + 1 < il.Count && il[at + 1].OpCode.Code == Code.Pop) continue;
                 var query = (helper, key.GetLdcI4Value());
                 if (!answers.TryGetValue(query, out var value))
                 {
@@ -54,8 +57,6 @@ public class IntegerHelperRecoveryPass : DeobfuscationPass
                 }
                 if (value is null) continue;
                 transaction.Capture(method);
-                var preserveInitialization = helper.DeclaringType.FindStaticConstructor() is { } initializer &&
-                    (!initializer.HasBody || initializer.Body.Instructions.Any(i => i.OpCode.Code is not (Code.Nop or Code.Ret)));
                 if (preserveInitialization)
                 {
                     // Keep the original call, arguments, and exact CLR initialization trigger.
@@ -113,4 +114,17 @@ public sealed class IntegerHelperCompletionPass : IntegerHelperRecoveryPass
 {
     public override string Name => "integer-helpers-completion";
     public override IReadOnlyCollection<string> Dependencies => ["numeric-tables-completion"];
+}
+
+/// <summary>Revisits initialization-preserving calls after late dependency initialization retirement.</summary>
+public sealed class IntegerHelperFinalizationPass : IntegerHelperRecoveryPass
+{
+    public override string Name => "integer-helpers-finalization";
+    public override IReadOnlyCollection<string> Dependencies => ["dependency-runtime-cleanup"];
+}
+
+public sealed class IntegerHelperRuntimeCleanupPass : RuntimeCleanupPass
+{
+    public override string Name => "integer-helper-runtime-cleanup";
+    public override IReadOnlyCollection<string> Dependencies => ["integer-helpers-finalization"];
 }

@@ -176,7 +176,7 @@ public class LoaderCallElisionPass : DeobfuscationPass
         // type initializers, so an inner frame typically has call sites the outer one does not
         // reach, and treating it as disappearing with its caller leaves those behind.
         var (elidable, callSites, blocked) =
-            SelectObservablyInert(context.Module, [.. candidates], RebuiltMethods.Of(context));
+            SelectObservablyInert(context.Module, [.. candidates], RebuiltMethods.CleanupRoots(context));
         var implicitInitializers = InitializersToEmpty(elidable);
         var accounting =
             $"{evidence.Effects.Count} interpreted frame(s) and {interpretedGuards} interpreted " +
@@ -236,13 +236,13 @@ public class LoaderCallElisionPass : DeobfuscationPass
 
         transaction.Commit();
         // The whole subtree existed to serve these calls, and every one of them is now gone.
-        RecoveryOrphans.Declare(
-            context,
-            elidable
+        var elidedSubtree = elidable
                 .SelectMany(item => item.Subtree)
                 .Distinct()
                 .Where(byToken.ContainsKey)
-                .Select(token => byToken[token]));
+                .Select(token => byToken[token]).ToArray();
+        RecoveryOrphans.Declare(context, elidedSubtree);
+        RebuiltMethods.RememberElidedLoaderSubtree(context, elidedSubtree);
         // An initializer or helper the elision hollowed out is the same claim one step on: the call
         // was the whole body, so what is left runs and returns. Rechecking removes calls to empty
         // helpers while preserving initialization; cleanup can then remove their declarations.
@@ -315,7 +315,7 @@ public class LoaderCallElisionPass : DeobfuscationPass
         {
             using var probe = new BodyMutationBatch(accepted.Select(item => item.Method));
             foreach (var item in accepted) EmptyInitializer(item.Method);
-            var observed = StaticFieldsReadByReachableCode(context.Module, RebuiltMethods.Of(context));
+            var observed = StaticFieldsReadByReachableCode(context.Module, RebuiltMethods.CleanupRoots(context));
             probe.Rollback();
             var remaining = accepted.Where(item => !item.FieldsWritten.Any(observed.ContainsKey)).ToArray();
             if (remaining.Length == accepted.Length) break;
@@ -339,7 +339,9 @@ public class LoaderCallElisionPass : DeobfuscationPass
 
         transaction.Commit();
         var orphanTokens = accepted.SelectMany(item => item.Subtree).ToHashSet();
-        RecoveryOrphans.Declare(context, methods.Where(method => orphanTokens.Contains(method.MDToken.Raw)));
+        var elidedSubtree = methods.Where(method => orphanTokens.Contains(method.MDToken.Raw)).ToArray();
+        RecoveryOrphans.Declare(context, elidedSubtree);
+        RebuiltMethods.RememberElidedLoaderSubtree(context, elidedSubtree);
         return (PassStatus.Success, accepted.Length,
             [$"Emptied {accepted.Length} proven-inert loader body(s), preserving their calls and required type initialization."]);
     }

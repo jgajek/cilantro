@@ -75,6 +75,9 @@ public sealed record PipelineOptions(
     /// <summary>Recover embedded assemblies recursively, within fixed depth, artifact and byte limits.</summary>
     bool RecoverEmbeddedAssemblies = false,
 
+    /// <summary>Explicit reviewed-unprotected dependency references; matches are preserved with provenance.</summary>
+    string? ReviewedDependencyManifest = null,
+
     /// <summary>Asks the run to stop.</summary>
     /// <remarks>
     /// <para>
@@ -94,6 +97,8 @@ public sealed record PipelineOptions(
     /// <summary>
     /// Whether this run gives Reactor's generated names readable placeholders.
     /// </summary>
+    internal ManagedBootstrapChild? ManagedBootstrapReplacement { get; init; }
+
     public bool Renames => RenameSymbols ?? !Strict;
 
     /// <summary>

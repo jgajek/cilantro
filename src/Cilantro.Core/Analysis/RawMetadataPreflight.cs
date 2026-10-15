@@ -226,13 +226,13 @@ public sealed class MetadataPreflightPass : DeobfuscationPass
 
         if (NativePackDetector.TryDescribe(context.Module, out var nativeReason))
         {
-            context.SetFact("preflight.nativePacked", true);
-            context.AddEvidence(new Evidence("native-pack", nativeReason, Confidence: 1.0));
+            context.SetFact("preflight.nativeCodeBoundary", true);
+            context.AddEvidence(new Evidence("native-code-boundary", nativeReason, Confidence: 1.0));
             return (PassStatus.Unsupported, 0,
             [
                 nativeReason,
-                "Native-stub unpacking (NecroBit native/QuickLZ) is a deferred capability; " +
-                "static managed recovery cannot proceed on this input."
+                "These headers do not establish packing or Reactor protection. The original image is preserved; " +
+                "managed cleanup cannot safely emit a replacement for this image."
             ]);
         }
 

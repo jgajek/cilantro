@@ -7,7 +7,8 @@ public enum ProtectorFamily
     Reactor,
 
     /// <summary>The Confuser/ConfuserEx lineage.</summary>
-    Confuser
+    Confuser,
+    ManagedBootstrap
 }
 
 /// <summary>Which protector the run is dealing with, and how sure it is.</summary>
@@ -35,6 +36,7 @@ public sealed record ProtectorIdentity(
     {
         ProtectorFamily.Reactor => "reactor",
         ProtectorFamily.Confuser => "confuserex",
+        ProtectorFamily.ManagedBootstrap => "managed-bootstrap",
         _ => "none"
     };
 }
@@ -83,6 +85,8 @@ public sealed class ProtectorIdentityPass : DeobfuscationPass
 
     private static ProtectorIdentity Identify(ArtifactContext context)
     {
+        if (context.TryGetFact<bool>("managed-bootstrap.reassembled", out var rebuilt) && rebuilt)
+            return new ProtectorIdentity(ProtectorFamily.ManagedBootstrap, "Managed assembly bootstrap", "supported-loader", 1, ["embedded assembly reassembly"]);
         context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var reactor);
         context.TryGetFact<ConfuserExStructureFacts>("confuserex.structure", out var confuser);
         var reactorScore = reactor?.IsReactor == true ? reactor.Confidence : 0;

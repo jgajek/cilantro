@@ -6,7 +6,7 @@ using Cilantro.Core.Verification;
 
 namespace Cilantro.Core.Recovery;
 
-/// <summary>Reads closed, initializer-owned integer tables without executing sample code.</summary>
+/// <summary>Reads closed, initializer-owned numeric tables without executing sample code.</summary>
 public class NumericTableRecoveryPass : DeobfuscationPass
 {
     public override string Name => "numeric-tables";
@@ -14,6 +14,9 @@ public class NumericTableRecoveryPass : DeobfuscationPass
     public override IReadOnlyCollection<string> Dependencies => ["constant-strings"];
     protected virtual bool RevisitModuleInitialization => false;
     protected virtual bool ProveConstructedValues => false;
+    internal const string AddedInitializationMethodsFact = "numeric.addedInitializationMethodCount";
+    internal const string InitializationBridgesFact = "numeric.initializationBridges";
+    internal sealed record InitializationBridge(MethodDef Method, FieldDef Holder);
 
     private sealed record Getter(MethodDef Method, FieldDef Holder, FieldDef Table);
 
@@ -30,7 +33,7 @@ public class NumericTableRecoveryPass : DeobfuscationPass
             if (!accepted) rejected.Add($"{g.Method.MDToken}: {reason}");
             return accepted;
         }).ToArray();
-        if (getters.Length == 0) return (PassStatus.Success, 0, ["No closed integer-table getter was found.", .. rejected.Take(8)]);
+        if (getters.Length == 0) return (PassStatus.Success, 0, ["No closed numeric-table getter was found.", .. rejected.Take(8)]);
         var byMethod = getters.ToDictionary(g => g.Method);
         var sites = new List<(MethodDef Caller, Instruction Key, Instruction Call, Getter Getter, int Index)>();
         foreach (var method in methods.Where(m => m.HasBody))
@@ -52,7 +55,7 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                     sites.Add((method, key, instructions[i], getter, key.GetLdcI4Value()));
         }
         var asks = sites.Select(s => (s.Getter, s.Index)).Distinct().Take(2048).ToArray();
-        if (asks.Length == 0) return (PassStatus.Success, 0, ["Integer table calls did not supply literal indexes."]);
+        if (asks.Length == 0) return (PassStatus.Success, 0, ["Numeric table calls did not supply literal indexes."]);
         // Reconstructed initializers can expose an integrity check that early bootstrap
         // could not reach. Revisit the existing file-refusal policy, but discard this
         // machine: constants still require two fresh, host-independent executions below.
@@ -85,19 +88,20 @@ public class NumericTableRecoveryPass : DeobfuscationPass
         {
             var missing = asks.Where(a => a.Getter == getter &&
                 (forward.GetValueOrDefault(a) is null || reverse.GetValueOrDefault(a) is null)).Select(a => a.Index).ToArray();
-            if (missing.Length == 0 || FinalConstruction(getter) is not { } constructor) continue;
+            if (missing.Length == 0 || getter.Method.ReturnType.ElementType != ElementType.I4 || FinalConstruction(getter) is not { } constructor) continue;
             var initializer = getter.Holder.DeclaringType.FindStaticConstructor();
             var isolatedForward = ClosedTableConstruction.Read(context, initializer, constructor, getter.Holder, getter.Method, missing);
             var isolatedReverse = ClosedTableConstruction.Read(context, initializer, constructor, getter.Holder, getter.Method, missing.Reverse());
             foreach (var index in missing)
                 if (isolatedForward.TryGetValue(index, out var value) && isolatedReverse.TryGetValue(index, out var other) && value == other)
                 {
-                    forward[(getter, index)] = value;
-                    reverse[(getter, index)] = other;
+                    forward[(getter, index)] = StaticValue.FromInt32(value);
+                    reverse[(getter, index)] = StaticValue.FromInt32(other);
                     preserve.Add(getter);
                 }
         }
         using var transaction = new BodyMutationBatch();
+        var bridges = new Dictionary<Getter, MethodDef>();
         var folded = new HashSet<MethodDef>();
         var changes = 0;
         foreach (var site in sites)
@@ -106,9 +110,29 @@ public class NumericTableRecoveryPass : DeobfuscationPass
             if (!forward.TryGetValue(key, out var value) || value is null ||
                 !reverse.TryGetValue(key, out var other) || other != value) continue;
             if (preserve.Contains(site.Getter) && (site.Caller.DeclaringType == site.Getter.Holder.DeclaringType || site.Caller.IsStaticConstructor)) continue;
+            var bridgeRequired = preserve.Contains(site.Getter) && NeedsInitializationBridge(site.Getter.Holder);
+            if (bridgeRequired && site.Getter.Method.DeclaringType.HasGenericParameters) continue;
             transaction.Capture(site.Caller);
             site.Key.OpCode = OpCodes.Nop; site.Key.Operand = null;
-            if (preserve.Contains(site.Getter))
+            if (bridgeRequired)
+            {
+                if (!bridges.TryGetValue(site.Getter, out var bridge))
+                {
+                    var owner = site.Getter.Method.DeclaringType;
+                    var name = "InitializeNumericTable";
+                    while (owner.Methods.Any(m => m.Name == name) || bridges.Values.Any(m => m.Name == name)) name += "_";
+                    bridge = new MethodDefUser(name, MethodSig.CreateStatic(context.Module.CorLibTypes.Void),
+                        MethodAttributes.Assembly | MethodAttributes.Static) { Body = new CilBody() };
+                    bridge.Body.Instructions.Add(OpCodes.Ldsfld.ToInstruction(site.Getter.Holder));
+                    bridge.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+                    bridge.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+                    bridges.Add(site.Getter, bridge);
+                }
+                // Keep the read in the getter's original access context. Calling a
+                // sibling method preserves both owners' initialization triggers.
+                site.Key.OpCode = OpCodes.Call; site.Key.Operand = bridge;
+            }
+            else if (preserve.Contains(site.Getter))
             {
                 // Keep the actual field access that triggered initialization. This also
                 // preserves beforefieldinit timing instead of forcing its initializer.
@@ -130,33 +154,88 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                 site.Caller.Body.KeepOldMaxStack = false;
                 site.Caller.Body.SimplifyBranches();
             }
-            site.Call.OpCode = OpCodes.Ldc_I4; site.Call.Operand = value.Value;
+            (site.Call.OpCode, site.Call.Operand) = value.Value.Kind switch
+            {
+                StaticValueKind.Int32 => (OpCodes.Ldc_I4, (object)value.Value.AsInt32()),
+                StaticValueKind.Int64 => (OpCodes.Ldc_I8, (object)value.Value.AsInt64()),
+                StaticValueKind.Float32 => (OpCodes.Ldc_R4, (object)value.Value.AsFloat32()),
+                StaticValueKind.Float64 => (OpCodes.Ldc_R8, (object)value.Value.AsFloat64()),
+                _ => throw new InvalidOperationException("Non-numeric table result escaped validation.")
+            };
             transaction.RecordChange(context, new ChangeRecord(Name, "restore-numeric-constant",
-                $"{site.Caller.MDToken} IL_{site.Call.Offset:X4}", $"Recovered Int32 constant {value.Value}."));
+                $"{site.Caller.MDToken} IL_{site.Call.Offset:X4}", $"Recovered {value.Value.Kind} constant, bits 0x{value.Value.Bits:X16}."));
             folded.Add(site.Getter.Method);
             changes++;
         }
-        if (!AssemblyVerifier.Verify(context.Module).Passed)
-            return (PassStatus.Partial, 0, ["Numeric rewrites failed verification and were rolled back."]);
-        transaction.Commit();
-        RecoveryOrphans.DeclareSubtree(context, folded);
-        context.AddEvidence(new Evidence(Name, $"Replaced {changes} integer-table reads; independent static interpretations agreed."));
-        return (PassStatus.Success, changes, [$"Recovered {changes} integer constants from {getters.Length} closed table getter(s).", .. refusals.Take(8)]);
+        var committed = false;
+        try
+        {
+            foreach (var (getter, bridge) in bridges)
+            {
+                getter.Method.DeclaringType.Methods.Add(bridge);
+            }
+            if (!AssemblyVerifier.Verify(context.Module).Passed)
+                return (PassStatus.Partial, 0, ["Numeric rewrites failed verification and were rolled back."]);
+            transaction.Commit();
+            committed = true;
+        }
+        finally
+        {
+            if (!committed)
+                foreach (var (getter, bridge) in bridges) getter.Method.DeclaringType.Methods.Remove(bridge);
+        }
+        context.TryGetFact<int>(AddedInitializationMethodsFact, out var previousBridges);
+        context.SetFact(AddedInitializationMethodsFact, previousBridges + bridges.Count);
+        if (bridges.Count != 0)
+        {
+            context.TryGetFact<List<InitializationBridge>>(InitializationBridgesFact, out var recorded);
+            recorded ??= [];
+            recorded.AddRange(bridges.Select(p => new InitializationBridge(p.Value, p.Key.Holder)));
+            context.SetFact(InitializationBridgesFact, recorded);
+        }
+        // Recovery identifies the closed numeric table, not only the element kinds
+        // that happened to have call sites. Unused sibling accessors are equally
+        // attributable. Reachability still protects siblings with surviving callers.
+        var recoveredHolders = getters.Where(g => folded.Contains(g.Method)).Select(g => g.Holder).ToHashSet();
+        RecoveryOrphans.DeclareSubtree(context, getters.Where(g => recoveredHolders.Contains(g.Holder)).Select(g => g.Method));
+        foreach (var getter in getters.Where(g => recoveredHolders.Contains(g.Holder)))
+            RecoveryOrphans.Declare(context, getter.Method.DeclaringType.Methods
+                .Where(m => IsNumericArrayWrapper(m, getter.Holder.DeclaringType)));
+        context.AddEvidence(new Evidence(Name, $"Replaced {changes} numeric-table reads; independent static interpretations agreed bit-for-bit."));
+        return (PassStatus.Success, changes, [$"Recovered {changes} numeric constants from {getters.Length} closed table getter(s).", .. refusals.Take(8)]);
+    }
+
+    internal static bool IsNumericArrayWrapper(MethodDef method, TypeDef holder)
+    {
+        // A sibling packed-array entry point uses the very same recovered numeric
+        // reader. This is provenance only: ordinary reachability and reference
+        // checks must still establish that nobody uses it before deletion.
+        if (!method.IsStatic || !method.HasBody || method.HasGenericParameters ||
+            method.MethodSig.Params.Count != 1 || method.MethodSig.Params[0].ElementType != ElementType.Object ||
+            method.ReturnType.FullName != "System.Array") return false;
+        var calls = method.Body.Instructions.Where(i => i.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj)
+            .Select(i => i.Operand).OfType<IMethod>().ToArray();
+        return calls.Any(c => c.FullName == "System.Void System.IO.MemoryStream::.ctor(System.Byte[])" &&
+                c.DeclaringType.DefinitionAssembly?.FullName == method.Module.CorLibTypes.AssemblyRef.FullName) &&
+            calls.Any(c => c.ResolveMethodDef() is { IsStatic: true } reader && reader.DeclaringType == holder &&
+                reader.ReturnType.FullName == "System.Array" && reader.MethodSig.Params.Count == 1 &&
+                reader.MethodSig.Params[0].ElementType == ElementType.Object);
     }
 
     private static Getter? ReadGetter(MethodDef method)
     {
         if (!method.IsStatic || !method.HasBody || method.HasGenericParameters ||
             method.MethodSig.Params.Count != 1 || method.MethodSig.Params[0].ElementType != ElementType.I4 ||
-            method.ReturnType.ElementType != ElementType.I4 || method.Body.ExceptionHandlers.Count != 0) return null;
+            method.ReturnType.ElementType is not (ElementType.I4 or ElementType.I8 or ElementType.R4 or ElementType.R8) || method.Body.ExceptionHandlers.Count != 0) return null;
+        var element = method.ReturnType.ElementType;
         var il = method.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
-        var cast = il.Length == 6 && IsArrayCast(il[2], ElementType.I4);
+        var cast = il.Length == 6 && IsArrayCast(il[2], element);
         if (cast) il = [il[0], il[1], .. il[3..]];
         return il.Length == 5 && il[0].OpCode.Code == Code.Ldsfld && il[1].OpCode.Code == Code.Ldfld &&
-            il[2].OpCode.Code == Code.Ldarg_0 && il[3].OpCode.Code == Code.Ldelem_I4 && il[4].OpCode.Code == Code.Ret &&
+            il[2].OpCode.Code == Code.Ldarg_0 && il[3].OpCode.Code == LoadElement(element) && il[4].OpCode.Code == Code.Ret &&
             il[0].Operand is IField holderRef && holderRef.ResolveFieldDef() is { IsInitOnly: true } holder &&
             il[1].Operand is IField tableRef && tableRef.ResolveFieldDef() is { } table &&
-            (table.FieldType is SZArraySig { Next.ElementType: ElementType.I4 } || table.FieldType.ElementType == ElementType.Object) &&
+            (table.FieldType is SZArraySig array && array.Next.ElementType == element || table.FieldType.ElementType == ElementType.Object) &&
             holder.DeclaringType == table.DeclaringType && holder.Module == method.Module
                 ? new(method, holder, table) : null;
     }
@@ -177,12 +256,14 @@ public class NumericTableRecoveryPass : DeobfuscationPass
         }
         var readers = getters.Where(g => g.Table == getter.Table).Select(g => g.Method).ToHashSet();
         foreach (var method in initialization.Where(m => m.HasBody))
-            if (!ArrayStaysPrivate(method, getter.Table)) { reason = $"array privacy could not be established in {method.FullName}"; return false; }
+            if (!ArrayStaysPrivate(method, getter.Table, element: getter.Method.ReturnType.ElementType)) { reason = $"array privacy could not be established in {method.FullName}"; return false; }
+        var holderReaders = methods.Where(m => m.HasBody &&
+            (ReadsHolder(m, getter.Holder) || DiscardsHolder(m, getter.Holder))).ToHashSet();
         foreach (var method in methods.Where(m => m.HasBody))
             foreach (var instruction in method.Body.Instructions)
             {
                 if (instruction.Operand is IField fieldRef && fieldRef.ResolveFieldDef() is { } field &&
-                    (field == getter.Table || field == getter.Holder && !ReadsHolder(method, getter.Holder)) &&
+                    (field == getter.Table || field == getter.Holder && !holderReaders.Contains(method)) &&
                     !initialization.Contains(method) && !readers.Contains(method)) return false;
                 if (instruction.Operand is IMethod call && call.ResolveMethodDef() is { } target &&
                     initialization.Contains(target) && !initialization.Contains(method)) return false;
@@ -193,7 +274,21 @@ public class NumericTableRecoveryPass : DeobfuscationPass
         return true;
     }
 
-    private static bool ArrayStaysPrivate(MethodDef method, FieldDef table, bool readOnly = false)
+    private static Code LoadElement(ElementType element) => element switch
+    {
+        ElementType.I4 => Code.Ldelem_I4, ElementType.I8 => Code.Ldelem_I8,
+        ElementType.R4 => Code.Ldelem_R4, ElementType.R8 => Code.Ldelem_R8,
+        _ => Code.UNKNOWN1
+    };
+
+    private static Code StoreElement(ElementType element) => element switch
+    {
+        ElementType.I4 => Code.Stelem_I4, ElementType.I8 => Code.Stelem_I8,
+        ElementType.R4 => Code.Stelem_R4, ElementType.R8 => Code.Stelem_R8,
+        _ => Code.UNKNOWN1
+    };
+
+    private static bool ArrayStaysPrivate(MethodDef method, FieldDef table, bool readOnly = false, ElementType element = ElementType.I4)
     {
         var il = method.Body.Instructions.ToArray();
         var targets = method.Body.Instructions.SelectMany(i => i.Operand switch
@@ -219,7 +314,7 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                 }
                 if (previous < 0 || il[previous].OpCode.Code != Code.Newarr) return false;
                 if (table.FieldType.ElementType == ElementType.Object &&
-                    (il[previous].Operand is not ITypeDefOrRef element || element.ToTypeSig().ElementType != ElementType.I4)) return false;
+                    (il[previous].Operand is not ITypeDefOrRef arrayElement || arrayElement.ToTypeSig().ElementType != element)) return false;
                 continue;
             }
             if (il[at].OpCode.Code != (table.IsStatic ? Code.Ldsfld : Code.Ldfld)) return false;
@@ -243,10 +338,10 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                 {
                     // A cast preserves the array identity. Keep following it until an
                     // element operation consumes it; a cast must not hide an escape.
-                    if (IsArrayCast(instruction, ElementType.I4))
+                    if (IsArrayCast(instruction, element))
                     { stack.Push(true); continue; }
                     if (readOnly ? instruction.OpCode.Code is not (Code.Ldelem_I1 or Code.Ldelem_U1 or Code.Ldelem_I2 or Code.Ldelem_U2 or Code.Ldelem_I4 or Code.Ldelem_U4 or Code.Ldelem_I8 or Code.Ldelem_R4 or Code.Ldelem_R8 or Code.Ldlen)
-                        : instruction.OpCode.Code is not (Code.Stelem_I4 or Code.Ldelem_I4 or Code.Ldlen)) return false;
+                        : instruction.OpCode.Code != StoreElement(element) && instruction.OpCode.Code != LoadElement(element) && instruction.OpCode.Code != Code.Ldlen) return false;
                     consumed = true;
                     break;
                 }
@@ -270,6 +365,14 @@ public class NumericTableRecoveryPass : DeobfuscationPass
                      (!method.IsStaticConstructor || method.DeclaringType != field.DeclaringType)))
                     allowed.Remove(field);
         return allowed.Select(f => f.FullName).ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static bool NeedsInitializationBridge(FieldDef field)
+    {
+        if (!(field.IsPublic || field.IsAssembly || field.IsFamilyOrAssembly)) return true;
+        for (var type = field.DeclaringType; type.IsNested; type = type.DeclaringType)
+            if (!(type.IsNestedPublic || type.IsNestedAssembly || type.IsNestedFamilyOrAssembly)) return true;
+        return false;
     }
 
     private static bool ReadOnlyConstructionInputs(Getter getter, Dictionary<FieldDef, SharedGraphReadOnly.Result> graphs, out string reason)
@@ -560,13 +663,30 @@ public class NumericTableRecoveryPass : DeobfuscationPass
             il[4].OpCode.Code == Code.Ret;
     }
 
+    // Earlier constant recovery can retain a field read solely for its type
+    // initialization trigger. The reference is immediately discarded, so it
+    // cannot expose the table to a writer. This check does not remove that read.
+    private static bool DiscardsHolder(MethodDef method, FieldDef holder)
+    {
+        var il = method.Body.Instructions;
+        var targets = il.SelectMany(i => i.Operand is Instruction one ? [one] : i.Operand as IList<Instruction> ?? []).ToHashSet();
+        foreach (var eh in method.Body.ExceptionHandlers)
+            foreach (var edge in new[] { eh.TryStart, eh.TryEnd, eh.HandlerStart, eh.HandlerEnd, eh.FilterStart })
+                if (edge is not null) targets.Add(edge);
+        for (var at = 0; at < il.Count; at++)
+            if (il[at].Operand is IField reference && reference.ResolveFieldDef() == holder &&
+                (il[at].OpCode.Code != Code.Ldsfld || at + 1 >= il.Count || il[at + 1].OpCode.Code != Code.Pop ||
+                 targets.Contains(il[at + 1]) || at > 0 && il[at - 1].OpCode.OpCodeType == OpCodeType.Prefix)) return false;
+        return true;
+    }
+
     private static bool IsArrayCast(Instruction instruction, ElementType element) =>
         instruction.OpCode.Code == Code.Castclass && instruction.Operand is TypeSpec { TypeSig: SZArraySig array } &&
         array.Next.ElementType == element;
 
-    private static Dictionary<(Getter, int), int?> Read(StaticMachine machine, IEnumerable<(Getter Getter, int Index)> asks, HashSet<string> refusals, HashSet<string> initializationFields, HashSet<Getter> preservable, HashSet<Getter> preserve)
+    private static Dictionary<(Getter, int), StaticValue?> Read(StaticMachine machine, IEnumerable<(Getter Getter, int Index)> asks, HashSet<string> refusals, HashSet<string> initializationFields, HashSet<Getter> preservable, HashSet<Getter> preserve)
     {
-        var results = new Dictionary<(Getter, int), int?>();
+        var results = new Dictionary<(Getter, int), StaticValue?>();
         var initialized = new Dictionary<Getter, bool>();
         foreach (var (getter, index) in asks)
         {
@@ -585,9 +705,15 @@ public class NumericTableRecoveryPass : DeobfuscationPass
             using var scope = machine.State.Evidence.SetAside(getter.Method.MDToken.Raw);
             var answer = machine.Execute(getter.Method, [StaticValue.FromInt32(index)]);
             var mark = machine.State.LoaderEvidence.EffectsOf(getter.Method.MDToken.Raw);
-            results[(getter, index)] = answer.Succeeded && answer.Value.Kind == StaticValueKind.Int32 &&
+            var expectedKind = getter.Method.ReturnType.ElementType switch
+            {
+                ElementType.I4 => StaticValueKind.Int32, ElementType.I8 => StaticValueKind.Int64,
+                ElementType.R4 => StaticValueKind.Float32, ElementType.R8 => StaticValueKind.Float64,
+                _ => StaticValueKind.Unknown
+            };
+            results[(getter, index)] = answer.Succeeded && answer.Value.Kind == expectedKind &&
                 !mark.WroteStaticField && !mark.WroteMappedImage && !mark.WroteScratchRegion && mark.Registrations.Count == 0
-                ? answer.Value.AsInt32() : null;
+                ? answer.Value : null;
         }
         return results;
     }

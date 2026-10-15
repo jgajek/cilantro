@@ -49,6 +49,7 @@ public sealed class IntegrityVerdictPass : DeobfuscationPass
         if (!verification.Passed)
             return (PassStatus.Failed, 0, ["Integrity verdict rewrite rolled back: " + string.Join("; ", verification.Diagnostics)]);
         transaction.Commit();
+        IntegrityResourceOwnership.CaptureVerifiedVerdict(context, gate!, evidence);
         context.AddChange(new(Name, "preserve-integrity-effects", $"{gate!.MDToken} IL_{site!.Offset:X4}",
             "Replaced the independently verified original-file signature verdict with true; retained argument evaluation and the routine's state changes."));
         context.AddEvidence(new("integrity-verdict", "Two complete independent cold startups agreed on a passing, unique direct signature verification. Its stateful routine remains in place.", gate.FullName));

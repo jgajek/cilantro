@@ -1,4 +1,5 @@
 using dnlib.DotNet;
+using dnlib.DotNet.Emit;
 using Cilantro.Core.Analysis;
 using Cilantro.Core.Passes;
 using Cilantro.Core.Verification;
@@ -128,6 +129,85 @@ public sealed class RebuiltBodyCleanupPass : DeobfuscationPass
 /// </remarks>
 internal static class RebuiltMethods
 {
+    private const string ElidedLoaderSubtreeFact = "cleanup.provenElidedLoaderSubtree";
+    private const string ReplacedStringResolverFact = "cleanup.provenReplacedStringResolver";
+    private const string ResolverCleanupEnabledFact = "cleanup.rebuiltResolverRemovalEnabled";
+
+    internal static void EnableResolverCleanup(ArtifactContext context) => context.SetFact(ResolverCleanupEnabledFact, true);
+
+    internal static void RememberReplacedStringResolver(ArtifactContext context, MethodDef resolver)
+    {
+        // Unlike broad owning-type attribution, follow only actual dependencies
+        // of the resolver whose final call was replaced. Sibling methods and
+        // calls into application types do not acquire cleanup permission.
+        var visited = new HashSet<MethodDef>();
+        var pending = new Stack<MethodDef>();
+        pending.Push(resolver);
+        while (pending.TryPop(out var method))
+        {
+            if (method.DeclaringType != resolver.DeclaringType || !visited.Add(method) || !method.HasBody) continue;
+            foreach (var instruction in method.Body.Instructions)
+                if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj &&
+                    instruction.Operand is IMethod called && called.ResolveMethodDef() is { } target)
+                    pending.Push(target);
+        }
+        if (!context.TryGetFact<HashSet<MethodDef>>(ReplacedStringResolverFact, out var known) || known is null)
+            context.SetFact(ReplacedStringResolverFact, known = []);
+        known.UnionWith(visited);
+    }
+
+    internal static string? CleanupAttribution(ArtifactContext context, MethodDef method)
+    {
+        if (context.TryGetFact<HashSet<MethodDef>>(ElidedLoaderSubtreeFact, out var loader) && loader?.Contains(method) == true)
+            return "a proven elided loader subtree";
+        if (context.TryGetFact<HashSet<MethodDef>>(ReplacedStringResolverFact, out var resolver) && resolver?.Contains(method) == true)
+            return "the direct dependencies of a fully replaced string resolver";
+        return null;
+    }
+
+    internal static void RememberElidedLoaderSubtree(ArtifactContext context, IEnumerable<MethodDef> methods)
+    {
+        if (!context.TryGetFact<HashSet<MethodDef>>(ElidedLoaderSubtreeFact, out var known) || known is null)
+            context.SetFact(ElidedLoaderSubtreeFact, known = []);
+        known.UnionWith(methods);
+    }
+
+    internal static IReadOnlyCollection<MethodDef> ElidedLoaderMethods(ArtifactContext context) =>
+        context.TryGetFact<HashSet<MethodDef>>(ElidedLoaderSubtreeFact, out var methods) && methods is not null ? methods : [];
+    /// <summary>
+    /// Reconstruction preserves application bodies as roots. A body whose original
+    /// consumer recovery positively orphaned may instead undergo ordinary cleanup.
+    /// This changes root policy only; visibility, reachability and reference checks
+    /// still decide whether the body can actually be removed.
+    /// </summary>
+    internal static IReadOnlyList<MethodDef> CleanupRoots(ArtifactContext context)
+        => Of(context).Except(CleanupCandidates(context)).ToArray();
+
+    internal static IReadOnlySet<MethodDef> CleanupCandidates(ArtifactContext context)
+    {
+        var methods = Of(context);
+        var orphans = RecoveryOrphans.Of(context);
+        var attributed = new HashSet<MethodDef>();
+        context.TryGetFact<bool>(ResolverCleanupEnabledFact, out var resolverCleanupEnabled);
+        context.TryGetFact<HashSet<MethodDef>>(ElidedLoaderSubtreeFact, out var elided);
+        attributed.UnionWith(methods.Where(method =>
+            (elided?.Contains(method) == true ||
+                resolverCleanupEnabled && CleanupAttribution(context, method) is not null) &&
+            method.Rid != 0 && orphans.Contains(method.MDToken.Raw)));
+        if (context.TryGetFact<IReadOnlyList<VirtualizationRebuildPass.LiftedRecipe>>(
+                VirtualizationRebuildPass.LiftedRecipesFact, out var recipes) && recipes is not null)
+        {
+            foreach (var recipe in recipes.Where(recipe => methods.Contains(recipe.Holder) &&
+                         (recipe.Caller & 0x00ffffff) != 0 && orphans.Contains(recipe.Caller)))
+            {
+                // Keep object identity: new bodies all report token zero, and assigning
+                // a row here would alter the original-token verification contract.
+                attributed.Add(recipe.Holder);
+            }
+        }
+        return attributed;
+    }
+
     internal static IReadOnlyList<MethodDef> Of(ArtifactContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

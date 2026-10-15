@@ -55,7 +55,8 @@ internal sealed record AnalystArtifact(
             _ => "Extraction mechanism not recorded; role undetermined."
         };
         var run = node?.Run;
-        var status = origin == PayloadOrigin.NativeDependency ? "Native DLL extracted; not deprotected"
+        var status = node?.Status == "preserved-reference" ? "Preserved reviewed dependency; bytes unchanged"
+            : origin == PayloadOrigin.NativeDependency ? "Native DLL extracted; not deprotected"
             : run?.Wrote.Cleaned is not null ? "Cleaned assembly available"
             : node?.Status == "limited" ? "Not processed: traversal limit"
             : node?.Status == "failed" ? "Recovery failed"

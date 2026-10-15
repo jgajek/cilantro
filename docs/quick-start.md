@@ -75,3 +75,22 @@ For a long run, use `--status` or the asynchronous MCP tools. Large assemblies a
 | `2` | Invalid arguments, unreadable/unsupported input, or an exception prevented a normal run result |
 
 Scripts should read the JSON manifest, not parse the English summary. See [automation](agents.md).
+
+## Preserving reviewed dependencies
+
+With `--recover-embedded`, you can supply `--reviewed-dependencies references.json` to preserve extracted files that exactly match independently reviewed, unprotected dependency copies. This is an explicit trust declaration, not automatic protection detection. Unknown children still undergo normal recovery, and a failed parent remains failed.
+
+The manifest is an array of records:
+
+```json
+[
+  {
+    "Sha256": "<64 hexadecimal characters>",
+    "Path": "reference/library.dll",
+    "Source": "Upstream release or immutable source URL reviewed by the analyst",
+    "Classification": "unprotected-dependency"
+  }
+]
+```
+
+Reference paths are relative to the manifest. CILantro verifies the reference bytes against the declared SHA-256 before matching extracted bytes. Missing classifications, changed references and duplicate hashes fail validation. Reports label matches **Preserved reviewed dependency; bytes unchanged** and record the reference hash, path and source. No cleaned copy or deprotection is claimed for them. The option never downloads or executes a reference.

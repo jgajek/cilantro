@@ -350,7 +350,16 @@ public sealed class ModuleReachability
                             // typeof(T).Assembly consumes the type without exposing its
                             // members or permitting construction of T. Keep T's ordinary
                             // metadata reference, but do not invent a reflective caller.
-                            if (IsAssemblyOnlyHandle(method, index)) break;
+                            if (IsAssemblyOnlyHandle(method, index) || IsBinderContextHandle(method, index) ||
+                                TypeIdentityHandleUse.IsClosed(method, index)) break;
+                            // RunClassConstructor consumes this handle and activates only
+                            // the static initializer. It neither returns the type nor makes
+                            // an instance or a reflective caller of its ordinary methods.
+                            if (IsInitializerOnlyHandle(method, index))
+                            {
+                                Activate(exposed);
+                                break;
+                            }
                             reflectivelyExposed.Add(exposed);
                             Activate(exposed);
                             // Reflection given a type can construct it, so a handle taken is an
@@ -419,6 +428,10 @@ public sealed class ModuleReachability
             foreach (var candidate in
                      candidatesBySignature.GetValueOrDefault(SignatureKey(called), []))
             {
+                // Runtime delegate invocation slots belong to their exact sealed
+                // delegate type. An unrelated delegate with the same signature
+                // cannot implement that slot, even when instance creation is unknown.
+                if (DistinctRuntimeDelegateSlot(called, candidate)) continue;
                 // A call of this shape could arrive here, but only on an instance of the type
                 // declaring it. Where none can exist yet the candidate waits for one, and is
                 // marked if one ever can.
@@ -443,6 +456,24 @@ public sealed class ModuleReachability
             reference?.ResolveTypeDef() is { } definition && definition.Module == module
                 ? definition
                 : null;
+    }
+
+    private static bool DistinctRuntimeDelegateSlot(IMethod called, MethodDef candidate)
+    {
+        var owner = candidate.DeclaringType;
+        if (!candidate.IsRuntime || !candidate.IsVirtual || !candidate.IsNewSlot || candidate.IsStatic ||
+            candidate.HasGenericParameters || candidate.Overrides.Count != 0 ||
+            candidate.Name.String is not ("Invoke" or "BeginInvoke" or "EndInvoke") ||
+            !owner.IsSealed || owner.HasGenericParameters || owner.Interfaces.Count != 0 ||
+            owner.BaseType is not TypeRef baseType || baseType.FullName != "System.MulticastDelegate" ||
+            baseType.DefinitionAssembly?.Name.String is not ("mscorlib" or "System.Private.CoreLib")) return false;
+        var calledOwner = called.DeclaringType;
+        if (calledOwner is TypeSpec specification)
+        {
+            if (specification.TypeSig is not GenericInstSig instance) return false;
+            calledOwner = instance.GenericType.TypeDefOrRef;
+        }
+        return calledOwner is not null && !new SigComparer().Equals(owner, calledOwner);
     }
 
     /// <summary>
@@ -477,6 +508,67 @@ public sealed class ModuleReachability
 
     private static bool IsStaticFieldAccess(Instruction instruction) =>
         instruction.OpCode.Code is Code.Ldsfld or Code.Stsfld or Code.Ldsflda;
+
+    private static bool IsInitializerOnlyHandle(MethodDef method, int index)
+    {
+        var body = method.Body.Instructions;
+        return index + 1 < body.Count && body[index + 1] is { OpCode.Code: Code.Call, Operand: IMethod called } &&
+            called.Name == "RunClassConstructor" && called.DeclaringType is TypeRef reference &&
+            reference.FullName == "System.Runtime.CompilerServices.RuntimeHelpers" &&
+            reference.DefinitionAssembly?.Name.String is "mscorlib" or "System.Private.CoreLib" or "System.Runtime" &&
+            called.MethodSig is { HasThis: false, GenParamCount: 0 } signature &&
+            signature.RetType.ElementType == ElementType.Void && signature.Params.Count == 1 &&
+            signature.Params[0].FullName == "System.RuntimeTypeHandle";
+    }
+
+    private static bool IsBinderContextHandle(MethodDef method, int index)
+    {
+        var il = method.Body.Instructions;
+        var at = index + 1;
+        while (at < il.Count && il[at].OpCode.Code == Code.Nop) at++;
+        if (at >= il.Count || il[at].OpCode.Code != Code.Call || il[at].Operand is not IMethod
+            { FullName: "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)", DeclaringType: TypeRef type } ||
+            type.DefinitionAssembly?.Name.String is not ("mscorlib" or "System.Private.CoreLib" or "System.Runtime")) return false;
+        var depth = 0;
+        for (at++; at < il.Count && at <= index + 128; at++)
+        {
+            var instruction = il[at];
+            if (instruction.OpCode.Code == Code.Nop) continue;
+            if (instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch or FlowControl.Return or FlowControl.Throw) return false;
+            if (instruction.OpCode.Code == Code.Dup && depth == 0) return false;
+            if (depth == 0 && instruction.OpCode.Code == Code.Castclass &&
+                instruction.Operand is TypeRef { FullName: "System.Type" } cast &&
+                cast.DefinitionAssembly?.Name.String is "mscorlib" or "System.Private.CoreLib" or "System.Runtime") continue;
+            instruction.CalculateStackUsage(out var pushes, out var pops);
+            if (pops < 0) return false;
+            if (pops <= depth) { depth += pushes - pops; continue; }
+            if (instruction.OpCode.Code != Code.Call || instruction.Operand is not IMethod called ||
+                called.DeclaringType is not TypeRef { FullName: "Microsoft.CSharp.RuntimeBinder.Binder" } binder ||
+                binder.DefinitionAssembly?.Name.String != "Microsoft.CSharp" ||
+                called.MethodSig is not { HasThis: false, GenParamCount: 0 } signature ||
+                signature.GetCallingConvention() != CallingConvention.Default ||
+                signature.RetType.FullName != "System.Runtime.CompilerServices.CallSiteBinder") return false;
+            string[] parameters = called.Name.String switch
+            {
+                "Convert" => ["Microsoft.CSharp.RuntimeBinder.CSharpBinderFlags", "System.Type", "System.Type"],
+                "UnaryOperation" or "BinaryOperation" => ["Microsoft.CSharp.RuntimeBinder.CSharpBinderFlags", "System.Linq.Expressions.ExpressionType", "System.Type", "System.Collections.Generic.IEnumerable`1<Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo>"],
+                "GetIndex" => ["Microsoft.CSharp.RuntimeBinder.CSharpBinderFlags", "System.Type", "System.Collections.Generic.IEnumerable`1<Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo>"],
+                _ => []
+            };
+            var contextParameter = called.Name == "GetIndex" ? 1 : 2;
+            if (!signature.Params.Select(p => p.FullName).SequenceEqual(parameters) ||
+                signature.Params.Count - 1 - depth != contextParameter) return false;
+            // The handle reaches only the binder's lexical access context, not
+            // its conversion target or a dynamic receiver. Reject alternate
+            // entries that could invalidate the linear stack provenance.
+            var interior = il.Skip(index + 1).Take(at - index).ToHashSet();
+            return !il.Any(i => i.Operand is Instruction target && interior.Contains(target) ||
+                    i.Operand is IList<Instruction> targets && targets.Any(interior.Contains)) &&
+                !method.Body.ExceptionHandlers.Any(h => new[] { h.TryStart, h.TryEnd, h.HandlerStart, h.HandlerEnd, h.FilterStart }
+                    .OfType<Instruction>().Any(interior.Contains));
+        }
+        return false;
+    }
 
     private static bool IsAssemblyOnlyHandle(MethodDef method, int index)
     {
@@ -513,6 +605,8 @@ public sealed class ModuleReachability
             if (at < il.Count && il[at].OpCode.Code == Code.Castclass &&
                 il[at].Operand is ITypeDefOrRef { FullName: "System.Type" }) at++;
             while (at < il.Count && il[at].OpCode.Code == Code.Nop) at++;
+            if (at < il.Count && il[at] is { OpCode.Code: Code.Call, Operand: MethodDef wrapper } &&
+                IsAssemblyOnlyWrapper(wrapper, method.Module)) return at;
             return at < il.Count && il[at].OpCode.Code is Code.Call or Code.Callvirt &&
                 il[at].Operand is IMethod
                 { FullName: "System.Reflection.Assembly System.Type::get_Assembly()" } ? at : -1;
@@ -527,6 +621,36 @@ public sealed class ModuleReachability
                 !method.Body.ExceptionHandlers.Any(h => Interior(h.TryStart) || Interior(h.TryEnd) ||
                     Interior(h.HandlerStart) || Interior(h.HandlerEnd) || Interior(h.FilterStart));
         }
+    }
+
+    // A local compatibility wrapper may route typeof(T).Assembly through TypeInfo.
+    // Inspect its entire body: names alone cannot establish non-exposure.
+    private static bool IsAssemblyOnlyWrapper(MethodDef wrapper, ModuleDef module)
+    {
+        if (wrapper.Module != module || !wrapper.IsStatic || wrapper.IsConstructor || wrapper.IsVirtual ||
+            wrapper.HasGenericParameters || wrapper.DeclaringType.HasGenericParameters || !wrapper.HasBody ||
+            wrapper.Body.HasExceptionHandlers || wrapper.MethodSig is not { HasThis: false, GenParamCount: 0 } sig ||
+            sig.Params.Count != 1 || sig.Params[0].FullName != "System.Type" ||
+            sig.RetType.FullName != "System.Reflection.Assembly") return false;
+        var body = wrapper.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+        if (body.Length < 3 || !body[0].IsLdarg() || body[0].GetParameter(wrapper.Parameters)?.Index != 0 ||
+            body[^1].OpCode.Code != Code.Ret) return false;
+        var at = 1;
+        var typeInfo = body[at].OpCode.Code == Code.Call && FrameworkCall(body[at],
+            "System.Reflection.TypeInfo System.Reflection.IntrospectionExtensions::GetTypeInfo(System.Type)");
+        if (typeInfo) at++;
+        if (at < body.Length && body[at].OpCode.Code == Code.Castclass && body[at].Operand is TypeRef cast &&
+            cast.FullName == (typeInfo ? "System.Reflection.TypeInfo" : "System.Type") && Framework(cast)) at++;
+        return at == body.Length - 2 && body[at].OpCode.Code is Code.Call or Code.Callvirt &&
+            FrameworkCall(body[at], typeInfo
+                ? "System.Reflection.Assembly System.Reflection.TypeInfo::get_Assembly()"
+                : "System.Reflection.Assembly System.Type::get_Assembly()");
+
+        static bool Framework(TypeRef type) => type.DefinitionAssembly?.Name.String is
+            "mscorlib" or "System.Private.CoreLib" or "System.Runtime" or "System.Reflection";
+        static bool FrameworkCall(Instruction instruction, string fullName) =>
+            instruction.Operand is IMethod { DeclaringType: TypeRef type } call &&
+            call.FullName == fullName && Framework(type);
     }
 
     private static bool IsMethodReference(Instruction instruction) =>

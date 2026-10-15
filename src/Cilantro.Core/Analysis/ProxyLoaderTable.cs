@@ -2,6 +2,7 @@ using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using Cilantro.Core.Interpretation;
 using Cilantro.Core.Recovery;
+using Cilantro.Core.Analysis;
 
 namespace Cilantro.Core;
 
@@ -126,8 +127,8 @@ public static class ProxyLoaderTable
     /// The bootstrap only fills the table when its own startup path reaches the resolver, which a
     /// build that defers proxy setup to first use does not. The resolver is then still the one place
     /// the table exists without reimplementing the build's mixer, so it is run directly: it decodes
-    /// the shared table before it ever looks at the type it was handed, so handing it any real type
-    /// lets the decode complete, and the per-field pass after it is guarded field by field.
+    /// the shared table before assigning delegates on the type it was handed. A real proxy type
+    /// lets both phases finish; a helper type may decode the table but fail its per-field lookup.
     /// </remarks>
     public static bool TryResolve(
         ArtifactContext context,
@@ -135,10 +136,14 @@ public static class ProxyLoaderTable
         out IReadOnlyList<ProxyBinding> bindings,
         out string source)
     {
+        context.SetFact<IReadOnlyList<RecoveredResourceOrigin>>("proxy.loaderResources", []);
         if (context.TryGetFact<IReadOnlyDictionary<uint, IReadOnlyDictionary<int, int>>>(
                 Fact, out var tables) &&
             TryRead(context.Module, tables, proxyFields, out bindings, out source))
         {
+            if (FindResolver(context.Module) is { } resolver &&
+                context.TryGetFact<LoaderInterpretationEvidence>("bootstrap.evidence", out var evidence) && evidence is not null)
+                RememberResource(context, resolver, source, evidence);
             return true;
         }
         return TryBuildFromResolver(context, proxyFields, out bindings, out source);
@@ -153,6 +158,7 @@ public static class ProxyLoaderTable
         out IReadOnlyList<ProxyBinding> bindings,
         out string source)
     {
+        context.SetFact<IReadOnlyList<RecoveredResourceOrigin>>("proxy.loaderResources", []);
         bindings = [];
         source = string.Empty;
         if (proxyFields.Count == 0 || FindResolver(context.Module) is not { } resolver)
@@ -163,14 +169,34 @@ public static class ProxyLoaderTable
             return false;
         }
 
-        // The resolver takes the type whose proxy fields it fills, but it decodes the shared table
-        // before it looks at that type at all, so its own declaring type — which always resolves —
-        // is enough to let the decode run to the end.
-        if (!machine.State.Heap.TryAllocateMetadataHandle(resolver.DeclaringType, out var handle))
+        // Decode the shared table, then let the assignment phase finish on a real proxy type.
+        // The resolver's own helper fields need not be keys in that table: using its declaring
+        // type can decode successfully but fail on the first subsequent dictionary lookup.
+        var proxyType = proxyFields.OrderBy(pair => pair.Key).First().Value.DeclaringType;
+        if (!machine.State.Heap.TryAllocateMetadataHandle(proxyType, out var handle))
             return false;
         machine.Execute(resolver, [handle]);
         var built = InitializedFieldCapture.CaptureIntegerMaps(context.Module, machine.State);
-        return TryRead(context.Module, built, proxyFields, out bindings, out source);
+        if (!TryRead(context.Module, built, proxyFields, out bindings, out source)) return false;
+        RememberResource(context, resolver, source, machine.State.LoaderEvidence);
+        return true;
+    }
+
+    internal static void RememberResource(ArtifactContext context, MethodDef resolver, string source, LoaderInterpretationEvidence evidence)
+    {
+        if (!evidence.HasCompleteObservations(LoaderObservationKind.ManagedResourceRead) || !resolver.HasBody || !evidence.EffectsOf(resolver.MDToken.Raw).AllInvocationsCompleted) return;
+        var writes = resolver.Body.Instructions.Where(instruction => instruction.OpCode.Code == Code.Stsfld)
+            .Select(instruction => (instruction.Operand as IField)?.ResolveFieldDef()).OfType<FieldDef>();
+        if (!writes.Any(field => source == $"{field.MDToken} {field.FullName}" &&
+                evidence.EffectsOf(resolver.MDToken.Raw).StaticFieldsWritten.Contains(field.FullName))) return;
+        var reads = evidence.Observations.Where(observation => observation.Kind == LoaderObservationKind.ManagedResourceRead &&
+                observation.CallStack.Contains(resolver.MDToken.Raw)).Select(observation =>
+                System.Text.Json.JsonSerializer.Deserialize<ManagedResourceRead>(observation.Detail)).ToArray();
+        if (reads.Length == 0 || reads.Any(read => read is null)) return;
+        var origins = reads.Select(read => new RecoveredResourceOrigin(read!.Name, read.Sha256)).Distinct().ToArray();
+        if (origins.Length != 1 || !context.Module.Resources.OfType<EmbeddedResource>().Any(origins[0].Matches) ||
+            !resolver.Body.Instructions.Any(instruction => instruction.OpCode.Code == Code.Ldstr && Equals(instruction.Operand, origins[0].Name))) return;
+        context.SetFact<IReadOnlyList<RecoveredResourceOrigin>>("proxy.loaderResources", origins);
     }
 
     /// <summary>

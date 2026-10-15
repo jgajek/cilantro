@@ -17,6 +17,30 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class ProxyArgumentNarrowingTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ArraysOfValueTypesRemainReferencesWhenReconcilingAdapters(bool rectangular, bool narrow)
+    {
+        using var fixture = Fixture.Build(receiverIsObject: false, extraArgument: false);
+        fixture.Widget.BaseType = fixture.Module.CorLibTypes.GetTypeRef("System", "ValueType");
+        Assert.True(fixture.Widget.IsValueType);
+        TypeSig array = rectangular ? new ArraySig(new ValueTypeSig(fixture.Widget), 2) : new SZArraySig(new ValueTypeSig(fixture.Widget));
+        fixture.Adapter.MethodSig.Params[0] = narrow ? fixture.Module.CorLibTypes.Object : array;
+        var target = new MemberRefUser(fixture.Module, "ArrayTarget",
+            MethodSig.CreateStatic(fixture.Module.CorLibTypes.Void, narrow ? array : fixture.Module.CorLibTypes.Object), fixture.Widget);
+        var plan = Assert.IsType<ProxyArgumentNarrowing.Reconciliation>(ProxyArgumentNarrowing.Plan(fixture.Adapter, target));
+        if (narrow)
+        {
+            var conversion = Assert.Single(plan.Conversions);
+            Assert.Equal(Code.Castclass, conversion.How.Code);
+            Assert.Equal(array.FullName, conversion.Operand.FullName);
+        }
+        else Assert.Empty(plan.Conversions);
+    }
+
     [Fact]
     public void CastsTheReceiverTheAdapterTookAsAnObject()
     {

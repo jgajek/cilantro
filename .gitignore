@@ -8,3 +8,4 @@ scratch/
 TestResults/
 *.user
 *.suo
+test-results/

@@ -341,6 +341,8 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
             context, "string-lookup-recovery", lookup.Aliases, lookup.Sites.Count, replacements, preserveCalls);
         if (status != PassStatus.Success)
             return (status, changes, said);
+        if (preserveCalls)
+            StringLookupCompletionPass.Remember(context, lookup.Resolver, lookup.Aliases, answers);
 
         context.AddEvidence(new Evidence(
             "string-lookup",

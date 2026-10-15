@@ -9,6 +9,53 @@ namespace Cilantro.Tests;
 public sealed class ConvergentGuardTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void BooleanDiamondPreservesBothPathsAndAlternateEntry(bool firstTrue, bool secondTrue)
+    {
+        using var module = new ModuleDefUser("diamonds");
+        var method = Method(module);
+        var right = Instruction.CreateLdcI4(1);
+        var destination = Instruction.CreateLdcI4(19);
+        var test = (secondTrue ? OpCodes.Brtrue : OpCodes.Brfalse).ToInstruction(destination);
+        var first = (firstTrue ? OpCodes.Brtrue : OpCodes.Brfalse).ToInstruction(right);
+        var left = Instruction.CreateLdcI4(0);
+        Add(method, OpCodes.Ldarg_0.ToInstruction(), Instruction.CreateLdcI4(42), OpCodes.Beq.ToInstruction(left),
+            OpCodes.Ldarg_0.ToInstruction(), first, left, OpCodes.Br.ToInstruction(test), right, test,
+            Instruction.CreateLdcI4(7), OpCodes.Ret.ToInstruction(), destination, OpCodes.Ret.ToInstruction());
+        var inputs = new[] { 0, 1, -1, 42, int.MinValue, int.MaxValue };
+        var before = inputs.Select(Run).ToArray();
+        Assert.Equal(1, RedundantControlFlow.FoldBooleanDiamonds(method));
+        Assert.Equal(before, inputs.Select(Run).ToArray());
+        Assert.Equal(0, RedundantControlFlow.FoldBooleanDiamonds(method));
+        Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
+        (StaticExecutionStatus, StaticValue) Run(int input)
+        {
+            var result = new StaticMachine().Execute(method, [StaticValue.FromInt32(input)]);
+            return (result.Status, result.Value);
+        }
+    }
+
+    [Fact]
+    public void BooleanDiamondDoesNotCrossExceptionBoundary()
+    {
+        using var module = new ModuleDefUser("regions");
+        var method = Method(module);
+        var right = Instruction.CreateLdcI4(1);
+        var destination = Instruction.CreateLdcI4(19);
+        var test = OpCodes.Brtrue.ToInstruction(destination);
+        var start = OpCodes.Ldarg_0.ToInstruction();
+        Add(method, start, OpCodes.Brfalse.ToInstruction(right), Instruction.CreateLdcI4(0),
+            OpCodes.Br.ToInstruction(test), right, test, Instruction.CreateLdcI4(7),
+            OpCodes.Ret.ToInstruction(), destination, OpCodes.Ret.ToInstruction());
+        method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Finally)
+        { TryStart = start, TryEnd = right, HandlerStart = right, HandlerEnd = destination });
+        Assert.Equal(0, RedundantControlFlow.FoldBooleanDiamonds(method));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void CarriedLiteralDisappearsWithoutRemovingCallOrException(bool throwing)
@@ -26,7 +73,7 @@ public sealed class ConvergentGuardTests
         Add(method, Instruction.CreateLdcI4(42), OpCodes.Call.ToInstruction(call),
             OpCodes.Pop.ToInstruction(), OpCodes.Pop.ToInstruction(), Instruction.CreateLdcI4(7), OpCodes.Ret.ToInstruction());
         var before = Run();
-        Assert.Equal(1, RedundantControlFlow.RemoveCarriedIntegerDiscards(method));
+        Assert.Equal(2, DiscardedStackValues.Remove(method));
         Assert.DoesNotContain(method.Body.Instructions, i => i.IsLdcI4() && i.GetLdcI4Value() == 42);
         Assert.Contains(method.Body.Instructions, i => i.Operand == call);
         Assert.Equal(before, Run());
@@ -45,7 +92,8 @@ public sealed class ConvergentGuardTests
         using var module = new ModuleDefUser("duplicate");
         var method = Method(module);
         Add(method, Instruction.CreateLdcI4(42), OpCodes.Dup.ToInstruction(), OpCodes.Pop.ToInstruction(), OpCodes.Ret.ToInstruction());
-        Assert.Equal(0, RedundantControlFlow.RemoveCarriedIntegerDiscards(method));
+        Assert.Equal(2, DiscardedStackValues.Remove(method));
+        Assert.Contains(method.Body.Instructions, i => i.IsLdcI4() && i.GetLdcI4Value() == 42);
         Assert.Equal(StaticValue.FromInt32(42), new StaticMachine().Execute(method, [StaticValue.FromInt32(0)]).Value);
     }
 
@@ -57,7 +105,7 @@ public sealed class ConvergentGuardTests
         var discard = OpCodes.Pop.ToInstruction();
         Add(method, Instruction.CreateLdcI4(42), OpCodes.Ldarg_0.ToInstruction(), OpCodes.Brtrue.ToInstruction(discard),
             OpCodes.Pop.ToInstruction(), Instruction.CreateLdcI4(19), discard, Instruction.CreateLdcI4(7), OpCodes.Ret.ToInstruction());
-        Assert.Equal(0, RedundantControlFlow.RemoveCarriedIntegerDiscards(method));
+        Assert.Equal(0, DiscardedStackValues.Remove(method));
         Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
     }
 

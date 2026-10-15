@@ -14,6 +14,9 @@ namespace Cilantro.Core.Recovery;
 /// </summary>
 public sealed record NecroBitBody(long Key, byte[] Il, bool NativeMode);
 
+/// <summary>The exact static table from which a harvest obtained body identities.</summary>
+public sealed record NecroBitTable(string Field, IReadOnlyList<long> Keys);
+
 /// <summary>
 /// Recovers NecroBit-protected method bodies without running the loader to completion, by reading
 /// the decrypt table the loader fills before it installs its JIT hook.
@@ -45,6 +48,10 @@ public static class NecroBitBodyRecovery
     /// Reads every decrypted body out of the loader's JIT-hook table in the interpreter heap.
     /// </summary>
     public static IReadOnlyList<NecroBitBody> Harvest(ModuleDefMD module, StaticMachineState state)
+        => Harvest(module, state, out _);
+
+    public static IReadOnlyList<NecroBitBody> Harvest(ModuleDefMD module, StaticMachineState state,
+        out IReadOnlyList<NecroBitTable> tables)
     {
         ArgumentNullException.ThrowIfNull(module);
         ArgumentNullException.ThrowIfNull(state);
@@ -52,19 +59,21 @@ public static class NecroBitBodyRecovery
         var mappedImageRegion = state.ImageRegion.Kind == StaticValueKind.HeapReference
             ? state.ImageRegion.HeapId : -1;
         var found = new Dictionary<long, (byte[], bool)>();
+        var sources = new List<NecroBitTable>();
         // The table's static field is named differently in every build, so it is found by shape: a
         // Hashtable whose entries are keyed by the method's IL address and hold a struct carrying the
         // decrypted body. Any other Hashtable the loader keeps simply contributes no such entries.
-        foreach (var field in state.StaticFields.Values)
+        foreach (var field in state.StaticFields)
         {
             if (!heap.TryGetModelValue(
-                    field,
+                    field.Value,
                     "Entries",
                     out Dictionary<StaticValue, StaticValue>? entries) ||
                 entries is null)
             {
                 continue;
             }
+            var keys = new List<long>();
             foreach (var entry in entries)
             {
                 if (entry.Key.Kind != StaticValueKind.Int64 || entry.Key.AsInt64() == 0 ||
@@ -73,13 +82,20 @@ public static class NecroBitBodyRecovery
                     continue;
                 }
                 found.TryAdd(entry.Key.AsInt64(), (il, nativeMode));
+                keys.Add(entry.Key.AsInt64());
             }
+            if (keys.Count != 0) sources.Add(new(field.Key, keys.Order().ToArray()));
         }
+        tables = sources.OrderBy(source => source.Field, StringComparer.Ordinal).ToArray();
         return found
             .OrderBy(pair => pair.Key)
             .Select(pair => new NecroBitBody(pair.Key, pair.Value.Item1, pair.Value.Item2))
             .ToArray();
     }
+
+    internal static bool TablesAgree(IReadOnlyList<NecroBitTable> left, IReadOnlyList<NecroBitTable> right) =>
+        left.Count == right.Count && left.Zip(right).All(pair => pair.First.Field == pair.Second.Field &&
+            pair.First.Keys.SequenceEqual(pair.Second.Keys));
 
     /// <summary>
     /// Whether two harvests captured the same table, which the two-run gate requires before any body

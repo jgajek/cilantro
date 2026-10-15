@@ -68,6 +68,12 @@ public sealed class AppDomainEventTests
         using var oracleBytes = new MemoryStream();
         oracle.CopyTo(oracleBytes);
         Assert.Equal(oracleBytes.ToArray(), heap.GetBytesSnapshot(buffer));
+        var observation = Assert.Single(state.Evidence.Snapshot().Observations, o => o.Kind == LoaderObservationKind.ManagedResourceRead);
+        var read = System.Text.Json.JsonSerializer.Deserialize<ManagedResourceRead>(observation.Detail)!;
+        Assert.Equal("payload", read.Name);
+        Assert.Equal(3, read.Length);
+        Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(oracleBytes.ToArray())), read.Sha256);
+        Assert.DoesNotContain(state.Evidence.Snapshot().Observations, o => o.Kind == LoaderObservationKind.ModuleFileRead);
     }
 
     [Fact]

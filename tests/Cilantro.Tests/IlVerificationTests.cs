@@ -45,11 +45,20 @@ public sealed class IlVerificationTests
 
     public static TheoryData<Expected> Samples =>
     [
-        // The virtualized payload, and the only one with anything left. Its one new finding is an
-        // ExpectedArray on a method the verifier could not import from the protected input at all,
-        // so there is no before to compare it with and nothing the run can be said to have broken.
-        new Expected("Mlfhntkcvb.payload.Lqcuzgc.dll", Was: 377, Is: 266, Broken: 1, Worsened: 0,
-            Unreadable: 1),
+        // Numeric initialization bridges avoid exposing private holder fields to callers.
+        // All six newly reported methods were unreadable in the protected input; no
+        // previously readable method worsens. Explicit proven-null returns remove another
+        // 43 type findings while retaining initialization effects. Typed parameter/literal
+        // stores restore ten more field types and remove nine further findings.
+        // Retiring the private numeric holder and its unused array wrapper removes two more.
+        // Array allocation, typed-local and field-copy proofs remove thirteen more,
+        // including findings in three previously unreadable methods.
+        // Replacing the closed dependency decoder and retiring its unused helpers removes five more.
+        // Materializing its closed bundle index removes the remaining finding in that constructor.
+        // Subsequent runtime retirement and proven type recovery remove the remaining
+        // findings, including all findings in bodies that were unreadable before recovery.
+        new Expected("Mlfhntkcvb.payload.Lqcuzgc.dll", Was: 377, Is: 0, Broken: 0, Worsened: 0,
+            Unreadable: 0),
 
         // The three non-virtualized Reactor 6 builds come out clean, which is worth stating plainly:
         // every finding the protector left is gone and none replaced it.

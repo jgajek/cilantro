@@ -94,7 +94,7 @@ public sealed class StringTableRelearningPass : DeobfuscationPass
             var table = StringTableRecoveryPass.MergeLoaderKeys(
                 context,
                 new CapturedStringTable(
-                    capture.Source, capture.Bytes, capture.Records, capture.IntegerFields));
+                    capture.Source, capture.Bytes, capture.Records, capture.IntegerFields, capture.Resource, capture.TableFields));
             diagnostics.Add(
                 $"{reading}: {diagnostic} " +
                 $"{capture.Records.Count} string(s), read under this build's own numbering.");

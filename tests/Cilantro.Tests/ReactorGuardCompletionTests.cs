@@ -10,6 +10,324 @@ namespace Cilantro.Tests;
 
 public sealed class ReactorGuardCompletionTests
 {
+    [Theory]
+    [InlineData("pure", true)]
+    [InlineData("normal", false)]
+    [InlineData("throw", false)]
+    [InlineData("reenter", false)]
+    public void CompletedPoolShimRequiresOnlyPrivateNonReentrantInitialization(string prefix, bool removed)
+    {
+        using var context = Fixture(prefix == "pure" ? "normal" : prefix);
+        var owner = context.Module.GetTypes().Single(t => t.Name == "Pool");
+        if (prefix == "pure")
+        {
+            var cctor = owner.FindStaticConstructor();
+            cctor.Body = new CilBody(); Add(cctor, OpCodes.Call.ToInstruction(Method(context, "Initialize")), OpCodes.Ret.ToInstruction());
+        }
+        var before = new[] { Invoke(context, 0), Invoke(context, 1), Invoke(context, 4) };
+        context.SetFact("options.removeRuntime", true);
+        Assert.Equal(3, new ReactorGuardCompletionPass().Run(context).Changes);
+        Assert.Equal(removed ? 1 : 0, new UnusedReactorPoolRemovalPass().Run(context).Changes);
+        Assert.Equal(!removed, context.Module.GetTypes().Contains(owner));
+        Assert.Equal(before, new[] { Invoke(context, 0), Invoke(context, 1), Invoke(context, 4) });
+        Assert.Single(Method(context, "Run").Body.Instructions, i => i.OpCode.Code == Code.Switch);
+        var check = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity, context.OriginalStructure,
+            CilantroPipeline.BuildRewriteAllowance(context));
+        Assert.True(check.Passed, string.Join("; ", check.Diagnostics));
+        Assert.Equal(0, new UnusedReactorPoolRemovalPass().Run(context).Changes);
+    }
+
+    [Theory]
+    [InlineData("finalizer")]
+    [InlineData("verification")]
+    public void PrivatePoolShimIsRetainedWhenLifetimeEffectsOrVerificationPreventRemoval(string reason)
+    {
+        using var context = Fixture("normal");
+        var owner = context.Module.GetTypes().Single(t => t.Name == "Pool");
+        var cctor = owner.FindStaticConstructor();
+        cctor.Body = new CilBody();
+        Add(cctor, OpCodes.Call.ToInstruction(Method(context, "Initialize")), OpCodes.Ret.ToInstruction());
+        context.SetFact("options.removeRuntime", true);
+        Assert.Equal(3, new ReactorGuardCompletionPass().Run(context).Changes);
+        if (reason == "finalizer")
+        {
+            var finalizer = new MethodDefUser("Finalize", MethodSig.CreateInstance(context.Module.CorLibTypes.Void),
+                MethodAttributes.Family | MethodAttributes.Virtual) { Body = new CilBody() };
+            Add(finalizer, OpCodes.Ret.ToInstruction());
+            owner.Methods.Add(finalizer);
+        }
+        else context.SetFact("cleanup.removedFieldCount", 999);
+        var bodies = context.Module.GetTypes().SelectMany(t => t.Methods).ToDictionary(m => m, MethodBodySnapshot.Capture);
+        Assert.Equal(0, new UnusedReactorPoolRemovalPass().Run(context).Changes);
+        Assert.Contains(owner, context.Module.GetTypes());
+        Assert.All(bodies, pair => Assert.True(pair.Value.StructurallyEquals(pair.Key)));
+    }
+
+    [Theory]
+    [InlineData("field")]
+    [InlineData("null-literal")]
+    [InlineData("true-literal")]
+    public void AnUnusedOrdinaryPoolCanCompleteItsNullGuardsAndBeRemoved(string form)
+    {
+        using var source = Fixture("normal");
+        MakeOrdinaryPool(source);
+        if (form != "field")
+        {
+            var getter = Method(source, "GetUnused");
+            getter.Body = new CilBody(); Add(getter, OpCodes.Ldnull.ToInstruction(), OpCodes.Ret.ToInstruction());
+            var predicate = Method(source, "IsUnusedNull");
+            predicate.Body = new CilBody();
+            if (form == "true-literal") Add(predicate, OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Ret.ToInstruction());
+            else Add(predicate, OpCodes.Ldnull.ToInstruction(), OpCodes.Ldnull.ToInstruction(), OpCodes.Ceq.ToInstruction(), OpCodes.Ret.ToInstruction());
+            var initialize = Method(source, "Initialize");
+            Instruction[] noise = [OpCodes.Ldc_I4_7.ToInstruction(), OpCodes.Ldnull.ToInstruction(), OpCodes.Pop.ToInstruction(),
+                OpCodes.Pop.ToInstruction(), OpCodes.Call.ToInstruction(predicate), OpCodes.Pop.ToInstruction()];
+            foreach (var instruction in noise.Reverse()) initialize.Body.Instructions.Insert(0, instruction);
+        }
+        var run = Method(source, "Run");
+        run.Body = new CilBody(); Add(run, OpCodes.Ldc_I4_7.ToInstruction(), OpCodes.Ret.ToInstruction());
+        var path = Path.Combine(Path.GetTempPath(), $"Cilantro.UnusedPool.{Guid.NewGuid():N}.dll");
+        try
+        {
+            source.Module.Write(path);
+            using var context = ArtifactContext.Load(path);
+            context.SetFact("options.removeRuntime", true);
+            Assert.Equal(0, new ReactorGuardCompletionPass().Run(context).Changes);
+            Assert.Contains(context.Changes, c => c.Kind == "complete-reactor-pool-initializer");
+            Assert.Equal(1, new UnusedReactorPoolRemovalPass().Run(context).Changes);
+            var check = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity, context.OriginalStructure,
+                CilantroPipeline.BuildRewriteAllowance(context));
+            Assert.True(check.Passed, string.Join("; ", check.Diagnostics));
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void OrdinaryPoolWrapperCanCompleteGuardsAroundLiftedInitializer()
+    {
+        using var context = Fixture("normal");
+        var owner = MakeOrdinaryPool(context);
+        var initializer = Method(context, "Initialize");
+        var original = initializer.Body.Instructions.Skip(8).ToArray();
+        var lifted = New(owner, "LiftedInitialization", context.Module.CorLibTypes.Void);
+        foreach (var instruction in original) lifted.Body.Instructions.Add(instruction);
+        var call = OpCodes.Call.ToInstruction(lifted);
+        foreach (var instruction in initializer.Body.Instructions.Take(8))
+            if (instruction.Operand == original[0]) instruction.Operand = call;
+        foreach (var instruction in original) initializer.Body.Instructions.Remove(instruction);
+        Add(initializer, call, OpCodes.Ret.ToInstruction());
+        var run = Method(context, "Run");
+        run.Body = new CilBody(); Add(run, OpCodes.Ldc_I4_7.ToInstruction(), OpCodes.Ret.ToInstruction());
+        var path = Path.Combine(Path.GetTempPath(), $"Cilantro.PoolChain.{Guid.NewGuid():N}.dll");
+        try
+        {
+            context.Module.Write(path);
+            using var recovered = ArtifactContext.Load(path);
+            recovered.SetFact("options.removeRuntime", true);
+            new ReactorGuardCompletionPass().Run(recovered);
+            Assert.Contains(recovered.Changes, c => c.Kind == "complete-reactor-pool-initializer");
+            var removal = new UnusedReactorPoolRemovalPass().Run(recovered);
+            Assert.True(removal.Changes == 1, string.Join("; ", removal.Diagnostics));
+            Assert.DoesNotContain(recovered.Module.GetTypes(), t => t.FullName == owner.FullName);
+            Assert.Equal("7:0", Invoke(recovered, 0));
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData("unused", true)]
+    [InlineData("new-initializer", true)]
+    [InlineData("read", false)]
+    [InlineData("handle", false)]
+    [InlineData("name", false)]
+    [InlineData("method-call", false)]
+    [InlineData("signature", false)]
+    [InlineData("writer", false)]
+    [InlineData("application", false)]
+    [InlineData("public", false)]
+    [InlineData("keep-runtime", false)]
+    [InlineData("attribute", false)]
+    [InlineData("bad-accounting", false)]
+    [InlineData("entrypoint", false)]
+    [InlineData("constraint", false)]
+    public void OnlyAClosedAndWhollyUnusedProtectorPoolIsDeleted(string scenario, bool removed)
+    {
+        using var context = Fixture("normal");
+        var pool = context.Module.GetTypes().Single(t => t.Name == "Pool");
+        var run = Method(context, "Run");
+        if (scenario != "read")
+        {
+            run.Body = new CilBody();
+            Add(run, OpCodes.Ldc_I4_7.ToInstruction(), OpCodes.Ret.ToInstruction());
+        }
+        if (scenario == "handle")
+        {
+            run.Body.Instructions.Insert(0, OpCodes.Ldtoken.ToInstruction(pool));
+            run.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+        }
+        if (scenario == "name")
+        {
+            run.Body.Instructions.Insert(0, OpCodes.Ldstr.ToInstruction(pool.FullName));
+            run.Body.Instructions.Insert(1, OpCodes.Pop.ToInstruction());
+        }
+        if (scenario == "method-call")
+        {
+            var touch = New(pool, "Touch", context.Module.CorLibTypes.Void);
+            Add(touch, OpCodes.Ret.ToInstruction());
+            run.Body.Instructions.Insert(0, OpCodes.Call.ToInstruction(touch));
+        }
+        if (scenario == "signature") run.DeclaringType.Fields.Add(new FieldDefUser("ApplicationPool",
+            new FieldSig(pool.ToTypeSig()), FieldAttributes.Private | FieldAttributes.Static));
+        if (scenario == "writer")
+        {
+            var root = pool.Fields.Single(f => f.Name == "Root");
+            run.Body.Instructions.Insert(0, OpCodes.Ldnull.ToInstruction());
+            run.Body.Instructions.Insert(1, OpCodes.Stsfld.ToInstruction(root));
+        }
+        if (scenario == "application") Method(context, "Initialize").CustomAttributes.Clear();
+        if (scenario == "attribute")
+        {
+            var module = context.Module;
+            var systemType = module.CorLibTypes.GetTypeRef("System", "Type").ToTypeSig();
+            var attribute = new TypeRefUser(module, "System.ComponentModel", "TypeConverterAttribute", module.CorLibTypes.AssemblyRef);
+            var ctor = new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void, systemType), attribute);
+            run.DeclaringType.CustomAttributes.Add(new CustomAttribute(ctor, [new CAArgument(systemType, pool.ToTypeSig())]));
+        }
+        if (scenario == "public") pool.Attributes |= TypeAttributes.Public;
+        if (scenario == "entrypoint") context.Module.EntryPoint = Method(context, "Initialize");
+        if (scenario == "constraint")
+        {
+            var parameter = new GenericParamUser(0, GenericParamAttributes.NonVariant, "T");
+            parameter.GenericParamConstraints.Add(new GenericParamConstraintUser(pool));
+            run.GenericParameters.Add(parameter);
+        }
+        if (scenario == "bad-accounting") context.SetFact(VirtualizationRebuildPass.AddedMethodsFact, 1);
+        if (scenario == "new-initializer")
+        {
+            var original = Method(context, "Initialize");
+            var lifted = New(pool, "Lifted", context.Module.CorLibTypes.Void);
+            lifted.Body = original.Body;
+            original.Body = new CilBody(); Add(original, OpCodes.Ret.ToInstruction());
+            foreach (var attribute in original.CustomAttributes) lifted.CustomAttributes.Add(attribute);
+            original.CustomAttributes.Clear();
+            foreach (var instruction in pool.FindStaticConstructor().Body.Instructions.Where(i => i.Operand == original)) instruction.Operand = lifted;
+            context.SetFact(VirtualizationRebuildPass.AddedMethodsFact, 1);
+        }
+        var before = MethodBodySnapshot.Capture(run);
+        context.SetFact("options.removeRuntime", scenario != "keep-runtime");
+        var result = new UnusedReactorPoolRemovalPass().Run(context);
+        Assert.Equal(removed ? 1 : 0, result.Changes);
+        Assert.Equal(!removed, context.Module.GetTypes().Contains(pool));
+        Assert.True(before.StructurallyEquals(run));
+        if (scenario == "bad-accounting") Assert.Equal(PassStatus.Partial, result.Status);
+        if (removed)
+        {
+            var check = AssemblyVerifier.Verify(context.Module, context.OriginalIdentity, context.OriginalStructure,
+                CilantroPipeline.BuildRewriteAllowance(context));
+            Assert.True(check.Passed, string.Join("; ", check.Diagnostics));
+            Assert.Single(context.Changes, change => change.Kind == "remove-orphaned-rebuilt-method");
+            Assert.Equal(0, new UnusedReactorPoolRemovalPass().Run(context).Changes);
+        }
+    }
+
+    [Theory]
+    [InlineData("normal")]
+    [InlineData("throw")]
+    [InlineData("reenter")]
+    public void OrdinaryPoolRemovesInitializerAndApplicationGuards(string prefix)
+    {
+        using var context = Fixture(prefix);
+        var owner = MakeOrdinaryPool(context);
+        var before = new[] { Invoke(context, 0), Invoke(context, 1), Invoke(context, 4) };
+        context.SetFact("options.removeRuntime", true);
+        Assert.Equal(3, new ReactorGuardCompletionPass().Run(context).Changes);
+        Assert.Equal(before, new[] { Invoke(context, 0), Invoke(context, 1), Invoke(context, 4) });
+        Assert.Single(Method(context, "Run").Body.Instructions, i => i.OpCode.Code == Code.Switch);
+        Assert.DoesNotContain(owner.Fields, f => !f.IsStatic);
+        Assert.Equal(3, Method(context, "Initialize").Body.Instructions.Count);
+        Assert.Equal(0, new ReactorGuardCompletionPass().Run(context).Changes);
+    }
+
+    [Theory]
+    [InlineData("normal")]
+    [InlineData("throw")]
+    [InlineData("reenter")]
+    public void EarlyHelperCompletionLeavesOrdinaryPoolForDedicatedProof(string prefix)
+    {
+        using var context = Fixture(prefix);
+        var owner = MakeOrdinaryPool(context);
+        owner.Fields.Single(f => f.Name == "Unused").Name = "aB1cD2eF3gH4iJ5kL6";
+        Method(context, "GetUnused").Name = "bC1dE2fG3hI4jK5lM6";
+        Method(context, "IsUnusedNull").Name = "cD1eF2gH3iJ4kL5mN6";
+        context.SetFact("options.removeRuntime", true);
+        context.SetFact("method-protection.complete", true);
+        context.SetFact("reactor.structure", new ReactorStructureFacts(0,0,0,0,0,0,0,false,false,ReactorCapability.DispatcherControlFlow,1,"test"));
+        Assert.Single(ReactorGuardHelpers.Find(context));
+        var before = new[] { Invoke(context, 0), Invoke(context, 1), Invoke(context, 4) };
+        var snapshot = MethodBodySnapshot.Capture(Method(context, "Initialize"));
+        Assert.Equal(0, ReactorGuardHelpers.CompleteCalls(context));
+        Assert.True(snapshot.StructurallyEquals(Method(context, "Initialize")));
+        Assert.Equal(3, new ReactorGuardCompletionPass().Run(context).Changes);
+        Assert.DoesNotContain(owner.Fields, f => !f.IsStatic);
+        Assert.Equal(before, new[] { Invoke(context, 0), Invoke(context, 1), Invoke(context, 4) });
+        Assert.Single(Method(context, "Run").Body.Instructions, i => i.OpCode.Code == Code.Switch);
+    }
+
+    [Theory]
+    [InlineData("writer")]
+    [InlineData("address")]
+    [InlineData("name")]
+    [InlineData("handle")]
+    [InlineData("application-owner")]
+    [InlineData("unknown-call")]
+    public void OrdinaryInitializerProofRollsBackWhenPoolIsNotClosed(string refusal)
+    {
+        using var context = Fixture("normal");
+        var owner = MakeOrdinaryPool(context);
+        var field = owner.Fields.Single(f => f.Name == "Unused");
+        var run = Method(context, "Run");
+        Instruction[] injected = refusal switch
+        {
+            "writer" => [OpCodes.Ldnull.ToInstruction(), OpCodes.Stsfld.ToInstruction(field)],
+            "address" => [OpCodes.Ldsflda.ToInstruction(field), OpCodes.Pop.ToInstruction()],
+            "name" => [OpCodes.Ldstr.ToInstruction(field.Name), OpCodes.Pop.ToInstruction()],
+            "handle" => [OpCodes.Ldtoken.ToInstruction(field), OpCodes.Pop.ToInstruction()],
+            _ => []
+        };
+        foreach (var i in injected.Reverse()) run.Body.Instructions.Insert(0, i);
+        if (refusal == "application-owner") owner.Name = "ApplicationPool";
+        if (refusal == "unknown-call") Method(context, "Initialize").Body.Instructions.Insert(0,
+            OpCodes.Call.ToInstruction(Method(context, "Prefix")));
+        var initializer = Method(context, "Initialize");
+        var snapshot = MethodBodySnapshot.Capture(initializer);
+        context.SetFact("options.removeRuntime", true);
+        Assert.Equal(0, new ReactorGuardCompletionPass().Run(context).Changes);
+        Assert.True(snapshot.StructurallyEquals(initializer));
+        Assert.Equal(16, owner.Fields.Count(f => !f.IsStatic));
+    }
+
+    private static TypeDef MakeOrdinaryPool(ArtifactContext context)
+    {
+        var owner = context.Module.GetTypes().Single(t => t.Name == "Pool");
+        owner.Namespace = "";
+        owner.Name = "<Module>{f24410e4-b55b-41b6-88bc-2ff5e4fd3988}";
+        var initializer = Method(context, "Initialize");
+        initializer.CustomAttributes.Clear();
+        var field = new FieldDefUser("Unused", new FieldSig(owner.ToTypeSig()), FieldAttributes.Assembly | FieldAttributes.Static);
+        owner.Fields.Add(field);
+        var get = New(owner, "GetUnused", owner.ToTypeSig());
+        Add(get, OpCodes.Ldsfld.ToInstruction(field), OpCodes.Ret.ToInstruction());
+        var check = New(owner, "IsUnusedNull", context.Module.CorLibTypes.Boolean);
+        Add(check, OpCodes.Ldsfld.ToInstruction(field), OpCodes.Ldnull.ToInstruction(), OpCodes.Ceq.ToInstruction(), OpCodes.Ret.ToInstruction());
+        var original = initializer.Body.Instructions[0];
+        var second = OpCodes.Call.ToInstruction(check);
+        Instruction[] prefix = [OpCodes.Call.ToInstruction(get), OpCodes.Brfalse.ToInstruction(second),
+            OpCodes.Ldnull.ToInstruction(), OpCodes.Throw.ToInstruction(), second, OpCodes.Brtrue.ToInstruction(original),
+            OpCodes.Ldnull.ToInstruction(), OpCodes.Throw.ToInstruction()];
+        foreach (var i in prefix.Reverse()) initializer.Body.Instructions.Insert(0, i);
+        return owner;
+    }
+
     [Fact]
     public void GeneralReflectionRefusalRemainsInForce()
     {

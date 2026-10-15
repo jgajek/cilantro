@@ -61,6 +61,7 @@ public sealed class AntiTamperNeutralizationPass : DeobfuscationPass
                 "No instruction was modified."
             ]);
         }
+        IntegrityResourceOwnership.Capture(context);
         if (!context.TryGetFact<LoaderInterpretationEvidence>(
                 "bootstrap.evidence", out var evidence) ||
             evidence is null)

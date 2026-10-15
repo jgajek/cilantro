@@ -106,7 +106,23 @@ public sealed class StringRecoveryPass : DeobfuscationPass
             replacements.Add((site.Method, site.Instruction, matchingRecords[0].Value));
         }
 
-        return Rewrite(context, pass, aliases, callSites.Length, replacements);
+        var result = Rewrite(context, pass, aliases, callSites.Length, replacements);
+        if (result.Item1 == PassStatus.Success && result.Item2 != 0)
+            RebuiltMethods.RememberReplacedStringResolver(context, resolver);
+        // Preserve the decoder's exact input identity for later resource cleanup. A successful
+        // table read alone is not enough: publish this only after the atomic rewrite commits.
+        if (result.Item1 == PassStatus.Success && table.Resource is { } origin && context.Module.Resources.OfType<EmbeddedResource>().Any(origin.Matches))
+        {
+            context.TryGetFact<IReadOnlyList<Cilantro.Core.Analysis.RecoveredResourceOrigin>>("strings.validatedResources", out var prior);
+            context.SetFact<IReadOnlyList<Cilantro.Core.Analysis.RecoveredResourceOrigin>>(
+                "strings.validatedResources", (prior ?? []).Append(origin).Distinct().ToArray());
+            if (result.Item2 != 0)
+            {
+                DecodedResourceOwnership.Remember(context, origin, aliases);
+                ReactorStringCacheWriters.Remember(context, resolver, table);
+            }
+        }
+        return result;
     }
 
     /// <summary>
@@ -199,7 +215,11 @@ public sealed class StringRecoveryPass : DeobfuscationPass
         // and the cipher and reader behind both live on the same type. Naming only the methods
         // that lost their callers left that type standing, unattributed, which is the bulk of
         // what a strings-only build then still asked the reader to page through.
-        if (!preserveCalls) RecoveryOrphans.DeclareOwningTypes(context, aliases);
+        if (!preserveCalls)
+        {
+            RecoveryOrphans.DeclareOwningTypes(context, aliases);
+            RecoveredStringForwarders.Remember(context, aliases);
+        }
         return (PassStatus.Success, replacements.Count,
             [$"Atomically restored all {replacements.Count} proven string sites." +
                 (preserveCalls ? " Original calls were retained to preserve type initialization effects." : "")]);

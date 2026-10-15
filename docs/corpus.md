@@ -144,10 +144,24 @@ pwsh -NoProfile -File corpus/verify-vm-removal.ps1 -RunPath results/qbjuef-run.j
 ```
 
 This gate reads the original and cleaned files as metadata, follows the recorded renames,
-and rejects retained VM types, missing reconstructed CIL bodies, or VM resources claimed
-removed but still present. It also checks input hashes and requires structural verification.
+and rejects retained VM types, unexplained missing reconstructed CIL bodies, or VM resources
+claimed removed but still present. Each reconstructed body must either survive with its marker
+and CIL body, or have a matching, narrowly attributed protector-retirement record. For the latter,
+the gate derives the expected identity from original method tokens and reconstruction records,
+checks original string-resolver dependency membership or Reactor pool ownership, and verifies
+physical absence and lack of surviving instruction references. Duplicate or unrelated records
+cannot compensate for an unexplained missing application method. Input hashes and structural
+verification are also required. Removal-record fingerprints are retained as provenance; the
+audit does not claim to recompute a deleted body's fingerprint from the final assembly.
 It does not execute the sample, prove application behavior, or replace disassembly and
 payload-preservation checks. A successfully emitted partial recovery can fail this gate.
+
+The disposition checks have generated benign fixtures for preserved/renamed bodies, permitted
+protector retirement, and refusal cases:
+
+```powershell
+pwsh -NoProfile -File corpus/test-rebuilt-retirement.ps1 -ToolDirectory src/Cilantro.Cli/bin/Release/net10.0
+```
 
 The opt-in 192-million-step allowance accommodates independent cold proofs for Mlfhntkcvb's 514 proxy initializers. The report gate checks pinned input identities, successful structural validation, reconstruction of the method and initialization helper, minimum runtime removal, expected payload hashes, and the helper's cold/repeat comparison evidence. It deliberately requires the full-state disagreement to remain visible alongside matching captured non-VM state. This script reads reports; it does not execute either sample or independently prove equivalence.
 
@@ -343,5 +357,7 @@ the emitted module initializer can prevent otherwise recovered benign code from 
 Do not add these counts into a single coverage percentage. Preserve failures and inconclusive trials alongside passing results. The current pre-release baseline and known gaps are in [compatibility](compatibility.md); historical sample measurements are in [the archived corpus notes](history/pre-0.10/corpus.md).
 
 ## Tests without private samples
+
+Tests default to the checkout samples directory. Set `CILANTRO_SAMPLES` to an external corpus directory to run sample-dependent tests without copying malware into the checkout. For example, in PowerShell: `$env:CILANTRO_SAMPLES = 'C:\cilantro-verify\samples'`. Missing named files in a nonempty corpus still fail visibly.
 
 Run `dotnet test Cilantro.slnx -c Release`. Sample-dependent tests should report skips when their inputs are unavailable. Review the skip count: a green public CI run does not mean private-sample coverage ran. The fast development filter is `--filter "Cost!=High"`; use the full available suite for release validation.

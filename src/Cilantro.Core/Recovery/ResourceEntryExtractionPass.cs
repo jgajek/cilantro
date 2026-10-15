@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Resources;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using dnlib.DotNet;
 using Cilantro.Core.Payload;
@@ -23,6 +24,7 @@ public sealed class ResourceEntryExtractionPass : DeobfuscationPass
         var partial = false;
         var entries = 0;
         var outputBytes = 0;
+        var inflatedBytes = 0;
         foreach (var resource in context.Module.Resources.OfType<EmbeddedResource>()
                      .Where(resource => resource.Name.String.EndsWith(".resources", StringComparison.OrdinalIgnoreCase)))
         {
@@ -49,10 +51,27 @@ public sealed class ResourceEntryExtractionPass : DeobfuscationPass
                         diagnostics.Add($"{resource.Name}/{key}: invalid byte-array/stream length.");
                         continue;
                     }
-                    if (raw.Length < 6 || raw[4] != 'M' || raw[5] != 'Z') continue;
-                    if (raw.Length - 4 > MaximumOutputBytes - outputBytes)
+                    var entry = raw.AsSpan(4);
+                    var compressed = entry.Length >= 3 && entry[0] == 0x1f && entry[1] == 0x8b && entry[2] == 8;
+                    byte[] image;
+                    if (compressed)
+                    {
+                        try { image = InflateGzip(entry, ref inflatedBytes, MaximumOutputBytes); }
+                        catch (Exception exception) when (exception is InvalidDataException || ManagedImage.Rejects(exception))
+                        {
+                            partial = true;
+                            diagnostics.Add($"{resource.Name}/{key}: gzip entry could not be decoded: {exception.Message}");
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        if (entry.Length < 2 || entry[0] != 'M' || entry[1] != 'Z') continue;
+                        image = entry.ToArray();
+                    }
+                    if (image.Length < 2 || image[0] != 'M' || image[1] != 'Z') continue;
+                    if (image.Length > MaximumOutputBytes - outputBytes)
                         throw new InvalidDataException("Resource payload output limit reached.");
-                    var image = raw.AsSpan(4).ToArray();
                     PayloadInfo info;
                     var hash = Convert.ToHexStringLower(SHA256.HashData(image));
                     var source = $"{resource.Name}/{key}";
@@ -74,7 +93,7 @@ public sealed class ResourceEntryExtractionPass : DeobfuscationPass
                                 module.Resources.Select(item => item.Name.String).ToArray(),
                                 Origin: PayloadOrigin.ResourceCodec);
                         }
-                        catch (Exception exception) when (ManagedImage.Rejects(exception))
+                        catch (Exception exception) when (exception is InvalidDataException || ManagedImage.Rejects(exception))
                         {
                             partial = true;
                             diagnostics.Add($"{source}: PE-like entry could not be validated: {exception.Message}");
@@ -83,10 +102,10 @@ public sealed class ResourceEntryExtractionPass : DeobfuscationPass
                     }
                     extracted.Add(new(info, image));
                     outputBytes += image.Length;
-                    context.AddChange(new(Name, "extract-resource-entry", source, $"SHA-256 {hash}; {image.Length} bytes."));
+                    context.AddChange(new(Name, "extract-resource-entry", source, $"SHA-256 {hash}; {image.Length} bytes{(compressed ? "; gzip decoded" : "")}."));
                 }
             }
-            catch (Exception exception) when (ManagedImage.Rejects(exception))
+            catch (Exception exception) when (exception is InvalidDataException || ManagedImage.Rejects(exception))
             {
                 partial = true;
                 diagnostics.Add($"{resource.Name}: {exception.Message}");
@@ -97,5 +116,27 @@ public sealed class ResourceEntryExtractionPass : DeobfuscationPass
         context.SetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", [.. existing ?? [], .. extracted]);
         diagnostics.Insert(0, $"Extracted {extracted.Count} PE payload(s) from application resource entries; serialized objects were not deserialized.");
         return (partial ? PassStatus.Partial : PassStatus.Success, extracted.Count, diagnostics);
+    }
+    // Count all inflated data, including non-PE entries and bytes read before a
+    // corrupt member fails. Repeated compressed entries share one finite budget.
+    internal static byte[] InflateGzip(ReadOnlySpan<byte> encoded, ref int decodedBytes, int maximumBytes)
+    {
+        if (encoded.Length < 18) throw new InvalidDataException("Truncated gzip member.");
+        using var input = new MemoryStream(encoded.ToArray(), writable: false);
+        using var inflater = new GZipStream(input, CompressionMode.Decompress);
+        using var output = new MemoryStream();
+        var buffer = new byte[64 * 1024];
+        int read;
+        while ((read = inflater.Read(buffer)) != 0)
+        {
+            if (read > maximumBytes - decodedBytes)
+            {
+                decodedBytes = maximumBytes;
+                throw new InvalidDataException("Compressed resource-entry output limit reached.");
+            }
+            decodedBytes += read;
+            output.Write(buffer, 0, read);
+        }
+        return output.ToArray();
     }
 }

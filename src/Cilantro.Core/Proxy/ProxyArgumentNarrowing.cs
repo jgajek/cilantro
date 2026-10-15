@@ -139,8 +139,11 @@ public static class ProxyArgumentNarrowing
     /// Answerable on sight for the corlib primitives, and otherwise only where the reference
     /// resolves; a reference that does not is read as a class, which is what it usually is.
     /// </remarks>
+    // Resolving an array TypeSpec can return its element definition. A value-type
+    // element does not make the array itself a value type.
     private static bool IsValue(TypeSig type) =>
-        type.IsValueType || type.ToTypeDefOrRef()?.ResolveTypeDef()?.IsValueType == true;
+        type.IsValueType || type.ElementType is ElementType.Class or ElementType.ValueType or ElementType.GenericInst &&
+        type.ToTypeDefOrRef()?.ResolveTypeDef()?.IsValueType == true;
 
     /// <summary>
     /// Emits the conversions in front of the call, spilling only as far down the stack as it must.

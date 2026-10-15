@@ -15,7 +15,9 @@ internal static class Checkout
     public static string Root { get; } = FindRoot();
 
     /// <summary>Where samples live, whether or not any are there.</summary>
-    public static string Samples { get; } = Path.Combine(Root, "samples");
+    public static string Samples { get; } =
+        Environment.GetEnvironmentVariable("CILANTRO_SAMPLES") is { Length: > 0 } directory
+            ? Path.GetFullPath(directory) : Path.Combine(Root, "samples");
 
     /// <summary>
     /// Whether this checkout has samples at all.

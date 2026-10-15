@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -20,4 +20,10 @@
                       LogicalName="Cilantro.Core.Profiles.Workstation.json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Analysis/ManagedBootstrapTemplate.json" LogicalName="Cilantro.Core.ManagedBootstrapTemplate.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Analysis/ReferenceParameterContracts.json" LogicalName="Cilantro.Core.ReferenceParameterContracts.json" />
+  </ItemGroup>
 </Project>

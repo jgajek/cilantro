@@ -129,9 +129,17 @@ public sealed class ReactorProbeRegressionTests
         Assert.True(heap.TrySetModelValue(table, "Entries", new Dictionary<StaticValue, StaticValue>
             { [StaticValue.FromInt64(0)] = entry, [StaticValue.FromInt64(0x402000)] = entry }));
         state.WriteStaticField(type.FindField("Table"), table);
-        var found = NecroBitBodyRecovery.Harvest(context.Module, state);
-        if (native) Assert.Empty(found);
-        else { Assert.Equal(0x402000, Assert.Single(found).Key); Assert.Equal(code, found[0].Il); }
+        var found = NecroBitBodyRecovery.Harvest(context.Module, state, out var tables);
+        if (native) { Assert.Empty(found); Assert.Empty(tables); }
+        else {
+            Assert.Equal(0x402000, Assert.Single(found).Key); Assert.Equal(code, found[0].Il);
+            Assert.Equal(type.FindField("Table").FullName, Assert.Single(tables).Field);
+            Assert.Equal(0x402000, Assert.Single(tables[0].Keys));
+            Assert.True(NecroBitBodyRecovery.TablesAgree(tables, [new(tables[0].Field, [0x402000])]));
+            Assert.False(NecroBitBodyRecovery.TablesAgree(tables, [new("another table", [0x402000])]));
+            Assert.False(NecroBitBodyRecovery.TablesAgree(tables, [new(tables[0].Field, [0x402001])]));
+            Assert.False(NecroBitBodyRecovery.TablesAgree(tables, []));
+        }
     }
 
     [Theory]

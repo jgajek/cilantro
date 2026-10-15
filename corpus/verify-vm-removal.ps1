@@ -5,6 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 # Metadata inspection only: assemblies under test are never loaded into the CLR.
 Add-Type -Path (Join-Path $ToolDirectory 'dnlib.dll')
+. (Join-Path $PSScriptRoot 'rebuilt-retirement.ps1')
 function Read-Nest($type) {
     $type
     foreach ($child in $type.NestedTypes) { Read-Nest $child }
@@ -16,7 +17,11 @@ $results = foreach ($path in $RunPath) {
     try {
         $run = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
         $analysis = Get-Content -LiteralPath $run.Wrote.Analysis -Raw | ConvertFrom-Json
-        $renames = Get-Content -LiteralPath $run.Wrote.Renames -Raw | ConvertFrom-Json -AsHashtable
+        # No rename artifact means original declaration names were retained.
+        # A recorded but missing/unreadable map must still fail the gate.
+        $renames = if ($run.Wrote.Renames) {
+            Get-Content -LiteralPath $run.Wrote.Renames -Raw | ConvertFrom-Json -AsHashtable
+        } else { @{} }
         if (!$run.Verified -or !$analysis.VerificationPassed) { $issues.Add('Output did not pass structural verification.') }
         $inputHash = (Get-FileHash -LiteralPath $run.InputPath -Algorithm SHA256).Hash
         if ($inputHash -ine $run.InputSha256 -or $inputHash -ine $analysis.InputSha256) {
@@ -46,14 +51,9 @@ $results = foreach ($path in $RunPath) {
             }
         })
         if ($retained.Count) { $issues.Add("VM declarations remain: $($retained -join ', ')") }
-        $rebuilt = @($outputModule.GetTypes() | ForEach-Object { $_.Methods } | Where-Object {
-            @($_.CustomAttributes | Where-Object TypeFullName -eq 'Cilantro.RebuiltFromReadingAttribute').Count -gt 0
-        })
-        $expected = [int]$run.RebuiltMethods + [int]$run.LiftedPrograms
-        if ($expected -eq 0 -or $rebuilt.Count -ne $expected -or @($rebuilt | Where-Object { !$_.HasBody }).Count) {
-            $issues.Add('The reported reconstructed application methods must survive with CIL bodies.')
-        }
         $changes = @(Get-Content -LiteralPath $run.Wrote.Changes -Raw | ConvertFrom-Json)
+        $disposition = Test-RebuiltDisposition $inputModule $outputModule $analysis $changes $renames ([int]$run.RebuiltMethods) ([int]$run.LiftedPrograms)
+        foreach ($diagnostic in $disposition.Diagnostics) { $issues.Add($diagnostic) }
         $removedResources = @($changes | Where-Object Kind -eq 'remove-vm-resource' | ForEach-Object Location)
         foreach ($resource in $outputModule.Resources) {
             if ($resource.Name.String -cin $removedResources) { $issues.Add("Removed VM resource remains: $($resource.Name)") }
@@ -61,7 +61,8 @@ $results = foreach ($path in $RunPath) {
         [pscustomobject]@{
             Run=$path; InputHash=$inputHash; Cleaned=$run.Wrote.Cleaned
             OutputHash=(Get-FileHash -LiteralPath $run.Wrote.Cleaned -Algorithm SHA256).Hash
-            IdentifiedEngines=$engines.Count; RetainedVmTypes=$retained; RebuiltMethods=$rebuilt.Count
+            IdentifiedEngines=$engines.Count; RetainedVmTypes=$retained; RebuiltMethods=$disposition.Surviving
+            ReconstructedDisposition=$disposition.Dispositions
             RemovedVmResources=$removedResources; Passed=($issues.Count -eq 0); Diagnostics=@($issues)
         }
     } catch {
@@ -71,5 +72,5 @@ $results = foreach ($path in $RunPath) {
         if ($null -ne $outputModule) { $outputModule.Dispose() }
     }
 }
-$results | ConvertTo-Json -Depth 5
+$results | ConvertTo-Json -Depth 10
 if (@($results | Where-Object { !$_.Passed }).Count) { exit 1 }

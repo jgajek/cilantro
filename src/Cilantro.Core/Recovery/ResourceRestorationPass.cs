@@ -16,9 +16,9 @@ namespace Cilantro.Core.Recovery;
 /// the bounded machine, records the plaintext as a recovered artifact. Running the genuine
 /// decryptor is what keeps the result correct by construction.
 ///
-/// Reattaching the plaintext and dropping the resolve hook changes module identity, so that
-/// destructive step is deferred to the opt-in runtime-cleanup path; this pass only proves and
-/// records the plaintext and never mutates the module. If the bundle is present but its decryptor
+/// With runtime removal enabled, recovered streams are also reattached under their original names.
+/// The encrypted input remains until later cleanup proves that its recorded readers are physically
+/// gone and every restored stream still has its exact recovered bytes. If the bundle's decryptor
 /// cannot be statically evaluated to a validated result, the pass declines with a precise
 /// diagnostic rather than guessing.
 /// </remarks>
@@ -58,6 +58,7 @@ public sealed class ResourceRestorationPass : DeobfuscationPass
         var recovered = new List<ExtractedPayload>();
         var diagnostics = new List<string>();
         var attached = new HashSet<string>(StringComparer.Ordinal);
+        var verifiedBundles = new List<RestoredResourceBundle>();
         foreach (var bundle in bundles)
         {
             if (!TryRecoverBundle(context, bundle, out var plaintext, out var recoverDiagnostic) ||
@@ -90,7 +91,18 @@ public sealed class ResourceRestorationPass : DeobfuscationPass
                 bundle.Name,
                 $"Recovered {plaintext.Length} bytes, SHA-256 {info.PayloadSha256}."));
             if (reattach)
+            {
                 attached.UnionWith(Reattach(context, streams));
+                var restored = new RestoredResourceBundle(RecoveredResourceOrigin.Capture(bundle),
+                    streams.Select(stream => RecoveredResourceOrigin.Capture(new EmbeddedResource(
+                        stream.Name, stream.Data, ManifestResourceAttributes.Public))).ToArray());
+                if (restored.IsPreserved(context.Module))
+                {
+                    verifiedBundles.Add(restored);
+                    DecodedResourceOwnership.Remember(context, restored.Source,
+                        BundleReaders(context.Module, bundle), bundle: restored);
+                }
+            }
         }
 
         var combined = context.TryGetFact<IReadOnlyList<ExtractedPayload>>(
@@ -99,6 +111,7 @@ public sealed class ResourceRestorationPass : DeobfuscationPass
             : recovered.ToArray();
         context.SetFact<IReadOnlyList<ExtractedPayload>>("payload.artifacts", combined);
         context.SetFact("resources.restoredBundles", recovered.Count);
+        context.SetFact<IReadOnlyList<RestoredResourceBundle>>("resources.validatedBundles", verifiedBundles);
         if (attached.Count != 0)
         {
             context.SetFact<IReadOnlySet<string>>("resources.addedResources", attached);

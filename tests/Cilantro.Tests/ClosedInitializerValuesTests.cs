@@ -11,6 +11,36 @@ namespace Cilantro.Tests;
 public sealed class ClosedInitializerValuesTests
 {
     [Theory]
+    [InlineData("framework", true)] [InlineData("foreign", false)]
+    [InlineData("escape", false)] [InlineData("field", false)]
+    public void InitializationHandleDoesNotExposePublishedGraph(string scenario, bool expected)
+    {
+        using var context = Fixture("loop");
+        var module = context.Module;
+        var owner = module.GetTypes().Single(t => t.Name == "Lookup");
+        var caller = new MethodDefUser("InitializeLookup", MethodSig.CreateStatic(module.CorLibTypes.Void))
+            { Attributes = MethodAttributes.Static, Body = new CilBody() };
+        owner.Methods.Add(caller);
+        caller.Body.Instructions.Add(scenario == "field"
+            ? OpCodes.Ldtoken.ToInstruction(owner.Fields.Single(f => f.Name == "Data"))
+            : OpCodes.Ldtoken.ToInstruction(owner));
+        if (scenario is "escape" or "field") caller.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+        else
+        {
+            var type = new TypeRefUser(module, "System.Runtime.CompilerServices", "RuntimeHelpers",
+                scenario == "foreign" ? new AssemblyRefUser("Foreign") : module.CorLibTypes.AssemblyRef);
+            caller.Body.Instructions.Add(OpCodes.Call.ToInstruction(new MemberRefUser(module, "RunClassConstructor",
+                MethodSig.CreateStatic(module.CorLibTypes.Void,
+                    new ValueTypeSig(module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle"))), type)));
+        }
+        caller.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var original = caller.Body.Instructions.ToArray();
+        var result = ClosedInitializerValues.Check(owner);
+        Assert.True(result.Passed == expected, result.Detail);
+        Assert.Equal(original, caller.Body.Instructions);
+    }
+
+    [Theory]
     [InlineData("loop", true)]
     [InlineData("alias", true)]
     [InlineData("foreign-input", false)]
@@ -59,7 +89,12 @@ public sealed class ClosedInitializerValuesTests
         Assert.True(result.Changes == (folds ? 1 : 0), string.Join("\n", result.Diagnostics));
         Assert.True(AssemblyVerifier.Verify(context.Module).Passed);
         Assert.Equal(before, Run());
-        if (folds) Assert.Contains(caller.Body.Instructions, i => i.OpCode.Code == Code.Ldsfld && i.Operand is IField f && f.Name == "Instance");
+        if (folds)
+        {
+            var trigger = Assert.Single(context.Module.GetTypes().SelectMany(t => t.Methods), m => m.Name == "InitializeNumericTable");
+            Assert.Contains(caller.Body.Instructions, i => i.OpCode.Code == Code.Call && i.Operand == trigger);
+            Assert.Contains(trigger.Body.Instructions, i => i.OpCode.Code == Code.Ldsfld && i.Operand is IField f && f.Name == "Instance");
+        }
 
         (int Value, int Effect) Run()
         {

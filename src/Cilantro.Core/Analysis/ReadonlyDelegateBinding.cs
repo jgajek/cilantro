@@ -6,9 +6,16 @@ namespace Cilantro.Core.Analysis;
 /// <summary>Identifies a uniquely assigned, private static delegate binding; it does not prove initialization has run.</summary>
 internal static class ReadonlyDelegateBinding
 {
-    internal static MethodDef? Target(FieldDef field)
+    internal static MethodDef? Target(FieldDef field) => TargetCore(field, true, false);
+
+    // A successful invocation may also use a non-initonly field with exactly one
+    // CIL assignment in its initializer. Null during reentrancy still throws at
+    // the retained invocation; this does not authorize erasing that invocation.
+    internal static MethodDef? UniqueInitializerTarget(FieldDef field) => TargetCore(field, false, true);
+
+    private static MethodDef? TargetCore(FieldDef field, bool requireInitOnly, bool allowAssemblyToken)
     {
-        if (!field.IsStatic || !field.IsInitOnly || MemberVisibility.IsExternallyVisible(field.DeclaringType) ||
+        if (!field.IsStatic || requireInitOnly && !field.IsInitOnly || MemberVisibility.IsExternallyVisible(field.DeclaringType) ||
             field.DeclaringType.HasGenericParameters || field.FieldType.ToTypeDefOrRef()?.ResolveTypeDef() is not { } delegateType ||
             delegateType.Module != field.Module || delegateType.HasGenericParameters ||
             delegateType.BaseType?.FullName != "System.MulticastDelegate" ||
@@ -41,14 +48,34 @@ internal static class ReadonlyDelegateBinding
             !new SigComparer().Equals(signature.RetType, target.ReturnType) ||
             !signature.Params.Zip(target.MethodSig.Params).All(p => new SigComparer().Equals(p.First, p.Second))) return null;
         foreach (var method in field.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
-            foreach (var instruction in method.Body.Instructions)
+            for (var index = 0; index < method.Body.Instructions.Count; index++)
             {
+                var instruction = method.Body.Instructions[index];
                 if (instruction.OpCode.Code == Code.Ldtoken && instruction.Operand is ITypeDefOrRef type &&
-                    type.ResolveTypeDef() == field.DeclaringType) return null;
+                    type.ResolveTypeDef() == field.DeclaringType &&
+                    !(allowAssemblyToken && IsAssemblyOnly(method, index))) return null;
                 if (instruction.Operand is IField used && used.ResolveFieldDef() == field &&
                     !ReferenceEquals(instruction, stores[0].instruction) && instruction.OpCode.Code != Code.Ldsfld) return null;
             }
         return target;
+    }
+
+    private static bool IsAssemblyOnly(MethodDef method, int index)
+    {
+        var tail = method.Body.Instructions.Skip(index + 1).Where(i => i.OpCode.Code != Code.Nop).Take(3).ToArray();
+        if (tail.Length < 2 || !FrameworkCall(tail[0], "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)")) return false;
+        var at = 1;
+        if (tail[at].OpCode.Code == Code.Castclass)
+        {
+            if (tail[at].Operand is not TypeRef type || type.FullName != "System.Type" ||
+                type.DefinitionAssembly?.FullName != method.Module.CorLibTypes.AssemblyRef.FullName) return false;
+            at++;
+        }
+        return at < tail.Length && FrameworkCall(tail[at], "System.Reflection.Assembly System.Type::get_Assembly()");
+
+        bool FrameworkCall(Instruction instruction, string name) => instruction.OpCode.Code is Code.Call or Code.Callvirt &&
+            instruction.Operand is IMethod reference && reference.FullName == name && reference.DeclaringType is TypeRef owner &&
+            owner.DefinitionAssembly?.FullName == method.Module.CorLibTypes.AssemblyRef.FullName;
     }
 
     private static Instruction[]? InitializerPath(MethodDef method)

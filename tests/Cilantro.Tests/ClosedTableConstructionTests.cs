@@ -113,7 +113,9 @@ public sealed class ClosedTableConstructionTests
         Assert.Equal(before.Status, after.Status);
         Assert.False(after.Succeeded);
         if (!folds) return;
-        Assert.Contains(caller.Body.Instructions, i => i.OpCode.Code == Code.Ldsfld);
+        var trigger = Assert.Single(context.Module.GetTypes().SelectMany(t => t.Methods), m => m.Name == "InitializeNumericTable");
+        Assert.Contains(caller.Body.Instructions, i => i.OpCode.Code == Code.Call && i.Operand == trigger);
+        Assert.Contains(trigger.Body.Instructions, i => i.OpCode.Code == Code.Ldsfld);
         // If the prefix completes on a supported host, its observable write still runs.
         var prefixMethod = context.Module.GetTypes().SelectMany(t => t.Methods).Single(m => m.Name == "Prefix");
         if (scenario != "throw")

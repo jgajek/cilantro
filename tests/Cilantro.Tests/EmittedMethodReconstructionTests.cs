@@ -204,6 +204,48 @@ public sealed class EmittedMethodReconstructionTests
         Assert.Throws<InvalidOperationException>(() => EmittedMethodReconstructionPass.Lower(generated, factory));
     }
 
+    [Theory]
+    [InlineData("direct", true)]
+    [InlineData("spill", true)]
+    [InlineData("jump", true)]
+    [InlineData("replace", false)]
+    [InlineData("cycle", false)]
+    [InlineData("call", false)]
+    [InlineData("address", false)]
+    [InlineData("other-local", false)]
+    [InlineData("foreign-cast", false)]
+    public void ReturnTransportRequiresTheOriginalResult(string mode, bool accepted)
+    {
+        using var context = SyntheticContext.Build(module => { });
+        var method = new MethodDefUser("Tail", MethodSig.CreateStatic(context.Module.CorLibTypes.String)) { Body = new CilBody() };
+        context.Module.GlobalType.Methods.Add(method);
+        var il = method.Body.Instructions;
+        var invocation = OpCodes.Nop.ToInstruction(); il.Add(invocation);
+        var targetType = mode == "foreign-cast"
+            ? new TypeRefUser(context.Module, "System", "String", new AssemblyRefUser("Foreign"))
+            : context.Module.CorLibTypes.String.TypeDefOrRef;
+        il.Add(OpCodes.Castclass.ToInstruction(targetType));
+        var local = new Local(context.Module.CorLibTypes.String); method.Body.Variables.Add(local);
+        var ret = OpCodes.Ret.ToInstruction();
+        if (mode is "spill" or "jump" or "address" or "other-local")
+        {
+            il.Add(OpCodes.Stloc.ToInstruction(local));
+            var load = OpCodes.Ldloc.ToInstruction(local);
+            if (mode == "jump") il.Add(OpCodes.Br.ToInstruction(load));
+            if (mode == "address") { il.Add(OpCodes.Ldloca.ToInstruction(local)); il.Add(OpCodes.Pop.ToInstruction()); }
+            if (mode == "other-local")
+            {
+                var other = new Local(context.Module.CorLibTypes.String); method.Body.Variables.Add(other);
+                load.Operand = other;
+            }
+            il.Add(load);
+        }
+        if (mode == "replace") { il.Add(OpCodes.Pop.ToInstruction()); il.Add(OpCodes.Ldstr.ToInstruction("replacement")); }
+        if (mode == "cycle") { var loop = OpCodes.Br.ToInstruction(ret); loop.Operand = loop; il.Add(loop); }
+        if (mode == "call") il.Add(OpCodes.Call.ToInstruction(method));
+        il.Add(ret);
+        Assert.Equal(accepted, EmittedMethodReconstructionPass.HasUnmodifiedReturn(method, invocation));
+    }
     private static ArtifactContext Load() => ArtifactContext.Load(typeof(EmittedMethodReconstructionTests).Assembly.Location);
     private static MethodDef Factory(ArtifactContext context) => context.Module.GetTypes()
         .Single(t => t.FullName == typeof(Fixture).FullName!.Replace('+', '/')).Methods.Single(m => m.Name == "Factory");

@@ -471,19 +471,19 @@ public sealed class CorpusTests
 
             using var cleaned = dnlib.DotNet.ModuleDefMD.Load(result.OutputPath);
 
-            // The one method that shipped as a virtual program holds real IL in the cleaned copy and
-            // says so about itself with the marker every rebuilt body carries.
-            var rebuilt = cleaned.GetTypes()
-                .SelectMany(type => type.Methods)
-                .Single(method => method.Name == "Rj743eA3ha");
-            Assert.NotNull(rebuilt.Body);
-            Assert.True(rebuilt.Body.Instructions.Count > 100);
-            Assert.Contains(
-                rebuilt.CustomAttributes,
-                attribute => attribute.TypeFullName.Contains("RebuiltFromReading"));
+            // This virtual program belongs to the replaced string resolver. It must be
+            // reconstructed before cleanup can prove it orphaned, then physically removed.
+            var changes = System.Text.Json.JsonSerializer.Deserialize<ChangeRecord[]>(
+                File.ReadAllText(result.ChangesReportPath))!;
+            Assert.Contains(changes, change => change.Kind == "rebuild-virtualized-method" &&
+                change.Location.Contains("::Rj743eA3ha("));
+            Assert.Contains(changes, change => change.Kind == "remove-orphaned-rebuilt-method" &&
+                change.Location.Contains("::Rj743eA3ha(") && change.Description.Contains("fingerprint:"));
+            Assert.DoesNotContain(cleaned.GetTypes().SelectMany(type => type.Methods),
+                method => method.Name == "Rj743eA3ha");
 
-            // This payload unpacks nothing further, so payload-extraction is the one pass that
-            // reports unsupported without failing the run rather than a blocker still to clear.
+            // This legacy extraction pass has no matching packer; later dependency
+            // extraction can still recover embedded libraries without failing the run.
             var extraction = Assert.Single(
                 result.Report.Passes,
                 pass => pass.Pass == "payload-extraction");

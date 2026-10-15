@@ -46,8 +46,13 @@ public enum LoaderObservationKind
     /// not happen and anything it would have returned is not known. Recorded for every use, because a
     /// reading that quietly walked past a call is worth less than one that says where it did.
     /// </remarks>
-    SteppedCall
+    SteppedCall,
+
+    /// <summary>A successful managed manifest-resource read, with the returned bytes identified.</summary>
+    ManagedResourceRead
 }
+
+public sealed record ManagedResourceRead(string Name, string Sha256, int Length);
 
 /// <summary>
 /// One observation the machine made while interpreting the loader, attributed to the call stack
@@ -108,6 +113,11 @@ public sealed record LoaderInterpretationEvidence(
     IReadOnlyList<LoaderObservation> Observations,
     IReadOnlyDictionary<uint, LoaderMethodEffects> Effects)
 {
+    public bool ObservationsTruncated { get; init; }
+    /// <summary>Event kinds lost at the trace limit; null means truncation scope is unknown.</summary>
+    public IReadOnlyList<LoaderObservationKind>? TruncatedObservationKinds { get; init; }
+    public bool HasCompleteObservations(LoaderObservationKind kind) => !ObservationsTruncated ||
+        TruncatedObservationKinds is not null && !TruncatedObservationKinds.Contains(kind);
     public static LoaderInterpretationEvidence Empty { get; } =
         new([], new Dictionary<uint, LoaderMethodEffects>());
 
@@ -122,6 +132,10 @@ public sealed record LoaderInterpretationEvidence(
     /// </summary>
     public bool Agrees(LoaderInterpretationEvidence other)
     {
+        if (ObservationsTruncated != other.ObservationsTruncated) return false;
+        if (ObservationsTruncated &&
+            ((TruncatedObservationKinds is null) != (other.TruncatedObservationKinds is null) ||
+             TruncatedObservationKinds is not null && !TruncatedObservationKinds.Order().SequenceEqual(other.TruncatedObservationKinds!.Order()))) return false;
         ArgumentNullException.ThrowIfNull(other);
         if (Observations.Count != other.Observations.Count || Effects.Count != other.Effects.Count)
             return false;
@@ -162,6 +176,8 @@ internal sealed class LoaderEvidenceRecorder
     private readonly List<LoaderObservation> _observations = [];
     private readonly Dictionary<uint, MutableEffects> _effects = [];
     private readonly HashSet<int> _initializingFrames = [];
+    private bool _observationsTruncated;
+    private readonly HashSet<LoaderObservationKind> _truncatedKinds = [];
     private readonly HashSet<uint> _failedMethods = [];
 
     public void EnterMethod(MethodDef method) => _callStack.Add(method.MDToken.Raw);
@@ -175,7 +191,11 @@ internal sealed class LoaderEvidenceRecorder
     public void Observe(LoaderObservationKind kind, string detail, bool? verdict = null)
     {
         if (_observations.Count >= MaximumObservations)
+        {
+            _observationsTruncated = true;
+            _truncatedKinds.Add(kind);
             return;
+        }
         _observations.Add(new LoaderObservation(kind, detail, verdict, _callStack.ToArray()));
     }
 
@@ -289,7 +309,7 @@ internal sealed class LoaderEvidenceRecorder
                 BodyStaticFieldsWritten = entry.Value.BodyStaticFields.Order(StringComparer.Ordinal).ToArray(),
                 AllInvocationsCompleted = entry.Value.AllInvocationsCompleted &&
                     !_failedMethods.Contains(entry.Key) && !_callStack.Contains(entry.Key)
-            }));
+            })) { ObservationsTruncated = _observationsTruncated, TruncatedObservationKinds = _truncatedKinds.Order().ToArray() };
 
     // Attributing a write to every frame currently on the stack gives subtree semantics: a
     // caller is responsible for whatever its callees wrote, which is what removability needs.

@@ -14,7 +14,9 @@ public sealed record StaticStringTableCapture(
     IReadOnlyList<DecodedStringRecord> Records,
     IReadOnlyDictionary<uint, int> IntegerFields,
     int Steps,
-    string FrontEnd);
+    string FrontEnd,
+    RecoveredResourceOrigin? Resource = null,
+    IReadOnlyList<string>? TableFields = null);
 
 public static class StaticStringTableInterpreter
 {
@@ -534,7 +536,7 @@ public static class StaticStringTableInterpreter
         }
 
         var runs = new List<(byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
-            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd)>();
+            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd, IReadOnlyList<string> TableFields)>();
         foreach (var offset in new[] { 0, 1 })
         {
             if (!TryRun(module, image, initializer, resourceName,
@@ -587,7 +589,9 @@ public static class StaticStringTableInterpreter
             runs[0].Records,
             runs[0].IntegerFields,
             runs[0].Steps,
-            frontEnd);
+            frontEnd,
+            RecoveredResourceOrigin.Capture(resource),
+            runs[0].TableFields.SequenceEqual(runs[1].TableFields) ? runs[0].TableFields : []);
         diagnostic =
             $"Bounded {frontEnd} interpretation captured one offset-independent table.";
         return true;
@@ -604,7 +608,7 @@ public static class StaticStringTableInterpreter
         IReadOnlyDictionary<int, VmReading>? numbering,
         IReadOnlyList<ProxyBinding>? proxies,
         out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
-            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
+            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd, IReadOnlyList<string> TableFields) run,
         out string diagnostic)
     {
         run = default;
@@ -728,7 +732,7 @@ public static class StaticStringTableInterpreter
         ModuleDefMD module,
         string frontEnd,
         out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
-            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
+            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd, IReadOnlyList<string> TableFields) run,
         out string diagnostic)
     {
         run = default;
@@ -751,7 +755,7 @@ public static class StaticStringTableInterpreter
         }
 
         run = (candidates[0].Bytes, candidates[0].Records,
-            CaptureIntegerFields(module, machine), result.Steps, frontEnd);
+            CaptureIntegerFields(module, machine), result.Steps, frontEnd, candidates[0].TableFields);
         diagnostic = string.Empty;
         return true;
     }
@@ -766,7 +770,7 @@ public static class StaticStringTableInterpreter
         IReadOnlyList<StaticValue> arguments,
         IReadOnlyDictionary<int, VmReading> numbering,
         out (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records,
-            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd) run,
+            IReadOnlyDictionary<uint, int> IntegerFields, int Steps, string FrontEnd, IReadOnlyList<string> TableFields) run,
         out string diagnostic)
     {
         run = default;
@@ -817,12 +821,12 @@ public static class StaticStringTableInterpreter
 
         run = (vmCandidates[0].Bytes, vmCandidates[0].Records,
             CaptureIntegerFields(module, machine), evaluation.Steps,
-            "reactor-vm-method-0-serialized");
+            "reactor-vm-method-0-serialized", vmCandidates[0].TableFields);
         diagnostic = string.Empty;
         return true;
     }
 
-    private static (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records)[] CaptureFramedTables(
+    private static (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records, IReadOnlyList<string> TableFields)[] CaptureFramedTables(
         StaticMachine machine)
     {
         if (Environment.GetEnvironmentVariable("CILANTRO_VM_DUMP") is { Length: > 0 } where)
@@ -843,7 +847,7 @@ public static class StaticStringTableInterpreter
         return Framed(machine);
     }
 
-    private static (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records)[] Framed(
+    internal static (byte[] Bytes, IReadOnlyList<DecodedStringRecord> Records, IReadOnlyList<string> TableFields)[] Framed(
         StaticMachine machine) =>
         machine.State.StaticFields
             .Where(field => field.Value.Kind == StaticValueKind.HeapReference)
@@ -854,7 +858,7 @@ public static class StaticStringTableInterpreter
                 Records: records))
             .Where(item => item.Valid)
             .GroupBy(item => Convert.ToHexString(item.Bytes), StringComparer.Ordinal)
-            .Select(group => (group.First().Bytes, group.First().Records))
+            .Select(group => (group.First().Bytes, group.First().Records, (IReadOnlyList<string>)group.Select(item => item.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray()))
             .ToArray();
 
     private static Dictionary<uint, int> CaptureIntegerFields(

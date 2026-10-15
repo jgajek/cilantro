@@ -3,15 +3,11 @@ using dnlib.DotNet.MD;
 
 namespace Cilantro.Core.Analysis;
 
-/// <summary>
-/// Recognizes Reactor inputs whose real code is a native stub rather than managed IL.
-/// </summary>
+/// <summary>Detects native-code boundaries that a managed-only rewrite cannot preserve.</summary>
 /// <remarks>
-/// A file that reaches this point already parsed as a managed module, so the concern is mixed-mode
-/// and native-entry images: Reactor's native protection (NecroBit native / native EXE) clears the
-/// IL-only flag, points the COR20 entry at native code, or attaches a managed native header. None of
-/// those can be recovered by static managed analysis, so they are reported as an explicit,
-/// deferred-capability boundary instead of being processed into a damaged output.
+/// These headers also occur in ordinary C++/CLI and precompiled assemblies. They
+/// establish a rewrite boundary, not evidence of Reactor or any other protector.
+/// Dedicated native-wrapper recovery performs its own structural recognition.
 /// </remarks>
 public static class NativePackDetector
 {
@@ -22,19 +18,19 @@ public static class NativePackDetector
 
         if ((flags & ComImageFlags.NativeEntryPoint) != 0 || module.NativeEntryPoint != 0)
         {
-            reason = "The COR20 header declares a native entry point; the input is native-packed.";
+            reason = "The COR20 header declares a native entry point; preserving native code requires a native-aware rewrite.";
             return true;
         }
 
         if (header.HasNativeHeader)
         {
-            reason = "The image carries a managed native header; the input is native-packed.";
+            reason = "The image carries a managed native header; preserving its precompiled code requires a native-aware rewrite.";
             return true;
         }
 
         if ((flags & ComImageFlags.ILOnly) == 0)
         {
-            reason = "The COR20 header is not IL-only; the input is a mixed-mode/native-packed image.";
+            reason = "The COR20 header is not IL-only; managed-only rewriting cannot establish preservation of native code.";
             return true;
         }
 

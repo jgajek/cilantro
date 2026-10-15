@@ -74,10 +74,15 @@ internal static class ClosedInitializerValues
             return new(false, "A publication is not definitely assigned on every return.");
         // Reflection over these declarations would invalidate direct-CIL ownership.
         foreach (var method in owner.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
-            if (method.Body.Instructions.Any(i => i.OpCode.Code == Code.Ldtoken &&
-                (i.Operand is IField f && f.ResolveFieldDef() is { } field && fields.Contains(field) ||
-                 i.Operand is ITypeDefOrRef t && t.ResolveTypeDef() == owner)))
-                return new(false, "A publication is exposed through a metadata token.");
+            for (var index = 0; index < method.Body.Instructions.Count; index++)
+            {
+                var instruction = method.Body.Instructions[index];
+                if (instruction.OpCode.Code != Code.Ldtoken) continue;
+                if (instruction.Operand is IField f && f.ResolveFieldDef() is { } field && fields.Contains(field) ||
+                    instruction.Operand is ITypeDefOrRef t && t.ResolveTypeDef() == owner &&
+                    !IsInitializationOnly(method, index))
+                    return new(false, "A publication is exposed through a metadata token.");
+            }
         var consumers = SharedGraphReadOnly.CheckPublishedTogether(fields, initializer);
         return new(consumers.Passed, consumers.Detail) { Fields = fields };
 
@@ -119,6 +124,18 @@ internal static class ClosedInitializerValues
             }
             return PureInstruction(code);
         }
+    }
+
+    // A handle consumed immediately by the framework initialization intrinsic never
+    // becomes a Type/FieldInfo and cannot expose the published graph to reflection.
+    // This only classifies the handle use; the initialization call remains in place.
+    private static bool IsInitializationOnly(MethodDef method, int index)
+    {
+        var il = method.Body.Instructions;
+        return index + 1 < il.Count && il[index + 1].OpCode.Code == Code.Call &&
+            il[index + 1].Operand is IMethod called && called.DeclaringType is TypeRef declaring &&
+            declaring.DefinitionAssembly?.FullName == method.Module.CorLibTypes.AssemblyRef.FullName &&
+            called.FullName == "System.Void System.Runtime.CompilerServices.RuntimeHelpers::RunClassConstructor(System.RuntimeTypeHandle)";
     }
 
     private static bool PureInstruction(Code code) => code is

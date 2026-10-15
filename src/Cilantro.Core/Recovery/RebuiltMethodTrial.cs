@@ -478,9 +478,11 @@ internal static class RebuiltMethodTrial
 
     // Heap identities differ between machines. Preserve aliases/cycles while normalizing
     // strings, boxes and arrays; refuse opaque models instead of comparing allocation IDs.
-    internal sealed class Snapshot(StaticHeap heap, Dictionary<object, int>? metadata = null)
+    internal sealed class Snapshot(StaticHeap heap, Dictionary<object, int>? metadata = null,
+        IReadOnlySet<string>? excludedDomainSlots = null)
     {
         internal HashSet<IMDTokenProvider> MetadataHandles { get; } = [];
+        internal bool Captures(StaticValue value) => value.Kind == StaticValueKind.HeapReference && ids.ContainsKey(value.HeapId);
         // Only compare graphs from the same machine; heap IDs have no cross-machine meaning.
         private StaticHeap SourceHeap => heap;
         internal bool SharesCapturedObjectsWith(Snapshot other)
@@ -543,6 +545,8 @@ internal static class RebuiltMethodTrial
                 }
                 foreach (var property in model.OrderBy(p => p.Key, StringComparer.Ordinal))
                 {
+                    if (type == "System.AppDomain" && property.Key.StartsWith("Data:", StringComparison.Ordinal) &&
+                        excludedDomainSlots?.Contains(property.Key[5..]) == true) continue;
                     var held = ReadModel(property.Value, depth + 1);
                     if (held is null) return null;
                     contents["model:" + property.Key] = held;

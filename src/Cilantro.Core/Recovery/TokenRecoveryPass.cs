@@ -42,9 +42,10 @@ namespace Cilantro.Core.Recovery;
 /// the reflection chain from its seed, so the field is accepted only when the handle demonstrably
 /// came from a type defined in this module.
 /// </remarks>
-public sealed class TokenRecoveryPass : DeobfuscationPass
+public class TokenRecoveryPass : DeobfuscationPass
 {
     public override string Name => "token-recovery";
+    protected virtual bool ForwardersOnly => false;
 
     /// <remarks>
     /// Inlining comes first because Reactor puts a pass-through wrapper between the program and the
@@ -69,19 +70,22 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
     {
         var integerFields = LoadIntegerFields(context);
         var handleLoaders = HandleLoaderReferences.Import(context.Module);
-        var forwarders = HandleForwarders.Locate(context, out var forwarderDiagnostic);
+        var forwarders = HandleForwarders.Locate(context, ForwardersOnly, out var forwarderDiagnostic);
         var sites = new List<TokenSite>();
         foreach (var method in context.Module.GetTypes()
                      .SelectMany(type => type.Methods)
                      .Where(item => item.HasBody))
         {
+            ControlFlowGraph? graph = null;
             for (var index = 0; index < method.Body.Instructions.Count; index++)
             {
-                if (TryMatchSite(method, index, integerFields, out var site) && site is not null)
+                if (!ForwardersOnly && TryMatchSite(method, index, integerFields, out var site) && site is not null)
                     sites.Add(site);
                 else if (TryMatchForwarderSite(method, index, forwarders, out var forwarded) &&
                     forwarded is not null)
                 {
+                    graph ??= ControlFlowGraph.Build(method);
+                    if (graph.BlockOf(forwarded.Argument!) != graph.BlockOf(forwarded.Call)) continue;
                     sites.Add(forwarded);
                 }
             }
@@ -114,7 +118,7 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
             foreach (var (site, member) in resolved)
                 RewriteSite(site, member, handleLoaders);
             var verification = AssemblyVerifier.Verify(
-                context.Module, context.OriginalIdentity, context.OriginalStructure);
+                context.Module, context.OriginalIdentity, context.OriginalStructure, CilantroPipeline.BuildRewriteAllowance(context));
             if (!verification.Passed)
                 throw new InvalidOperationException(string.Join("; ", verification.Diagnostics));
             transactions.Commit();
@@ -137,7 +141,10 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
         }
         var stranded = StrandedForwarders(context, resolved.Select(item => item.Site));
         RecoveryOrphans.DeclareSubtree(context, stranded);
-        context.SetFact("tokens.restored", resolved.Count);
+        if (ForwardersOnly && context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var reactor) && reactor?.IsReactor == true)
+            RecoveryOrphans.DeclareOwningTypes(context, stranded);
+        context.TryGetFact<int>("tokens.restored", out var previous);
+        context.SetFact("tokens.restored", previous + resolved.Count);
         return (PassStatus.Success, resolved.Count,
         [
             $"Rewrote {resolved.Count} constant-fed token proxy call(s) to direct handle loads.",
@@ -257,10 +264,9 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
     /// Matches <c>ldc.i4 token; call forwarder</c>, the whole of Reactor's second token idiom.
     /// </summary>
     /// <remarks>
-    /// The constant is required to be the single instruction before the call rather than sliced out
-    /// of an arithmetic prefix, because the rewrite puts the handle load in the call's place and
-    /// blanks the producer, and it can only blank a producer it can point at. Nothing is lost by the
-    /// restriction: the sites Reactor emits for this idiom push the token literally.
+    /// The constant must be one literal producer, optionally separated from the call by exact
+    /// RunClassConstructor pairs that remain in place. Arithmetic and unknown intervening work
+    /// are declined. Producer and call must share a basic block.
     /// </remarks>
     private static bool TryMatchForwarderSite(
         MethodDef method,
@@ -278,7 +284,20 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
         {
             return false;
         }
-        var argument = method.Body.Instructions[index - 1];
+        var argumentIndex = index - 1;
+        // Late inlining preserves class initialization with an explicit, stack-neutral
+        // ldtoken/RunClassConstructor pair. Keep that work in place; it does not consume
+        // the integer below it. The caller separately requires one basic block for the
+        // complete producer-to-call range, so an alternate entry cannot bypass the token.
+        while (argumentIndex >= 1 && method.Body.Instructions[argumentIndex] is
+                   { OpCode.Code: Code.Call, Operand: IMethod initializer } &&
+               initializer.FullName == "System.Void System.Runtime.CompilerServices.RuntimeHelpers::RunClassConstructor(System.RuntimeTypeHandle)" &&
+               initializer.MethodSig is { HasThis: false, GenParamCount: 0 } &&
+               initializer.DeclaringType is TypeRef runtime && runtime.DefinitionAssembly?.FullName == method.Module.CorLibTypes.AssemblyRef.FullName &&
+               method.Body.Instructions[argumentIndex - 1] is { OpCode.Code: Code.Ldtoken, Operand: TypeDef owner } && owner.Module == method.Module)
+            argumentIndex -= 2;
+        if (argumentIndex < 0) return false;
+        var argument = method.Body.Instructions[argumentIndex];
         if (!argument.IsLdcI4())
             return false;
         site = new TokenSite(
@@ -394,7 +413,7 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
         public bool TryGetKind(MethodDef method, out Table kind) =>
             _kinds.TryGetValue(method, out kind);
 
-        public static HandleForwarders Locate(ArtifactContext context, out string diagnostic)
+        public static HandleForwarders Locate(ArtifactContext context, bool requirePureOwner, out string diagnostic)
         {
             var candidates = context.Module.GetTypes()
                 .SelectMany(type => type.Methods)
@@ -402,6 +421,7 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
                     ? (Method: method, Handle: handle!, Kind: kind)
                     : default)
                 .Where(candidate => candidate.Handle is not null)
+                .Where(candidate => !requirePureOwner || PureOwner(context.Module, candidate.Handle!))
                 .ToArray();
             if (candidates.Length == 0)
             {
@@ -422,6 +442,41 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
                     $"{accepted.Count} handle forwarder(s) resolve tokens against this module.";
             }
             return new HandleForwarders(accepted);
+        }
+
+        private static bool PureOwner(ModuleDef module, IField reference)
+        {
+            if (reference.ResolveFieldDef() is not { IsStatic: true } field || field.Module != module ||
+                MemberVisibility.IsExternallyVisible(field.DeclaringType) && !field.IsPrivate ||
+                field.DeclaringType.FindStaticConstructor() is not { HasBody: true } initializer ||
+                initializer.Body.ExceptionHandlers.Count != 0) return false;
+            var code = initializer.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+            if (code.Length is not (7 or 9) || code[0].OpCode.Code != Code.Ldtoken || code[0].Operand != field.DeclaringType ||
+                !Call(code[1], "System.Type System.Type::GetTypeFromHandle(System.RuntimeTypeHandle)") ||
+                !Call(code[2], "System.Reflection.Assembly System.Type::get_Assembly()")) return false;
+            var at = 3;
+            if (code.Length == 9)
+            {
+                if (!Call(code[at++], "System.Reflection.Module[] System.Reflection.Assembly::GetModules()") ||
+                    !code[at].IsLdcI4() || code[at++].GetLdcI4Value() != 0 || code[at++].OpCode.Code != Code.Ldelem_Ref) return false;
+            }
+            else if (!Call(code[at++], "System.Reflection.Module System.Reflection.Assembly::get_ManifestModule()")) return false;
+            if (!Call(code[at++], "System.ModuleHandle System.Reflection.Module::get_ModuleHandle()") ||
+                code[at].OpCode.Code != Code.Stsfld || code[at++].Operand is not IField stored || stored.ResolveFieldDef() != field ||
+                code[at].OpCode.Code != Code.Ret) return false;
+            foreach (var method in module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
+            foreach (var instruction in method.Body.Instructions.Where(i => i.Operand is IField f && f.ResolveFieldDef() == field))
+            {
+                if (method == initializer && instruction == code[^2]) continue;
+                if (instruction.OpCode.Code == Code.Ldsfld) continue;
+                if (instruction.OpCode.Code != Code.Ldsflda || !TryMatchShape(method, out var handle, out _) ||
+                    handle?.ResolveFieldDef() != field) return false;
+            }
+            return true;
+
+            bool Call(Instruction instruction, string name) => instruction.OpCode.Code is Code.Call or Code.Callvirt &&
+                instruction.Operand is IMethod method && method.FullName == name && method.DeclaringType is TypeRef type &&
+                type.DefinitionAssembly?.FullName == module.CorLibTypes.AssemblyRef.FullName;
         }
 
         /// <summary>
@@ -450,13 +505,20 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
                 body[0].OpCode.Code != Code.Ldsflda ||
                 body[0].Operand is not IField field ||
                 field.FieldSig?.Type.FullName != "System.ModuleHandle" ||
+                field.FieldSig.Type.ToTypeDefOrRef() is not TypeRef fieldType ||
+                fieldType.DefinitionAssembly?.FullName != method.Module.CorLibTypes.AssemblyRef.FullName ||
                 !body[1].IsLdarg() ||
                 body[1].GetParameterIndex() != 0 ||
                 body[2].OpCode.Code != Code.Call ||
                 body[2].Operand is not IMethod resolve ||
                 resolve.DeclaringType?.FullName != "System.ModuleHandle" ||
+                resolve.DeclaringType is not TypeRef framework ||
+                framework.DefinitionAssembly?.FullName != method.Module.CorLibTypes.AssemblyRef.FullName ||
+                resolve.MethodSig is not { HasThis: true, GenParamCount: 0, Params.Count: 1 } signature ||
+                signature.Params[0].ElementType != ElementType.I4 ||
                 !Resolvers.TryGetValue(resolve.Name.String, out var resolver) ||
                 method.MethodSig.RetType?.FullName != resolver.Handle ||
+                signature.RetType.FullName != resolver.Handle ||
                 body[3].OpCode.Code != Code.Ret)
             {
                 return false;
@@ -550,4 +612,18 @@ public sealed class TokenRecoveryPass : DeobfuscationPass
                     [typeof(RuntimeFieldHandle)])!));
         }
     }
+}
+
+/// <summary>Consumes handle proxies exposed by late recovery while original token identities still exist.</summary>
+public sealed class TokenCompletionPass : TokenRecoveryPass
+{
+    public override string Name => "token-completion";
+    protected override bool ForwardersOnly => true;
+    public override IReadOnlyCollection<string> Dependencies => ["il-compaction"];
+}
+
+public sealed class TokenRuntimeCleanupPass : RuntimeCleanupPass
+{
+    public override string Name => "token-runtime-cleanup";
+    public override IReadOnlyCollection<string> Dependencies => ["token-completion"];
 }

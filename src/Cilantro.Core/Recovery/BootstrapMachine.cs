@@ -110,7 +110,7 @@ public static class BootstrapMachine
         // assembly has no file, which is the environment a payload unpacked by another module runs
         // in. Interpreting it there is what lets the rest of the module be read; interpreting it
         // here would only produce the refusal again, in every pass.
-        RecordRefusal(context, refusal);
+        RecordRefusal(context, refusal, machine.State.LoaderEvidence);
         if (!TrySeed(context, maximumSteps, out machine, out diagnostic) || machine is null)
             return false;
 
@@ -232,11 +232,15 @@ public static class BootstrapMachine
             : null;
     }
 
-    private static void RecordRefusal(ArtifactContext context, LoaderObservation refusal)
+    private static void RecordRefusal(ArtifactContext context, LoaderObservation refusal, LoaderInterpretationEvidence evidence)
     {
         if (context.TryGetFact<bool>(FileRefusedFact, out _))
             return;
         context.SetFact(FileRefusedFact, true);
+        context.SetFact("bootstrap.moduleFileRefusal", refusal);
+        // The retry intentionally skips the file-check path. Preserve its original
+        // resource reads before replacing the machine with the memory-load trial.
+        context.SetFact("bootstrap.moduleFileRefusalEvidence", evidence);
         context.AddEvidence(new Evidence(
             "interpretation-environment",
             "The module's integrity check rejected the file it was read from, so it was " +

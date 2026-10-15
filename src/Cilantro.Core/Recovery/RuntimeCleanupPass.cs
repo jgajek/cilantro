@@ -35,8 +35,9 @@ namespace Cilantro.Core.Recovery;
 /// Deletions are declared to the identity gate through the cleanup facts the pipeline reads, so
 /// verification still fails on any change this pass did not account for.
 /// </remarks>
-public sealed class RuntimeCleanupPass : DeobfuscationPass
+public class RuntimeCleanupPass : DeobfuscationPass
 {
+    protected virtual bool PruneUnusedPrivateHelpers => false;
     public override string Name => "runtime-cleanup";
     public override IReadOnlyCollection<string> Dependencies =>
         ["delegate-proxy-analysis", "payload-extraction"];
@@ -52,12 +53,32 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         if (!RewritePolicy.CanRemoveRuntime(recoveryComplete, hasRemainingUseSites: false, confidence: 1.0))
             return (PassStatus.Success, 0, ["Method recovery is incomplete; runtime cleanup withheld."]);
 
+        // Retry bounded integrity ownership after recovery simplified initialization chains,
+        // while the original checker declarations are still available for interpretation.
+        if (complete && context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var reactor) && reactor?.IsReactor == true)
+            IntegrityResourceOwnership.Capture(context);
+
+        // Keep reconstructed resolver dependencies as analysis roots until the
+        // earlier initialization and dispatcher proofs have finished. Deleting
+        // their declarations must not change those proofs' input graph midway.
+        RebuiltMethods.EnableResolverCleanup(context);
+        ReactorRuntimeForwarders.CaptureReaderAdapters(context);
+        // Reactor also emits a token-based delegate builder in some string-only builds,
+        // even when there are no proxies to rewrite. Attribute its exact shape here, late
+        // enough not to alter recovery proofs. Attribution alone never deletes a live type.
+        foreach (var setup in ReactorProxySetup.Find(context))
+        {
+            RecoveryOrphans.Declare(context, setup);
+            RecoveryOrphans.Declare(context, ReactorRuntimeFallbacks.Find(context, setup));
+        }
+
         // Cleanup is the one caller that models type initializers running only when their type is
         // used, because an island of code the protector abandoned looks alive under any other
         // reading. Being wrong about that alone deletes nothing: attribution still has to show
         // recovery is what left the code with no use.
         //
-        // A method the run built a body into is a root whatever the module says. A virtualized
+        // A method the run built a body into is a root unless recovery has positively
+        // attributed it to a removed protector consumer. A virtualized
         // method is typically one nothing calls by name, so the ordinary reading has it dead, and
         // deleting the very body the run was asked to produce — along with the helpers its code
         // calls — is not cleanup.
@@ -67,10 +88,11 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         // calls that surviving code makes. The narrower reading refuses itself on a module that can
         // make an instance without naming its type, so asking for it here costs nothing where it
         // cannot be had.
+        var guardCallChanges = ReactorGuardHelpers.CompleteCalls(context);
         var reachability = ModuleReachability.ComputeWithInstances(
             context.Module,
             typeInitializersAlwaysRun: false,
-            RebuiltMethods.Of(context));
+            RebuiltMethods.CleanupRoots(context));
         // This only admits positively identified VM/proxy types whose uses recovery replaced.
         // Application types are never candidates merely because their references form an island.
         // Dynamic reflection over deliberately removed protector metadata is not preserved.
@@ -100,9 +122,14 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                 return uses.Any(instruction => !roundTrips.Contains(instruction));
             });
         if (tokenConsumer is not null)
-            return (PassStatus.Success, 0,
+            return (PassStatus.Success, guardCallChanges,
                 [$"Metadata declarations retained because {tokenConsumer.FullName} still resolves numeric metadata tokens."]);
 
+        // Complete runtime decoys, on independently recovered string/proxy owners,
+        // provide the same ownership anchor as a retired resolver. Publish that
+        // anchor before whole-type cleanup; deadness and surviving references still
+        // decide whether the complete nest or only an individual helper can go.
+        RecoveryOrphans.Declare(context, ReactorDummyArrayHelpers.Find(context));
         var orphans = RecoveryOrphans.Of(context);
         var refused = reachability.InstanceRefusal is { } why
             ? $"Every virtual method whose shape a call here matches was kept, because this " +
@@ -120,13 +147,28 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             : ComputeUnreferenced(context.Module, deadTypes);
 
         var removedMethodTokens = new HashSet<uint>();
+        var addedMethods = context.Module.GetTypes().SelectMany(type => type.Methods).Where(method => method.Rid == 0).ToArray();
         var removedPublicApi = new HashSet<string>(StringComparer.Ordinal);
         var removedFieldCount = 0;
         var removedTypeCount = 0;
         RemoveTypes(removableTypes);
 
+        var guardPairs = ReactorGuardHelpers.Find(context);
         var removedMethodCount = RemoveDeadMethods(
-            context, reachability, removedMethodTokens, removedPublicApi, out var unattributed);
+            context, reachability, removedMethodTokens, removedPublicApi,
+            guardPairs.SelectMany(p => new[] { p.Getter, p.Test }).Concat(ReactorGuardHelpers.FindConstantMethods(context)).ToHashSet(), out var unattributed);
+        foreach (var pair in guardPairs)
+        {
+            var owner = pair.Field.DeclaringType;
+            if (owner.Methods.Contains(pair.Getter) || owner.Methods.Contains(pair.Test)) continue;
+            // The recognition proof found exactly two field references, both in these
+            // accessors. Their physical removal leaves no instruction naming the field.
+            var fieldName = pair.Field.FullName;
+            owner.Fields.Remove(pair.Field);
+            removedFieldCount++;
+            context.AddChange(new ChangeRecord(Name, "remove-unused-reactor-guard-field", fieldName,
+                "Removed the unwritten singleton-guard field after both attributed guard accessors were physically removed; application methods and initialization remain unchanged."));
+        }
         // Removing an orphaned method can release types previously pinned only by its
         // signature or body. Reuse the original deadness proof, but recheck references
         // against the declarations that actually survived method cleanup.
@@ -161,12 +203,12 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             }
         }
         var attribution = unattributed == 0
-            ? "Every dead method of a surviving type was attributable to the protector."
-            : $"Left {unattributed} dead method(s) of surviving types in place, because nothing " +
-                "recovery did accounts for them being unused.";
+            ? "Every eligible dead method was either protector-attributed or an unused private helper."
+            : $"Left {unattributed} dead method(s) of surviving types in place, because neither protector attribution " +
+                "nor the private-helper removal policy applies.";
         if (removedTypeCount == 0 && removedMethodCount == 0)
         {
-            return (PassStatus.Success, 0,
+            return (PassStatus.Success, guardCallChanges,
             [
                 deadTypes.Count == 0
                     ? $"No type was proven unreachable; {retained}"
@@ -176,20 +218,29 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             ]);
         }
 
-        context.SetFact<IReadOnlySet<uint>>("cleanup.removedMethodTokens", removedMethodTokens);
-        context.SetFact<IReadOnlySet<string>>("cleanup.removedPublicApi", removedPublicApi);
-        context.SetFact("cleanup.removedTypeCount", removedTypeCount);
-        context.SetFact("cleanup.removedMethodCount", removedMethodCount);
-        context.SetFact("cleanup.removedFieldCount", removedFieldCount);
+        context.TryGetFact<IReadOnlySet<uint>>("cleanup.removedMethodTokens", out var priorMethodTokens);
+        context.TryGetFact<IReadOnlySet<string>>("cleanup.removedPublicApi", out var priorPublicApi);
+        context.TryGetFact<int>("cleanup.removedAddedMethodCount", out var priorAddedMethodCount);
+        context.TryGetFact<int>("cleanup.removedTypeCount", out var priorTypeCount);
+        context.TryGetFact<int>("cleanup.removedMethodCount", out var priorMethodCount);
+        context.TryGetFact<int>("cleanup.removedFieldCount", out var priorFieldCount);
+        context.SetFact<IReadOnlySet<uint>>("cleanup.removedMethodTokens", removedMethodTokens.Concat(priorMethodTokens ?? new HashSet<uint>()).ToHashSet());
+        var survivingMethods = context.Module.GetTypes().SelectMany(type => type.Methods).ToHashSet();
+        var removedAddedMethodCount = addedMethods.Count(method => !survivingMethods.Contains(method));
+        context.SetFact("cleanup.removedAddedMethodCount", priorAddedMethodCount + removedAddedMethodCount);
+        context.SetFact<IReadOnlySet<string>>("cleanup.removedPublicApi", removedPublicApi.Concat(priorPublicApi ?? new HashSet<string>()).ToHashSet(StringComparer.Ordinal));
+        context.SetFact("cleanup.removedTypeCount", priorTypeCount + removedTypeCount);
+        context.SetFact("cleanup.removedMethodCount", priorMethodCount + removedMethodCount);
+        context.SetFact("cleanup.removedFieldCount", priorFieldCount + removedFieldCount);
         context.AddEvidence(new Evidence(
             "runtime-cleanup",
             $"Removed {removedTypeCount} unreachable type(s) and {removedMethodCount} dead method(s) " +
             $"from surviving types, none of them referenced by a surviving declaration.",
             null,
             1.0));
-        return (PassStatus.Success, removedTypeCount + removedMethodCount,
+        return (PassStatus.Success, guardCallChanges + removedTypeCount + removedMethodCount,
         [
-            $"Removed {removedTypeCount} unreachable type(s) ({removedMethodTokens.Count} methods " +
+            $"Removed {removedTypeCount} unreachable type(s) ({removedMethodTokens.Count + removedAddedMethodCount} methods " +
             $"in total, of which {removedMethodCount} were dead methods of surviving types).",
             $"Retained the rest: {retained}",
             attribution,
@@ -206,7 +257,10 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                 {
                     removedTypeCount++;
                     foreach (var method in member.Methods)
-                        removedMethodTokens.Add(method.MDToken.Raw);
+                    {
+                        if (method.Rid != 0) removedMethodTokens.Add(method.MDToken.Raw);
+                        RecordRebuiltRemoval(context, method);
+                    }
                     removedFieldCount += member.Fields.Count;
                     removedPublicApi.UnionWith(ArtifactIdentitySnapshot.PublicApiEntries(member));
                 }
@@ -238,16 +292,17 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
     /// rather than through any instruction, so removing one would strand the declaration that
     /// points at it.
     ///
-    /// Being unreachable is necessary but not sufficient: a method also has to be one recovery
-    /// orphaned. Programs contain unused internal helpers of their own, and deleting those would be
-    /// an edit to the program rather than the removal of an obfuscation, so the count that fails
-    /// only the attribution test is reported instead.
+    /// Unused private static application helpers may also be removed when they have
+    /// no reflection/name exposure, attributes or metadata role. Such removal is
+    /// reported separately and never establishes protector ownership. Other unused
+    /// application declarations retain the attribution requirement.
     /// </remarks>
     private int RemoveDeadMethods(
         ArtifactContext context,
         ModuleReachability reachability,
         HashSet<uint> removedMethodTokens,
         HashSet<string> removedPublicApi,
+        HashSet<MethodDef> guardCandidates,
         out int unattributed)
     {
         unattributed = 0;
@@ -263,6 +318,7 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
             .ToHashSet();
 
         var orphans = RecoveryOrphans.Of(context);
+        var stringForwarders = Cilantro.Core.Strings.RecoveredStringForwarders.Candidates(context);
         var dead = surviving
             .SelectMany(type => type.Methods)
             .Where(method =>
@@ -271,10 +327,40 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                 !method.IsRuntime &&
                 !method.IsVirtual &&
                 !MemberVisibility.IsExternallyVisible(method) &&
+                // Reflection preserves application declarations, but positively
+                // identified protector guards and recovery-emptied initializers
+                // may lose their metadata under the cleanup contract. Direct
+                // handles, live calls and surviving references still veto removal.
+                (!reachability.IsReflectivelyExposed(method.DeclaringType) || guardCandidates.Contains(method) || stringForwarders.Contains(method) ||
+                    method.Rid != 0 && orphans.Contains(method.MDToken.Raw) && EmptyTypeInitializers.DoesNothing(method)) &&
                 !accessors.Contains(method) &&
                 (NothingCallsIt(method) || NothingHappensWhenItDoes(method)))
             .ToArray();
-        var candidates = dead.Where(method => orphans.Contains(method.MDToken.Raw)).ToHashSet();
+        var rebuiltCandidates = RebuiltMethods.CleanupCandidates(context);
+        // Keep this attribution local to methods: it does not establish that every
+        // unused sibling or the containing type is protector-owned.
+        var integrityCandidates = ReactorIntegrityHelpers.Find(context).ToHashSet();
+        var cryptoCandidates = ReactorCryptoHelpers.Find(context).ToHashSet();
+        var fileCandidates = ReactorFileHelpers.Find(context).ToHashSet();
+        var encodingCandidates = ReactorEncodingHelpers.Find(context).ToHashSet();
+        var dummyArrays = ReactorDummyArrayHelpers.Find(context).ToHashSet();
+        var cacheWriters = ReactorStringCacheWriters.Find(context).ToHashSet();
+        var runtimeForwarders = ReactorRuntimeForwarders.Find(context).ToHashSet();
+        var candidates = dead.Where(method => (method.Rid != 0 && orphans.Contains(method.MDToken.Raw)) ||
+            rebuiltCandidates.Contains(method) || integrityCandidates.Contains(method) || guardCandidates.Contains(method) ||
+            runtimeForwarders.Contains(method) || cryptoCandidates.Contains(method) || fileCandidates.Contains(method) ||
+            encodingCandidates.Contains(method) || dummyArrays.Contains(method) || cacheWriters.Contains(method)).ToHashSet();
+        // Unused private application helpers may be pruned under the application
+        // behavior contract. This is not protector ownership and must never
+        // attribute their containing types or dependencies to Reactor.
+        var literalNames = surviving.SelectMany(t => t.Methods).Where(m => m.HasBody)
+            .SelectMany(m => m.Body.Instructions).Select(i => i.Operand).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var unusedPrivate = dead.Where(m => PruneUnusedPrivateHelpers && m.IsPrivate && m.IsStatic && m.HasBody && !m.IsConstructor &&
+            !m.HasCustomAttributes && m.Overrides.Count == 0 && !ReadingMarker.Marks(m) &&
+            !reachability.IsReflectivelyExposed(m.DeclaringType) &&
+            !literalNames.Contains(m.Name.String) && !literalNames.Contains(m.FullName)).ToHashSet();
+        unusedPrivate.ExceptWith(candidates);
+        candidates.UnionWith(unusedPrivate);
         unattributed = dead.Length - candidates.Count;
         if (candidates.Count == 0)
             return 0;
@@ -290,15 +376,49 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
 
         foreach (var method in candidates)
         {
-            removedMethodTokens.Add(method.MDToken.Raw);
+            if (dummyArrays.Contains(method))
+                context.AddEvidence(new Evidence("runtime-dummy-array-ownership",
+                    "Removed a complete recognized array decoy from an independently recovered string/proxy runtime owner after surviving-reference checks.", method.FullName));
+            if (encodingCandidates.Contains(method))
+                context.AddEvidence(new Evidence("runtime-encoding-helper-ownership",
+                    "Removed the complete Base64/UTF-16 utility from an independently recovered string/proxy runtime owner after surviving-reference checks.", method.FullName));
+            if (fileCandidates.Contains(method))
+                context.AddEvidence(new Evidence("runtime-file-helper-ownership",
+                    "Removed a complete recognized file reader or assembly-location utility, including its exception regions, from an independently recovered string/proxy runtime owner after surviving-reference checks.", method.FullName));
+            if (cacheWriters.Contains(method))
+                context.AddEvidence(new Evidence("string-cache-writer-ownership",
+                    "Removed a closed writer whose only escaping value is a newly allocated byte array stored in the exact independently decoded cache of a physically retired string resolver.", method.FullName));
+            if (cryptoCandidates.Contains(method))
+            {
+                context.AddEvidence(new Evidence("crypto-helper-ownership",
+                    "Removed a complete recognized crypto utility or its bounded forwarding adapter on an independently recovered string/proxy runtime owner; only actual same-owner dependencies inherit attribution, and later cleanup rechecks their uses.", method.FullName));
+                RecoveryOrphans.DeclareLocalDependencies(context, method);
+            }
+            if (runtimeForwarders.Contains(method))
+                context.AddEvidence(new Evidence("runtime-forwarder-ownership",
+                    "Removed an erased-argument thunk to a framework method or fully recognized BinaryReader adapter from an owner with independently recovered string and proxy inputs after dead-method and surviving-reference checks.", method.FullName));
+            if (integrityCandidates.Contains(method))
+            {
+                context.AddEvidence(new Evidence("integrity-helper-ownership",
+                    "Removed the self-file signature checker from an owner with independently recovered string and proxy inputs after dead-method and surviving-reference checks.", method.FullName));
+                // Keep the proof before detaching the checker. Its private helper
+                // chain can become dead only after this removal; a later cleanup
+                // still applies the ordinary reference and visibility gates.
+                RecoveryOrphans.DeclareLocalDependencies(context, method);
+            }
+            if (method.Rid != 0) removedMethodTokens.Add(method.MDToken.Raw);
+            RecordRebuiltRemoval(context, method);
             if (method.IsPublic)
                 removedPublicApi.Add(ArtifactIdentitySnapshot.PublicApiEntry(method));
+            var removedMethodLocation = $"{method.MDToken} {method.FullName}";
             method.DeclaringType.Methods.Remove(method);
             context.AddChange(new ChangeRecord(
                 Name,
-                "remove-dead-method",
-                $"{method.MDToken} {method.FullName}",
-                "Removed a method proven unreachable and unreferenced after recovery."));
+                unusedPrivate.Contains(method) ? "remove-unused-private-helper" : "remove-dead-method",
+                removedMethodLocation,
+                unusedPrivate.Contains(method)
+                ? "Removed an unused private static application helper after reachability, reflection/name and surviving-reference checks; no protector ownership is inferred."
+                : "Removed a method proven unreachable and unreferenced after recovery."));
         }
         return candidates.Count;
 
@@ -315,6 +435,21 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         // initializers recovery itself hollowed out.
         static bool NothingHappensWhenItDoes(MethodDef method) =>
             EmptyTypeInitializers.DoesNothing(method);
+    }
+
+    private void RecordRebuiltRemoval(ArtifactContext context, MethodDef method)
+    {
+        if (!ReadingMarker.Marks(method)) return;
+        context.TryGetFact<IReadOnlyList<VirtualizationRebuildPass.LiftedRecipe>>(
+            VirtualizationRebuildPass.LiftedRecipesFact, out var recipes);
+        var recipe = recipes?.FirstOrDefault(item => item.Holder == method);
+        if (recipe is null && !RebuiltMethods.CleanupCandidates(context).Contains(method)) return;
+        var attribution = recipe is not null
+            ? $"the lifted body of orphaned original caller 0x{recipe.Caller:X8}"
+            : $"the reconstructed body 0x{method.MDToken.Raw:X8} from {RebuiltMethods.CleanupAttribution(context, method)}";
+        context.AddChange(new ChangeRecord(Name, "remove-orphaned-rebuilt-method", method.FullName,
+            $"Removed {attribution} after visibility, reachability and surviving-reference checks. " +
+            $"Removed body fingerprint: {MethodBodySnapshot.Capture(method).Fingerprint}."));
     }
 
     /// <summary>
@@ -470,13 +605,19 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         return removable;
     }
 
-    private static HashSet<TypeDef> CollectReferencedCandidates(
+    internal static HashSet<TypeDef> CollectReferencedCandidates(
         ModuleDef module, IEnumerable<TypeDef> containers, HashSet<TypeDef> candidates)
     {
         var found = new HashSet<TypeDef>();
+        var signatures = new HashSet<TypeSig>(ReferenceEqualityComparer.Instance);
 
         void Note(ITypeDefOrRef? reference)
         {
+            if (reference is TypeSpec specification)
+            {
+                NoteSig(specification.TypeSig);
+                return;
+            }
             var resolved = reference switch
             {
                 TypeDef definition => definition,
@@ -490,20 +631,62 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
 
         void NoteSig(TypeSig? sig)
         {
-            if (sig is null)
+            if (sig is null || !signatures.Add(sig))
                 return;
             if (sig is GenericInstSig generic)
                 foreach (var argument in generic.GenericArguments)
                     NoteSig(argument);
+            if (sig is ModifierSig modifier) Note(modifier.Modifier);
+            if (sig is FnPtrSig { Signature: MethodSig function })
+            {
+                NoteSig(function.RetType);
+                foreach (var parameter in function.Params) NoteSig(parameter);
+                if (function.ParamsAfterSentinel is { } trailing)
+                    foreach (var parameter in trailing) NoteSig(parameter);
+            }
+            NoteSig(sig.Next);
             Note(sig.ScopeType);
         }
+
+        void NoteArgument(CAArgument argument)
+        {
+            NoteSig(argument.Type);
+            switch (argument.Value)
+            {
+                case ITypeDefOrRef type: Note(type); break;
+                case TypeSig signature: NoteSig(signature); break;
+                case CAArgument boxed: NoteArgument(boxed); break;
+                case IList<CAArgument> array:
+                    foreach (var item in array) NoteArgument(item);
+                    break;
+            }
+        }
+
+        void NoteAttribute(CustomAttribute attribute)
+        {
+            Note(attribute.AttributeType);
+            foreach (var argument in attribute.ConstructorArguments) NoteArgument(argument);
+            foreach (var argument in attribute.NamedArguments) NoteArgument(argument.Argument);
+        }
+
+        void NoteGenericParameter(GenericParam parameter)
+        {
+            foreach (var constraint in parameter.GenericParamConstraints)
+            {
+                Note(constraint.Constraint);
+                foreach (var attribute in constraint.CustomAttributes) NoteAttribute(attribute);
+            }
+            foreach (var attribute in parameter.CustomAttributes) NoteAttribute(attribute);
+        }
+
+        Note(module.EntryPoint?.DeclaringType);
 
         // Assembly and module attributes are declarations no type contains, so they would otherwise
         // be invisible to a scan that walks types alone.
         foreach (var attribute in module.CustomAttributes
                      .Concat(module.Assembly?.CustomAttributes ?? []))
         {
-            Note(attribute.AttributeType);
+            NoteAttribute(attribute);
         }
         foreach (var exported in module.ExportedTypes)
             Note(exported.Resolve());
@@ -512,15 +695,30 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
         {
             Note(type.BaseType);
             foreach (var interfaceImpl in type.Interfaces)
+            {
                 Note(interfaceImpl.Interface);
+                foreach (var attribute in interfaceImpl.CustomAttributes) NoteAttribute(attribute);
+            }
+            foreach (var parameter in type.GenericParameters) NoteGenericParameter(parameter);
             foreach (var attribute in type.CustomAttributes)
-                Note(attribute.AttributeType);
+                NoteAttribute(attribute);
             foreach (var field in type.Fields)
                 NoteSig(field.FieldSig?.Type);
             foreach (var property in type.Properties)
+            {
                 NoteSig(property.PropertySig?.RetType);
+                if (property.PropertySig is { } signature)
+                    foreach (var parameter in signature.Params) NoteSig(parameter);
+            }
+            foreach (var item in type.Events) Note(item.EventType);
             foreach (var method in type.Methods)
+            {
                 InspectMethod(method, Note, NoteSig);
+                foreach (var attribute in method.CustomAttributes) NoteAttribute(attribute);
+                foreach (var parameter in method.ParamDefs)
+                    foreach (var attribute in parameter.CustomAttributes) NoteAttribute(attribute);
+                foreach (var parameter in method.GenericParameters) NoteGenericParameter(parameter);
+            }
 
             // An attribute is a use of its type that no signature and no instruction mentions, so a
             // type only ever written as one is reachable in a way this scan has to be told about.
@@ -533,7 +731,7 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                          .Concat(type.Properties).Concat(type.Events))
             {
                 foreach (var attribute in member.CustomAttributes)
-                    Note(attribute.AttributeType);
+                    NoteAttribute(attribute);
             }
         }
 
@@ -578,6 +776,8 @@ public sealed class RuntimeCleanupPass : DeobfuscationPass
                     break;
                 case IMethod called:
                     note(called.DeclaringType);
+                    if (called is MethodSpec { GenericInstMethodSig: { } instantiation })
+                        foreach (var argument in instantiation.GenericArguments) noteSig(argument);
                     if (called.MethodSig is { } calledSignature)
                     {
                         noteSig(calledSignature.RetType);
