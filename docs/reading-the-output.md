@@ -62,7 +62,7 @@ Methods marked `[RebuiltFromReading]` came from supported VM reconstruction rath
 
 String counters usually describe sites/uses rather than distinct strings. Some simplification counters accumulate across passes. `HostProfile` records consulted host facts; `ContinuedPast` records unsupported calls passed during permissive interpretation. These qualifications matter even with structural success.
 
-Blocker records describe stops encountered during recovery. Some become irrelevant after a later successful route or retirement of the owning protector code. Correlate them with the final artifact and pass result instead of treating every historical event as an unresolved application failure.
+Blocker records describe stops encountered during recovery. Some become irrelevant after a later successful route or retirement of the owning protector code. Correlate them with the final artifact and pass result instead of treating every recorded stop as an unresolved application failure.
 
 ## Keep the useful outputs
 

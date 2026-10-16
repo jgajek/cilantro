@@ -1,6 +1,6 @@
 # Virtualized methods
 
-For routine use, enable reconstruction (the ordinary CLI default), open the cleaned application and read its validation. The [current status](status-report.md) verifies physical VM removal across all 14 intact virtualized identities in the frozen corpus. This technical reference also retains earlier diagnostic checkpoints; their unresolved observations are not the current corpus verdict.
+For routine use, enable reconstruction (the ordinary CLI default), open the cleaned application and read its validation. The [current status](status-report.md) verifies physical VM removal across all 14 intact virtualized identities in the frozen corpus. This reference explains reconstruction evidence and its limits.
 
 Reactor can replace a method with bytecode for a custom interpreter embedded in the assembly. Decrypting ordinary method bodies does not restore that method: the program now exists in a different instruction set.
 
@@ -79,48 +79,12 @@ Reflection over constructed generic methods preserves the supplied method and de
 
 ## Remaining limits
 
-### Diagnosed cold-start differences
+- The original VM can initialize caches and support state that reconstructed methods do not need. Cold-start full-state comparisons can therefore differ even when the separately captured non-VM state matches. Review the actual comparison coverage and application effects; this does not establish equivalence on another input.
+- Unknown values, exhausted budgets, unsupported native effects and incomplete snapshots remain inconclusive. A matched repeat call cannot establish a cold-start result.
+- VM invocation discovery accepts simple argument-building sequences and intervening no-ops but rejects branch or exception-region entries into them. Indirect calls and computed program identifiers can conceal programs.
+- Lifted initialization helpers receive separate cold-start and repeat-call comparisons through parameterless callers. Those callers' actual argument-building code must be available to interpret.
+- Resource-based recovery requires independent initializer proofs. Numeric metadata-token resolution and unresolved reflection can limit safe cleanup.
+- Assembly-only type-handle uses are distinguished from reflective member access. A spilled local qualifies only when every read is an assembly lookup and its address never escapes. Other uses remain conservative.
+- Protector retirement requires attribution, deadness and absence of surviving references. Matching captured state alone never authorizes deletion of application code.
 
-The initial September 2026 audit of Qbjuef and Mlfhntkcvb.payload.Lqcuzgc separated a full-state mismatch from a mismatch in recovered application work. Before the additional helper comparisons described below, a 32-million-step budget and controlled 32-byte zero streams produced these results:
-
-| Sample | Captured non-VM state | Other evidence |
-| --- | --- | --- |
-| Qbjuef | Matched in all three differing cold-start trials; no modeled objects shared across the VM/non-VM boundary | Both repeat-call trials agreed. Payload bytes matched, but extraction exercised only one of two reconstructed bodies. |
-| Mlfhntkcvb.payload.Lqcuzgc | Matched in two of three differing cold-start trials; no modeled objects shared across the boundary in those two | The debugger-present trial still differs: the original protector throws and the rebuilt method completes. Both repeat-call trials agreed. |
-
-The original VM initializes caches and interpreter support state that the rebuilt method does not need. This accounts for the localized static-state differences on these fixtures; it does not establish equivalence on other inputs. Three additional trials per sample remained inconclusive. Both cleaned assemblies passed structural verification.
-
-The initial cleanup obstacle was numeric metadata-token resolution. Follow-up work found that resource-based recovery skipped independent initializer proofs when bootstrap evidence was absent, and that `typeof(T).Assembly` incorrectly exposed all members of `T` to reflection in reachability analysis. Independent proofs now run without bootstrap evidence. Assembly-only type-handle use, including intervening no-ops and a redundant `System.Type` cast, no longer implies reflective access to the type's members. A local spill is accepted only when every read is an assembly lookup and the local's address never escapes. Other uses and control-flow entries into those sequences remain conservative. Cleanup still requires attribution, deadness and absence of surviving references; the captured-state comparison alone never authorizes deletion.
-
-VM invocation discovery also tolerates no-ops between simple argument loads, while rejecting branch or exception-region entries into the argument sequence. This finds Mlfhntkcvb's additional 832-operation initialization program. Helper substitution removes the complete proven argument sequence rather than assuming a fixed number of adjacent instructions. Indirect calls and computed program identifiers can still conceal programs.
-
-Lifted initialization helpers now receive separate cold-start and repeat-call comparisons through their parameterless callers, using those callers' actual argument-building code. Both the original VM entry and the rebuilt helper must be exercised. These trials run even when the module extracts no payload, preserve independent machine state, and use the configured host profile under strict interpretation. They complement payload coverage rather than silently counting as coverage of the unpacking path.
-
-Cold initializer proofs honor declared step budgets, including their shared proxy-initializer allowance. Large proxy sets can exhaust that allowance; retained initializers are reported rather than treated as proven inert. Raising the analysis budget permits more proofs without weakening their requirements. Protector guard removal remains distinguishable from an accidental behavior change, and full-state disagreement is not converted to `agreed` by cleanup.
-
-The final cleanup trials removed 200 protector support types and 1,444 methods from Qbjuef, and 564 types and 2,930 methods from Mlfhntkcvb.payload.Lqcuzgc. Method totals include methods belonging to removed types. Mlfhntkcvb required a 192-million-step declaration to independently prove all 514 proxy initializers inert. Its newly discovered initialization program rebuilt into 1,163 CIL instructions. Both samples' additional helper trials matched captured non-VM state on cold start, with no shared modeled objects across the boundary, and matched full captured state on repeat calls. Both cleaned assemblies passed structural verification and ILSpy decompilation; Qbjuef's two extracted payload hashes were unchanged.
-
-Validation passed all 24 runnable corpus gates, 859 selected regression tests, and ten runtime comparisons against a source-built benign Reactor 7.5 fixture. Malware corpus trials remained static. Separate [reconstruction cleanup gates](corpus.md#reconstruction-cleanup-gates) enforce the removal counts and helper comparison evidence while requiring the full-state disagreement to remain visible. These results establish the stated checks, not equivalence for every input or complete unprotection of the corpus.
-
-Reports now summarize the localized trials separately from other disagreements, using `reconstruction-state-boundary` evidence in the analysis JSON and the Validation section of analyst output. These findings close the diagnosis of the observed warning; they do not claim complete unprotection or whole-corpus equivalence.
-
-VM removal is checked separately from reconstruction agreement. Cleanup can remove a
-positively identified, replaced engine and its nested types when surviving declarations
-no longer reference them, even when unrelated application reflection prevents precise
-general reachability. Recognized, fully recovered delegate-proxy types receive the same
-reference check. Reconstructed application methods remain roots. Opaque numeric metadata
-lookups still prevent row deletion; a proved lookup using the same live member's `Module`
-and `MetadataToken` can tolerate row compaction.
-
-Cleanup also removes embedded VM data referenced exclusively by the removed engine,
-excluding resources identified as application payloads or restored application resources.
-Removal records retain resource hashes, and the original input retains the bytes. The
-`vm-machinery-removal` evidence counts declarations actually removed or retained. Neither
-successful reconstruction trials nor successful emission mean the VM is gone: use the
-[emitted-metadata removal gate](corpus.md#reconstruction-cleanup-gates), inspect the cleaned
-CIL, and separately check application behavior and payload preservation. A previously
-rewritten assembly with stale VM tokens can still require its intact original.
-
-Complex exception paths, reflection, unknown state, and sample-specific handlers can prevent complete lifting or validation. “No direct callers” does not exclude reflective calls. A remaining dispatcher is not necessarily a protection artifact, and a decompiler's readable C# is not the original source.
-
-Use the [output guide](reading-the-output.md) to locate evidence, [compatibility](compatibility.md) for release boundaries, and [historical research](history/pre-0.10/devirtualization.md) for earlier implementation experiments.
+Use the [output guide](reading-the-output.md) to locate evidence and [compatibility](compatibility.md) for support boundaries.

@@ -70,12 +70,6 @@ internal sealed class AnalysisArguments
                 case "--declarations": parsed.Declarations = Value(); break;
                 case "--reviewed-dependencies": parsed.References = Value(); break;
                 case "--allow-declared-calls": parsed.AllowDeclaredCalls = true; break;
-                case "--recover-embedded": case "--status": case "--remove-runtime":
-                    throw new ArgumentException($"{option} was removed: this is now automatic. Omit the option.");
-                case "--rename": case "--devirtualize":
-                    throw new ArgumentException($"{option} was removed: readable names and VM reconstruction are on by default; --strict disables both.");
-                case "--report-dir":
-                    throw new ArgumentException("--report-dir was removed. Use -o DIR to put all outputs in one folder.");
                 default: throw new ArgumentException($"Unknown option: {option}. Use --help-all for specialist controls.");
             }
 

@@ -76,19 +76,20 @@ public sealed class AnalysisArgumentsTests
     }
 
     [Theory]
-    [InlineData("--recover-embedded")]
-    [InlineData("--status")]
-    [InlineData("--remove-runtime")]
-    [InlineData("--rename")]
-    [InlineData("--devirtualize")]
-    [InlineData("--report-dir")]
-    public async Task RemovedOptionsGiveAnActionableJsonError(string option)
+    [InlineData("--bogus")]
+    [InlineData("--not-an-option")]
+    [InlineData("--typo")]
+    [InlineData("--output-folder")]
+    [InlineData("--enable-colors")]
+    [InlineData("--frobnicate")]
+    public async Task UnknownOptionsGiveAnActionableJsonError(string option)
     {
         var run = await AnalysisConsoleTests.RunCli("sample.exe", option, "--json");
         Assert.Equal(2, run.Exit);
         Assert.Empty(run.Error);
         using var json = JsonDocument.Parse(run.Text);
-        Assert.Contains("removed", run.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Unknown option", run.Text, StringComparison.Ordinal);
+        Assert.Contains("--help-all", run.Text, StringComparison.Ordinal);
         Assert.Contains(option, run.Text, StringComparison.Ordinal);
     }
 

@@ -30,4 +30,4 @@ Preserve type-initialization timing, side effects, exception boundaries, stack b
 
 ## Validation
 
-Add tests for semantic boundaries, rollback, and false-positive refusal, not just happy-path counters. Use the sample corpus for static regression and benign probes for executable comparisons. [Development](development.md) gives commands; [historical notes](history/pre-0.10/code-organization.md) preserve detailed reasoning from earlier implementation rounds.
+Add tests for semantic boundaries, rollback, and false-positive refusal, not just happy-path counters. Use the sample corpus for static regression and benign probes for executable comparisons. [Development](development.md) gives the build and validation commands.

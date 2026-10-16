@@ -27,7 +27,7 @@ Use `cilantro` when it is on PATH, `.\cilantro.exe` from an unpacked Windows bui
 
 Without `-o`, all files go into `sample.cilantro/` beside `sample.exe`. Repeating the command selects `sample.cilantro-2/`, then `-3/`, and so on. The original file is preserved.
 
-`-o DIR` / `--output DIR` chooses one folder for the cleaned assembly, extracted originals, cleaned children, reports, VM listings, name maps and status file. It takes a **directory**, not a cleaned filename. The folder must be new or empty; an existing nonempty folder is rejected instead of mixing two trials. Parent directories are created as needed.
+`-o DIR` / `--output DIR` chooses one folder for the cleaned assembly, extracted originals, cleaned children, reports, VM listings, name maps and status file. Its value is the **case directory**. The folder must be new or empty; an existing nonempty folder is rejected instead of mixing two trials. Parent directories are created as needed.
 
 The cleaned input is normally `sample.cleaned.exe` (or `.dll` for a library) inside the case folder. A native wrapper may have no cleaned root; its managed stage and report appear in the child inventory. Copy actual paths from **OUTPUT**, the HTML report or the JSON `Wrote` fields rather than guessing them.
 
@@ -90,20 +90,6 @@ Recursive recovery is bounded to depth 4, 32 artifacts and 256 MiB of aggregate 
 | `2` | Arguments, input or an exception prevented a normal run result. |
 
 Scripts should read the [JSON contract](agents.md), not parse the English summary. `corpus run` remains a developer command documented in [corpus validation](corpus.md); its `--output` also selects a directory.
-
-## Migrating earlier commands
-
-Before 1.0, selecting a case often required several switches. The same intent is now:
-
-```text
-cilantro sample.exe -o case/run-01
-```
-
-- Remove `--recover-embedded`, `--status` and `--remove-runtime`: those behaviors are automatic.
-- Remove `--rename` and `--devirtualize`: ordinary recovery enables both. Strict mode deliberately disables them, with no positive CLI overrides. Core/MCP callers retain their separate options.
-- Replace `--report-dir DIR --output DIR/cleaned.exe` with `-o DIR`. A cleaned filename is no longer the meaning of `--output`.
-- Use `--no-recursion` when you explicitly want the former nonrecursive workflow.
-- Removed switches produce an error explaining the replacement; they are not silently ignored.
 
 ## Preserving reviewed dependencies
 

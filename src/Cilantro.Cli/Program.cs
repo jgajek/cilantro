@@ -206,10 +206,6 @@ internal static class CilantroCommand
                 reconstruction, compare a separate ordinary run.
                 See docs/declarations.md for facts, budgets and the risks of call assertions.
 
-                Before 1.0: --recover-embedded, --status and --remove-runtime are now automatic.
-                --rename/--devirtualize were removed; default recovery includes both. --report-dir
-                was replaced by -o DIR. --output now means a case folder, not a cleaned filename.
-
                 Development: cilantro corpus run [--manifest PATH] [--samples DIR] [--output DIR] [--strict]
                 """);
     }

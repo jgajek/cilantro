@@ -21,7 +21,7 @@ Evidence includes real-world Reactor 6 samples and Reactor 7.5 benign probes tar
 
 ## Current corpus result
 
-The 0.10.6 checkpoint closes the agreed full-unprotection goal for the frozen undamaged corpus. It accounts for **43 roots**: 37 ordinary recoveries, three declared negative controls and three successful explicit generic followups. It includes all **28 undamaged hashes** from a captured 29-sample Reactor-tagged inventory; one input damaged by another recovery tool is excluded. The inventory was not refreshed at closure.
+The frozen validation corpus accounts for **43 roots**: 37 ordinary recoveries, three declared negative controls and three successful explicit generic followups. It includes all **28 undamaged hashes** from a captured 29-sample Reactor-tagged inventory; one input damaged by another recovery tool is excluded. The captured inventory defines the measurement scope; a release candidate must be validated against its pinned inputs.
 
 Independent physical VM-removal checks pass **18 contexts / 14 intact virtualized identities**. Final inspection covers **104 structurally verified managed outputs**, with application-identity and captured-payload preservation checks passing for every root. These are root, identity and output-context counts, not interchangeable counts of malware families. The [status report](status-report.md) records the exact scope and evidence.
 

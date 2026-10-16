@@ -1,8 +1,8 @@
 # Documentation
 
-Start with the analyst workflow. This tree targets **1.0.0**; the [preparation notes](releases/1.0.0.md) distinguish the new console presentation from the **0.10.6** recovery-validation baseline. These pages do not announce a published release.
+Start with the analyst workflow. These pages describe CILantro **1.0.0**; see the [release preparation notes](releases/1.0.0.md) for features and validation requirements.
 
-The normal command is `cilantro sample.exe`. It follows embedded stages and keeps all artifacts in a fresh case folder; `-o DIR` chooses that folder. Follow **OUTPUT** when it finishes. See the [option meanings and migration guide](quick-start.md) for the simplified CLI; `--help-all` lists specialist controls.
+The normal command is `cilantro sample.exe`. It follows embedded stages and keeps all artifacts in a fresh case folder; `-o DIR` chooses that folder. Follow **OUTPUT** when it finishes. See the [option reference](quick-start.md); `--help-all` lists specialist controls.
 
 ## Analyze a sample
 
@@ -18,14 +18,13 @@ The normal command is `cilantro sample.exe`. It follows embedded stages and keep
 
 ## Investigate the recovery
 
+- [Protection removal: before and after](protection-removal.md): malware payload-loading and command-execution examples for Reactor and ConfuserEx, with captured evidence.
 - [Virtualized methods](devirtualization.md): rebuilt CIL, listings, comparisons and their limits.
 - [Recovery architecture](how-recovery-works.md): interpreter, recovery passes and emission checks.
 - [How Reactor works](how-net-reactor-works.md) and [How ConfuserEx works](how-confuserex-works.md): protection background.
-- [Current corpus status](status-report.md): final 43-root decision, evidence summary and explicit scope. The investigation log below its summary is historical.
+- [Validation scope and results](status-report.md): coverage, checks and their limits.
 - [Corpus validation](corpus.md): manifests, static gates and reconstruction checks for contributors. It is not a list of commands required for routine malware triage.
 
 ## Build and release
 
-[Development](development.md) covers builds, tests and release preparation. [Code organization](code-organization.md) maps the implementation. Read the [0.10.6 release notes](releases/0.10.6.md) for the current shipped changes.
-
-[Completion progress](completion-progress.md), the older parts of the status report and [historical notes](history/README.md) preserve experiments. Their open-gap statements and counts describe the builds used at the time; use [compatibility](compatibility.md) for current support claims.
+[Development](development.md) covers builds, tests and release preparation. [Code organization](code-organization.md) maps the implementation. The [1.0.0 preparation notes](releases/1.0.0.md) describe the intended release.

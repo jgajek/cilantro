@@ -75,7 +75,16 @@ jobs:
           cd publish/${{ matrix.runtime }}
           rm -f *.pdb
           cp ../../LICENSE ../../README.md .
-          cp -r ../../docs ../../schema ../../profiles .
+          cp -r ../../schema ../../profiles .
+          mkdir -p docs/releases docs/assets
+          for document in README agents analyst-workflows code-organization compatibility \
+            corpus declarations development devirtualization how-confuserex-works \
+            how-net-reactor-works how-recovery-works protection-removal quick-start reading-the-output \
+            status-report troubleshooting; do
+            cp "../../docs/$document.md" docs/
+          done
+          cp ../../docs/releases/1.0.0.md docs/releases/
+          cp ../../docs/assets/* docs/assets/
           mkdir -p corpus/schema corpus/probes
           cp ../../corpus/*.json corpus/
           cp ../../corpus/*.ps1 corpus/

@@ -24,7 +24,7 @@ On Linux:
 ./cilantro /cases/sample.exe
 ```
 
-The normal run recovers the input and embedded managed stages, with progress and a status file included. All outputs go into `sample.cilantro/` beside the input; retries use `sample.cilantro-2/`, and so on. Use `-o C:\cases\run-01` (or `-o /cases/run-01`) to choose a new or empty case folder. `--output` takes a directory, not a cleaned filename.
+The normal run recovers the input and embedded managed stages, with progress and a status file included. All outputs go into `sample.cilantro/` beside the input; retries use `sample.cilantro-2/`, and so on. Use `-o C:\cases\run-01` (or `-o /cases/run-01`) to choose a new or empty case folder. `--output` selects the case directory.
 
 Follow **OUTPUT** in the summary to the recommended assembly, HTML report and case folder. Open the assembly in your .NET decompiler, then inspect the artifact tree and **Needs review**, **Remaining**, and **Validation**. A dropper's most useful output may be a cleaned child rather than the cleaned input.
 
@@ -32,7 +32,7 @@ The console opens with the Reveal banner and streams analysis phases and pass ou
 
 Use a new output directory for each trial. The original input is preserved; extracted original bytes and cleaned child copies are distinct. Outputs remain malware artifacts: recovery does not make them safe to execute.
 
-Use `--analyze-only` for reports/extracted originals without cleaned assemblies, `--strict` for a comparison without implicit host assumptions, and `--json` for scripts. `--help` covers the common workflow; `--help-all` explains specialist controls. See the [CLI reference](docs/quick-start.md) for each option and migration from older commands.
+Use `--analyze-only` for reports/extracted originals without cleaned assemblies, `--strict` for a comparison without implicit host assumptions, and `--json` for scripts. `--help` covers the common workflow; `--help-all` explains specialist controls. See the [CLI reference](docs/quick-start.md) for each option.
 
 ## What you get
 
@@ -49,7 +49,7 @@ CILantro does not identify a malware family, automatically decode every family's
 
 ## Support and confidence
 
-This tree is being prepared for **1.0.0**; see the [release preparation notes](docs/releases/1.0.0.md). The **0.10.6** full-unprotection completion decision applies to a frozen validation corpus: **43 roots accounted for**, including **28 undamaged captured Reactor-tagged samples**, with physical VM-removal checks covering **14 intact virtualized identities**. The corpus includes negative controls and cases using explicit generic recovery; these are not 43 independent protected malware families. Those measurements describe that validation build; the 1.0.0 release gates must be run before publishing.
+This tree is being prepared for **1.0.0**; see the [release preparation notes](docs/releases/1.0.0.md). The validation corpus contains **43 roots**, including **28 undamaged captured Reactor-tagged samples**, with physical VM-removal checks covering **14 intact virtualized identities**. It includes negative controls and cases using explicit generic recovery; these are not 43 independent protected malware families. Corpus measurements establish bounded coverage, and each release candidate requires its own validation.
 
 Coverage includes real-world Reactor 6 samples, Reactor 7.5 source-built probes, and two pinned ConfuserEx samples. It depends on the protection implementation and options, not just a version label. Completion on that corpus is not a guarantee for a new file.
 
@@ -57,13 +57,14 @@ For each new case, read the result's qualifications. `Success` means the configu
 
 ## Choose your workflow
 
+- [See protection removal before and after](docs/protection-removal.md)
 - [First run and CLI options](docs/quick-start.md)
 - [Investigate a dropper and its payloads](docs/analyst-workflows.md)
 - [Choose the right artifact and interpret the report](docs/reading-the-output.md)
 - [Resolve incomplete recovery and decompiler problems](docs/troubleshooting.md)
 - [Use JSON, scripts or MCP](docs/agents.md)
 - [Complete documentation index](docs/README.md)
-- [0.10.6 release notes](docs/releases/0.10.6.md) and [current corpus status](docs/status-report.md)
+- [Validation scope and results](docs/status-report.md)
 
 ## Report a recovery problem
 

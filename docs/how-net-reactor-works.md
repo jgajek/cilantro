@@ -2,6 +2,8 @@
 
 Reactor combines configurable layers. A sample can use only strings and control-flow obfuscation, or combine encrypted bodies, resources, native wrapping, and a custom virtual machine. The product name alone does not tell you which recovery steps are needed.
 
+See [protection removal before and after](protection-removal.md#net-reactor) for captured code, resources and metadata from identified samples.
+
 | Layer | What an analyst sees | CILantro's approach |
 | --- | --- | --- |
 | Encrypted method bodies / NecroBit | Stubs instead of useful IL | Interpret the supported loader and restore the bodies it writes |
@@ -22,5 +24,3 @@ For supported virtualized inputs, useful recovery means application methods are 
 Recovered methods and strings can expose another obfuscation layer or another protected assembly. Recursive recovery follows embedded managed stages; it is bounded and does not retrieve downloaded payloads.
 
 Reactor version labels are not used as proof of support. Some Reactor 6 and 7.5 structures overlap, so detection identifies the family without inventing a precise version. See [compatibility](compatibility.md) for tested scope and [devirtualization](devirtualization.md) for reconstruction limits.
-
-[Historical Reactor research](history/pre-0.10/how-net-reactor-works.md) contains earlier sample-specific observations.

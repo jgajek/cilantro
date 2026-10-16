@@ -10,7 +10,7 @@ cilantro sample.exe --json -o case-output
 
 An ordinary JSON run writes one object to stdout, without progress prose. Its `Schema` is `cilantro.run/1`; an error preventing a normal run uses `cilantro.error/1`. Read `Wrote` paths rather than constructing filenames. See the [schemas](../schema/README.md).
 
-The CLI automatically follows embedded assemblies and maintains a status file. `-o DIR` selects one new/empty folder for all artifacts; without it, a fresh `FILESTEM.cilantro` folder is selected beside the input. Removed switches and the changed meaning of `--output` are documented in the [migration guide](quick-start.md#migrating-earlier-commands). These are CLI defaults; core and MCP options remain independent.
+The CLI automatically follows embedded assemblies and maintains a status file. `-o DIR` selects one new/empty folder for all artifacts; without it, a fresh `FILESTEM.cilantro` folder is selected beside the input. See the [option reference](quick-start.md). These are CLI defaults; core and MCP options remain independent.
 
 | Field | Interpretation |
 | --- | --- |

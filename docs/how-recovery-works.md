@@ -99,7 +99,7 @@ The interpreter models `Hashtable.Keys` as a live view, retaining the original k
 
 Reference-type `box` instructions preserve identity, including null and arrays of value types; generic boxing uses the instantiated type. Reference-target [`unbox.any`](https://learn.microsoft.com/en-us/dotnet/api/system.reflection.emit.opcodes.unbox_any?view=net-10.0) performs a cast without extracting boxed contents, preserving aliases; incompatible casts are refused. Array-length queries refuse non-array objects instead of treating them as empty arrays. These distinctions matter when reconstructed VM methods pass tables and buffers through object-typed calls.
 
-See [code organization](code-organization.md) for implementation entry points and [corpus validation](corpus.md) for reproducible checks. Earlier detailed experiments are preserved in [history](history/README.md).
+See [code organization](code-organization.md) for implementation entry points and [corpus validation](corpus.md) for reproducible checks.
 
 
 For resource-backed dependency resolvers, the recovery stage can also validate a bundle index constructor independently of a successful dependency request. It checks that construction starts from a fresh table on every relevant path, admits only a bounded set of stream/string/table operations and fresh record constructors, and requires two fixed-input evaluations to agree. The saved snapshot identifies its source resource by name and hash. This is a construction proof only: decoder replacement additionally needs caller-source ownership, consumer immutability and initialization/locking preservation.
