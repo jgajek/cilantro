@@ -1,26 +1,41 @@
-# Understanding Reactor protection
+# Recognize .NET Reactor protection
 
-Reactor combines configurable layers. A sample can use only strings and control-flow obfuscation, or combine encrypted bodies, resources, native wrapping, and a custom virtual machine. The product name alone does not tell you which recovery steps are needed.
+Reactor can combine several layers in one file. An analyst may first encounter an encrypted native wrapper, then a managed loader with hidden API calls, then a payload whose methods or strings are still protected. Work through the recovered stages rather than stopping at the first valid assembly.
 
-See [protection removal before and after](protection-removal.md#net-reactor) for captured code, resources and metadata from identified samples.
+The [before-and-after walkthrough](protection-removal.md#net-reactor) shows these layers in real malware, including VM reconstruction and a hidden PowerShell launcher.
 
-| Layer | What an analyst sees | CILantro's approach |
-| --- | --- | --- |
-| Encrypted method bodies / NecroBit | Stubs instead of useful IL | Interpret the supported loader and restore the bodies it writes |
-| Protected strings and constants | Decoder calls instead of readable values | Interpret supported decoders and replace established values |
-| Control-flow flattening | Dispatch loops and large switches | Resolve known state transitions and simplify verified paths |
-| Proxies and hidden metadata references | Indirect calls and token lookups | Resolve supported targets into explicit references |
-| Encrypted resources | Opaque embedded data | Restore supported containers and inspect recoverable assemblies |
-| Anti-tamper and loader setup | Startup routines that depend on the protected file | Neutralize supported obsolete protection effects while preserving required initialization |
-| Virtualization | A stub calls a custom interpreter | Decode, analyze, and reconstruct supported VM programs |
-| Native bootstrap | The input does not initially look like a managed assembly | Extract the supported wrapper's managed stage and continue recovery |
+## Empty-looking methods: encrypted bodies
 
-## What removal means to an analyst
+Method-body encryption, often called NecroBit, hides the implementation and leaves a stub where a decompiler expects instructions. A method may look like a few no-ops followed by a return.
 
-Unpacking the outer file, decrypting method bodies and removing a VM are different steps. A native wrapper can reveal a still-protected managed dropper, which can contain another protected payload. Inspect the recovered chain rather than stopping at the first valid PE file.
+CILantro interprets the supported recovery setup and restores the bodies it recovers. Reopen the cleaned assembly and inspect the method's callers and API use. Strings inside the restored body may need separate decoding before its purpose becomes obvious.
 
-For supported virtualized inputs, useful recovery means application methods are readable as CIL and the original interpreter machinery is physically absent when retirement checks pass. Removing every switch is not the goal: application switches and compiler-generated state machines must survive. Required initialization calls and actual payload resources can also remain without being protector machinery.
+## Decoder calls and unknown helpers: strings and proxies
 
-Recovered methods and strings can expose another obfuscation layer or another protected assembly. Recursive recovery follows embedded managed stages; it is bounded and does not retrieve downloaded payloads.
+String encryption replaces values such as executable names, resource names and reflection targets with decoder calls. Reference proxies replace recognizable API calls with helper/delegate calls.
 
-Reactor version labels are not used as proof of support. Some Reactor 6 and 7.5 structures overlap, so detection identifies the family without inventing a precise version. See [compatibility](compatibility.md) for tested scope and [devirtualization](devirtualization.md) for reconstruction limits.
+Recovering both can turn an obscure loader into an explicit sequence: `Assembly.Load`, `GetType`, `GetMethod`, then `Invoke`. Follow those targets into the loaded stage.
+
+## Large dispatch loops: control-flow flattening
+
+Flattening replaces ordinary control flow with a state variable and a dispatcher that repeatedly chooses the next block. Opaque predicates add branches whose results are fixed.
+
+Unflattening resolves established transitions and reconnects the code into readable branches. Ordinary application switches and async state machines can still remain. Look at what the remaining switch does before treating it as protection.
+
+## A stub calling an interpreter: code virtualization
+
+A virtualized method's program is stored as bytecode for Reactor's custom VM. Decrypting ordinary method bodies does not translate that instruction set.
+
+CILantro lifts supported operations into CIL and reconstructs supported method bodies so they can be decompiled. Use the [VM guide](devirtualization.md) to locate listings, distinguish reconstructed code from decrypted original CIL, and interpret comparison results.
+
+## Opaque resources or a native outer file: hidden stages
+
+Encrypted resource containers can hold application resources, dependencies or another assembly. A native bootstrap can conceal the entire managed program.
+
+Recovery extracts supported content and records its identity and source. Use the artifact tree to distinguish a resource-only bundle from a loaded stage. Open a cleaned managed child when available; retain its extracted original for comparison.
+
+## What should disappear after recovery?
+
+When the recovered code no longer needs a protector helper, cleanup can remove it and its supporting resources. The malware's own payload decryptor, required startup calls and application data may remain.
+
+Support depends on the implementation and selected protections. Reactor 6 malware and Reactor 7.5 source-built probes are part of the validation evidence; overlapping structures can prevent a precise version label. See [support and limitations](compatibility.md) and [validation results](status-report.md).

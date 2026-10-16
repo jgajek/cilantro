@@ -1,6 +1,6 @@
-# Troubleshooting recovery
+# Troubleshoot an incomplete recovery
 
-Start with the exact input hash, tool version, command and final report. Use a new output directory for each changed trial. Do not repeat the same run expecting an unsupported instruction or missing fact to resolve itself.
+Start with the symptom affecting your investigation: no readable method, a missing child stage, a stopped decoder or a decompiler error. Open the relevant artifact's report and find the first unfinished step. Change one input or option at a time and keep each trial in a fresh folder.
 
 ## Match the symptom to the next action
 
@@ -28,9 +28,9 @@ Large assemblies and virtualization can take minutes or longer. Check that the p
 
 MCP cancellation is cooperative. Confirm the terminal state before reusing its output directory. A killed or failed process can leave partial artifacts; inspect the terminal result instead of treating the existence of a file as success.
 
-## Supply facts or budgets deliberately
+## Retry a decoder that reached its step limit
 
-Read the blocker JSON and use its exact remedy keys. For example, a case that exhausts a step bound might use a declarations file containing:
+A long decoding loop can stop when interpretation reaches its step allowance. Confirm that the blocker names a budget, rather than an unsupported operation. Then use a declarations file to raise that allowance. For example:
 
 ```json
 {
@@ -48,13 +48,15 @@ Choose a bound based on the reported limit; 40 million is only an example and ma
 
 ## Reconstruction disagreement
 
-Compare the raw verdict with the trial coverage and application-contract evidence. Deliberately removed protector caches or metadata can explain some differences, but application returns, exceptions, state changes or loaded bytes may reveal a real defect. Do not hide a disagreement by rerunning with a weaker policy.
+A disagreement means the original VM-backed path and rebuilt path produced different captured observations. Find the first difference, then ask whether it changes the behavior you need to investigate.
+
+For example, an initialized protector cache can differ after its decoder is replaced. A different return value, exception or loaded assembly can affect the application path directly. Read the trial's inputs and startup coverage alongside the difference. The [VM guide](devirtualization.md#read-a-reconstruction-comparison) explains the verdicts.
 
 For an unfamiliar sample, preserve the original and the affected rebuilt body/listing. Give the maintainer the exact method and discrepancy. `--no-devirtualize` can provide a diagnostic view with the original VM-backed code retained; it does not solve reconstruction.
 
 ## Payload missing or wrong file recommended
 
-The recommendation follows observed extraction provenance. It is not a family classifier. Check every relevant child and its status, including discovered-but-unprocessed artifacts. A native file requires native analysis; a resource-only assembly may be a bundle rather than executable payload logic.
+Follow the artifact tree and the loading calls in the recovered code. An assembly observed at `Assembly.Load` is usually a better starting point for the next stage than a DLL that only contains resources. Check discovered-but-unprocessed children and each child's status. Use native analysis for extracted native files.
 
 No extracted payload does not prove none exists. Unsupported codecs, unavailable keys, host-specific paths and traversal limits can prevent discovery. Downloaded stages are not fetched by CILantro. Keep the remaining-work report with the case rather than claiming exhaustive extraction.
 
@@ -62,7 +64,7 @@ No extracted payload does not prove none exists. Unsupported codecs, unavailable
 
 Include:
 
-- CILantro version, OS/architecture and the exact command, with case-sensitive paths redacted as needed.
+- CILantro version, OS/architecture and the exact command, with private paths redacted as needed.
 - Input SHA-256 and provenance: untouched protected original, extracted original, or previously rewritten file.
 - Root/child relationship and the SHA-256 of the affected output.
 - Expected behavior, observed behavior and the smallest affected method/resource you can identify.

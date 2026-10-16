@@ -1,66 +1,59 @@
 # Support and limitations
 
-CILantro supports static recovery of selected .NET Reactor and ConfuserEx implementations. Identify support by the sample's actual protection layers and the recovery evidence, not by its marketing version alone.
+CILantro recovers supported .NET Reactor and ConfuserEx code and embedded stages. Match support to the layers present in your file: method encryption, string decoding, control-flow flattening, VM bytecode or a wrapper. A product name or version label alone does not describe the whole case.
+
+For concrete results, see the [malware walkthrough](protection-removal.md). For a new sample, use its report to identify what was recovered and what still needs work.
 
 ## What is supported
 
-| Protection or packaging layer | What recovery delivers | Boundary on new samples |
-| --- | --- | --- |
-| Reactor encrypted methods / NecroBit | Restored managed method bodies | A different loader or unavailable body source can prevent recovery |
-| Reactor strings and numeric constants | Readable literals and proven constants; removal of obsolete supporting machinery | Unknown state, unsupported decoding and effects can prevent replacement |
-| Reactor virtualization | Supported bytecode reconstructed as CIL, with original VM machinery removed when retirement checks permit | Unsupported semantics or unresolved paths can block reconstruction or cleanup |
-| Flattened control flow and opaque guards | Simplified branches and proven dispatcher removal while preserving application decisions | Ordinary switches and async/iterator state machines must remain; unknown selectors are not guessed |
-| Proxies and protector infrastructure | Explicit call targets and removal of attributable code/resources | Live application references, reflection, metadata tokens and initialization effects constrain removal |
-| Native Reactor bootstrap | Supported wrapper extraction followed by managed-stage recovery | Not a general native unpacker, NativeAOT decompiler or mixed-mode recovery engine |
-| Managed wrappers and embedded assemblies | Extraction, bounded recursive cleanup and reassembly for supported managed bootstrap shapes | Not every loader shape can be rewritten; inspect each child's result |
-| Resource entries and dependencies | Supported embedded content and Costura/dependency extraction with provenance | Resource discovery is not exhaustive payload discovery |
-| ConfuserEx | Supported encrypted-section recovery, constants, control-flow simplification and resolvable proxies | Validation is narrower than Reactor: two pinned samples, not every fork/configuration |
-| Readability | Recovered types, consistent references and useful replacement names | Original names, comments, project files and source layout cannot generally be restored |
+| Layer | What you can investigate after recovery |
+| --- | --- |
+| Reactor encrypted methods / NecroBit | Restored method bodies and their API use. |
+| Reactor strings and numeric constants | Readable values at supported decoder/lookup sites. |
+| Reactor virtualization | Supported VM programs lifted into CIL and reconstructed bodies that can be decompiled. |
+| Control-flow flattening and opaque predicates | Readable branches after established dispatcher transitions and fixed conditions are simplified. |
+| Reference proxies | Explicit API or method targets where binding can be resolved. |
+| Protector support code | A clearer application after obsolete, attributable helpers/resources are removed. |
+| Native Reactor bootstrap | An extracted managed stage followed by its recovery. |
+| Managed wrappers and embedded assemblies | Extracted stages, bounded recursive recovery and reassembly for supported wrapper shapes. |
+| Resource entries and bundled dependencies | Recovered content with hashes and parent/source information. |
+| ConfuserEx | Supported encrypted sections, constants, control-flow cleanup and resolvable proxies. |
+| Types and identifiers | More useful types and replacement names for navigation. |
 
-Evidence includes real-world Reactor 6 samples and Reactor 7.5 benign probes targeting .NET Framework 4.8, .NET 8 and .NET 10. Family detection does not claim to determine an exact marketing version from ambiguous structures.
-
-## Current corpus result
-
-The frozen validation corpus accounts for **43 roots**: 37 ordinary recoveries, three declared negative controls and three successful explicit generic followups. It includes all **28 undamaged hashes** from a captured 29-sample Reactor-tagged inventory; one input damaged by another recovery tool is excluded. The captured inventory defines the measurement scope; a release candidate must be validated against its pinned inputs.
-
-Independent physical VM-removal checks pass **18 contexts / 14 intact virtualized identities**. Final inspection covers **104 structurally verified managed outputs**, with application-identity and captured-payload preservation checks passing for every root. These are root, identity and output-context counts, not interchangeable counts of malware families. The [status report](status-report.md) records the exact scope and evidence.
-
-The preservation contract covers the corpus application and payload behavior, allows deliberate protector-metadata removal, and retains application switch statements. It does not preserve hypothetical callers reflecting over deleted protector types. Tiny original application methods, bundled libraries and payload resources are not removal obligations. One resource-manager method retains harmless discarded constants; zero redundant instructions is not the completion criterion.
+The validation evidence includes Reactor 6 malware, Reactor 7.5 source-built probes targeting .NET Framework 4.8, .NET 8 and .NET 10, and two pinned ConfuserEx samples. Implementation and protection options determine how far recovery gets. Custom decoders, forks and unresolved runtime behavior can leave a layer in place.
 
 ## What to expect on an unfamiliar sample
 
-A new sample can still retain protections, lose a recoverable path to an unsupported operation, or produce only an extracted stage. Review the root and every relevant child. The corpus result is evidence of capability, not an automatic verdict for your file.
+A useful result may be a fully readable method, a partially recovered assembly, or an extracted stage ready for another tool. Open the artifact containing the behavior you are investigating and inspect its remaining work.
 
-CILantro does not provide:
+CILantro does not fetch downloaded stages, attribute malware families, decode every family's configuration, or recreate the original source project. Native extraction gives you another artifact to analyze; it is not general native-code decompilation or NativeAOT recovery.
 
-- Universal support for all Reactor versions, custom builds or ConfuserEx forks.
-- Guaranteed discovery of every payload, downloaded stage or environment-specific execution path.
-- Automatic malware-family attribution or a general family-specific configuration extractor.
-- Reconstruction of the original source project or a guarantee of warning-free decompilation.
-- A guarantee that a cleaned assembly is runnable, behaviorally identical for all inputs, or safe to execute.
-- Arbitrary native-code deprotection. Extracted native dependencies may need separate analysis.
-
-An input already rewritten by another tool may have lost metadata, resources or bodies needed for recovery. Prefer the untouched protected original. Reports should distinguish unsupported or damaged input from a successful recovery; do not treat a produced file as proof that missing code was restored.
+Prefer the untouched protected input. A file already rewritten by another recovery tool may have lost bodies, metadata or resources needed for further recovery.
 
 ## Defaults and explicit choices
 
-Ordinary CLI runs enable renaming, supported VM reconstruction and runtime cleanup. Static interpretation may use bundled host assumptions and continue past some unsupported calls with unknown values; those qualifications are recorded.
+The ordinary CLI enables readable replacement names, supported VM reconstruction and protector cleanup. Interpretation may use recorded host assumptions and continue past some unsupported calls with unknown values.
 
-`--strict` disables implicit assumptions and permissive interpretation and leaves names and VM stubs unchanged. Compare it with an ordinary run to investigate differences; the simplified CLI has no positive renaming/reconstruction overrides in strict mode. Core/MCP callers retain independent controls. Strict mode does not validate facts you supplied yourself, and it is not a stronger full-unprotection certificate.
+Use `--strict` to compare a run without implicit assumptions or permissive interpretation. It also leaves names and VM stubs unchanged. For narrower comparisons, use `--keep-names`, `--keep-runtime` or `--no-devirtualize`.
 
-`--generic-recovery` permits supported generic rewrites when no protector is recognized. It does not establish a protector identity or bypass other emission checks. `--keep-runtime` and `--no-devirtualize` deliberately retain material that default recovery may remove or reconstruct.
+Use `--generic-recovery` when you explicitly want supported structural cleanup of a root with no recognized protector. Core and MCP callers have independent controls; MCP reconstruction must be enabled explicitly.
 
 ## Read the evidence at the right level
 
 | Evidence | What it establishes |
 | --- | --- |
-| `Success` | The run met its configured policy |
-| `Verified` | Structural checks and recorded rewrite invariants passed |
-| Rebuilt comparison agreement | Observations matched for the bounded trials actually exercised |
-| Physical VM-removal check | Identified VM machinery is absent and reconstructed/retired bodies are accounted for |
-| Payload hash match | The compared bytes match; it does not prove every application method |
-| Corpus completion decision | The documented goal was met for the specific frozen scope and preservation contract |
+| `Success` | The run met its configured policy. |
+| `Verified` | Structural checks and recorded rewrite invariants passed. |
+| Reconstruction agreement | Observations matched in the stated controlled trials. |
+| Physical VM-removal check | Identified VM machinery is absent and reconstructed/retired bodies are accounted for. |
+| Matching payload hash | The compared recovered bytes are identical. |
 
-A raw reconstruction disagreement may include deliberately removed protector state. It remains visible and must be read with the application-contract evidence; do not automatically dismiss a disagreement on a new sample. Conversely, matching a few trials does not prove arbitrary future behavior.
+These results answer different questions. Keep a reconstruction disagreement visible even when the assembly is readable and structurally valid. Inspect the difference and the trial's coverage before drawing a behavioral conclusion.
 
-Recovery interprets modeled instructions and APIs; it does not run sample code in the host CLR. That distinction does not make parsers or decompilers invulnerable. Use the handling controls appropriate to your malware-analysis environment, and retain originals and case provenance.
+Application switches, required initialization calls, bundled libraries and payload resources can legitimately survive cleanup. A cleaned file remains a malware analysis artifact, rather than a guarantee of safe execution or equivalent behavior for all inputs.
+
+## Current corpus result
+
+The frozen corpus accounts for **43 roots**, including **28 undamaged captured Reactor-tagged identities**. Its checks include protected inputs, extracted stages, controls and explicit generic recovery. These counts describe test scope rather than independent malware families.
+
+Physical VM-removal checks cover **18 contexts across 14 intact virtualized identities**. Detailed cleanup inspection covers **104 structurally verified managed outputs**. The [status report](status-report.md) records those measurements and the release checks separately. Contributors use the [corpus gates](corpus.md) to validate changes.

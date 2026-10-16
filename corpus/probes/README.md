@@ -1,6 +1,8 @@
-# Fresh Reactor ground-truth probes (Windows)
+# Check recovery against a known program (Windows)
 
-These probes are benign programs built from the source in `Probe`. Their
+Use these contributor probes to check whether a recovery change preserves observable behavior. Build a benign program, protect it with Reactor, recover it with CILantro, then compare the original, protected and cleaned results.
+
+The programs are built from the source in `Probe`. Their
 `--recovery-self-test` entry point prints seven arithmetic/branch results and three
 catch/finally results, including the final contents of a mutated byte array.
 

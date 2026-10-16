@@ -1,6 +1,8 @@
-# Analyst workflows
+# Investigate a protected sample
 
-Use CILantro to turn a protected input into artifacts you can inspect. Keep the untouched input, its SHA-256 and the command used for each trial. A cleaned assembly is an analysis copy, not a replacement for the original evidence.
+Start with the behavior you want to understand: a hidden process launch, an embedded payload, a command handler or a protected decoder. Use the recovered code and artifact tree to follow that behavior across stages.
+
+The [before-and-after walkthrough](protection-removal.md) gives worked examples. This page shows how to apply the same approach to a case.
 
 ## Recover a dropper and follow its payload
 
@@ -8,25 +10,23 @@ Use CILantro to turn a protected input into artifacts you can inspect. Keep the 
 cilantro sample.exe -o case/run-01
 ```
 
-1. Open the HTML report named in **OUTPUT**. Check the recommended artifact and the root's result.
-2. Follow the artifact tree. Distinguish an assembly observed at a load operation from a resource-only bundle or bundled library.
-3. Open the **cleaned child** for a recovered managed stage. Retain its **extracted original** for independent comparison or another recovery attempt.
-4. Review that child's remaining work and validation, not just the parent's. A wrapper can recover successfully while a child remains incomplete.
-5. Continue into further stages when present. A loaded assembly is not necessarily the final malware payload, and file naming alone does not establish its role.
+Open the HTML report named in **OUTPUT**. Follow the recommended assembly and the artifact tree, then open the relevant cleaned child in ILSpy or dnSpyEx.
 
-Use SHA-256 and parent-child links when correlating files. Different names can identify identical bytes; one assembly can be referenced by several parents. The recommended file is selected from extraction provenance, not malware-family attribution.
+**Example:** a loader may yield both a resource-only assembly and a DLL observed at an in-memory load. Start with the loaded DLL for the next stage's code, and use the resource container when tracing where its bytes came from. The report's hashes and parent-child links connect the artifacts.
 
-Supported native Reactor wrappers automatically continue into their managed stage. Ordinary CLI runs also follow further extracted managed assemblies; use `--no-recursion` to leave those further children extracted but uncleaned. A native root can have no root-level cleaned path while its child has a usable managed output. Managed-wrapper reassembly is available for supported shapes; do not assume every cleaned wrapper embeds every cleaned child.
+Check each stage's own result. A recovered wrapper can contain a child that still needs work. For supported native Reactor wrappers, recovery automatically continues into the directly extracted managed stage; the native root may have no cleaned file of its own.
+
+Use `--no-recursion` when you want to inspect the loader and extracted originals before cleaning further managed children.
 
 ## Read application code after cleanup
 
-Open the recommended cleaned assembly in a .NET decompiler such as ILSpy or dnSpyEx. For navigation, start with the entry point, relevant callbacks and the call sites for behavior you are investigating. Follow explicit calls, recovered literals and child assembly loads rather than assuming the first large method is the payload.
+Start at the entry point, a relevant callback or an API call associated with the behavior you are investigating. Follow its arguments, decoded strings and callers.
 
-Names such as `GeneratedType_…` and `generatedMethod_…` are replacement labels, not recovered source names. Use the rename map when comparing a report, the original metadata and the cleaned file. Renaming can shift method tokens; match the artifact and name map before using an old token as a location.
+For a PowerShell launcher, trace the value assigned to `Arguments`. For an in-memory load, find the source of the byte array and the reflected type/method selected afterward. For a command handler, trace the response bytes into its branches and execution APIs.
 
-Reconstructed VM application bodies may carry `[RebuiltFromReading]`. This identifies reconstruction rather than decrypted original CIL. Read their comparison coverage and diagnostics. Missing markers are not a count of missing recovery: some reconstructed methods belonged to protector infrastructure and were legitimately retired.
+Replacement names such as `generatedMethod_...` help navigation. Use the rename map to match them to the original metadata. A surviving `[RebuiltFromReading]` method came from VM reconstruction; its comparison details are in the report.
 
-Ordinary switches, async `MoveNext` state machines, exception handling and initialization helpers can remain. Their presence alone is not failed unflattening. A decompiler warning should be tied to a particular method and output hash before concluding that code was lost.
+Some reconstructed methods belonged to the protector and are removed once their work is replaced. Application switches, async state machines and required initialization can remain. Use the method's role and callers to decide what still matters.
 
 ## Extract content without emitting cleaned assemblies
 
@@ -34,43 +34,45 @@ Ordinary switches, async `MoveNext` state machines, exception handling and initi
 cilantro sample.exe --analyze-only -o case/extraction
 ```
 
-This still performs analysis and supported extraction, but suppresses cleaned root and child assemblies. It is useful when you want recovered bytes and provenance before reviewing transformations. It is not a passive header scan and can take as long as substantial recovery work.
+Use this when you want extracted originals and reports before reviewing rewritten assemblies. It still performs recovery work and can take time.
 
-Search the recovered code and resources for configuration and indicators using your normal analysis workflow. A `NAME.config.json` file, when produced, contains recovered constants; it is not a guarantee of complete C2, key or family-specific configuration recovery. Validate an indicator's use and stage before attributing it to the payload.
+Search the extracted files, recovered code and resources with your usual analysis tools. A produced `NAME.config.json` contains recovered constants; trace each value to its use before treating it as a C2 address, key or configuration field.
 
 ## Compare readable and conservative views
 
-Use separate directories and the same untouched input:
+Run both trials from the same untouched input:
 
 ```text
 cilantro sample.exe -o case/default
 cilantro sample.exe --strict -o case/strict
 ```
 
-The first run favors readability and supported VM reconstruction. Strict mode stops at unknown behavior, disables implicit machine assumptions, and leaves identifiers and VM stubs unchanged. It may recover less or withhold output. These are different analysis policies; compare diagnostics and outputs before treating a difference as a bug.
+The default run enables readable replacement names, supported VM reconstruction and permissive interpretation with recorded assumptions. Strict mode stops at unknown behavior, disables implicit host assumptions and leaves names and VM stubs unchanged.
 
-For a name-sensitive comparison, use `--keep-names`. For investigation of protector internals, use `--keep-runtime`; for VM listing work without reconstruction, use `--no-devirtualize`. Those are diagnostic choices, not commands for maximum protector removal.
+Compare the diagnostics at the point the runs diverge. If only one aspect matters, use a narrower control: `--keep-names` for names, `--keep-runtime` for protector support code, or `--no-devirtualize` for VM reconstruction.
 
 ## Continue from an extracted child
 
-If traversal stopped at a child, use its extracted original path from the report:
+Copy the extracted original's path from the report and use a fresh case folder:
 
 ```text
 cilantro "case/run-01/path-from-report/child.dll" -o case/child-trial
 ```
 
-The path above is illustrative; copy the real path rather than guessing it. Record the parent hash and link so the new trial retains provenance. Prefer the extracted original over repeatedly cleaning an already transformed copy.
+Keep the parent's hash and the extraction link with the new trial. Reusing the extracted original makes comparisons easier than repeatedly cleaning a transformed copy.
 
-Recursive recovery currently has limits of depth 4, 32 processed artifacts and 256 MiB of aggregate input bytes, with the root counted in the artifact/byte budget. Read the actual graph's limit and status fields. A limit is a traversal boundary, not a declaration that remaining files are unprotected. The general interpreter budget option does not remove these fixed traversal limits.
+A recursive run processes up to depth 4, 32 artifacts and 256 MiB of aggregate input, with the root included and duplicate hashes shared. If the report names a traversal limit, continue from the relevant child as a separate case. An interpreter step-budget change does not alter these traversal limits.
 
 ## Handle bundled libraries
 
-Dependencies are not necessarily payloads or protected assemblies. Keep their role separate from the malware entry stage. For an independently reviewed unprotected dependency, `--reviewed-dependencies` can preserve an exact hash match and record its source. It neither downloads a reference nor trusts a DLL merely because its filename looks familiar. See the [manifest example](quick-start.md#preserving-reviewed-dependencies).
+A dependency can be useful code without being the malware's entry stage. Check its identity and callers before deciding its role.
 
-Use `--library` when interpretation needs a specific managed dependency. That supplies code for static reading; it is a different purpose from declaring an extracted reference already reviewed.
+Use `--library FILE` when recovery needs to interpret a particular managed dependency. Use `--reviewed-dependencies FILE` when you have independently reviewed exact reference bytes and want matching extracted dependencies preserved. These solve different problems; the [manifest example](quick-start.md#preserving-reviewed-dependencies) explains the latter.
 
 ## Save a useful case record
 
-Keep the input and extracted-original hashes, tool version, exact command, stdout/stderr or JSON manifest, HTML report, child graph, change and rename maps, and any declarations/reference manifests. Retain the actual referenced dependency bytes when permitted by your evidence policy.
+Keep the untouched input, extracted originals, input/output hashes, tool version, exact commands, report, child graph, change/rename maps, and any supplied declarations or reference manifests.
 
-Reports can contain local paths, recovered strings, configuration values and embedded secrets. Review them before sharing. See [troubleshooting](troubleshooting.md#report-a-reproducible-problem) for the smallest useful issue report and [automation](agents.md) for machine-readable collection.
+A useful conclusion names the recovered behavior and remaining work: “The loader invokes this type and method in this extracted DLL; the child still has unresolved strings.” Use [reading the output](reading-the-output.md) to interpret the result and [troubleshooting](troubleshooting.md#report-a-reproducible-problem) to report a specific recovery problem.
+
+Recovery outputs remain malware artifacts. Review reports for recovered secrets and private case data before sharing them.

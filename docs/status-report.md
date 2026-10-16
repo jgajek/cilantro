@@ -1,5 +1,9 @@
 # Validation scope and results
 
+Use this page to understand what the project has tested. For your own case, start with the recovered behavior and the artifact's report; the [completeness guide](completion-progress.md) gives a practical review sequence.
+
+The checks below answer different questions: can code be recovered, are extracted bytes preserved, is identified VM machinery gone, and do known benign programs still produce the expected results?
+
 ## Coverage
 
 The pinned validation corpus accounts for **43 roots**, including **28 undamaged captured Reactor-tagged samples**. It contains protected inputs, extracted stages, negative controls and explicit generic-recovery cases. These are not 43 independent malware families.
@@ -14,11 +18,19 @@ The pinned validation corpus accounts for **43 roots**, including **28 undamaged
 
 Support includes Reactor 6 samples, source-built Reactor 7.5 probes, and two pinned ConfuserEx samples. Configuration and implementation determine support; a protector version label alone is insufficient. An input damaged by another recovery tool is outside the undamaged-input scope and may remain unsupported.
 
-## Reading the evidence
+## Apply this evidence to a case
 
-A structural pass is not a behavior-equivalence verdict. Bounded reconstruction checks cover exercised inputs and captured state; disagreements and inconclusive trials remain visible. Deliberate protector-metadata removal does not justify dismissing an unrelated application-state difference.
+A passing extraction hash check establishes the recovered bytes. A physical VM-removal check establishes that identified machinery is absent and reconstructed/retired bodies are accounted for. Structural verification checks the assembly. Controlled VM comparisons describe the inputs and state actually exercised.
 
-Ordinary application switches, initialization effects and bundled libraries may remain. Native dependencies are extraction artifacts, not a claim of native-code decompilation or deprotection. No extracted file or successful report establishes that malware is safe to execute.
+For example, recovering a readable command handler is useful even if another path needs investigation. Record that specific result and keep the unresolved findings with it. The [output guide](reading-the-output.md) explains the report fields; the [VM guide](devirtualization.md) explains reconstruction comparisons.
+
+These checks support the stated corpus scope. They do not establish behavior for every input or complete protection removal on an unfamiliar file.
+
+## 1.0.1 release validation
+
+The banner/documentation-packaging update passed 2,848 public tests, with 37 sample-dependent skips. CI and both release build jobs passed. Downloaded Windows x64 and Linux x64 archives passed checksum and documentation-link checks; both CLI/MCP pairs passed version, help, benign recovery, JSON-error and MCP initialization/tool-list smoke checks. The updated banner was confirmed on both platforms.
+
+Recovery behavior was unchanged in this release. The private-fixture results below belong to the 1.0.0 validation, rather than a fresh 1.0.1 private-corpus run.
 
 ## 1.0.0 release validation
 

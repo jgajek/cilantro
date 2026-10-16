@@ -1,14 +1,25 @@
-# Declarations
+# Supply missing facts and dependencies
 
-Declarations supply information a static run cannot derive: host facts, dependency files, resource budgets, and explicitly authorized call outcomes. Start with a normal run and read its blockers before adding them.
+A recovery path may stop because it needs a machine setting, a managed dependency or more time to interpret a decoder. Read the blocker first, supply the missing input, then retry in a fresh case folder.
+
+A declarations file collects those inputs in JSON:
 
 ```text
-cilantro sample.exe --declarations case.json
+cilantro sample.exe --declarations case.json -o case/retry
 ```
 
-## File format
+## Choose the input that solves the blocker
 
-Every section is optional. This example supplies facts and increases the interpreter step budget; use values appropriate to the case rather than copying host facts as evidence.
+| Blocker | Useful input |
+| --- | --- |
+| Missing environment value | A `facts` entry using the exact key from the report. |
+| Missing managed dependency | `--library FILE`, or a `libraries` entry. |
+| Step/allocation/depth budget exhausted | A larger relevant `budgets` allowance. |
+| Unsupported external call | An implementation model, or a justified call assertion with explicit opt-in. |
+| Unsupported CIL/body | Usually an implementation change. |
+| Unknown value or uncaught exception | Investigate the earlier operation or condition before supplying an answer. |
+
+**Example:** if recovery asks for a machine name and debugger state for the environment you are investigating, those facts can be recorded with a dependency and a step allowance:
 
 ```json
 {
@@ -22,23 +33,33 @@ Every section is optional. This example supplies facts and increases the interpr
 }
 ```
 
-| Section | Meaning |
+The values are illustrative. Use facts established for the case; they are analyst-supplied inputs rather than observations made by CILantro.
+
+## File format
+
+Every section is optional:
+
+| Section | Purpose |
 | --- | --- |
-| `facts` | Named host/environment values; use the exact key from the blocker |
-| `libraries` | Specific managed assembly files whose IL may be interpreted; paths are relative to the declarations file |
-| `budgets` | Interpreter `steps`, `allocatedBytes`, and `depth` limits |
-| `passes` | A `skip` list of pass names for diagnostic runs |
-| `calls` | Assertions about unsupported calls, enabled only by `--allow-declared-calls` |
+| `facts` | Environment values requested by recovery. |
+| `libraries` | Specific managed files whose IL may be interpreted; paths are relative to this JSON file. |
+| `budgets` | `steps`, `allocatedBytes` and `depth` allowances. |
+| `passes` | A `skip` list of pass names for diagnostic trials. |
+| `calls` | Asserted outcomes for unsupported calls. |
 
-Facts can be strings, integers, booleans, null for absence, or bytes expressed as `{ "base64": "..." }`. Recognized key families include environment, debugger, process, runtime, WMI, registry, volume, network, time, GUID, and native facts. See the [bundled profile](../profiles/windows-10-workstation.json) and the exact blocker keys rather than guessing their spelling.
+Facts can be strings, integers, booleans, null for absence, or bytes as `{ "base64": "..." }`. Supported key families include environment, debugger, process, runtime, WMI, registry, volume, network, time, GUID and native facts. Copy exact keys from blockers; the [bundled profile](../profiles/windows-10-workstation.json) shows examples.
 
-`--host-profile` supplies facts separately and `--library` supplies individual dependencies. A host profile cannot be combined with declarations that also supply facts. Stated facts override default assumptions and are recorded as supplied evidence; they are not independently verified.
+`--host-profile` supplies facts separately. It cannot be combined with declarations that also supply facts. Supplied facts override default assumptions and are recorded with the result.
 
-Step declarations raise a pass's allowance; a smaller number does not necessarily lower its built-in or adaptive budget. Some analyses have their own hard limits. Budget changes do not add missing API models or settle unknown behavior.
+## Raise a budget when work reaches its limit
 
-Controlled VM method comparisons also honor `budgets.steps`. Their default is four million steps per comparison machine; in repeat-call trials, original warm-up and measurement share that allowance. A larger declared limit can let expensive protector initialization finish, but does not skip initialization or turn an unsupported outcome into agreement. Each trial records its effective step limit.
+A larger step allowance can let a decoder or initializer finish. It cannot implement an unsupported API. Check the reported limit before choosing a value: a smaller declaration does not necessarily lower an existing built-in or adaptive allowance.
 
-## Call assertions
+VM comparisons also use `budgets.steps`. Their default is four million steps per comparison machine; original warm-up and measurement share that allowance in repeat-call trials. The [VM validation reference](assets/vm-validation-reference.md) describes the detailed bounds.
+
+## Assert a call outcome only when you can justify it
+
+A call assertion tells recovery how to handle an unsupported call. For example:
 
 ```json
 {
@@ -49,26 +70,16 @@ Controlled VM method comparisons also honor `budgets.steps`. Their default is fo
 }
 ```
 
-Run with `--allow-declared-calls` to enable these assertions. Each entry declares a return value or an inert void call, never both. They apply to unsupported calls after ordinary interpretation/modeling opportunities; they do not override a known implementation. Declared values carry declared provenance, and an inert assertion does not prove a loader frame can safely be deleted.
+Enable these entries with `--allow-declared-calls`. Each entry supplies either a return value or an inert void call. Assertions apply after ordinary modeling/interpretation opportunities; they do not override a known implementation.
 
-Do not convert a suggested inert declaration into a fact without checking its meaning. The tool cannot know whether an unsupported external call changes state relevant to the sample.
+The assertion can change the recovered path. Record its basis and keep it with the result. Declaring a void call inert does not establish that an entire loader can be removed.
 
 ## Reading blockers and retrying
 
-Each blocker records `Kind`, `Key`, `Detail`, `Where`, `Pass`, and `Times`. `Declare` is a human-readable suggestion. `Remedy` supplies structured `Section`, `Name`, `Value`, `Wants`, and `Flag` fields for automation.
+Blockers record `Kind`, `Key`, `Detail`, `Where`, `Pass` and `Times`. `Declare` gives a readable suggestion; `Remedy` contains structured `Section`, `Name`, `Value`, `Wants` and `Flag` fields for automation.
 
-| Blocker | Next step |
-| --- | --- |
-| Missing host fact | Supply a fact only if you can establish it for the intended environment |
-| Missing dependency | Supply the specific assembly and retain its recorded hash |
-| Budget exhausted | Consider raising the named allowance after inspecting the stopped work |
-| Unsupported call | Add a model, or supply a justified call assertion with explicit opt-in |
-| Unsupported body/instruction | Usually requires an implementation change |
-| Unknown value | Investigate the earlier operation that produced it |
-| Uncaught throw | Inspect the condition and supplied facts; it may be intentional sample behavior |
+A non-null `Wants` means an answer is still needed. A null remedy means no declaration-based fix was identified. `MoreToDeclare` indicates available remedies.
 
-A non-null `Wants` means a value still needs to be supplied; a placeholder null must not be treated as an answer. A null remedy means there is no declaration-based fix identified for that stop. `MoreToDeclare` indicates available remedies, not permission to apply them blindly.
+After retrying, compare the blocker set and check whether the supplied declarations were consulted. If no justified new input remains, keep the partial result and report the affected path. See [automation](agents.md#declaration-loop) for the MCP helper.
 
-Pass exclusions are for diagnosis. Skipping an emission-gating pass withholds the cleaned assembly; `--fail-on-partial` makes other incomplete passes block as well. Reports and extracted files can still be produced.
-
-After retrying, check unused/unconsulted declarations and compare the blocker set. Stop when no supported remedy or justified new information remains. See [automation](agents.md) for the MCP helper.
+Skipping an emission-gating pass withholds cleaned output. `--fail-on-partial` also withholds it for other incomplete passes; reports and extracted files can remain available.

@@ -1,4 +1,6 @@
-# Code organization
+# Find the code for a recovery change
+
+Start with the analyst-visible behavior you are changing, then follow the relevant component below. A console wording change belongs in presentation; a new decoding rule belongs in recovery; a different output field also needs a schema update.
 
 | Location | Responsibility |
 | --- | --- |
@@ -16,7 +18,7 @@
 | `src/Cilantro.Mcp/` | Stdio protocol, tool definitions, and background runs |
 | `tests/Cilantro.Tests/` | Unit, integration, schema, and sample regression tests |
 
-## Ownership rules
+## Change a body without losing the original
 
 Use `InstructionMutationTransaction` for instruction edits, `BodyMutationTransaction` for a body, and `BodyMutationBatch` for related body changes. Capture before mutation and verify before committing. Dispose uncommitted transactions to restore bodies and discard pending change records. These transactions do not own arbitrary metadata/resource edits.
 
@@ -31,3 +33,5 @@ Preserve type-initialization timing, side effects, exception boundaries, stack b
 ## Validation
 
 Add tests for semantic boundaries, rollback, and false-positive refusal, not just happy-path counters. Use the sample corpus for static regression and benign probes for executable comparisons. [Development](development.md) gives the build and validation commands.
+
+For the recovery rules themselves, use the [implementation reference](assets/recovery-implementation-reference.md). For a VM comparison change, use the [validation reference](assets/vm-validation-reference.md).

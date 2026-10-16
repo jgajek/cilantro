@@ -1,4 +1,4 @@
-# Analyst quick start and CLI reference
+# Recover your first sample and choose options
 
 ## Recover a sample
 
@@ -6,7 +6,9 @@
 cilantro sample.exe
 ```
 
-That is the normal workflow. CILantro attempts to restore supported protected .NET code and strings, simplify control flow, rebuild supported VM-backed methods, assign readable names, remove proven protector helpers, and follow embedded managed assemblies. It interprets the file statically; it does not launch the sample or load its code into the host CLR.
+Use this to recover readable code and follow embedded managed stages. For a loader, the result may expose the API calls and decoded names used to invoke its payload. For a protected command handler, it may reveal its response branches and process-launching code. The [walkthrough](protection-removal.md) shows both.
+
+Recovery interprets the sample statically, without launching it or loading its code into the host CLR.
 
 Look at **OUTPUT** when the run finishes. It names the recommended assembly, offline HTML report, and case folder. Open the assembly in ILSpy or dnSpyEx. Read **NEEDS REVIEW**, **REMAINING**, and **VALIDATION** before relying on reconstructed code. For a dropper, the recommended file may be a child rather than the input.
 
@@ -37,7 +39,7 @@ Outputs remain analysis artifacts. Cleanup does not make a malware binary safe t
 
 ## Common options
 
-These are the options shown by `--help`.
+Start with the filename alone. Add an option when it answers a specific case question; these are the choices shown by `--help`.
 
 | Option | What it means for your analysis |
 | --- | --- |
@@ -73,11 +75,11 @@ For a filename starting with `-`, use `--` before the input. Path options also a
 
 ## Reading progress and results
 
-Human runs start with the Reveal text banner and show each target, phase and pass. `OK`, `PARTIAL`, `UNSUPPORTED`, `FAILED` and `SKIP` distinguish pass outcomes. Counts restart for each child; timings are not completion estimates. A skipped pass is not a successful pass.
+Human runs start with the cilantro-leaf banner and CILantro wordmark and show each target, phase and pass. `OK`, `PARTIAL`, `UNSUPPORTED`, `FAILED` and `SKIP` distinguish pass outcomes. Counts restart for each child; timings are not completion estimates. A skipped pass is not a successful pass.
 
 Colors separate progress/artifact paths (cyan), results (green), review items (amber) and failures (red). On Windows, CILantro enables virtual-terminal processing for classic Command Prompt; if the host cannot enable it, output falls back to plain text.
 
-A green completed run means configured pipeline success. It does not establish complete unprotection or equivalent program behavior. Reconstruction disagreements remain visible. Read the [output guide](reading-the-output.md), [payload workflow](analyst-workflows.md), and [troubleshooting](troubleshooting.md) for interpreting the result.
+After recovery, follow **OUTPUT** and inspect the stage containing the behavior you need. A green completed run means the configured run succeeded; **NEEDS REVIEW** and **REMAINING** identify work that can still matter. The [output guide](reading-the-output.md) explains the signals, and [analyst workflows](analyst-workflows.md) shows how to continue into a payload.
 
 Recursive recovery is bounded to depth 4, 32 artifacts and 256 MiB of aggregate input bytes, with hash deduplication. These are traversal limits, not a guarantee that every possible embedded file was found. Downloaded stages are not fetched.
 

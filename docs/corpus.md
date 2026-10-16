@@ -1,8 +1,8 @@
 # Corpus validation
 
-This contributor reference describes the pinned fixtures and checks used to validate recovery. For an analyst case, start with [analyst workflows](analyst-workflows.md); for coverage and its limits, see [validation scope](status-report.md).
+Use this contributor guide after changing recovery behavior. Choose the gate that tests the behavior you changed: static recovery, VM reconstruction/removal or a benign program's observable results. For routine sample work, use [analyst workflows](analyst-workflows.md).
 
-Manifests contain SHA-256 identities, protection expectations and assertions. Malware binaries are not distributed with the repository. Each gate checks its stated assertions; it does not establish exhaustive extraction or arbitrary behavior equivalence.
+A manifest pins the exact input hash and the results expected from that file. This makes a regression concrete: the same protected body should be restored, the same stage extracted, or the same application members preserved. Malware binaries are supplied separately. Read [validation scope](status-report.md) when comparing the different measurements.
 
 | Manifest | Scope |
 | --- | --- |
@@ -59,7 +59,7 @@ Compare return values, exceptions, persistent state, repeated calls and relevant
 
 ## Interpreting the measurements
 
-Keep detection, recovery, structural verification, reconstruction observations, physical removal and artifact preservation separate. Their denominators differ; adding them into a single coverage percentage is misleading.
+Report each gate with its own result and denominator. For example, a payload hash match checks recovered bytes, while a VM-removal audit checks the absence of identified machinery and the disposition of reconstructed methods. Neither count is a malware-family coverage percentage.
 
 A dispatcher-shaped counter can include application logic. Original-byte recovery and reconstructed CIL have different evidence. An extracted native dependency is not a deprotected managed assembly. Read [support](compatibility.md), [VM reconstruction](devirtualization.md) and the actual reports when evaluating a case.
 

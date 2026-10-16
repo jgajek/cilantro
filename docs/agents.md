@@ -1,6 +1,8 @@
 # Automation and MCP
 
-Use JSON for scripts and integrations. Human stdout is intended for analysts and may change wording or layout between releases.
+Use this page when collecting cases in a script or driving recovery through an MCP client. Keep one trial directory per input/run, read the returned artifact paths, and retain the report with the result.
+
+Use JSON for decisions. The English console summary is for the analyst reviewing the case and its wording can change.
 
 ## CLI contract
 
@@ -24,7 +26,7 @@ The CLI automatically follows embedded assemblies and maintains a status file. `
 | `Passes`, `Blockers`, `ContinuedPast` | Incomplete work and interpretation qualifications |
 | `MoreToDeclare` | At least one blocker has a structured remedy; not automatic retry authorization |
 
-An integration should not collapse these fields into a single green/red equivalence verdict. A successful structurally verified output can still have a reconstruction disagreement. Review child manifests from `Wrote.Embedded`, not just the root. A native wrapper's root `Wrote.Cleaned` can be null while its managed child has a cleaned output.
+For a multi-stage sample, read the child manifests from `Wrote.Embedded` and record the result of the stage you intend to inspect. For example, a native wrapper may have no root `Wrote.Cleaned` while its managed child has a usable output. Store success, structural verification and reconstruction comparison as separate fields so a reviewer can see which question each result answers.
 
 Exit codes are `0` for configured success, `1` for an unsuccessful pipeline result, and `2` for arguments/input/errors preventing a normal result. Error objects have their own shape. Keep stderr for diagnostics and stdout for the JSON parser.
 
@@ -88,6 +90,6 @@ MCP defaults VM reconstruction **off**, unlike the ordinary CLI. Set `devirtuali
 
 ## Declaration loop
 
-Read `Blockers` and their structured `Remedy` fields. Supply established facts or justified call outcomes; a `Wants` placeholder is a question, not a value. `next_declarations` accepts the blockers path, optional existing declarations (`from`), supplied `answers`, and an optional output path (`into`). Review the resulting assertions before rerunning with them.
+When a run needs more information, read `Blockers` and their structured `Remedy` fields. A missing dependency calls for a file; a missing environment fact calls for an established value; a budget stop may call for a larger allowance. A `Wants` placeholder marks an answer still needed. `next_declarations` accepts the blockers path, optional existing declarations (`from`), supplied `answers`, and an optional output path (`into`). Review the resulting assertions before rerunning with them.
 
 Stop when no justified new input remains or the remaining blockers lack remedies. Keep sample hashes, tool version, declarations/profile hashes, and output paths with the case. Use [declarations](declarations.md) for the contract.

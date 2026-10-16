@@ -1,86 +1,85 @@
-# Reading the output
+# Read the result and choose an artifact
 
-Start by answering three questions: **which file should I inspect, was that file recovered successfully, and what qualifications apply to its code?** The root result alone is not enough for a multi-stage sample.
+When a run finishes, answer three questions: **which file contains the code I need, what was recovered in that file, and what still needs investigation?** Start with **OUTPUT**, then inspect the recommended artifact's own report.
 
 ## Read the console summary
 
-| Section | Analyst action |
+| Section | What to do |
 | --- | --- |
-| Result | Establish whether recovery emitted a cleaned file, completed analysis only, or stopped short. |
-| Output | Follow the recommended assembly, HTML report and case-folder paths. |
-| Needs review | Investigate material failures and reconstruction disagreements, including child findings. |
-| Artifacts | Identify the wrapper, loaded assemblies, dependencies, native files and resource bundles. |
-| Next | Use the suggestion as a starting point, checking the actual artifact role. |
-| What changed in the input | Read the changes to this input; do not interpret them as totals for all children. |
-| Remaining | Review unresolved bodies/strings, unsupported work, residual patterns and assumptions. |
-| Validation | Separate structural checks from bounded reconstruction comparisons. |
+| Result | Check whether the run wrote a cleaned assembly, completed analysis only or stopped short. |
+| Output | Open the recommended assembly and HTML report. |
+| Needs review | Start with failures or reconstruction differences affecting your target stage. |
+| Artifacts | Follow the wrapper, loaded assemblies, resources and dependencies. |
+| What changed in the input | See the bodies, strings, calls and control flow recovered in this input. |
+| Remaining | Find the unresolved work and assumptions relevant to your investigation. |
+| Validation | Check structural verification and any VM comparison results. |
+| Next | Use the suggested next action to continue the case. |
 
-Use `--verbose` for pass diagnostics and technical counters. The HTML report exposes more detail in expandable sections. For scripts, use `--json` and documented fields rather than parsing these English headings.
+The HTML report has expandable details. Add `--verbose` when you need pass diagnostics; scripts should use `--json` and the [JSON contract](agents.md).
 
 ## Choose the right file
 
-| Artifact | What it is | How to use it |
-| --- | --- | --- |
-| Cleaned input | Transformed copy of the file supplied to CILantro | Inspect wrapper/application logic; it may not contain the final payload. |
-| Extracted original | Recovered bytes before a child cleanup run | Retain as evidence and use for an independent child trial. |
-| Cleaned child | Separate recovery result for an extracted managed assembly | Often the most useful file for payload code; check its own result. |
-| Restored resource bundle | A container whose resources were restored to a parent | Inspect the resources; do not assume it is an executable stage. |
-| Bundled dependency | A library extracted from a dependency resource | Check role and identity before calling it malware payload code. |
-| Native-wrapper stage | Managed bytes extracted from a supported native bootstrap | Follow the stage's managed recovery output and report. |
-| Preserved reviewed dependency | Exact hash match to an explicitly supplied reference | Bytes are preserved; this is not a new deprotection claim. |
+**Example:** a dropper's cleaned root may show only its loading routine. The useful payload code may be in a cleaned child DLL. A separate resource assembly may simply hold that DLL's encrypted source bytes.
 
-The recommendation favors an assembly observed at a load operation over a resource bundle. This is provenance-based triage, not family attribution or proof of a final stage. Follow the parent-child graph and hashes; a deduplicated child can have several parents.
+| Artifact | How to use it |
+| --- | --- |
+| Cleaned input | Read the transformed wrapper or application supplied to the tool. |
+| Extracted original | Preserve recovered bytes and use them for an independent child trial. |
+| Cleaned child | Read a recovered managed stage; check its own remaining work and validation. |
+| Restored resource bundle | Investigate the resources and their consumers. |
+| Bundled dependency | Inspect the library's role and callers. |
+| Native-wrapper stage | Follow the extracted managed assembly and its recovery result. |
+| Preserved reviewed dependency | Use the unchanged bytes and recorded reference identity. |
 
-A root `Wrote.Cleaned` can be null while a native wrapper's managed child has an output. Conversely, a cleaned root does not guarantee that every child was cleaned. A graph's `Complete` value describes its bounded processing, not exhaustive discovery of all possible embedded content.
+The recommendation favors an assembly observed at a load operation over a resource bundle. Use the graph and hashes to follow the chain; one deduplicated child can have several parents.
 
-If a child was left at a traversal limit, retain the extracted bytes and inspect its diagnostic. If it is native, CILantro's managed cleanup may not apply. For a supported managed bootstrap, the wrapper can be reassembled with the recovered child; use the recorded result rather than assuming this for every wrapper shape.
+A native root can have a null `Wrote.Cleaned` while its managed child has an output. A cleaned root can also have an incomplete child. If traversal stopped at a limit, continue from the child's extracted original in a separate trial.
 
 ## Interpret validation without losing useful results
 
-| Signal | Interpretation | What it does not prove |
+| Signal | What it tells you | What to inspect next |
 | --- | --- | --- |
-| Cleaned file written | Emission policy allowed an output | Every protection recognized or removed |
-| `Success: true` | Configured pipeline success | Universal behavior equivalence or complete child recovery |
-| `Verified: true` | Structural checks passed | Correctness for every runtime input |
-| `RebuiltCheck: agreed` | Bounded reconstruction observations matched | All possible VM paths, hosts or callbacks |
-| `RebuiltCheck: disagreed` | At least one captured observation differed | That every rebuilt method is wrong, or that the difference is harmless |
-| `RebuiltCheck: notMade` / inconclusive detail | Comparison did not establish agreement | Agreement by default |
-| Extracted SHA-256 | Identity of a particular recovered byte sequence | Malware family, intent or completeness |
+| Cleaned file written | The emission policy allowed an analysis copy. | Open the relevant methods and read remaining issues. |
+| `Success: true` | The run met its configured success policy. | Review the child results and recovery qualifications. |
+| `Verified: true` | Structural checks passed. | Check the code and any reconstruction comparisons for the behavior you need. |
+| `RebuiltCheck: agreed` | Captured reconstruction observations matched. | Read which inputs, paths and state the trial covered. |
+| `RebuiltCheck: disagreed` | An observed state or outcome differed. | Investigate the first difference. |
+| `RebuiltCheck: notMade` | Comparison did not establish agreement. | Look for an unexercised path, unsupported operation or budget limit. |
 
-The report can retain raw full-state reconstruction disagreement even when supplementary application-contract checks explain differences in removed protector state. Read the coverage and the reason. The corpus completion decision permits deliberate protector-metadata removal; that is not permission to dismiss an unrelated application's state difference.
+**Example:** a decoded command handler can be readable and structurally verified while another method's VM comparison disagrees. The handler is still useful evidence; retain the disagreement and investigate the affected path separately.
 
-Methods marked `[RebuiltFromReading]` came from supported VM reconstruction rather than decrypted original bodies. Some rebuilt protector-only bodies can later be removed, so a marker count alone does not measure missing application code. The [VM guide](devirtualization.md) explains the detailed evidence.
+A successful run is not a blanket verdict that every protection is gone or that behavior matches on every input. The [VM guide](devirtualization.md) explains how to assess reconstructed methods and differences in startup state.
 
 ## Understand residual code and warnings
 
-- **Switches:** ordinary application decisions and async/iterator state machines are legitimate. A dispatcher-shaped count is a review cue, not a removal target.
-- **Small methods:** a method returning zero or null can be real application behavior. A stub heuristic needs original-body evidence.
-- **Resources:** payloads, dependencies and application data may remain. Entropy alone does not identify an encrypted protector table.
-- **Calls beside recovered literals:** a call may be retained to preserve initialization, exceptions or other effects even when its return value is known.
-- **Replacement names:** useful labels are not the original source names. Use `NAME.renames.json` for correspondence.
-- **Verifier/decompiler warnings:** inspect the affected method. Unsafe code and unusual valid CIL can trigger diagnostics; a warning is neither automatic proof of failed recovery nor safe to ignore wholesale.
+| What remains | How to investigate it |
+| --- | --- |
+| Switches | Follow their selectors and targets. Application decisions and async/iterator state machines can be legitimate. |
+| Tiny methods | Check the original body and callers. Returning zero or null can be application logic. |
+| Resources | Trace their consumers. Icons, payloads and dependencies may still be required. |
+| Calls beside recovered strings/constants | Check whether they preserve initialization or other effects. |
+| Replacement names | Use `NAME.renames.json` to find the original declaration. |
+| Decompiler warnings | Identify the exact artifact and method, then inspect the CIL and validation details. |
 
-String counters usually describe sites/uses rather than distinct strings. Some simplification counters accumulate across passes. `HostProfile` records consulted host facts; `ContinuedPast` records unsupported calls passed during permissive interpretation. These qualifications matter even with structural success.
+String counts generally describe call sites or uses, rather than distinct strings. `HostProfile` records consulted environment facts; `ContinuedPast` records unsupported calls passed during permissive interpretation.
 
-Blocker records describe stops encountered during recovery. Some become irrelevant after a later successful route or retirement of the owning protector code. Correlate them with the final artifact and pass result instead of treating every recorded stop as an unresolved application failure.
+Blockers record stops encountered during recovery. A later route can recover the same content, or cleanup can remove the protector routine that encountered the stop. Correlate a blocker with the final result before deciding it is unresolved application work.
 
 ## Keep the useful outputs
 
-Read paths from `Wrote`; the following names are typical, not a naming contract.
+Read actual paths from `Wrote`. These names are typical:
 
-| File or directory | Purpose |
+| File or directory | Use |
 | --- | --- |
-| `NAME.report.html` | Offline report with artifact links and detailed evidence |
-| `NAME.analysis.json` | Recovery/protection analysis, passes and verification |
+| `NAME.report.html` | Offline report and artifact links |
+| `NAME.analysis.json` | Detailed recovery, protection and verification results |
 | `NAME.changes.json` | Changes and affected locations |
-| `NAME.blockers.json` | Interpretation stops and available remedies |
-| `NAME.renames.json` | Original-to-replacement names, when produced |
-| `NAME.config.json` | Recovered constants, when available; not a general malware configuration decoder |
-| `NAME.embedded.json` | Child nodes, links, hashes, statuses and run manifests |
-| `NAME.status.json` | Automatic CLI progress and terminal state; opt-in for core callers |
-| `NAME.virtualized/` | VM programs and lifted IL listings, when produced |
-| Extracted files and cleaned assemblies | Original recovered bytes and transformed analysis copies |
+| `NAME.blockers.json` | Interpretation stops and suggested remedies |
+| `NAME.renames.json` | Original-to-replacement names |
+| `NAME.config.json` | Recovered constants, when available |
+| `NAME.embedded.json` | Child nodes, links, hashes, statuses and manifests |
+| `NAME.status.json` | CLI progress and terminal state; opt-in for core callers |
+| `NAME.virtualized/` | VM programs and lifted IL listings |
+| Extracted files and cleaned assemblies | Recovered original bytes and transformed analysis copies |
 
-Keep reports with their referenced artifacts so links remain useful. Reports and recovered constants can contain sensitive case data. Neither a readable output nor a successful report makes the sample safe to run.
-
-Continue with [analyst workflows](analyst-workflows.md) for payload investigation, [troubleshooting](troubleshooting.md) for incomplete work, or [automation](agents.md) for machine decisions.
+Keep the report with its referenced files. Continue with [analyst workflows](analyst-workflows.md) to investigate the recovered behavior or [troubleshooting](troubleshooting.md) when a result needs another trial.

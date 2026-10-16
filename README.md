@@ -4,15 +4,19 @@
   <img src="docs/assets/cilantro-flow-lockup.png" alt="CILantro Flow logo: a cilantro leaf with branching recovery paths above the CILantro wordmark" width="320">
 </p>
 
-Recover readable .NET assemblies and embedded payloads from supported **.NET Reactor and ConfuserEx** samples, without launching the sample or loading its code into the host CLR.
+Recover readable .NET code and embedded payloads from supported **.NET Reactor and ConfuserEx** malware samples.
 
-CILantro interprets the sample's own decoding and unpacking logic in a bounded model. That lets it recover encrypted methods and strings, reconstruct supported Reactor VM programs as ordinary CIL, unflatten protector control flow, resolve indirect calls, and remove attributable protector infrastructure. For an analyst, the result is a cleaned assembly to open in a decompiler, extracted stages with hashes and provenance, and an offline report explaining what was recovered and what needs review.
+A protected method can hide a PowerShell launcher behind an empty-looking stub. A loader can disguise `Assembly.Load` behind a proxy and encrypt the type and method it invokes next. CILantro works through supported protection layers so you can follow that behavior in a .NET decompiler.
 
-## Start with a sample
+It also **lifts supported Reactor VM bytecode into CIL and reconstructs method bodies**, making those programs available for decompilation. See the [before-and-after malware walkthrough](docs/protection-removal.md) for VM reconstruction, hidden process execution, in-memory loading and command handling.
 
-Download the Windows x64 or Linux x64 archive from [Releases](https://github.com/jgajek/cilantro/releases). Both contain the CLI and MCP server and run without a separately installed .NET runtime. Compare the archive's SHA-256 with `SHA256SUMS.txt` before unpacking.
+Recovery uses a bounded interpreter. It does not launch the sample or load its code into the host CLR.
 
-From PowerShell in the unpacked tool directory:
+## Recover a sample
+
+Download and unpack the Windows x64 or Linux x64 archive from [Releases](https://github.com/jgajek/cilantro/releases). Both include the CLI and MCP server without requiring a separately installed .NET runtime. Check the archive against `SHA256SUMS.txt`.
+
+From the unpacked directory on Windows:
 
 ```powershell
 .\cilantro.exe C:\cases\sample.exe
@@ -24,50 +28,54 @@ On Linux:
 ./cilantro /cases/sample.exe
 ```
 
-The normal run recovers the input and embedded managed stages, with progress and a status file included. All outputs go into `sample.cilantro/` beside the input; retries use `sample.cilantro-2/`, and so on. Use `-o C:\cases\run-01` (or `-o /cases/run-01`) to choose a new or empty case folder. `--output` selects the case directory.
+The normal run recovers the input, follows embedded managed stages and writes a fresh case folder beside the sample. Use `-o C:\cases\run-01` or `-o /cases/run-01` to choose a new or empty folder.
 
-Follow **OUTPUT** in the summary to the recommended assembly, HTML report and case folder. Open the assembly in your .NET decompiler, then inspect the artifact tree and **Needs review**, **Remaining**, and **Validation**. A dropper's most useful output may be a cleaned child rather than the cleaned input.
+When the run finishes, follow **OUTPUT** to the recommended assembly and HTML report. Open the assembly in ILSpy or dnSpyEx, then read **NEEDS REVIEW** and **REMAINING** for that artifact. For a dropper, the useful code may be in a cleaned child DLL rather than the outer file.
 
-The console opens with the Reveal banner and streams analysis phases and pass outcomes, followed by a result summary and artifact paths. Interactive terminals use green, cyan, amber and red to distinguish results, progress and review items. Use `--no-color` or `NO_COLOR` for plain text; redirected output is plain automatically. `--json` emits only the machine-readable run/error object.
+## What becomes visible?
 
-Use a new output directory for each trial. The original input is preserved; extracted original bytes and cleaned child copies are distinct. Outputs remain malware artifacts: recovery does not make them safe to execute.
-
-Use `--analyze-only` for reports/extracted originals without cleaned assemblies, `--strict` for a comparison without implicit host assumptions, and `--json` for scripts. `--help` covers the common workflow; `--help-all` explains specialist controls. See the [CLI reference](docs/quick-start.md) for each option.
-
-## What you get
-
-| Analyst task | CILantro's contribution |
+| What hides the behavior | What recovery gives the analyst |
 | --- | --- |
-| Read protected application logic | Restored method bodies and strings; supported VM methods rebuilt into CIL; simpler control flow and explicit call targets |
-| Get past the wrapper | Supported native bootstrap recovery and recursive managed-stage recovery, with parent-child provenance |
-| Extract embedded content | Managed assemblies, supported resource entries and dependencies, with hashes and recorded extraction paths |
-| Reduce decompiler noise | Protector-code/resource removal, recovered types, readable replacement names and late branch cleanup |
-| Understand the result | Offline HTML report, change/rename maps, VM listings, remaining-work diagnostics and structural/reconstruction evidence |
-| Integrate with a case pipeline | JSON stdout, status files, documented exit codes and a stdio MCP server |
+| Encrypted method bodies and strings | Readable instructions and values at their use sites. |
+| VM bytecode and an interpreter stub | Supported programs lifted into CIL and reconstructed for decompilation. |
+| Flattened control flow | Ordinary branches after established dispatcher transitions are resolved. |
+| Proxy calls | Explicit call targets such as `Assembly.Load(byte[])`. |
+| Native wrappers and encrypted embedded content | Extracted stages with hashes and links to their source. |
+| Protector support code | A clearer application after obsolete, attributable machinery is removed. |
 
-CILantro does not identify a malware family, automatically decode every family's configuration, fetch downloaded stages, or recreate the original source project. Native payload extraction is distinct from native-code decompilation.
+Each case includes an offline report, extracted originals, cleaned assemblies where recovery permits them, change and rename maps, and any VM listings. Keep these together so you can trace a recovered method or stage back to its input.
 
-## Support and confidence
+## Choose an option for a specific task
 
-CILantro **1.0.1** is described in the [release notes](docs/releases/1.0.1.md). The validation corpus contains **43 roots**, including **28 undamaged captured Reactor-tagged samples**, with physical VM-removal checks covering **14 intact virtualized identities**. It includes negative controls and cases using explicit generic recovery; these are not 43 independent protected malware families. Corpus measurements establish bounded coverage, and each release candidate requires its own validation.
+| Task | Option |
+| --- | --- |
+| Choose a case folder | `-o DIR` |
+| Extract and report without writing cleaned assemblies | `--analyze-only` |
+| Compare a run without implicit host assumptions | `--strict` |
+| Collect results in a script | `--json` |
+| Investigate detailed recovery diagnostics | `--verbose` |
+| Use plain console text | `--no-color` |
 
-Coverage includes real-world Reactor 6 samples, Reactor 7.5 source-built probes, and two pinned ConfuserEx samples. It depends on the protection implementation and options, not just a version label. Completion on that corpus is not a guarantee for a new file.
+`--help` covers common workflows; `--help-all` lists specialist controls. The [CLI reference](docs/quick-start.md) explains each option, output folders and exit codes. Interactive output includes the cilantro-leaf banner, analysis progress and artifact paths; redirected output is plain text automatically.
 
-For each new case, read the result's qualifications. `Success` means the configured run succeeded; `Verified` means structural checks passed. Neither is a universal behavior or full-unprotection verdict. Application switches, required initialization calls and bundled libraries can legitimately survive cleanup. [Support and limitations](docs/compatibility.md) explains the distinction.
+## Understand the result
 
-## Choose your workflow
+CILantro supports specific protection implementations and configurations. A successful run means its configured policy was met; structural verification checks metadata and CIL. Read the report's remaining work and reconstruction comparisons before drawing a conclusion about a particular path.
 
-- [See protection removal before and after](docs/protection-removal.md)
-- [First run and CLI options](docs/quick-start.md)
-- [Investigate a dropper and its payloads](docs/analyst-workflows.md)
-- [Choose the right artifact and interpret the report](docs/reading-the-output.md)
-- [Resolve incomplete recovery and decompiler problems](docs/troubleshooting.md)
-- [Use JSON, scripts or MCP](docs/agents.md)
-- [Complete documentation index](docs/README.md)
-- [Validation scope and results](docs/status-report.md)
+The tool does not identify malware families, fetch downloaded stages or recreate the original source project. Recovery outputs remain malware artifacts. The [support guide](docs/compatibility.md) explains coverage, and the [validation report](docs/status-report.md) records the corpus and release checks. Current release notes: [1.0.1](docs/releases/1.0.1.md).
+
+## Continue the investigation
+
+- [See real malware before and after recovery](docs/protection-removal.md).
+- [Follow a dropper into its payload](docs/analyst-workflows.md).
+- [Choose the right artifact and read the report](docs/reading-the-output.md).
+- [Inspect VM-protected methods](docs/devirtualization.md).
+- [Troubleshoot incomplete recovery](docs/troubleshooting.md).
+- [Automate cases with JSON or MCP](docs/agents.md).
+- [Browse the documentation](docs/README.md).
 
 ## Report a recovery problem
 
-Include the tool version, input SHA-256, command line, whether the input is original or already rewritten, and the affected method or child artifact. Attach relevant diagnostics after reviewing them for embedded secrets and case-sensitive information. Do not post malware binaries in public issues. See the [bug-report checklist](docs/troubleshooting.md#report-a-reproducible-problem).
+Include the tool version, input SHA-256, exact command, affected artifact/method and relevant diagnostics. Identify whether the input is untouched, extracted or previously rewritten. Review reports for private case data before sharing; do not post malware binaries in public issues. See the [reporting guide](docs/troubleshooting.md#report-a-reproducible-problem).
 
-Building from source requires the .NET 10 SDK; see [development](docs/development.md). CILantro is MIT-licensed; see [LICENSE](LICENSE). It uses [dnlib](https://github.com/0xd4d/dnlib) and is independent of Eziriz, ConfuserEx and other recovery tools.
+Contributors need the .NET 10 SDK; see [development](docs/development.md). CILantro is [MIT-licensed](LICENSE), uses [dnlib](https://github.com/0xd4d/dnlib), and is independent of Eziriz, ConfuserEx and other recovery tools.

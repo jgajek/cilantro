@@ -1,4 +1,6 @@
-# Build, test, and release
+# Build and validate a change
+
+Use this contributor guide to build a local CLI/MCP pair and choose checks for your change. Routine malware analysis uses the published executables; see the [quick start](quick-start.md).
 
 ## Build from source
 
@@ -23,3 +25,9 @@ dotnet publish src/Cilantro.Mcp -c Release -r win-x64 -p:PublishSingleFile=true 
 ```
 
 Use `linux-x64` for the Linux archive. The single-file property enables self-contained publishing in each project. Test `--version`, `--help`, an ordinary run, and JSON/error output from the published CLI on its target platform. Both executables belong in each release archive, with licence and documentation.
+
+## Write documentation for its reader
+
+Analyst guides should start with a case question, explain how the protection hides the behavior, show the recovered code or artifact, and give a useful next step. Keep necessary scope qualifications together and link implementation rules, method identities and reproduction details from a reference appendix. Label captured output, reconstructed checkpoints and illustrative code accurately.
+
+Contributor and automation pages should lead with the task they support, then preserve the exact commands, field names and checks needed to carry it out. Keep historical experiments out of current usage instructions.

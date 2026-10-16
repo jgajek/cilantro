@@ -1,30 +1,38 @@
 # Documentation
 
-Start with the analyst workflow. These pages describe CILantro **1.0.1**; see the [release notes](releases/1.0.1.md) for features and validation scope.
+Start with the question you are trying to answer about the sample. The normal command is `cilantro sample.exe`; follow **OUTPUT** to the recommended assembly and report when it finishes.
 
-The normal command is `cilantro sample.exe`. It follows embedded stages and keeps all artifacts in a fresh case folder; `-o DIR` chooses that folder. Follow **OUTPUT** when it finishes. See the [option reference](quick-start.md); `--help-all` lists specialist controls.
+The [malware walkthrough](protection-removal.md) shows the approach in practice: explain the protection, compare the code, then follow the behavior it exposes. It includes VM lifting and reconstruction, PowerShell execution and in-memory payload loading.
 
-## Analyze a sample
+## Work a case
 
 | Your question | Read |
 | --- | --- |
-| How do I install it and recover my first file? | [Quick start and CLI reference](quick-start.md) |
-| Which output is the payload, and how do I follow another stage? | [Analyst workflows](analyst-workflows.md) |
-| What do the summary, warnings and artifact states mean? | [Reading the output](reading-the-output.md) |
-| Why did it stop, and what should I try next? | [Troubleshooting](troubleshooting.md) |
-| Which protections are covered, and what remains outside scope? | [Support and limitations](compatibility.md) |
-| How do I supply an environment fact, dependency or budget? | [Declarations](declarations.md) |
-| How do I automate recovery? | [Automation and MCP](agents.md), [JSON schemas](../schema/README.md) |
+| How do I recover my first file and choose options? | [Quick start and CLI reference](quick-start.md) |
+| Which stage contains the code I need? | [Analyst workflows](analyst-workflows.md) |
+| Which file should I open, and what do the warnings mean? | [Reading the output](reading-the-output.md) |
+| Can I read a VM-protected method? | [VM reconstruction](devirtualization.md) |
+| Is the result sufficient for my investigation? | [Assess recovery completeness](completion-progress.md) |
+| Why did recovery stop, and what can I try next? | [Troubleshooting](troubleshooting.md) |
+| How do I supply a missing fact, dependency or budget? | [Declarations](declarations.md) |
+| Which protection layers are covered? | [Support and limitations](compatibility.md) |
 
-## Investigate the recovery
+## Understand the protection
 
-- [Protection removal: before and after](protection-removal.md): malware payload-loading and command-execution examples for Reactor and ConfuserEx, with captured evidence.
-- [Virtualized methods](devirtualization.md): rebuilt CIL, listings, comparisons and their limits.
-- [Recovery architecture](how-recovery-works.md): interpreter, recovery passes and emission checks.
-- [How Reactor works](how-net-reactor-works.md) and [How ConfuserEx works](how-confuserex-works.md): protection background.
-- [Validation scope and results](status-report.md): coverage, checks and their limits.
-- [Corpus validation](corpus.md): manifests, static gates and reconstruction checks for contributors. It is not a list of commands required for routine malware triage.
+- [How recovery works](how-recovery-works.md): follow the wrapper, hidden code, calls, branches and extracted stages.
+- [Recognize Reactor protection](how-net-reactor-works.md): identify method encryption, strings, proxies, flattening and VM stubs.
+- [Recognize ConfuserEx protection](how-confuserex-works.md): connect encrypted sections, constants and dispatchers to recovered behavior.
+- [Validation scope and results](status-report.md): understand the project's test evidence and how it relates to a new case.
 
-## Build and release
+## Automate or contribute
 
-[Development](development.md) covers builds, tests and local publishing. [Code organization](code-organization.md) maps the implementation. The [1.0.1 release notes](releases/1.0.1.md) describe the release.
+| Task | Reference |
+| --- | --- |
+| Collect cases in scripts or MCP | [Automation and MCP](agents.md), [JSON schemas](../schema/README.md) |
+| Build and validate a change | [Development](development.md), [corpus validation](corpus.md) |
+| Find the source for a behavior | [Code organization](code-organization.md) |
+| Inspect a recovery rule's technical boundaries | [Implementation reference](assets/recovery-implementation-reference.md) |
+| Investigate a detailed VM comparison | [VM validation reference](assets/vm-validation-reference.md) |
+| Reproduce the walkthrough captures | [Evidence appendix](assets/protection-removal-notes.md) |
+
+Published binaries are available from [Releases](https://github.com/jgajek/cilantro/releases). See the [1.0.1 release notes](releases/1.0.1.md) for that release's changes.

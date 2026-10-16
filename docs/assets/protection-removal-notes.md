@@ -50,6 +50,31 @@ The [follow-up evidence](protection-removal-final-csharp.json) records the sourc
 
 ## Virtualization evidence
 
+The leading VM example adds a fresh CILantro 1.0.1 capture from Qbjuef, input token `0600004A`. Its [capture record](protection-removal-vm-evidence.json) includes the full before/after CIL, input and checkpoint hashes, the displayed decompiler excerpt, and the final output hash. The [VM capture helper](protection-removal-vm-capture.cs) writes an assembly immediately after reconstruction, before cleanup can remove the replaced string-resolution dependency.
+
+For the C# illustration, that checkpoint was loaded as metadata and processed by `RebuiltBodyCleanupPass` (success, 5,410 changes) and `SymbolRenamingPass` (success, zero changes), then written and decompiled with ILSpy 11.0.0.9375. This is a diagnostic checkpoint, not the ordinary cleaned output. The displayed loop is verbatim decompiler output apart from indentation. Its `obj5` array is passed as the key and `obj7` as the IV to the reconstructed routine's decryptor-creation call.
+
+The VM program contains 3,007 operations; the inferred listing accounts for all 3,007. Its graph walk reaches 3,001, with six unreachable operations and consistent stack depths along the reached graph. The 18-instruction input stub becomes a 5,480-instruction body immediately after reconstruction. These are reconstruction measurements, not a behavioral-equivalence claim. The main page identifies this as string-decoding support in a malicious loader, rather than claiming a VM-protected malicious application algorithm was recovered.
+
+Reproduce from the repository root, using a fresh scratch directory under `C:\cilantro-verify`:
+
+```powershell
+dotnet new console -f net10.0 -o C:\cilantro-verify\vm-example
+dotnet add C:\cilantro-verify\vm-example reference src/Cilantro.Core/Cilantro.Core.csproj
+Get-Content docs/assets/protection-removal-vm-capture.cs -Raw |
+    Set-Content C:\cilantro-verify\vm-example\Program.cs
+
+dotnet run -c Release --project C:\cilantro-verify\vm-example -- C:\cilantro-verify\samples\Qbjuef.exe C:\cilantro-verify\vm-example-output 0600004A
+
+dotnet run -c Release --project C:\cilantro-verify\vm-example -- --readable C:\cilantro-verify\vm-example-output\reconstructed.exe C:\cilantro-verify\vm-example-output\reconstructed-readable.exe
+
+ilspycmd -t cyLqt16JuLuQiK9Qfv.NF8Q3InXt7oVQltBE3 C:\cilantro-verify\vm-example-output\reconstructed-readable.exe > C:\cilantro-verify\vm-example-output\reconstructed-readable.cs
+```
+
+The helper and ILSpy parse/write the sample as data. No captured assembly is loaded into the host CLR or executed. The helper completes the ordinary recovery as well, writing `run.json` and the normal cleaned output; the readable checkpoint is kept separately.
+
+### Original VM audit
+
 ```cil
 IL_0026: ldc.i4 0
 IL_002B: ldloc.0

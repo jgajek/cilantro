@@ -1,6 +1,6 @@
 # JSON output contracts
 
-Use `--json` and the paths in `Wrote` for automation. Do not parse human stdout or construct artifact paths from sample names.
+Use this reference when writing a consumer for CILantro results. Run with `--json`, check `Schema`, then follow the paths in `Wrote` to collect the report and artifacts. The console's English text is for case review.
 
 | Schema | Output |
 | --- | --- |
@@ -19,6 +19,6 @@ Changes, rename maps, and embedded recovery graphs are additional outputs named 
 
 Check explicit schema identifiers where present and `ToolVersion` on reports. Required fields remain present, with nullable values represented as null. Consumers should tolerate additive fields and handle unfamiliar enum values conservatively. Repository schemas use `additionalProperties: false` to catch undocumented producer changes; an older schema may therefore reject a newer additive document.
 
-Manifest fields are not removed, renamed, or reinterpreted within the same schema major version. Reports without an explicit schema identifier are tied to the documented tool version. Pin those readers and update their schema with the tool. The 0.4.0 rename from ReactorUnpack changed manifest tokens and default paths; current clients should use the `cilantro.*` identifiers.
+Manifest fields are not removed, renamed, or reinterpreted within the same schema major version. Reports without an explicit schema identifier are tied to the documented tool version. Pin those readers and update their schema with the tool.
 
 See [automation and MCP](../docs/agents.md) for decisions, retries, and progress polling.

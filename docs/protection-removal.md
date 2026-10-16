@@ -2,11 +2,63 @@
 
 A protected assembly can hide a PowerShell launcher behind an empty-looking method, or disguise an in-memory payload load as a call to an unknown helper. This walkthrough shows what becomes visible after recovering real .NET Reactor and ConfuserEx malware samples.
 
-Each example starts with the obstacle and ends with the code or artifact an analyst can investigate. **Final C#** comes from ILSpy decompilation of a written output; `...` marks omitted code.
+Each example starts with the obstacle and ends with the code or artifact an analyst can investigate. **Final C#** comes from ILSpy decompilation of a written output; the VM example labels its reconstruction checkpoint separately. `...` marks omitted code.
 
 ## .NET Reactor
 
-### 1. An empty-looking method becomes a hidden PowerShell launcher
+### 1. VM lifting turns a hidden decoding routine into CIL and C#
+
+**Sample:** `Qbjuef.exe`
+
+Reactor's **code virtualization** replaces a method's normal .NET instructions with a program for its own virtual machine. A decompiler sees a short stub that packages arguments and calls the VM; the actual work is hidden in custom bytecode. **Lifting** translates those VM operations into CIL, and **reconstruction** puts the resulting method body back into an assembly so a .NET decompiler can read it.
+
+In this malware loader, the VM protects the decoding machinery used to recover its strings. Understanding that machinery leads to the reflection targets used to load the next stage.
+
+**Before: the method hands control to the VM**
+
+```cil
+IL_0026: ldc.i4 0
+IL_002B: ldloc.0
+IL_002C: ldnull
+IL_002D: call System.Object[] JQhawTywsS1NVjM0U2D.H7iSNmyMGuPXNmAEDJn::RxryXcNYIa(System.Int32,System.Object,System.Object)
+IL_0032: pop
+IL_0033: ret
+```
+
+The `0` selects a VM program; the object array holds the original method's arguments. There is no decoding algorithm to follow in this stub.
+
+**After lifting: ordinary .NET operations are visible**
+
+The program contains 3,007 VM operations. Reconstruction replaces the 18-instruction stub with a 5,480-instruction CIL body, including framework operations such as:
+
+```cil
+IL_4588: newobj System.Void System.Security.Cryptography.CryptoStream::.ctor(System.IO.Stream,System.Security.Cryptography.ICryptoTransform,System.Security.Cryptography.CryptoStreamMode)
+```
+
+The analyst can now inspect the decoding routine as .NET code rather than reverse-engineer the VM's instruction set and dispatcher.
+
+**Reconstructed C# excerpt: a loop used to prepare the decryption key**
+
+```csharp
+for (int i = 0; i < ((Array)obj7).Length; i++)
+{
+	int num4 = i;
+	num3 = i;
+	object value2 = ((Array)obj5).GetValue(num3);
+	num3 = i;
+	value = ((Array)obj7).GetValue(num3);
+	obj = value2;
+	uint num5 = Convert.ToUInt32((object)(Convert.ToInt32(obj) ^ Convert.ToInt32(value)));
+	num3 = num4;
+	((Array)obj5).SetValue(num5, num3);
+}
+```
+
+This loop XORs corresponding elements of two arrays and writes the results back into the key array. The surrounding reconstructed code creates a decryptor, processes the encrypted bytes through a `CryptoStream`, and stores the decoded buffer. Those operations were hidden behind the single VM call in the original method.
+
+The C# above comes from a reconstruction checkpoint, with the rebuilt body simplified for reading. During a normal run, the recovered strings replace their decoding calls and the now-unused decoder and VM are removed. The cleaned loader then exposes the in-memory loading chain shown in example 3.
+
+### 2. An empty-looking method becomes a hidden PowerShell launcher
 
 **Sample:** `Qafcakg.payload.Ptnifif.dll`
 
@@ -40,7 +92,7 @@ The recovered method starts `powershell.exe` with a command line supplied by its
 
 Recovery restored 313 encrypted method bodies and resolved 152 string references in this payload.
 
-### 2. Indirect calls and encrypted strings become an in-memory loading chain
+### 3. Indirect calls and encrypted strings become an in-memory loading chain
 
 **Sample:** `Qbjuef.exe`
 
@@ -79,7 +131,7 @@ The loader passes its byte array directly to `Assembly.Load`, finds a specific t
 
 Across the sample, 1,230 proxy calls become direct calls. Control-flow cleanup also removes the dispatch loop around this loading sequence. The VM-backed string-resolution machinery is removed after its strings have been recovered, leaving the loading chain above readable.
 
-### 3. Payload decryption and recovered files reveal the next stage
+### 4. Payload decryption and recovered files reveal the next stage
 
 **Sample:** `Qbjuef.exe`
 
@@ -109,7 +161,7 @@ The run also produces two useful artifacts:
 
 Use the extracted DLL and the loader's reflection targets to continue the investigation. The report records each artifact's source and SHA-256 so the resource container and loaded stage can be tracked separately.
 
-### 4. A native wrapper yields a managed assembly
+### 5. A native wrapper yields a managed assembly
 
 **Sample:** `WindowsManagement.exe`
 
@@ -123,7 +175,7 @@ The extracted assembly can now be opened in a .NET decompiler and analyzed as th
 
 ## ConfuserEx
 
-### 5. Encrypted bodies and constants reveal a PowerShell command handler
+### 6. Encrypted bodies and constants reveal a PowerShell command handler
 
 **Sample:** `confuser_06b9d08b33f2.dll`
 
@@ -159,7 +211,7 @@ The method starts PowerShell without a window and sends script text through stan
 
 This connects recovered strings to actual execution logic: `powershell` is used to launch the interpreter, rather than appearing only as an isolated string.
 
-### 6. Recovered network settings expose the command transport
+### 7. Recovered network settings expose the command transport
 
 **Sample:** the same ConfuserEx payload
 
@@ -202,7 +254,7 @@ The helper creates an HTTP request, selects `POST`, writes an encoded request bo
 
 The endpoint, request markers, encoding routines and timeout values are now available for network analysis and detection work.
 
-### 7. Control-flow unflattening reveals the command decisions
+### 8. Control-flow unflattening reveals the command decisions
 
 **Sample:** the same ConfuserEx command handler
 
@@ -261,4 +313,4 @@ Follow **OUTPUT** to the cleaned assembly, HTML report and extracted files. Open
 
 These are static observations from recovered malware code: no sample was executed and no command server was contacted. The examples show specific recovered paths, rather than complete removal of every protection in each file.
 
-Sample hashes, method identities, capture details and reproduction commands are in the [evidence appendix](assets/protection-removal-notes.md). The original captures use CILantro 1.0.0; the final PowerShell-launcher C# was captured with 1.0.1. See [support and limitations](compatibility.md) for broader coverage.
+Sample hashes, method identities, capture details and reproduction commands are in the [evidence appendix](assets/protection-removal-notes.md). The original captures use CILantro 1.0.0; the PowerShell-launcher C# and VM reconstruction checkpoint were captured with 1.0.1. See [support and limitations](compatibility.md) for broader coverage.
