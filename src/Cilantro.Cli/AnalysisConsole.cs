@@ -15,28 +15,44 @@ internal sealed class AnalysisConsole(TextWriter output, bool color)
     internal void Banner(string input, bool analyzeOnly, bool strict)
     {
         output.WriteLine();
+        // ASCII only: keep the leaf and wordmark legible in classic Windows consoles.
         string[] logo =
         [
-            "         __________",
-            "        /  _______/",
-            "       /  /  ____",
-            "      |  |  / __/",
-            "      |  | | |",
-            "      |  |  \\__\\",
-            "       \\  \\_______",
-            "        \\_________\\"
+            "             +#+",
+            "          ++#####++",
+            "         ###########",
+            "        ++#########++",
+            "       #######+#######",
+            "       ######+ +######",
+            "       ####### #######",
+            "    ++ + ++### ###++ + ++",
+            " #########+ +#+#+ +#########",
+            "###########+ +#  +###########",
+            "+#### +#####  #  #####+ ####+",
+            " #######+++##+#+##+++#######",
+            " +##########+###+##########+",
+            "   ++######+ +#+ +######++",
+            "    +####+   +#    +####+",
+            "      +      +#       +",
+            "              #+"
         ];
         for (var index = 0; index < logo.Length; index++)
         {
             var caption = index switch
             {
-                2 => $"    CILantro {CilantroPipeline.Version}",
-                4 => "    Recover readable .NET code",
-                5 => "    Static analysis / bounded interpretation",
+                3 => "  ____ ___ _             _",
+                4 => " / ___|_ _| | __ _ _ __ | |_ _ __ ___",
+                5 => "| |    | || |/ _` | '_ \\| __| '__/ _ \\",
+                6 => "| |___ | || | (_| | | | | |_| | | (_) |",
+                7 => " \\____|___|_|\\__,_|_| |_|\\__|_|  \\___/",
+                10 => $"CILantro {CilantroPipeline.Version}  /  .NET code recovery",
+                12 => "Reveal the code. Follow the payload.",
+                13 => "Static analysis / bounded interpretation",
                 _ => string.Empty
             };
-            output.WriteLine(ConsoleTheme.Paint(logo[index].PadRight(24), ConsoleTone.Green, color) +
-                ConsoleTheme.Paint(caption, index == 2 ? ConsoleTone.Green : ConsoleTone.Muted, color));
+            output.WriteLine(ConsoleTheme.Paint("  " + logo[index].PadRight(33), ConsoleTone.Green, color) +
+                ConsoleTheme.Paint(caption, index is >= 3 and <= 7 ? ConsoleTone.Green :
+                    index == 10 ? ConsoleTone.Cyan : ConsoleTone.Muted, color));
         }
         output.WriteLine();
         Line($"  INPUT   {Path.GetFullPath(input)}", ConsoleTone.Cyan);

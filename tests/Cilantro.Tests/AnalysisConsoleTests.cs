@@ -61,8 +61,8 @@ public sealed class AnalysisConsoleTests
             var (exit, text, error) = await RunCli(input, "--analyze-only", "--strict", "-o", caseDirectory);
             Assert.Equal(0, exit);
             Assert.Empty(error);
-            Assert.Contains($"CILantro {CilantroPipeline.Version}", text, StringComparison.Ordinal);
-            Assert.Contains("__________", text, StringComparison.Ordinal);
+            Assert.Contains($"CILantro {CilantroPipeline.Version}  /  .NET code recovery", text, StringComparison.Ordinal);
+            Assert.Contains("Reveal the code. Follow the payload.", text, StringComparison.Ordinal);
             Assert.True(text.IndexOf("[RECOVERY]", StringComparison.Ordinal) < text.IndexOf("RESULT", StringComparison.Ordinal));
             Assert.Contains("metadata-preflight ... OK", text, StringComparison.Ordinal);
             Assert.Contains("[VERIFICATION]", text, StringComparison.Ordinal);
