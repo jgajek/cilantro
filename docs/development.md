@@ -34,4 +34,17 @@ Use `linux-x64` for the Linux archive. The single-file property enables self-con
 6. Commit the reviewed tree and create the matching version tag when ready to publish. The release workflow builds Windows/Linux archives and their SHA-256 checksums.
 7. Review release notes and downloaded assets before recommending the release to analysts. Do not turn pipeline success into a complete-unprotection claim.
 
-Preparing a release is separate from publishing it. Version 0.10.3 is a regular release with documented recovery limits. See [the release notes](releases/0.10.3.md).
+Preparing a release is separate from publishing it. Source metadata now targets 1.0.0; this does not tag or publish a release. See the [1.0.0 preparation notes](releases/1.0.0.md) and the [0.10.6 validation baseline](releases/0.10.6.md).
+
+## Preparing 1.0.0
+
+Treat 1.0.0 as a release-readiness milestone, not a claim of universal deprotection. Before publishing:
+
+- Validate the documented first-run commands against both packaged platforms, including spaces in paths and a fresh case directory.
+- Check wrapper/child recommendations, partial recovery, generic recovery, analysis-only, strict mode, reviewed dependencies and long-run status behavior.
+- Verify the CLI and MCP defaults are documented separately, and test JSON/error schemas and exit codes used by analyst integrations.
+- Keep the frozen-corpus result explicit. State any additional samples or changed validation scope instead of reusing old counts for a new build.
+- Check all packaged documentation links. Historical research must be labeled, and local-only evidence files must not be presented as downloads.
+- Review release notes and compatibility claims for an analyst who has never read implementation details. Run the release checklist above before tagging.
+
+These are preparation checks, not a claim that the future 1.0.0 binaries have already passed them.

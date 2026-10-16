@@ -53,6 +53,7 @@ internal static class NativeBootstrapStage
         if (!NativeBootstrap.Looks(fileBytes))
             return false;
 
+        options.Progress?.Invoke(new(inputPath, PipelineStage.Unpacking));
         if (!NativeBootstrap.TryUnpack(fileBytes, out var findings, out var reason) ||
             findings is null)
         {

@@ -1,5 +1,7 @@
 # Recovery architecture
 
+This is the technical recovery reference. Analysts can start with [workflows](analyst-workflows.md), [output interpretation](reading-the-output.md) and [support](compatibility.md). Detailed experiments below are evidence for specific transformations, not a separate current support matrix.
+
 CILantro reads PE metadata and CIL with dnlib and uses a bounded interpreter for supported recovery paths. It does not load the sample into the host CLR to invoke its methods. Modeled framework operations act on interpreter-owned values, heaps, resources, and streams.
 
 ## Pipeline

@@ -69,7 +69,7 @@ internal static class EffectfulDispatcherPath
         var seen = new HashSet<Instruction>();
         var current = start;
         Plan? best = null;
-        var effect = false;
+
         var examined = 0;
         // Nested Reactor dispatchers can cross dozens of branch-only blocks and
         // repeated field reads before testing the state. Bound both graph travel
@@ -109,7 +109,7 @@ internal static class EffectfulDispatcherPath
                         target = ControlFlowCompletionPass.Compares(i.OpCode.Code, left.Value, right.Value) ? i.Operand as Instruction : fallthrough;
                         consumed = 2;
                     }
-                    if (!effect || stack.Count != 0 || target is null || !graph.HaveIdenticalExceptionRegions(source, target)) return best;
+                    if (stack.Count != 0 || target is null || !graph.HaveIdenticalExceptionRegions(source, target)) return best;
                     for (var n = 0; n < consumed; n++) prefix.Add(OpCodes.Pop.ToInstruction());
                     if (seen.Contains(target)) return best;
                     var selected = prefix.Select(p => new Instruction(p.OpCode, p.Operand)).ToList();
@@ -189,11 +189,11 @@ internal static class EffectfulDispatcherPath
                         case Code.Newobj:
                             if (i.Operand is not IMethod { MethodSig: { } signature } || signature.ParamsAfterSentinel?.Count > 0 ||
                                 signature.GetCallingConvention() == CallingConvention.VarArg) return best;
-                            effect = true;
+
                             break;
                         case Code.Ldfld:
                         case Code.Ldsfld:
-                            effect = true;
+
                             break;
                         case Code.Ldarg:
                         case Code.Ldarg_S:

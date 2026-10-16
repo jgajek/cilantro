@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "0.10.6";
+    public const string Version = "1.0.0";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -218,6 +218,7 @@ public sealed class CilantroPipeline
         new ResourceEnumerationRuntimeCleanupPass(),
         new ProtectorResourceCleanupPass(),
         new ControlFlowFinalizationPass(),
+        new LiteralStringDecoderPass(),
         new IlCompactionPass(),
         // Compaction exposes the exact pure handle-initializer shape. Resolve remaining
         // constants before emission can renumber the original metadata tokens.
@@ -251,7 +252,9 @@ public sealed class CilantroPipeline
         var plan = PipelinePlanner.Plan(_passes);
         if (options.StatusPath is not { } statusPath)
         {
-            return Finish(RunCore(inputPath, options, plan, null), options);
+            var result = Finish(RunCore(inputPath, options, plan, null), options);
+            options.Progress?.Invoke(new(inputPath, PipelineStage.Finished));
+            return result;
         }
 
         using var status = RunStatusWriter.Begin(statusPath, inputPath, plan.Count);
@@ -259,6 +262,7 @@ public sealed class CilantroPipeline
         {
             var result = Finish(RunCore(inputPath, options, plan, status), options, status);
             status.Finished(RunManifest.Of(result));
+            options.Progress?.Invoke(new(inputPath, PipelineStage.Finished));
             return result;
         }
         catch (OperationCanceledException)
@@ -278,14 +282,20 @@ public sealed class CilantroPipeline
 
     private PipelineResult Finish(PipelineResult result, PipelineOptions options, RunStatusWriter? status = null)
     {
+        options.Progress?.Invoke(new(result.Report.InputPath, PipelineStage.Reporting));
         result = AnalystReport.Write(result, options.AnalyzeOnly);
         if (!options.RecoverEmbeddedAssemblies && result.Report.Protector != NativeBootstrapStage.BootstrapProtector)
             return result;
         // One traversal owns every stage and its budgets. Calling Run here would start
         // a new traversal for each native child, losing deduplication and depth limits.
+        options.Progress?.Invoke(new(result.Report.InputPath, PipelineStage.EmbeddedRecovery));
         result = EmbeddedAssemblyRecovery.Run(result, options, (path, childOptions) =>
-            AnalystReport.Write(RunCore(path, childOptions, PipelinePlanner.Plan(_passes), status),
-                childOptions.AnalyzeOnly), nativeOnly: !options.RecoverEmbeddedAssemblies);
+        {
+            var child = RunCore(path, childOptions, PipelinePlanner.Plan(_passes), status);
+            childOptions.Progress?.Invoke(new(path, PipelineStage.Reporting));
+            return AnalystReport.Write(child, childOptions.AnalyzeOnly);
+        }, nativeOnly: !options.RecoverEmbeddedAssemblies);
+        options.Progress?.Invoke(new(result.Report.InputPath, PipelineStage.Reporting));
         return AnalystReport.Write(result, options.AnalyzeOnly);
     }
 
@@ -296,6 +306,7 @@ public sealed class CilantroPipeline
         RunStatusWriter? status)
     {
         options.Cancellation.ThrowIfCancellationRequested();
+        options.Progress?.Invoke(new(inputPath, PipelineStage.Loading));
         // What the run was told is read before the module is, because a declarations file that
         // cannot be read is the caller's mistake and there is no point loading a sample to find out.
         var declarations = (options.DeclarationsPath is { } stated
@@ -351,6 +362,7 @@ public sealed class CilantroPipeline
         RecordLibraries(context);
         RecordDeclarations(context, declarations, options);
 
+        options.Progress?.Invoke(new(inputPath, PipelineStage.Recovery));
         for (var index = 0; index < plan.Count; index++)
         {
             // Between passes rather than within them. See PipelineOptions.Cancellation for why that
@@ -361,6 +373,8 @@ public sealed class CilantroPipeline
             // Said before the pass is decided rather than after, so that the count advances past the
             // passes a plan leaves out instead of stalling on them.
             status?.Entering(pass.Name, index);
+            options.Progress?.Invoke(new(inputPath, PipelineStage.Recovery,
+                pass.Name, index + 1, plan.Count));
             if (declarations.Skips(pass.Name))
             {
                 // A pass left out is not a pass that succeeded, so this still withholds the clean
@@ -371,6 +385,7 @@ public sealed class CilantroPipeline
                     0,
                     [$"The run's declarations left {pass.Name} out."],
                     TimeSpan.Zero));
+                ReportPass(skipped: true);
                 continue;
             }
 
@@ -385,6 +400,7 @@ public sealed class CilantroPipeline
                     0,
                     ["A required pass failed."],
                     TimeSpan.Zero));
+                ReportPass(skipped: true);
                 continue;
             }
 
@@ -397,14 +413,21 @@ public sealed class CilantroPipeline
                     0,
                     [decision.Reason!],
                     TimeSpan.Zero));
+                ReportPass(skipped: true);
                 continue;
             }
 
             environment.Pass = pass.Name;
             context.AddPassResult(pass.Run(context));
             environment.Pass = null;
+            ReportPass(skipped: false);
+
+            void ReportPass(bool skipped) => options.Progress?.Invoke(new(
+                inputPath, PipelineStage.Recovery, pass.Name, index + 1, plan.Count,
+                context.PassResults[^1], skipped));
         }
 
+        options.Progress?.Invoke(new(inputPath, PipelineStage.Verification));
         var allowance = BuildRewriteAllowance(context);
         var verification = AssemblyVerifier.Verify(
             context.Module,
@@ -448,6 +471,7 @@ public sealed class CilantroPipeline
                 $"{stem}.cleaned{Path.GetExtension(context.InputPath)}")
             : Path.GetFullPath(options.OutputPath);
 
+        options.Progress?.Invoke(new(inputPath, PipelineStage.Extraction));
         var payloadPaths = WritePayloads(context, reportDirectory, stem);
         var renameMapPath = WriteRenameMap(context, reportDirectory, stem);
         var virtualProgramPaths = WriteVirtualPrograms(context, reportDirectory, stem);
@@ -471,6 +495,7 @@ public sealed class CilantroPipeline
 
         if (canEmit)
         {
+            options.Progress?.Invoke(new(inputPath, PipelineStage.Emission));
             var reformed = BranchForms.Reach(context.Module);
             var expectedShape = ModuleShape.Capture(context.Module);
             var complaints = WriteModule(context.Module, outputPath, preserveTokens);
@@ -521,6 +546,7 @@ public sealed class CilantroPipeline
             outputPath = null;
         }
 
+        options.Progress?.Invoke(new(inputPath, PipelineStage.Reporting));
         var resourceInfos = ResourceInspector.Inspect(context.Module);
         var report = BuildReport(context, resourceInfos, verification, payloadPaths);
         WriteJson(analysisPath, report);

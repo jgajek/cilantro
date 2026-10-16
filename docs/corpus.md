@@ -1,5 +1,7 @@
 # Corpus validation
 
+This is a contributor reference for reproducing individual gates and understanding historical measurements. For the current 43-root completion decision, see [status](status-report.md); for a new malware case, use [analyst workflows](analyst-workflows.md). Dated checkpoints below describe their original builds.
+
 Corpus manifests contain metadata, expected protection, SHA-256 identities, and assertions. Malware binaries are not distributed with the repository. A gate checks its stated assertions; it does not establish exhaustive extraction or behavioral equivalence.
 
 | Manifest | Scope |

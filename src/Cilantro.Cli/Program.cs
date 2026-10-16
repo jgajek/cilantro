@@ -11,6 +11,9 @@ internal static class CilantroCommand
 {
     public static int Run(string[] args)
     {
+        _json = args.Contains("--json");
+        _noColor = args.Contains("--no-color");
+        _analysisConsole = null;
         if (args.Length >= 2 && args[0] == "corpus" && args[1] == "run")
             return RunCorpus(args[2..]);
         if (args.Any(argument => argument is "--version"))
@@ -25,9 +28,6 @@ internal static class CilantroCommand
             return args.Length == 0 ? 2 : 0;
         }
 
-        // Read before the loop as well as in it, so that a run asking for JSON still answers in JSON
-        // when the thing that went wrong was the command line itself.
-        _json = args.Contains("--json");
         var analyzeOnly = false;
         var genericRecovery = false;
         var recoverEmbedded = false;
@@ -80,6 +80,7 @@ internal static class CilantroCommand
                     verbose = true;
                     break;
                 case "--json":
+                case "--no-color":
                     break;
                 case "-o":
                 case "--output":
@@ -143,6 +144,11 @@ internal static class CilantroCommand
 
         try
         {
+            if (!_json)
+            {
+                _analysisConsole = new AnalysisConsole(Console.Out, ConsoleTheme.ForOutput(_noColor));
+                _analysisConsole.Banner(input, analyzeOnly, strict);
+            }
             var result = new CilantroPipeline().Run(input, new PipelineOptions(
                 AnalyzeOnly: analyzeOnly,
                 PreserveTokens: true,
@@ -160,7 +166,10 @@ internal static class CilantroCommand
                 StatusPath: status ? RunStatus.PathFor(input, reportDirectory) : null,
                 GenericRecovery: genericRecovery,
                 RecoverEmbeddedAssemblies: recoverEmbedded,
-                ReviewedDependencyManifest: reviewedDependencies));
+                ReviewedDependencyManifest: reviewedDependencies)
+            {
+                Progress = _analysisConsole is { } terminal ? terminal.Report : null
+            });
 
             if (_json)
             {
@@ -171,13 +180,14 @@ internal static class CilantroCommand
                 return result.Success ? 0 : 1;
             }
 
-            Explain.Summarize(result, input, verbose);
+            _analysisConsole?.Complete(result);
+            Explain.Summarize(result, input, Console.Out, verbose, ConsoleTheme.ForOutput(_noColor));
             if (verbose)
                 Explain.PassLog(result.Report);
             if (!result.Report.VerificationPassed)
             {
                 foreach (var diagnostic in result.Report.VerificationDiagnostics)
-                    Console.Error.WriteLine($"verify: {diagnostic}");
+                    ConsoleTheme.Line(Console.Error, $"verify: {diagnostic}", ConsoleTone.Red, ConsoleTheme.ForError(_noColor));
             }
 
             return result.Success ? 0 : 1;
@@ -222,6 +232,8 @@ internal static class CilantroCommand
 
     /// <summary>Whether this run answers in JSON, which changes how a refusal is said as well.</summary>
     private static bool _json;
+    private static bool _noColor;
+    private static AnalysisConsole? _analysisConsole;
 
     private static int Fail(string message)
     {
@@ -232,7 +244,8 @@ internal static class CilantroCommand
             return 2;
         }
 
-        Console.Error.WriteLine($"error: {message}");
+        _analysisConsole?.Failed();
+        ConsoleTheme.Line(Console.Error, $"error: {message}", ConsoleTone.Red, ConsoleTheme.ForError(_noColor));
         Console.Error.WriteLine("Run cilantro --help for usage.");
         return 2;
     }
@@ -310,6 +323,7 @@ internal static class CilantroCommand
               -v, --verbose            Show every step the tool took
                   --json               Print one JSON object instead of the summary, naming
                                        every file written and what to declare to get further
+                  --no-color           Disable terminal colors (also honors NO_COLOR)
                   --analyze-only       Write reports/extracted files, but no cleaned assembly
                   --generic-recovery   Allow verified rewrites when the protector is unrecognized
                   --recover-embedded   Continue recovery into extracted assemblies (bounded)

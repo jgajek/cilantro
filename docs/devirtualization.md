@@ -1,5 +1,7 @@
 # Virtualized methods
 
+For routine use, enable reconstruction (the ordinary CLI default), open the cleaned application and read its validation. The [current status](status-report.md) verifies physical VM removal across all 14 intact virtualized identities in the frozen corpus. This technical reference also retains earlier diagnostic checkpoints; their unresolved observations are not the current corpus verdict.
+
 Reactor can replace a method with bytecode for a custom interpreter embedded in the assembly. Decrypting ordinary method bodies does not restore that method: the program now exists in a different instruction set.
 
 CILantro decodes supported VM programs, investigates their operations, and reconstructs supported programs as CIL. The resulting assembly can be opened in a .NET decompiler. These bodies are interpretations of VM behavior, not recovered original source.

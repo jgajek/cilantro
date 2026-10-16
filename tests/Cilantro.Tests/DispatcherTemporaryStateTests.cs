@@ -71,7 +71,11 @@ public sealed class DispatcherTemporaryStateTests
             Assert.Equal(expected.Select(StaticValue.FromInt32), before.Select(result => result.Value));
         }
         var changes = DispatcherPathPass.Rewrite(method, preserveEffects: true);
-        Assert.Equal(rewrites ? 1 : 0, changes);
+        // The multi-local path walker now also knows InitLocals' zero value for
+        // extra, and can thread a branch while retaining a preceding throwing div.
+        Assert.Equal(rewrites || scenario is "unknown" or "division-by-zero" ? 1 : 0, changes);
+        if (scenario == "division-by-zero")
+            Assert.Contains(method.Body.Instructions, i => i.OpCode.Code == Code.Div);
         Assert.Equal(before, new[] { Execute(0), Execute(1) });
         Assert.True(EvaluationStackAnalyzer.Analyze(method).Valid);
         if (rewrites)

@@ -95,6 +95,12 @@ public sealed record PipelineOptions(
     CancellationToken Cancellation = default)
 {
     /// <summary>
+    /// Optional synchronous observer for phases and pass outcomes, including embedded children.
+    /// Observers should return promptly and must not throw. Nothing is written by the core itself.
+    /// </summary>
+    public Action<PipelineProgress>? Progress { get; init; }
+
+    /// <summary>
     /// Whether this run gives Reactor's generated names readable placeholders.
     /// </summary>
     internal ManagedBootstrapChild? ManagedBootstrapReplacement { get; init; }

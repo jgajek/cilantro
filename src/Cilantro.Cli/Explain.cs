@@ -48,24 +48,32 @@ internal static class Explain
 
     public static void Summarize(
         PipelineResult result, string inputPath, bool verbose = false) =>
-        Summarize(result, inputPath, Console.Out, verbose);
+        Summarize(result, inputPath, Console.Out, verbose, ConsoleTheme.ForOutput());
 
     /// <summary>The same summary, written where a test can read it.</summary>
     internal static void Summarize(
-        PipelineResult result, string inputPath, TextWriter output, bool verbose = false)
+        PipelineResult result, string inputPath, TextWriter output, bool verbose = false, bool color = false)
     {
         var report = result.Report;
         var summary = AnalystSummary.Of(result);
         var home = Path.GetDirectoryName(Path.GetFullPath(inputPath))!;
         output.WriteLine();
         output.WriteLine($"  CILantro {CilantroPipeline.Version}");
-        output.WriteLine($"  RESULT   {summary.Outcome}");
+        ConsoleTheme.Line(output, $"  RESULT   {summary.Outcome}",
+            result.Success ? ConsoleTone.Green : ConsoleTone.Amber, color);
         output.WriteLine($"  Protection: {summary.Protection}");
         output.WriteLine($"  File: {Path.GetFileName(inputPath)}");
         output.WriteLine();
         foreach (var section in summary.Sections.Where(section => section.Items.Count > 0 && (!section.DetailsOnly || verbose || report.Strict)))
         {
-            output.WriteLine($"  {section.Title.ToUpperInvariant()}");
+            ConsoleTheme.Line(output, $"  {section.Title.ToUpperInvariant()}", section.Title switch
+            {
+                "Needs review" => ConsoleTone.Amber,
+                "Remaining" => ConsoleTone.Amber,
+                "Validation" when !report.VerificationPassed => ConsoleTone.Red,
+                "What changed in the input" => ConsoleTone.Green,
+                _ => ConsoleTone.Cyan
+            }, color);
             if (section.Title == "Artifacts" && !verbose)
             {
                 foreach (var item in section.Items.Where(item => item.Text.Contains(" -> ", StringComparison.Ordinal)))
@@ -78,7 +86,7 @@ internal static class Explain
             {
                 WriteParagraph(output, item.Text);
                 if (item.Path is { } path && (verbose || section.Title != "Remaining"))
-                    output.WriteLine($"      {Path.GetFullPath(path)}");
+                    ConsoleTheme.Line(output, $"      {Path.GetFullPath(path)}", ConsoleTone.Cyan, color);
             }
             output.WriteLine();
         }

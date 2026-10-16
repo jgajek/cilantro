@@ -124,12 +124,16 @@ internal static class LocalConstantPropagation
                         graph.HaveIdenticalExceptionRegions(dispatch, next[0]) && graph.HaveIdenticalExceptionRegions(dispatch, next[1]))
                     { store = stored; dispatch = next[1]; }
                 }
-                if (dispatch?.OpCode.Code == Code.Switch && dispatch.Operand is IList<Instruction> targets &&
+                if (dispatch is not null &&
+                    dispatch.OpCode.Code is Code.Switch or Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S &&
                     graph.HaveIdenticalExceptionRegions(block.Last, dispatch))
                 {
                     var index = body.Instructions.IndexOf(dispatch) + 1;
-                    var target = selector >= 0 && selector < targets.Count ? targets[selector] :
-                        index < body.Instructions.Count ? body.Instructions[index] : null;
+                    var fallthrough = index < body.Instructions.Count ? body.Instructions[index] : null;
+                    var target = dispatch.OpCode.Code == Code.Switch && dispatch.Operand is IList<Instruction> targets
+                        ? selector >= 0 && selector < targets.Count ? targets[selector] : fallthrough
+                        : (dispatch.OpCode.Code is Code.Brtrue or Code.Brtrue_S ? selector != 0 : selector == 0)
+                            ? dispatch.Operand as Instruction : fallthrough;
                     if (target is not null && graph.HaveIdenticalExceptionRegions(block.Last, target))
                     {
                         if (block.Last.OpCode.FlowControl == FlowControl.Cond_Branch)

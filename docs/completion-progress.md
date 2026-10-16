@@ -1,6 +1,8 @@
-# Completion work after 0.10.2
+# Historical completion work after 0.10.2
 
-## Current 0.10.3 snapshot
+This is the 0.10.3-era investigation record, not the current backlog. The later [0.10.6 status](status-report.md) supersedes its remaining-gap statements. Analysts should start with [support and limitations](compatibility.md).
+
+## Historical 0.10.3 snapshot
 
 The final recovery build passes 1,208 selected tests and all 24 standard corpus gates. All 25 standard reports, nine reports from four additional recursive inputs, and 46 saved-output trials pass structural verification. Matched corpus comparisons retain recovery coverage and extracted payload hashes. These are different validation configurations, not proof of complete unprotection.
 

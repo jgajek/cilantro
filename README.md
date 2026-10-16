@@ -1,80 +1,68 @@
 # CILantro
 
-Recover readable .NET code and embedded assemblies from supported **.NET Reactor and ConfuserEx** samples, without executing the sample.
+<p align="center">
+  <img src="docs/assets/cilantro-flow-lockup.png" alt="CILantro Flow logo: a cilantro leaf with branching recovery paths above the CILantro wordmark" width="320">
+</p>
 
-CILantro's distinguishing approach is to interpret the sample's own decoding and unpacking logic in a bounded model, using the protector's behavior to guide recovery. For analysts, it brings code cleanup, embedded-stage recovery, and evidence about what was recovered, assumed, or left unresolved into one workflow.
+Recover readable .NET assemblies and embedded payloads from supported **.NET Reactor and ConfuserEx** samples, without launching the sample or loading its code into the host CLR.
 
-CILantro can reconstruct supported Reactor VM bytecode into ordinary CIL, unflatten control flow, resolve indirect calls, and remove protector infrastructure when its analysis establishes that removal is safe. It restores encrypted methods and strings, follows supported native wrappers and embedded assembly chains into their managed payloads, and produces decompiler-ready assemblies with readable replacement names, payload hashes, and offline HTML reports. Bounded comparisons of original and rebuilt methods expose reconstruction disagreements instead of treating readable output as proof of correctness.
+CILantro interprets the sample's own decoding and unpacking logic in a bounded model. That lets it recover encrypted methods and strings, reconstruct supported Reactor VM programs as ordinary CIL, unflatten protector control flow, resolve indirect calls, and remove attributable protector infrastructure. For an analyst, the result is a cleaned assembly to open in a decompiler, extracted stages with hashes and provenance, and an offline report explaining what was recovered and what needs review.
 
-**0.10.6 is a regular release for analysts.** This release completes the agreed full-unprotection goal for the frozen undamaged corpus: 43 roots accounted for, all 28 undamaged captured Reactor-tagged samples covered, and all 14 intact virtualized identities verified VM-free. Application switches and payload behavior are preserved under the documented protector-metadata removal contract.
+## Start with a sample
 
-Recovery now follows native and managed wrappers through their embedded stages, removes remaining protector code and resources, and improves recovered parameter and field types. These results apply to the tested corpus, not every unseen protected file. Inputs damaged by other tools may remain unsupported. See the [0.10.6 release notes](docs/releases/0.10.6.md) and [status report](docs/status-report.md) for validation and scope.
+Download the Windows x64 or Linux x64 archive from [Releases](https://github.com/jgajek/cilantro/releases). Both contain the CLI and MCP server and run without a separately installed .NET runtime. Compare the archive's SHA-256 with `SHA256SUMS.txt` before unpacking.
 
-## Install
-
-Download the Windows x64 or Linux x64 archive from [GitHub Releases](https://github.com/jgajek/CILantro/releases), unpack it, and verify it against the accompanying `SHA256SUMS.txt`. Release archives contain self-contained `cilantro` and `cilantro-mcp` executables; no separate .NET runtime is required. Building from source requires the .NET 10 SDK.
+From PowerShell in the unpacked tool directory:
 
 ```powershell
-Get-FileHash .\cilantro-win-x64.zip -Algorithm SHA256
-.\cilantro.exe --version
+.\cilantro.exe C:\cases\sample.exe --recover-embedded --report-dir C:\cases\run-01 --output C:\cases\run-01\cleaned.exe --status
 ```
 
-## Recover a sample
+On Linux:
 
-```text
-cilantro suspicious.exe --recover-embedded
+```sh
+./cilantro /cases/sample.exe --recover-embedded --report-dir /cases/run-01 --output /cases/run-01/cleaned.exe --status
 ```
 
-Start with the **Open** section of the summary. It points to the recommended recovered assembly and the HTML report. Open the assembly in ILSpy or dnSpyEx, then read **Needs review**, **Remaining**, and **Validation** before relying on reconstructed code.
+Follow **Open** in the summary to the recommended assembly and HTML report. Open the assembly in your .NET decompiler, then inspect the artifact tree and **Needs review**, **Remaining**, and **Validation**. A dropper's most useful output may be a cleaned child rather than the cleaned input.
 
-By default, the cleaned input is written beside the original as `suspicious.cleaned.exe`. Reports and extracted files go into a `cilantro/` directory beside the input. If that name is already a file, the directory is `cilantro.out/`. The input is preserved. Use a separate report directory for each case or repeat trial.
+The console opens with the Reveal banner and streams analysis phases and pass outcomes, followed by a result summary and artifact paths. Interactive terminals use green, cyan, amber and red to distinguish results, progress and review items. Use `--no-color` or `NO_COLOR` for plain text; redirected output is plain automatically. `--json` emits only the machine-readable run/error object.
 
-`--recover-embedded` also cleans extracted managed assemblies, within traversal limits. Supported Reactor native wrappers automatically continue into their managed stage, even without this option. Extracted originals and cleaned copies remain separate.
+Use a new output directory for each trial. The original input is preserved; extracted original bytes and cleaned child copies are distinct. Outputs remain malware artifacts: recovery does not make them safe to execute.
 
-```text
-cilantro suspicious.exe --report-dir case-output --output case-output/cleaned.exe
-cilantro suspicious.exe --analyze-only
-cilantro suspicious.exe --strict
-cilantro suspicious.exe --json --status
-```
+## What you get
 
-`--analyze-only` suppresses the cleaned assembly; it still writes reports and extracted artifacts. `--strict` disables implicit host assumptions and permissive interpretation, and defaults renaming and VM reconstruction off. It still performs recovery and may write a cleaned copy.
-
-## What it can recover
-
-| Capability | What the analyst gets |
+| Analyst task | CILantro's contribution |
 | --- | --- |
-| Method and string recovery | Restored CIL bodies and readable literals for supported protections |
-| Readability | Simpler branches, explicit call targets, recovered constants, reduced protector code, and readable replacement names |
-| Embedded stages | Extracted assemblies and dependencies, hashes, parent-child provenance, and optional recursive cleanup |
-| Native wrappers | Static extraction and managed recovery for the supported Reactor bootstrap shape |
-| Virtualization | Listings and supported reconstructed methods, with explicit validation limits |
-| Reporting and automation | Offline HTML, JSON reports, machine-readable stdout, status files, and MCP |
+| Read protected application logic | Restored method bodies and strings; supported VM methods rebuilt into CIL; simpler control flow and explicit call targets |
+| Get past the wrapper | Supported native bootstrap recovery and recursive managed-stage recovery, with parent-child provenance |
+| Extract embedded content | Managed assemblies, supported resource entries and dependencies, with hashes and recorded extraction paths |
+| Reduce decompiler noise | Protector-code/resource removal, recovered types, readable replacement names and late branch cleanup |
+| Understand the result | Offline HTML report, change/rename maps, VM listings, remaining-work diagnostics and structural/reconstruction evidence |
+| Integrate with a case pipeline | JSON stdout, status files, documented exit codes and a stdio MCP server |
 
-Recovery statically interprets supported instructions and modeled APIs. It does not launch the sample or invoke its code through the host CLR. The default interpretation can use assumed host facts and continue past some unsupported calls; these are recorded. Outputs are still malware artifacts, and static analysis is not a security guarantee for the parser or the tools used to open them.
+CILantro does not identify a malware family, automatically decode every family's configuration, fetch downloaded stages, or recreate the original source project. Native payload extraction is distinct from native-code decompilation.
 
-## Limits that matter
+## Support and confidence
 
-- Support is configuration-dependent. Reactor 6 real-world samples, Reactor 7.5 benign probes, and a small ConfuserEx corpus establish the current coverage; they do not establish universal version support.
-- Some control flow and protector infrastructure remain, particularly around reflection, numeric metadata tokens, and complex VM paths.
-- A successful run and structural verification do not establish equivalent behavior. Reconstruction checks can agree, disagree, or remain inconclusive.
-- Extraction is not exhaustive. Downloaded stages are not fetched, and unsupported decoding paths can leave embedded content behind.
-- Renaming creates useful labels; it cannot restore deleted source names, comments, or the original source project.
+This tree is being prepared for **1.0.0**; see the [release preparation notes](docs/releases/1.0.0.md). The **0.10.6** full-unprotection completion decision applies to a frozen validation corpus: **43 roots accounted for**, including **28 undamaged captured Reactor-tagged samples**, with physical VM-removal checks covering **14 intact virtualized identities**. The corpus includes negative controls and cases using explicit generic recovery; these are not 43 independent protected malware families. Those measurements describe that validation build; the 1.0.0 release gates must be run before publishing.
 
-Read the [support and limitations](docs/compatibility.md) before adopting CILantro in a production analysis workflow.
+Coverage includes real-world Reactor 6 samples, Reactor 7.5 source-built probes, and two pinned ConfuserEx samples. It depends on the protection implementation and options, not just a version label. Completion on that corpus is not a guarantee for a new file.
 
-## Documentation
+For each new case, read the result's qualifications. `Success` means the configured run succeeded; `Verified` means structural checks passed. Neither is a universal behavior or full-unprotection verdict. Application switches, required initialization calls and bundled libraries can legitimately survive cleanup. [Support and limitations](docs/compatibility.md) explains the distinction.
 
-- [Analyst quick start and CLI reference](docs/quick-start.md)
-- [Understanding the output](docs/reading-the-output.md)
-- [Support, validation, and known gaps](docs/compatibility.md)
-- [Automation and MCP](docs/agents.md)
-- [Build, test, and release](docs/development.md)
+## Choose your workflow
+
+- [First run and CLI options](docs/quick-start.md)
+- [Investigate a dropper and its payloads](docs/analyst-workflows.md)
+- [Choose the right artifact and interpret the report](docs/reading-the-output.md)
+- [Resolve incomplete recovery and decompiler problems](docs/troubleshooting.md)
+- [Use JSON, scripts or MCP](docs/agents.md)
 - [Complete documentation index](docs/README.md)
-- [0.10.6 release notes](docs/releases/0.10.6.md)
+- [0.10.6 release notes](docs/releases/0.10.6.md) and [current corpus status](docs/status-report.md)
 
-## Contributing and licence
+## Report a recovery problem
 
-Report the tool version, sample SHA-256, command line, and relevant report diagnostics. Describe expected and observed behavior. Do not place malware binaries in public issues; arrange sample sharing separately.
+Include the tool version, input SHA-256, command line, whether the input is original or already rewritten, and the affected method or child artifact. Attach relevant diagnostics after reviewing them for embedded secrets and case-sensitive information. Do not post malware binaries in public issues. See the [bug-report checklist](docs/troubleshooting.md#report-a-reproducible-problem).
 
-MIT; see [LICENSE](LICENSE). CILantro uses [dnlib](https://github.com/0xd4d/dnlib). It is independent of Eziriz, ConfuserEx, and other recovery tools, and is not endorsed by them.
+Building from source requires the .NET 10 SDK; see [development](docs/development.md). CILantro is MIT-licensed; see [LICENSE](LICENSE). It uses [dnlib](https://github.com/0xd4d/dnlib) and is independent of Eziriz, ConfuserEx and other recovery tools.

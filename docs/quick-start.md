@@ -2,18 +2,38 @@
 
 ## First run
 
-Use a case directory with enough space for the input, recovered stages, and reports. The commands below assume `cilantro` is on PATH; use `.cilantro.exe` on Windows when launching it from the unpacked release directory.
+Use a case directory with enough space for the input, recovered stages, and reports. The commands below assume `cilantro` is on PATH; use `.\cilantro.exe` on Windows when launching it from the unpacked release directory.
 
 ```text
-cilantro sample.exe --recover-embedded --report-dir case-output
+cilantro sample.exe --recover-embedded --report-dir case-output --output case-output/cleaned.exe --status
 ```
 
 1. Follow **Open** to the recommended assembly and HTML report.
-2. Review **Needs review** if present. A reconstruction disagreement must be investigated before trusting that code.
+2. Review **Needs review** if present. Read a reconstruction disagreement together with its coverage and application-contract evidence before relying on that code.
 3. Open the assembly in a decompiler. Use the artifact inventory to distinguish the wrapper, loaded assemblies, dependencies, and resource bundles.
 4. Read **Remaining** and **Validation**. A readable assembly may still contain protected code or depend on recorded assumptions.
 
 The recommendation follows extraction provenance. It is not a malware-family classification, and a loaded assembly is not necessarily the final payload.
+
+## Installation and output locations
+
+Use the Windows x64 or Linux x64 archive from [Releases](https://github.com/jgajek/cilantro/releases). It includes self-contained `cilantro` and `cilantro-mcp` executables; no separate runtime is needed. Verify the downloaded archive against the published `SHA256SUMS.txt`, unpack it, and run `--version` and `--help`.
+
+```powershell
+Get-FileHash .\cilantro-win-x64.zip -Algorithm SHA256
+.\cilantro.exe --version
+```
+
+```sh
+sha256sum cilantro-linux-x64.tar.gz
+./cilantro --version
+```
+
+Compare the printed archive hash with the matching checksum entry. Use a case directory separate from your tool installation and quote paths containing spaces.
+
+Without `--output`, the cleaned input is normally written beside the original as `sample.cleaned.exe`. Without `--report-dir`, reports and extraction artifacts go into a sibling `cilantro/` directory, or `cilantro.out/` if `cilantro` is already a file. The first-run command above explicitly selects both locations so the trial stays together. A report directory alone does not relocate the default cleaned input.
+
+Do not point output paths at original evidence. Use a new directory for retries and retain the original sample hash. Inputs and outputs remain malware artifacts; the tool does not sanitize them for execution.
 
 ## Common workflows
 
@@ -31,6 +51,16 @@ For supported native Reactor wrappers, the default run extracts the managed asse
 
 Ordinary recursive recovery permits verified generic cleanup of extracted children, even when their protector is unrecognized. The root input still requires a recognized protector unless `--generic-recovery` is supplied. Strict child recovery also requires that explicit option. Structural verification, other emission gates, `--fail-on-partial`, and analysis-only behavior still apply; the original extracted bytes are preserved.
 
+For a dropper or layered sample, follow [the payload investigation workflow](analyst-workflows.md). For missing files, unrecognized protection, decompiler errors or long-running recovery, use [troubleshooting](troubleshooting.md).
+
+## Console progress
+
+Human-readable runs start with a text-graphics Reveal logo, then print each analysis phase and processing pass as it runs. Pass outcomes include `OK`, `PARTIAL`, `UNSUPPORTED`, `FAILED`, and `SKIP` (a pass excluded by declarations or planning). Pass counts restart for each extracted child, whose full input path is printed above its progress. Timings measure elapsed work, not a completion estimate.
+
+After analysis, **RESULT** gives the high-level outcome and **OPEN** lists the recommended assembly and offline HTML report. Review amber **NEEDS REVIEW** and **REMAINING** sections and the **VALIDATION** evidence before relying on recovered code. A green completed pass or run is not a full-unprotection or behavioral-equivalence verdict.
+
+Colors are automatic in interactive terminals. Set `NO_COLOR`, pass `--no-color`, or redirect output to get plain text. `TERM=dumb` also disables color. `--json` suppresses the banner, progress and prose and writes one JSON object; `--status` independently enables the progress file for external monitoring.
+
 ## Options
 
 | Option | Effect |
@@ -38,6 +68,7 @@ Ordinary recursive recovery permits verified generic cleanup of extracted childr
 | `-o, --output PATH` | Choose the cleaned input path; on supported native wrappers, this is used for the managed stage |
 | `--report-dir DIR` | Choose the directory for reports and extracted artifacts |
 | `--recover-embedded` | Continue recovery into extracted managed assemblies |
+| `--reviewed-dependencies FILE` | With recursive recovery, preserve exact matches to explicitly reviewed unprotected dependency references |
 | `--analyze-only` | Write analysis and extraction outputs without a cleaned assembly |
 | `--strict` | Disable implicit host assumptions and permissive interpretation; default renaming and reconstruction off |
 | `--generic-recovery` | Permit supported generic rewrites without a recognized protector; other emission checks still apply |
@@ -54,6 +85,7 @@ Ordinary recursive recovery permits verified generic cleanup of extracted childr
 | `--allow-declared-calls` | Enable call assertions from declarations; they are not independently proven |
 | `-v, --verbose` | Include technical details and per-pass diagnostics |
 | `--json` | Write one run/error JSON object to stdout instead of the human summary |
+| `--no-color` | Disable ANSI colors; `NO_COLOR`, `TERM=dumb` and output redirection also disable them |
 | `--status` | Maintain a status JSON file beside the reports |
 | `-h, --help` | Show command help |
 | `--version` | Print the tool version |

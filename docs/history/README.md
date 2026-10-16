@@ -4,6 +4,8 @@ The [pre-0.10 snapshot](pre-0.10/compatibility.md) preserves the documentation b
 
 Useful starting points:
 
+- [Investigation log through 0.10.6](unprotection-0.10.6.md): the detailed path to frozen-corpus closure. Use [current status](../status-report.md) for the final decision.
+
 - [Recovery/readability development log](pre-0.10/recovery-readability.md)
 - [VM research](pre-0.10/devirtualization.md)
 - [Corpus measurements](pre-0.10/corpus.md)

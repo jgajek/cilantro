@@ -5,7 +5,7 @@ Use JSON for scripts and integrations. Human stdout is intended for analysts and
 ## CLI contract
 
 ```text
-cilantro sample.exe --json --status --recover-embedded --report-dir case-output
+cilantro sample.exe --json --status --recover-embedded --report-dir case-output --output case-output/cleaned.exe
 ```
 
 An ordinary JSON run writes one object to stdout, without progress prose. Its `Schema` is `cilantro.run/1`; an error preventing a normal run uses `cilantro.error/1`. Read `Wrote` paths rather than constructing filenames. See the [schemas](../schema/README.md).
@@ -25,6 +25,27 @@ An ordinary JSON run writes one object to stdout, without progress prose. Its `S
 An integration should not collapse these fields into a single green/red equivalence verdict. A successful structurally verified output can still have a reconstruction disagreement. Review child manifests from `Wrote.Embedded`, not just the root. A native wrapper's root `Wrote.Cleaned` can be null while its managed child has a cleaned output.
 
 Exit codes are `0` for configured success, `1` for an unsuccessful pipeline result, and `2` for arguments/input/errors preventing a normal result. Error objects have their own shape. Keep stderr for diagnostics and stdout for the JSON parser.
+
+## Capture a case from PowerShell
+
+This example assumes `cilantro.exe` is on PATH and `case/run-01` is a new trial directory:
+
+```powershell
+New-Item -ItemType Directory -Path case/run-01 -Force | Out-Null
+cilantro.exe sample.exe --json --status --recover-embedded `
+  --report-dir case/run-01 --output case/run-01/cleaned.exe `
+  > case/run-01/run.json 2> case/run-01/stderr.txt
+$runExitCode = $LASTEXITCODE
+$run = Get-Content case/run-01/run.json -Raw | ConvertFrom-Json
+$run | Select-Object Schema, ToolVersion, Success, Verified, RebuiltCheck
+$run.Wrote
+```
+
+Check `Schema` before reading run-specific fields; an error object is not a partially populated run object. Preserve `$runExitCode`, stderr and the raw JSON. Handle an empty/truncated file as a process or I/O failure rather than assuming recovery failed in a particular pass.
+
+For embedded recovery, read the graph at `Wrote.Embedded`. Nodes with a `Run` need their own result review. `limited`, `failed`, `incomplete`, `extracted` and `preserved-reference` describe different outcomes; do not convert all discovered children into successful cleaned assemblies. A reviewed reference records its exact hash/source and has no new deprotection claim. Native extracted children can require separate analysis. The graph's `Complete` describes bounded traversal, not exhaustive discovery.
+
+For batch work, give each input/trial its own output directory, preferably keyed by input hash and trial identifier. Keep the input hash, version, command, declarations and dependency hashes with each record. Do not execute cleaned outputs as part of a success check, and do not overwrite one trial while another still owns its status file.
 
 ## MCP setup
 
