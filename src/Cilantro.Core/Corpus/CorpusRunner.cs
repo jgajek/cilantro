@@ -96,7 +96,7 @@ public sealed record NormalizedPassOutcome(
 /// Resources split the same way, and counting them alone hides the distinction. A module that
 /// dropped the application's resources and one that kept them alongside the protector's bundle can
 /// have the same resource count, so the oracle's resource names are compared as a subset the output
-/// must contain, exactly as preserved member names are.
+/// must contain, except for exact cleanup attributions validated against input/oracle bytes and metadata. Raw differences remain visible.
 /// </remarks>
 public sealed record OracleComparison(
     bool AssemblyIdentityMatches,
@@ -115,7 +115,12 @@ public sealed record OracleComparison(
     IReadOnlyList<string> MissingPreservedNameMembers,
     IReadOnlyList<string> MissingOracleResources,
     int ProgramMethodSurplus,
-    int ProgramMethodDeficit);
+    int ProgramMethodDeficit)
+{
+    public IReadOnlyList<string> AttributedOracleResourceRemovals { get; init; } = [];
+    public IReadOnlyList<string> AttributedOraclePrivateHelperRemovals { get; init; } = [];
+    public int? UnexplainedProgramMethodDeficit { get; init; }
+}
 
 public sealed record CorpusRunReport(
     int ManifestVersion,
@@ -306,7 +311,8 @@ public static class CorpusRunner
                 Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(oraclePath)))
                     .Equals(oracleEntry.Sha256, StringComparison.OrdinalIgnoreCase))
             {
-                oracle = CompareAssemblies(result.OutputPath ?? path, oraclePath);
+                oracle = CompareAssemblies(result.OutputPath ?? path, oraclePath, path,
+                    JsonSerializer.Deserialize<ChangeRecord[]>(File.ReadAllText(result.ChangesReportPath))!);
                 if (sample.RequireOracleParity)
                     ValidateOracleParity(sample, oracle, diagnostics);
             }
@@ -361,7 +367,8 @@ public static class CorpusRunner
             diagnostics);
     }
 
-    private static OracleComparison CompareAssemblies(string protectedPath, string oraclePath)
+    private static OracleComparison CompareAssemblies(
+        string protectedPath, string oraclePath, string inputPath, IReadOnlyList<ChangeRecord> changes)
     {
         using var outputModule = ModuleDefMD.Load(File.ReadAllBytes(protectedPath));
         using var oracleModule = ModuleDefMD.Load(File.ReadAllBytes(oraclePath));
@@ -382,7 +389,11 @@ public static class CorpusRunner
             .Where(name => !outputResources.Contains(name))
             .Order(StringComparer.Ordinal)
             .ToArray();
+        using var inputModule = ModuleDefMD.Load(File.ReadAllBytes(inputPath));
+        var removals = ReadOracleRemovalProof(inputModule, oracleModule, outputModule, changes);
         var (programSurplus, programDeficit) = ProgramMethodDelta(outputModule, oracleModule);
+        var (_, unexplainedDeficit) = ProgramMethodDelta(outputModule, oracleModule,
+            removals.PrivateMethods.ToHashSet(StringComparer.Ordinal));
         return new OracleComparison(
             outputName == oracleName,
             (outputModule.EntryPoint is null) == (oracleModule.EntryPoint is null),
@@ -400,7 +411,67 @@ public static class CorpusRunner
             missing,
             missingResources,
             programSurplus,
-            programDeficit);
+            programDeficit)
+        {
+            AttributedOracleResourceRemovals = removals.Resources,
+            AttributedOraclePrivateHelperRemovals = removals.PrivateMethods,
+            UnexplainedProgramMethodDeficit = unexplainedDeficit
+        };
+    }
+
+    internal sealed record OracleRemovalProof(IReadOnlyList<string> Resources, IReadOnlyList<string> PrivateMethods);
+
+    // Raw oracle differences remain in the report. Only exact, independently matched removals
+    // recorded by the relevant cleanup pass can qualify a resource or private-helper deficit.
+    internal static OracleRemovalProof ReadOracleRemovalProof(
+        ModuleDef input, ModuleDef oracle, ModuleDef output, IReadOnlyList<ChangeRecord> changes)
+    {
+        var resources = new HashSet<string>(StringComparer.Ordinal);
+        var methods = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var change in changes)
+        {
+            if (change.Pass == "protector-resource-cleanup" && change.Kind == "remove-decoded-protector-resource")
+            {
+                var source = input.Resources.OfType<EmbeddedResource>()
+                    .Where(resource => resource.Name == change.Location).ToArray();
+                var reference = oracle.Resources.OfType<EmbeddedResource>()
+                    .Where(resource => resource.Name == change.Location).ToArray();
+                if (source.Length != 1 || reference.Length != 1 ||
+                    output.Resources.Any(resource => resource.Name == change.Location))
+                    continue;
+                var sourceHash = Convert.ToHexStringLower(SHA256.HashData(source[0].CreateReader().ToArray()));
+                var oracleHash = Convert.ToHexStringLower(SHA256.HashData(reference[0].CreateReader().ToArray()));
+                if (sourceHash == oracleHash && change.Description.EndsWith(
+                    "SHA-256 " + sourceHash + ".", StringComparison.Ordinal))
+                    resources.Add(change.Location);
+            }
+            if (change.Pass != "unused-private-helper-cleanup" || change.Kind != "remove-unused-private-helper" ||
+                change.Location.Length < 10 || change.Location[8] != ' ' ||
+                !uint.TryParse(change.Location.AsSpan(0, 8), System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out var token))
+                continue;
+            var method = input.GetTypes().SelectMany(type => type.Methods)
+                .SingleOrDefault(candidate => candidate.MDToken.Raw == token);
+            if (method is null || method.FullName != change.Location[9..] || !method.IsPrivate || !method.IsStatic ||
+                method.IsConstructor || method.MethodSig is null || HasPreservedName(method.Name) ||
+                !HasPreservedName(method.DeclaringType.FullName))
+                continue;
+            var referenceType = oracle.GetTypes().SingleOrDefault(type => type.FullName == method.DeclaringType.FullName);
+            var survivingType = output.GetTypes().SingleOrDefault(type => type.FullName == method.DeclaringType.FullName);
+            if (referenceType is null || survivingType is null)
+                continue;
+            var signature = method.MethodSig.ToString();
+            var candidates = referenceType.Methods.Where(candidate => candidate.IsPrivate && candidate.IsStatic &&
+                !candidate.IsConstructor && !HasPreservedName(candidate.Name) &&
+                candidate.MethodSig?.ToString() == signature).ToArray();
+            if (candidates.Length != 1 || method.DeclaringType.Methods.Count(candidate =>
+                candidate.IsPrivate && candidate.IsStatic && candidate.MethodSig?.ToString() == signature) != 1 ||
+                survivingType.Methods.Any(candidate => candidate.FullName == method.FullName || candidate.FullName == candidates[0].FullName ||
+                        (candidate.IsPrivate && candidate.IsStatic && candidate.MethodSig?.ToString() == signature)))
+                continue;
+            methods.Add(candidates[0].FullName);
+        }
+        return new(resources.Order(StringComparer.Ordinal).ToArray(), methods.Order(StringComparer.Ordinal).ToArray());
     }
 
     /// <summary>
@@ -452,12 +523,13 @@ public static class CorpusRunner
     /// </remarks>
     private static (int Surplus, int Deficit) ProgramMethodDelta(
         ModuleDef outputModule,
-        ModuleDef oracleModule)
+        ModuleDef oracleModule,
+        HashSet<string>? excludedOracleMethods = null)
     {
         var output = MethodsByPreservedType(outputModule);
         var surplus = 0;
         var deficit = 0;
-        foreach (var (name, oracleCount) in MethodsByPreservedType(oracleModule))
+        foreach (var (name, oracleCount) in MethodsByPreservedType(oracleModule, excludedOracleMethods))
         {
             var delta = output.GetValueOrDefault(name) - oracleCount;
             if (delta >= 0)
@@ -468,10 +540,12 @@ public static class CorpusRunner
         return (surplus, deficit);
     }
 
-    private static Dictionary<string, int> MethodsByPreservedType(ModuleDef module) =>
+    private static Dictionary<string, int> MethodsByPreservedType(ModuleDef module, HashSet<string>? excludedMethods = null) =>
         module.GetTypes()
             .Where(type => HasPreservedName(type.FullName))
-            .ToDictionary(type => type.FullName, type => type.Methods.Count, StringComparer.Ordinal);
+            .ToDictionary(type => type.FullName,
+                type => type.Methods.Count(method => excludedMethods is null || !excludedMethods.Contains(method.FullName)),
+                StringComparer.Ordinal);
 
     private static bool HasPreservedName(string name) =>
         name.Split('.', '/', '`', '+')
@@ -533,10 +607,11 @@ public static class CorpusRunner
                 $"the oracle retains, starting with {oracle.MissingPreservedNameMembers[0]}.");
         }
 
-        if (oracle.ProgramMethodDeficit != 0)
+        var unexplainedDeficit = oracle.UnexplainedProgramMethodDeficit ?? oracle.ProgramMethodDeficit;
+        if (unexplainedDeficit != 0)
         {
             diagnostics.Add(
-                $"Output is missing {oracle.ProgramMethodDeficit} method(s) from types the oracle " +
+                $"Output is missing {unexplainedDeficit} method(s) from types the oracle " +
                 "names, so cleanup removed program rather than scaffolding.");
         }
 
@@ -562,11 +637,13 @@ public static class CorpusRunner
                 $"Surplus of {oracle.SurplusResources} resource(s) over the oracle exceeds {resourceLimit}.");
         }
 
-        if (sample.RequireOracleResourceParity && oracle.MissingOracleResources.Count != 0)
+        var unexplainedResources = oracle.MissingOracleResources
+            .Except(oracle.AttributedOracleResourceRemovals, StringComparer.Ordinal).ToArray();
+        if (sample.RequireOracleResourceParity && unexplainedResources.Length != 0)
         {
             diagnostics.Add(
-                $"Output is missing {oracle.MissingOracleResources.Count} resource(s) the oracle " +
-                $"carries: {string.Join(", ", oracle.MissingOracleResources)}.");
+                $"Output is missing {unexplainedResources.Length} resource(s) the oracle " +
+                $"carries: {string.Join(", ", unexplainedResources)}.");
         }
     }
 

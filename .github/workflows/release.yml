@@ -70,6 +70,26 @@ jobs:
             exit 1
           fi
 
+      - name: Smoke test Linux executables
+        if: matrix.runtime == 'linux-x64'
+        run: |
+          publish/linux-x64/cilantro --help > /dev/null
+          publish/linux-x64/cilantro --help-all > /dev/null
+          dotnet build corpus/probes/Probe/Probe.csproj -c Release -f net10.0
+          publish/linux-x64/cilantro corpus/probes/Probe/bin/Release/net10.0/Probe.dll \
+            --generic-recovery --no-recursion --json -o "smoke/linux case" > smoke.json
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          result = json.loads(pathlib.Path('smoke.json').read_text())
+          assert result['Success'] and result['Verified']
+          assert pathlib.Path(result['Wrote']['Cleaned']).is_file()
+          error = subprocess.run(['publish/linux-x64/cilantro', '--bogus', '--json'], capture_output=True, text=True)
+          assert error.returncode == 2 and json.loads(error.stdout)['Schema'] == 'cilantro.error/1'
+          request = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}\n'
+          mcp = subprocess.run(['publish/linux-x64/cilantro-mcp'], input=request, capture_output=True, text=True, timeout=30, check=True)
+          assert json.loads(mcp.stdout.splitlines()[0])['result']['serverInfo']['version'] == result['ToolVersion']
+          PY
+
       - name: Package
         run: |
           cd publish/${{ matrix.runtime }}
@@ -85,11 +105,13 @@ jobs:
           done
           cp ../../docs/releases/1.0.0.md docs/releases/
           cp ../../docs/assets/* docs/assets/
-          mkdir -p corpus/schema corpus/probes
+          mkdir -p corpus/schema corpus/probes/Probe
           cp ../../corpus/*.json corpus/
           cp ../../corpus/*.ps1 corpus/
           cp ../../corpus/schema/*.json corpus/schema/
           cp ../../corpus/probes/README.md corpus/probes/
+          cp ../../corpus/probes/*.ps1 corpus/probes/
+          cp ../../corpus/probes/Probe/*.cs ../../corpus/probes/Probe/*.csproj ../../corpus/probes/Probe/*.txt corpus/probes/Probe/
           if [ "${{ matrix.runtime }}" = "win-x64" ]; then
             zip -r ../../${{ matrix.artifact }} .
           else

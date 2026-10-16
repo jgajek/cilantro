@@ -548,31 +548,7 @@ public sealed class CorpusTests
 
             // The virtualized loader initializer holds real IL where it shipped as a stub, and it
             // says so about itself with the marker every rebuilt body carries.
-            var rebuilt = cleaned.GetTypes()
-                .SelectMany(type => type.Methods)
-                .Single(method => method.Name == "KMP0OXI4h");
-            Assert.NotNull(rebuilt.Body);
-            Assert.True(rebuilt.Body.Instructions.Count > 100);
-            Assert.Contains(
-                rebuilt.CustomAttributes,
-                attribute => attribute.TypeFullName.Contains("RebuiltFromReading"));
-
-            // The program a type initializer ran through the engine got a method of its own, which
-            // it only does where the walk arrived at every one of its operations: a body that would
-            // run is refused unless the reading reached all of the work it replaces. This walk
-            // stopped two operations in until the depth walk was given the arity a mnemonic settles
-            // on its own, and the method was absent altogether.
-            var lifted = cleaned.GetTypes()
-                .SelectMany(type => type.Methods)
-                .Single(method => method.Name.StartsWith("LiftedProgram", StringComparison.Ordinal));
-            Assert.NotNull(lifted.Body);
-            Assert.True(
-                lifted.Body.Instructions.Count > 1000,
-                "the lifted program should hold all 852 of its operations, not " +
-                $"{lifted.Body.Instructions.Count} instructions' worth");
-            Assert.DoesNotContain(
-                lifted.Body.Instructions,
-                instruction => instruction.OpCode == dnlib.DotNet.Emit.OpCodes.Throw);
+            AssertVirtualizedProtectorRetirement(result, cleaned);
 
             // The recovered plaintext is the probe's own planted strings, present at the call sites
             // the resolver used to hide. Their presence in the cleaned copy is the byte-level proof
@@ -672,24 +648,7 @@ public sealed class CorpusTests
 
             using var cleaned = dnlib.DotNet.ModuleDefMD.Load(result.OutputPath);
 
-            // The virtualized method holds real IL where it shipped as a stub, marked as the reading
-            // it is, with all six of its guarded regions written back: five catch clauses and the
-            // one finally the engine ended with its own operation.
-            // Two methods carry a body built from a reading: this one, and the method given to the
-            // program a type initializer ran through the engine. That one is named for what it
-            // holds, which is how the method this is about is told from it.
-            var rebuilt = cleaned.GetTypes()
-                .SelectMany(type => type.Methods)
-                .Single(method => method.HasBody &&
-                    !method.Name.StartsWith("LiftedProgram", StringComparison.Ordinal) &&
-                    method.CustomAttributes.Any(
-                        attribute => attribute.TypeFullName.Contains("RebuiltFromReading")));
-            Assert.NotNull(rebuilt.Body);
-            Assert.True(rebuilt.Body.Instructions.Count > 100);
-            Assert.Equal(6, rebuilt.Body.ExceptionHandlers.Count);
-            Assert.Contains(
-                rebuilt.Body.ExceptionHandlers,
-                handler => handler.HandlerType == dnlib.DotNet.Emit.ExceptionHandlerType.Finally);
+            AssertVirtualizedProtectorRetirement(result, cleaned);
 
             // The recovered plaintext is the probe's own planted strings, present at the call sites
             // the resolver used to hide — byte-level proof the table was read correctly.
@@ -792,4 +751,32 @@ public sealed class CorpusTests
             Directory.Delete(output, true);
         }
     }
+    private static void AssertVirtualizedProtectorRetirement(
+        PipelineResult result, dnlib.DotNet.ModuleDefMD cleaned)
+    {
+        var changes = System.Text.Json.JsonSerializer.Deserialize<ChangeRecord[]>(
+            File.ReadAllText(result.ChangesReportPath))!;
+        var reconstructed = Assert.Single(changes,
+            change => change.Pass == "virtualization-rebuild" && change.Kind == "rebuild-virtualized-method");
+        var originalName = reconstructed.Location[9..];
+        var retired = Assert.Single(changes,
+            change => change.Kind == "remove-orphaned-rebuilt-method" && change.Location == originalName);
+        Assert.Equal("runtime-cleanup", retired.Pass);
+        Assert.Contains("fully replaced string resolver", retired.Description, StringComparison.Ordinal);
+        Assert.Matches("Removed body fingerprint: [0-9a-f]{64}\\.$", retired.Description);
+        Assert.DoesNotContain(cleaned.GetTypes().SelectMany(type => type.Methods),
+            method => method.FullName == originalName);
+
+        Assert.Single(changes, change => change.Pass == "virtualization-rebuild" &&
+            change.Kind == "lift-virtualized-program");
+        var lifted = Assert.Single(changes, change => change.Kind == "remove-orphaned-rebuilt-method" &&
+            change.Location.EndsWith("::LiftedProgram1()", StringComparison.Ordinal));
+        Assert.Equal("unused-reactor-pools", lifted.Pass);
+        Assert.Contains("wholly unused Reactor pool", lifted.Description, StringComparison.Ordinal);
+        Assert.Matches("Removed body fingerprint: [0-9a-f]{64}\\.$", lifted.Description);
+        Assert.DoesNotContain(cleaned.GetTypes().SelectMany(type => type.Methods),
+            method => method.Name.StartsWith("LiftedProgram", StringComparison.Ordinal));
+        Assert.True(result.Report.Recovery.RuntimeTypesRemoved >= 200);
+    }
+
 }

@@ -27,6 +27,8 @@ Use isolated output directories. The runner validates identities and writes `cor
 
 `minimumRecoveredStringSites` gates the total of constant-folded and table/lookup-restored string sites. `minimumConstantStringSites` targets constant folding specifically. A replacement may retain an initialization call to preserve its effects; read pass diagnostics before treating a retained call as failed recovery.
 
+Oracle comparisons retain raw resource differences and named-type method deficits. A removed protector resource qualifies only when input and oracle bytes match the cleanup record's SHA-256 and the resource is physically absent from the output. A removed private helper requires a matching input token/name, a unique private static generated-name signature in the oracle, the specific cleanup record, a surviving declaring type, and physical absence. Public or preserved-name member loss and unexplained deficits still fail. The reported attribution lists make these qualifications visible.
+
 ## Reconstruction cleanup gates
 
 The corpus runner disables reconstruction. Test ordinary CLI reconstruction separately with matching pinned inputs and declarations:

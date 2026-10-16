@@ -1,6 +1,6 @@
 # Protection removal: before and after
 
-This walkthrough follows **malware samples**, showing how protection removal exposes payload loading, command retrieval and process execution. The examples come from static CILantro **1.0.0 preparation** captures on 2026-10-16. No sample was executed and no command server was contacted.
+This walkthrough follows **malware samples**, showing how protection removal exposes payload loading, command retrieval and process execution. The examples come from static CILantro **1.0.0** captures on 2026-10-16. No sample was executed and no command server was contacted.
 
 ## Samples and evidence
 

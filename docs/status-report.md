@@ -20,8 +20,23 @@ A structural pass is not a behavior-equivalence verdict. Bounded reconstruction 
 
 Ordinary application switches, initialization effects and bundled libraries may remain. Native dependencies are extraction artifacts, not a claim of native-code decompilation or deprotection. No extracted file or successful report establishes that malware is safe to execute.
 
-## Candidate checks
+## 1.0.0 release validation
 
-The Windows candidate's focused CLI suite passed **37 tests**. The suite with private samples disabled passed **2,833 tests**, with **37 sample-dependent skips**. Static Reactor and ConfuserEx CLI smoke checks produced structurally verified cleaned output and reports. A real Windows console check confirmed rendered colors with VT processing enabled by the tool.
+Validation on 2026-10-16 used Windows with .NET SDK 10.0.402 and Linux x64 executable checks in Ubuntu 24.04 under WSL.
 
-These checks do not replace the full pinned-corpus and packaged-platform release gates. Validate the actual candidate against matching fixtures, preserve failures and inconclusive evidence, and record the tested scope. See [corpus validation](corpus.md), [development](development.md), and [support and limitations](compatibility.md).
+| Check | Result |
+| --- | --- |
+| Public tests | 2,848 passed; 37 sample-dependent groups require private fixtures. |
+| Private tests | All 37 groups covered in partitioned runs: 72 expanded cases passed. Combined public/private coverage accounts for 2,920 distinct passing cases. |
+| Pinned static corpus | Reactor 6: 13/13 cases in two independent runs with byte-identical serialized outcomes; Reactor 7: 9/9; ConfuserEx: 2/2. These cases include declared controls, not just protected malware. |
+| Fresh benign runtime probes | Nine configurations across .NET Framework 4.8, .NET 8 and .NET 10; both protected and cleaned builds matched their unprotected oracles on all ten reported behaviors. |
+| Reconstruction and retirement | Two qualified reconstruction runs passed their gates; five fresh identities passed physical VM-removal audits; 20 generated retirement/refusal cases matched their expected outcomes. |
+| Executables | Self-contained Windows/Linux CLI and MCP builds passed version, help, JSON/error, benign recovery and MCP initialization/tool-list checks. Windows strict, analysis-only, verbose and ordinary malware reporting were inspected. |
+| Terminal output | A classic Windows console started with VT processing disabled; the published CLI enabled it and rendered green/cyan cells. |
+| Documentation | All local links resolved in the 17-page documentation package; archived history and preparation/checklist sections are excluded. |
+
+Private sample checks use a dedicated analysis temporary directory. Malware analysis is static; runtime comparisons execute only the source-built benign probes.
+
+Oracle checks keep raw differences visible. Exact cleanup attributions account for three protector resources and one unused private helper retained by the comparison oracles; unexplained losses still fail. The Mlfhntkcvb payload's mutation ceiling is pinned to the measured 20,132 changes. Reconstruction gates retain cold-start and independently evolved full-state disagreements even where separately captured non-VM state matches; agreement after original warm-up does not override them.
+
+These release checks are separate from the frozen 43-root baseline above. See [corpus validation](corpus.md), [VM validation](devirtualization.md), and [support and limitations](compatibility.md) for their bounds.

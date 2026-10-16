@@ -4,21 +4,11 @@ using Cilantro.Core;
 
 namespace Cilantro.Tests;
 
-/// <summary>
-/// What a whole run produces on the samples its results are pinned to.
-/// </summary>
-/// <remarks>
-/// Determinism is deliberately not tested here, though it was once. Running each sample twice and
-/// comparing cost eleven of the suite's twenty-six minutes to prove, for two samples, what
-/// <see cref="CorpusTests.CorpusOutcomesAreDeterministic"/> proves for eleven: it runs the corpus
-/// twice at once and requires the outcomes, each carrying the SHA-256 of the emitted assembly, to
-/// come out byte for byte identical. The payload bytes are held by the hashes pinned below, which
-/// catch a payload that changed for any reason at all rather than only one that differs between two
-/// runs of the same build.
-/// </remarks>
+/// <summary>Strict completion refusal preserves the payload bytes recovered from pinned samples.</summary>
+/// <remarks>CorpusTests separately verifies ordinary emission and deterministic corpus outcomes.</remarks>
 public sealed class PipelineTests
 {
-    public static TheoryData<string, string, string, int, string, int, int, int, int> Samples => new()
+    public static TheoryData<string, string, string, int, string, int> Samples => new()
     {
         {
             "embedded_dotnet_Mlfhntkcvb.exe",
@@ -26,10 +16,7 @@ public sealed class PipelineTests
             "7fa1a9d74dad14fd686ad7b2e794111d1093de3fefe97c51d1908e44586d04de",
             485376,
             "81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a",
-            858112,
-            111,
-            951,
-            263
+            858112
         },
         {
             "embedded_dotnet_Qafcakg.exe",
@@ -37,26 +24,20 @@ public sealed class PipelineTests
             "1db4e9c40d83bb790b89963888fd9a112b1d2467f7194dc55b6c35e14e443429",
             86528,
             "e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2",
-            154112,
-            112,
-            955,
-            262
+            154112
         }
     };
 
     [SampleTheory]
     [Trait(Cost.Key, Cost.High)]
     [MemberData(nameof(Samples))]
-    public void PipelineRecoversProfiledSamples(
+    public void FailOnPartialPreservesPayloadsAndRefusesIncompleteStartup(
         string filename,
         string expectedHash,
         string expectedPayloadHash,
         int expectedPayloadLength,
         string expectedFinalHash,
-        int expectedFinalLength,
-        int expectedTypeCount,
-        int expectedMethodCount,
-        int expectedRemovedTypes)
+        int expectedFinalLength)
     {
         var sample = FindSample(filename);
         var reportDirectory = CreateTemporaryDirectory();
@@ -64,9 +45,7 @@ public sealed class PipelineTests
 
         try
         {
-            // Renaming and building virtualized methods back are what a triage run does for the
-            // analyst reading the result. Neither is what this test measures, and the first would
-            // change the very names the survivor comparison below is made on, so both are pinned.
+            // Isolate strict completion refusal from naming and VM reconstruction.
             var result = new CilantroPipeline().Run(sample, new PipelineOptions(
                 OutputPath: output,
                 ReportDirectory: reportDirectory,
@@ -74,44 +53,24 @@ public sealed class PipelineTests
                 Devirtualize: false,
                 FailOnPartial: true));
 
-            Assert.True(result.Success);
+            // Both payload identities are recoverable, but a later reflective startup operation
+            // is unsupported. The strict completion policy must not emit a cleaned application.
+            Assert.False(result.Success);
+            Assert.Null(result.OutputPath);
+            Assert.False(File.Exists(output));
             Assert.Equal(expectedHash, result.Report.InputSha256);
             Assert.True(result.Report.VerificationPassed);
-            // Four the input carries, plus the two application resources the encrypted bundle held:
-            // the resource passes run after the late string reading, so the name each consumer loads
-            // is a literal by the time they look and the bundle is attributed rather than being called
-            // a high-entropy blob.
+            var partial = Assert.Single(result.Report.Passes,
+                pass => pass.Status != PassStatus.Success);
+            Assert.Equal("payload-extraction", partial.Pass);
+            Assert.Equal(PassStatus.Partial, partial.Status);
+            Assert.Contains(partial.Diagnostics,
+                diagnostic => diagnostic.Contains("Assembly operation GetType is denied", StringComparison.Ordinal));
             Assert.Equal(6, result.Report.ResourceCount);
-            // Down from the 374 types and 2126 methods the input carries: what remains is the
-            // program plus whatever recovery could not attribute to the protector. Replacing every
-            // string site now names the decryptor's own type, not just the getter, so a few more
-            // types go than when only the getter was recorded. The two fixtures no longer agree
-            // exactly, because each build's table initializer reaches a slightly different set.
-            Assert.Equal(expectedTypeCount, result.Report.TypeCount);
-            Assert.Equal(expectedMethodCount, result.Report.MethodCount);
-            Assert.All(result.Report.Passes, pass => Assert.Equal(PassStatus.Success, pass.Status));
-            // Every flattened method but one is straightened, and the jumps that used to go through
-            // a dispatcher now go where the dispatcher would have sent them.
             Assert.Equal(356, result.Report.Recovery.DispatcherMethodsRestored);
             Assert.Equal(357, result.Report.Recovery.DispatcherMethodCandidates);
-            // Down from 1341 before those jumps were made direct: what this pass used to normalize
-            // away was largely the scaffolding around the dispatchers, and the rewrite ahead of it
-            // now prunes that itself.
-            Assert.Equal(985, Pass(result, "cfg-dead-code").Changes);
-            // Proxy restoration reaches every validated site because it runs before forwarder
-            // redirection, which then finds little left to redirect beyond the wrappers that hide a
-            // framework call behind an object-typed signature.
-            Assert.Equal(2643, Pass(result, "delegate-proxy-analysis").Changes);
-            Assert.Equal(16, Pass(result, "method-inlining").Changes);
-            // Which pass restores them depends on whether this build renumbered its engine's
-            // operations. One the early reading can read has its strings restored there; one it
-            // cannot has them restored by the later reading, under the numbering the engine gave up.
-            // Both fixtures renumbered, so both are restored late, and neither is recognized by its
-            // hash any more: the count is what running the build's own program proved.
-            Assert.Equal(
-                23,
-                Pass(result, "string-recovery").Changes +
-                    Pass(result, "string-table-relearning").Changes);
+            Assert.Equal(2643, result.Report.Recovery.ProxyCallsRestored);
+            Assert.Equal(23, result.Report.Recovery.ReplacedStringSites);
             Assert.Equal(2, result.Report.Payloads.Count);
             var payload = Assert.Single(result.Report.Payloads,
                 item => item.PayloadSha256 == expectedPayloadHash);
@@ -131,21 +90,11 @@ public sealed class PipelineTests
             }
             Assert.True(File.Exists(result.AnalysisReportPath));
             Assert.True(File.Exists(result.ChangesReportPath));
-            Assert.True(File.Exists(output));
-
-            using var original = ModuleDefMD.Load(sample);
-            using var cleaned = ModuleDefMD.Load(output);
-            // Deleting rows makes the writer renumber, so identity is by name rather than by token.
-            Assert.Equal(original.EntryPoint?.FullName, cleaned.EntryPoint?.FullName);
-
-            // Everything cleanup removed is gone, and nothing else is.
-            var survivors = cleaned.GetTypes().Select(type => type.FullName).ToHashSet(StringComparer.Ordinal);
-            var removed = original.GetTypes()
-                .Select(type => type.FullName)
-                .Where(name => !survivors.Contains(name))
-                .ToArray();
-            Assert.Equal(original.GetTypes().Count() - cleaned.GetTypes().Count(), removed.Length);
-            Assert.Equal(expectedRemovedTypes, removed.Length);
+            // Hash the actual extracted files as well as checking the report's inventory.
+            Assert.Equal(expectedPayloadHash, Convert.ToHexStringLower(
+                SHA256.HashData(File.ReadAllBytes(payloadPath))));
+            Assert.Equal(expectedFinalHash, Convert.ToHexStringLower(
+                SHA256.HashData(File.ReadAllBytes(finalPayload.WrittenTo!))));
         }
         finally
         {
@@ -193,9 +142,6 @@ public sealed class PipelineTests
         Assert.Equal(0, Entropy.Calculate([]));
         Assert.Equal(0, Entropy.Calculate(new byte[32]));
     }
-
-    private static PassResult Pass(PipelineResult result, string name) =>
-        Assert.Single(result.Report.Passes, pass => pass.Pass == name);
 
     private static string FindSample(string filename) => Checkout.Sample(filename);
 

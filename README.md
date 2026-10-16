@@ -49,7 +49,7 @@ CILantro does not identify a malware family, automatically decode every family's
 
 ## Support and confidence
 
-This tree is being prepared for **1.0.0**; see the [release preparation notes](docs/releases/1.0.0.md). The validation corpus contains **43 roots**, including **28 undamaged captured Reactor-tagged samples**, with physical VM-removal checks covering **14 intact virtualized identities**. It includes negative controls and cases using explicit generic recovery; these are not 43 independent protected malware families. Corpus measurements establish bounded coverage, and each release candidate requires its own validation.
+CILantro **1.0.0** is described in the [release notes](docs/releases/1.0.0.md). The validation corpus contains **43 roots**, including **28 undamaged captured Reactor-tagged samples**, with physical VM-removal checks covering **14 intact virtualized identities**. It includes negative controls and cases using explicit generic recovery; these are not 43 independent protected malware families. Corpus measurements establish bounded coverage, and each release candidate requires its own validation.
 
 Coverage includes real-world Reactor 6 samples, Reactor 7.5 source-built probes, and two pinned ConfuserEx samples. It depends on the protection implementation and options, not just a version label. Completion on that corpus is not a guarantee for a new file.
 

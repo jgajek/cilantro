@@ -4,6 +4,8 @@ These probes are benign programs built from the source in `Probe`. Their
 `--recovery-self-test` entry point prints seven arithmetic/branch results and three
 catch/finally results, including the final contents of a mutated byte array.
 
+Run these contributor commands from a source checkout with the .NET 10 SDK.
+
 Build CILantro and the three probe targets, then use an installed Reactor console
 edition (a trial is sufficient):
 

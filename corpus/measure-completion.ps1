@@ -69,9 +69,8 @@ $outcomes = @($cases | ForEach-Object -Parallel {
         $declarations.budgets.steps = [Math]::Max($using:Steps, [long]$declarations.budgets.steps)
         $declarationPath = Join-Path $directory 'declarations.json'
         $declarations | ConvertTo-Json -Depth 30 | Set-Content $declarationPath
-        $arguments = @($case.Input,'--recover-embedded','--devirtualize','--status','--json',
-            '--output',(Join-Path $directory ('cleaned' + [IO.Path]::GetExtension($case.Input))),
-            '--report-dir',$directory,'--declarations',$declarationPath)
+        $arguments = @($case.Input,'--json','-o',(Join-Path $directory 'case'),
+            '--declarations',$declarationPath)
         if ($settings.hostProfile) { $arguments += @('--host-profile',(Join-Path $manifestDirectory $settings.hostProfile)) }
         foreach ($library in $settings.libraries) { $arguments += @('--library',(Join-Path $manifestDirectory $library)) }
         if ($settings.allowDeclaredCalls) { $arguments += '--allow-declared-calls' }

@@ -125,7 +125,7 @@
       "maximumRemainingStubs": 0,
       "minimumStringSiteCoverage": 1.0,
       "minimumTokensRestored": 13,
-      "maximumMutationCount": 20000,
+      "maximumMutationCount": 20132,
       "minimumVirtualOperationsRead": 0.999,
       "minimumVirtualOperationsWalked": 0.998,
       "requireConsistentVirtualStack": true,

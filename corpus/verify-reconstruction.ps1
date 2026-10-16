@@ -29,13 +29,19 @@ $outcomes = foreach ($case in $cases) {
             $_.Category -eq 'reconstruction-method-trial' -and $_.Message.StartsWith($prefix, [StringComparison]::Ordinal)
         })
         $cold = @($trials | Where-Object { $_.Message.Contains('cold start: Disagreed.') })
-        $repeat = @($trials | Where-Object { $_.Message.Contains('repeat call: Agreed.') })
+        $repeat = @($trials | Where-Object { $_.Message.Contains('repeat after original warm-up: Agreed.') })
+        $independent = @($trials | Where-Object { $_.Message.Contains('independently evolved repeat call: Disagreed.') })
         if ($cold.Count -ne 1 -or
             !$cold[0].Message.Contains('A separate snapshot excluding VM-owned static roots matched') -or
             !$cold[0].Message.Contains('No shared modeled objects were found')) {
             $issues.Add('The cold helper trial must match captured non-VM state without shared modeled objects.')
         }
         if ($repeat.Count -ne 1) { $issues.Add('The repeat-call helper trial must match full captured state.') }
+        if ($independent.Count -ne 1 -or
+            !$independent[0].Message.Contains('A separate snapshot excluding VM-owned static roots matched') -or
+            !$independent[0].Message.Contains('No shared modeled objects were found')) {
+            $issues.Add('The independently evolved repeat must retain its full-state disagreement and matching captured non-VM state.')
+        }
         if ($run.RebuiltCheck -ne 'disagreed') { $issues.Add('The observed full-state disagreement must remain visible.') }
         foreach ($hash in @($expected[0].expectedPayloadSha256)) {
             if ($hash -and $hash -notin $report.Payloads.PayloadSha256) { $issues.Add("Expected extracted payload is missing: $hash") }
