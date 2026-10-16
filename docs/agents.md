@@ -5,10 +5,12 @@ Use JSON for scripts and integrations. Human stdout is intended for analysts and
 ## CLI contract
 
 ```text
-cilantro sample.exe --json --status --recover-embedded --report-dir case-output --output case-output/cleaned.exe
+cilantro sample.exe --json -o case-output
 ```
 
 An ordinary JSON run writes one object to stdout, without progress prose. Its `Schema` is `cilantro.run/1`; an error preventing a normal run uses `cilantro.error/1`. Read `Wrote` paths rather than constructing filenames. See the [schemas](../schema/README.md).
+
+The CLI automatically follows embedded assemblies and maintains a status file. `-o DIR` selects one new/empty folder for all artifacts; without it, a fresh `FILESTEM.cilantro` folder is selected beside the input. Removed switches and the changed meaning of `--output` are documented in the [migration guide](quick-start.md#migrating-earlier-commands). These are CLI defaults; core and MCP options remain independent.
 
 | Field | Interpretation |
 | --- | --- |
@@ -31,17 +33,18 @@ Exit codes are `0` for configured success, `1` for an unsuccessful pipeline resu
 This example assumes `cilantro.exe` is on PATH and `case/run-01` is a new trial directory:
 
 ```powershell
-New-Item -ItemType Directory -Path case/run-01 -Force | Out-Null
-cilantro.exe sample.exe --json --status --recover-embedded `
-  --report-dir case/run-01 --output case/run-01/cleaned.exe `
-  > case/run-01/run.json 2> case/run-01/stderr.txt
+New-Item -ItemType Directory -Path case -Force | Out-Null
+cilantro.exe sample.exe --json -o case/run-01 `
+  > case/run-01.json 2> case/run-01.stderr.txt
 $runExitCode = $LASTEXITCODE
-$run = Get-Content case/run-01/run.json -Raw | ConvertFrom-Json
+$run = Get-Content case/run-01.json -Raw | ConvertFrom-Json
 $run | Select-Object Schema, ToolVersion, Success, Verified, RebuiltCheck
 $run.Wrote
 ```
 
 Check `Schema` before reading run-specific fields; an error object is not a partially populated run object. Preserve `$runExitCode`, stderr and the raw JSON. Handle an empty/truncated file as a process or I/O failure rather than assuming recovery failed in a particular pass.
+
+Keep redirected captures outside the selected output folder during startup: the shell opens them before CILantro runs, which would make that folder nonempty. After the run, they can be archived with its artifacts. CLI status is written automatically inside the selected case folder; asynchronous MCP status remains controlled by its own API.
 
 For embedded recovery, read the graph at `Wrote.Embedded`. Nodes with a `Run` need their own result review. `limited`, `failed`, `incomplete`, `extracted` and `preserved-reference` describe different outcomes; do not convert all discovered children into successful cleaned assemblies. A reviewed reference records its exact hash/source and has no new deprotection claim. Native extracted children can require separate analysis. The graph's `Complete` describes bounded traversal, not exhaustive discovery.
 

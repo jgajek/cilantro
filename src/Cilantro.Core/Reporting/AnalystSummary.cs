@@ -45,7 +45,8 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
             : bootstrap ? "Native wrapper unpacked; see the managed assembly and its recovery report below." : "No cleaned input assembly written; see Remaining."));
         if (result.ReadableReportPath is { } readable) open.Add(new("Readable report", readable));
         if (result.ConfigReportPath is { } config) open.Add(new("Recovered constants", config));
-        sections.Add(new("Open", open));
+        open.Add(new("Case folder", Path.GetDirectoryName(result.AnalysisReportPath)!));
+        sections.Add(new("Output", open));
         var attention = new List<AnalystItem>();
         if (result.VirtualizedMethods > result.RebuiltMethods || result.ProgramsRunElsewhere > result.LiftedPrograms)
             attention.Add(new("VM reconstruction is incomplete; the output is not fully unprotected. If another tool rewrote this sample, retry from the intact original."));
@@ -178,7 +179,7 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
                 .Select(e => new AnalystItem(e.Message))).ToArray(), DetailsOnly: true));
         return new(outcome, protection, sections);
     }
-    private static string Command(string path) => "cilantro '" + path.Replace("'", "''", StringComparison.Ordinal) + "' --recover-embedded --generic-recovery";
+    private static string Command(string path) => "cilantro '" + path.Replace("'", "''", StringComparison.Ordinal) + "' --generic-recovery";
     private static string N(int value) => value.ToString("N0", CultureInfo.InvariantCulture);
     private static void Add(List<AnalystItem> items, int count, string plural, string singular)
     {

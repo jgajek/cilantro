@@ -7,6 +7,25 @@ namespace Cilantro.Tests;
 
 public sealed class AnalysisConsoleTests
 {
+    [Fact]
+    public void WindowsColorsEnableProcessedOutputAndVtWithoutChangingOtherModeBits()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        uint applied = 0;
+        Assert.True(WindowsConsole.EnableOutputMode(0x000A, mode => { applied = mode; return true; }));
+        Assert.Equal(0x000Fu, applied);
+    }
+
+    [Fact]
+    public void WindowsColorsFallBackWhenModeCannotBeEnabledAndLeaveEnabledHostsAlone()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Assert.False(WindowsConsole.EnableOutputMode(0x0002, _ => false));
+        Assert.True(WindowsConsole.EnableOutputMode(0x0007, _ => throw new InvalidOperationException("Already enabled")));
+        // A redirected/non-console handle must not be mistaken for a VT-capable screen buffer.
+        Assert.False(WindowsConsole.TryEnableVirtualTerminal(-1));
+    }
+
     [Theory]
     [InlineData(false, null, null, false, true)]
     [InlineData(true, null, null, false, false)]
@@ -38,7 +57,8 @@ public sealed class AnalysisConsoleTests
         try
         {
             var input = PipelineProgressTests.WritePlain(directory.FullName);
-            var (exit, text, error) = await RunCli(input, "--analyze-only", "--strict", "--report-dir", directory.FullName);
+            var caseDirectory = Path.Combine(directory.FullName, "case output");
+            var (exit, text, error) = await RunCli(input, "--analyze-only", "--strict", "-o", caseDirectory);
             Assert.Equal(0, exit);
             Assert.Empty(error);
             Assert.Contains($"CILantro {CilantroPipeline.Version}", text, StringComparison.Ordinal);
@@ -49,7 +69,9 @@ public sealed class AnalysisConsoleTests
             Assert.DoesNotContain("[EMISSION]", text, StringComparison.Ordinal);
             Assert.Contains("Analysis complete; no cleaned assembly requested", text, StringComparison.Ordinal);
             Assert.DoesNotContain("\u001b", text, StringComparison.Ordinal);
-            var report = Path.Combine(directory.FullName, "plain.report.html");
+            Assert.Contains("  OUTPUT", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("  OPEN", text, StringComparison.Ordinal);
+            var report = Path.Combine(caseDirectory, "plain.report.html");
             Assert.Contains(report, text, StringComparison.Ordinal);
             Assert.True(File.Exists(report));
         }
@@ -63,7 +85,7 @@ public sealed class AnalysisConsoleTests
         try
         {
             var input = PipelineProgressTests.WritePlain(directory.FullName);
-            var (exit, text, error) = await RunCli(input, "--analyze-only", "--json", "--no-color", "--report-dir", directory.FullName);
+            var (exit, text, error) = await RunCli(input, "--analyze-only", "--json", "--no-color", "-o", Path.Combine(directory.FullName, "output"));
             Assert.Equal(0, exit);
             Assert.Empty(error);
             using var json = JsonDocument.Parse(text);
@@ -80,7 +102,7 @@ public sealed class AnalysisConsoleTests
         finally { directory.Delete(recursive: true); }
     }
 
-    private static async Task<(int Exit, string Text, string Error)> RunCli(params string[] arguments)
+    internal static async Task<(int Exit, string Text, string Error)> RunCli(params string[] arguments)
     {
         var start = new ProcessStartInfo("dotnet")
         {

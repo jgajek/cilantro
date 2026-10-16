@@ -11,211 +11,62 @@ internal static class CilantroCommand
 {
     public static int Run(string[] args)
     {
-        _json = args.Contains("--json");
-        _noColor = args.Contains("--no-color");
+        var switches = args.TakeWhile(argument => argument != "--").ToArray();
+        _json = switches.Contains("--json");
+        _noColor = switches.Contains("--no-color");
         _analysisConsole = null;
         if (args.Length >= 2 && args[0] == "corpus" && args[1] == "run")
             return RunCorpus(args[2..]);
-        if (args.Any(argument => argument is "--version"))
-        {
-            Console.WriteLine(CilantroPipeline.Version);
-            return 0;
-        }
-
-        if (args.Length == 0 || args.Any(argument => argument is "-h" or "--help" or "/?"))
-        {
-            PrintUsage();
-            return args.Length == 0 ? 2 : 0;
-        }
-
-        var analyzeOnly = false;
-        var genericRecovery = false;
-        var recoverEmbedded = false;
-        var failOnPartial = false;
-        var removeRuntime = true;
-        bool? renameSymbols = null;
-        var verbose = false;
-        string? output = null;
-        string? reportDirectory = null;
-        string? hostProfile = null;
-        string? declarations = null;
-        string? reviewedDependencies = null;
-        var allowDeclaredCalls = false;
-        var strict = false;
-        bool? devirtualize = null;
-        var status = false;
         string? input = null;
-        var libraries = new List<string>();
-
-        for (var index = 0; index < args.Length; index++)
-        {
-            switch (args[index])
-            {
-                case "--analyze-only":
-                    analyzeOnly = true;
-                    break;
-                case "--recover-embedded":
-                    recoverEmbedded = true;
-                    break;
-                case "--generic-recovery":
-                    genericRecovery = true;
-                    break;
-                case "--fail-on-partial":
-                    failOnPartial = true;
-                    break;
-                case "--remove-runtime":
-                    removeRuntime = true;
-                    break;
-                case "--keep-runtime":
-                    removeRuntime = false;
-                    break;
-                case "--rename":
-                    renameSymbols = true;
-                    break;
-                case "--keep-names":
-                    renameSymbols = false;
-                    break;
-                case "-v":
-                case "--verbose":
-                    verbose = true;
-                    break;
-                case "--json":
-                case "--no-color":
-                    break;
-                case "-o":
-                case "--output":
-                    if (!TryTakeValue(args, ref index, out output))
-                        return Fail($"{args[index]} needs a file path after it.");
-                    break;
-                case "--report-dir":
-                    if (!TryTakeValue(args, ref index, out reportDirectory))
-                        return Fail($"{args[index]} needs a folder path after it.");
-                    break;
-                case "--host-profile":
-                    if (!TryTakeValue(args, ref index, out hostProfile))
-                        return Fail($"{args[index]} needs a file path after it.");
-                    break;
-                case "--library":
-                    if (!TryTakeValue(args, ref index, out var library))
-                        return Fail($"{args[index]} needs a file path after it.");
-                    libraries.Add(library!);
-                    break;
-                case "--reviewed-dependencies":
-                    if (!TryTakeValue(args, ref index, out reviewedDependencies))
-                        return Fail("--reviewed-dependencies needs a manifest path.");
-                    break;
-                case "--declarations":
-                    if (!TryTakeValue(args, ref index, out declarations))
-                        return Fail($"{args[index]} needs a file path after it.");
-                    break;
-                case "--allow-declared-calls":
-                    allowDeclaredCalls = true;
-                    break;
-                case "--strict":
-                    strict = true;
-                    break;
-                case "--devirtualize":
-                    devirtualize = true;
-                    break;
-                case "--no-devirtualize":
-                    devirtualize = false;
-                    break;
-                case "--status":
-                    status = true;
-                    break;
-                default:
-                    if (args[index].StartsWith('-'))
-                        return Fail($"Unknown option: {args[index]}");
-                    if (input is not null)
-                        return Fail("Give one file at a time.");
-                    input = args[index];
-                    break;
-            }
-        }
-
-        if (reviewedDependencies is not null && !recoverEmbedded)
-            return Fail("--reviewed-dependencies requires --recover-embedded.");
-        if (input is null)
-            return Fail("Tell me which file to look at.");
-        if (Directory.Exists(input))
-            return Fail($"That is a folder, not a file: {input}");
-        if (!File.Exists(input))
-            return Fail($"No such file: {input}");
-
         try
         {
+            var command = AnalysisArguments.Parse(args);
+            if (command.Version)
+            {
+                Console.WriteLine(CilantroPipeline.Version);
+                return 0;
+            }
+            if (args.Length == 0 || command.Help || command.HelpAll)
+            {
+                PrintUsage(command.HelpAll);
+                return args.Length == 0 ? 2 : 0;
+            }
+            input = command.Input;
+            _json = command.Json;
+            _noColor = command.NoColor;
+            var options = command.PreparePipelineOptions();
             if (!_json)
             {
                 _analysisConsole = new AnalysisConsole(Console.Out, ConsoleTheme.ForOutput(_noColor));
-                _analysisConsole.Banner(input, analyzeOnly, strict);
+                _analysisConsole.Banner(input!, command.AnalyzeOnly, command.Strict);
             }
-            var result = new CilantroPipeline().Run(input, new PipelineOptions(
-                AnalyzeOnly: analyzeOnly,
-                PreserveTokens: true,
-                FailOnPartial: failOnPartial,
-                RemoveRuntime: removeRuntime,
-                RenameSymbols: renameSymbols,
-                OutputPath: output,
-                ReportDirectory: reportDirectory,
-                HostProfilePath: hostProfile,
-                LibraryPaths: libraries,
-                DeclarationsPath: declarations,
-                AllowDeclaredCalls: allowDeclaredCalls,
-                Strict: strict,
-                Devirtualize: devirtualize,
-                StatusPath: status ? RunStatus.PathFor(input, reportDirectory) : null,
-                GenericRecovery: genericRecovery,
-                RecoverEmbeddedAssemblies: recoverEmbedded,
-                ReviewedDependencyManifest: reviewedDependencies)
+            var result = new CilantroPipeline().Run(input!, options with
             {
                 Progress = _analysisConsole is { } terminal ? terminal.Report : null
             });
-
             if (_json)
             {
-                // Nothing else goes to standard output in this mode: a caller piping it into a
-                // parser should get one object and no prose wrapped around it.
-                Console.WriteLine(JsonSerializer.Serialize(
-                    RunManifest.Of(result), CilantroPipeline.ReportJsonOptions));
+                Console.WriteLine(JsonSerializer.Serialize(RunManifest.Of(result), CilantroPipeline.ReportJsonOptions));
                 return result.Success ? 0 : 1;
             }
-
             _analysisConsole?.Complete(result);
-            Explain.Summarize(result, input, Console.Out, verbose, ConsoleTheme.ForOutput(_noColor));
-            if (verbose)
-                Explain.PassLog(result.Report);
+            Explain.Summarize(result, input!, Console.Out, command.Verbose, ConsoleTheme.ForOutput(_noColor));
+            if (command.Verbose) Explain.PassLog(result.Report);
             if (!result.Report.VerificationPassed)
-            {
                 foreach (var diagnostic in result.Report.VerificationDiagnostics)
                     ConsoleTheme.Line(Console.Error, $"verify: {diagnostic}", ConsoleTone.Red, ConsoleTheme.ForError(_noColor));
-            }
-
             return result.Success ? 0 : 1;
         }
-        // Caught before the general "not a .NET assembly", which is what an unmanaged file gets and
-        // is the wrong thing to tell someone holding a stub whose managed half was found but not
-        // opened: that reads as "wrong tool" when the answer is "right tool, and here is what beat it".
-        catch (NativeBootstrapException failure)
-        {
-            return Fail(failure.Message);
-        }
+        catch (NativeBootstrapException failure) { return Fail(failure.Message); }
         catch (BadImageFormatException)
         {
-            return Fail(
-                $"{Path.GetFileName(input)} is not a .NET assembly. CILantro only reads " +
-                ".NET executables and libraries.");
+            return Fail($"{Path.GetFileName(input)} is not a supported .NET assembly or Reactor native wrapper.");
         }
-        // These two say what is wrong with what was handed in, so the message is the whole of the
-        // answer and prefixing it with the name of a class only gets in the reader's way.
-        catch (Exception ex) when (
-            ex is HostProfileException or TrustedLibraryException or DeclarationException)
+        catch (Exception ex) when (ex is ArgumentException or HostProfileException or TrustedLibraryException or DeclarationException)
         {
             return Fail(ex.Message);
         }
-        catch (Exception ex)
-        {
-            return Fail($"{ex.GetType().Name}: {ex.Message}");
-        }
+        catch (Exception ex) { return Fail($"{ex.GetType().Name}: {ex.Message}"); }
     }
 
     private static bool TryTakeValue(string[] args, ref int index, out string? value)
@@ -295,74 +146,71 @@ internal static class CilantroCommand
         }
     }
 
-    private static void PrintUsage() =>
+    private static void PrintUsage(bool all = false)
+    {
         Console.WriteLine(
             $"""
             CILantro {CilantroPipeline.Version} - recover readable code from protected .NET
 
-            Recover supported .NET Reactor and ConfuserEx samples for analysis. The sample
-            is interpreted statically, never executed. Recovery can be partial; a cleaned
-            assembly and structural checks do not prove equivalent program behavior.
+            Usage: cilantro FILE [options]
 
-              cilantro suspicious.exe --recover-embedded
+              cilantro sample.exe                  Recover the sample and embedded assemblies
+              cilantro sample.exe -o case/run-01   Put every output in this case folder
+              cilantro sample.exe --analyze-only   Reports and extracted files; no cleaned copies
+              cilantro sample.exe --strict         Retry without assumed machine settings
 
-            That writes suspicious.cleaned.exe beside the input, plus a cilantro
-            folder holding the full report and any files that were hidden inside.
-            If cilantro is already a file there — as when the tool itself sits
-            beside the sample — the folder is named cilantro.out instead.
+            By default, recover supported code and strings, rebuild VM-backed methods, assign
+            readable names, remove proven protector code, and follow embedded assemblies within
+            fixed limits. The sample is interpreted statically; it is never launched.
 
-            Start with Open in the summary, then review Remaining and Validation.
-            Supported native wrappers automatically continue into their managed stage.
-            --recover-embedded also follows further extracted assemblies within limits.
+            All outputs go in FILESTEM.cilantro beside the input, with -2, -3, ... for repeat runs.
+            Use -o DIR for a chosen empty/new folder. The input is preserved. Progress and a status
+            file are automatic. Follow OUTPUT to the cleaned assembly, HTML report and case folder.
 
-            Default runs enable readability renaming and supported VM reconstruction, and
-            may use recorded host assumptions. --strict disables implicit assumptions and
-            defaults renaming/reconstruction off; it still recovers code and can write output.
+            Common options:
+              -o, --output DIR    Case folder for cleaned files, extracted stages and reports
+                  --analyze-only  Recover information without writing cleaned assemblies
+                  --strict        Stop at unknown behavior; keep names and VM stubs unchanged
+              -v, --verbose       Include technical diagnostics and per-pass details
+                  --json          One JSON run/error object instead of human console output
+                  --no-color      Plain text (also automatic for redirection and NO_COLOR)
+              -h, --help          Show common workflows and options
+                  --help-all      Include specialist analysis controls
+                  --version       Print only the version
 
-            Options:
-              -v, --verbose            Show every step the tool took
-                  --json               Print one JSON object instead of the summary, naming
-                                       every file written and what to declare to get further
-                  --no-color           Disable terminal colors (also honors NO_COLOR)
-                  --analyze-only       Write reports/extracted files, but no cleaned assembly
-                  --generic-recovery   Allow verified rewrites when the protector is unrecognized
-                  --recover-embedded   Continue recovery into extracted assemblies (bounded)
-                  --reviewed-dependencies PATH  Preserve matches to reviewed unprotected references
-              -o, --output PATH        Write the clean copy somewhere else
-                  --report-dir DIR     Write the report somewhere else
-                  --keep-runtime       Leave the protector's own code in place instead of removing it
-                  --rename             Give obfuscated names readable placeholders (default,
-                                       and how to ask for it in a strict run)
-                  --keep-names         Leave the protector's generated names as they are
-                  --devirtualize       Build virtualized methods back into code in the clean copy,
-                                       marked as a reading rather than a proof (default, and how
-                                       to ask for it in a strict run)
-                  --no-devirtualize    Leave virtualized methods as the stubs they shipped as
-                  --status             Keep a NAME.status.json beside the reports saying which
-                                       pass is running, so a long run can be watched from
-                                       elsewhere while it goes
-                  --fail-on-partial    Block successful recovery on incomplete passes;
-                                       reports and extracted artifacts may still be written
-                  --strict             Disable implicit host assumptions and permissive reading
-                  --host-profile FILE  State what the Windows machine the sample expects looks like
-                  --library FILE       Let the reader follow calls into this assembly (repeatable)
-                  --declarations FILE  Everything above in one file, plus budgets and passes to skip
-                  --allow-declared-calls
-                                       Let that file also say what calls the tool cannot read do
-              -h, --help               Show this
-                  --version            Print the version
-
-            When a run stops short it writes cilantro/NAME.blockers.json, which names
-            each thing that stopped it and the declaration that would get past it. Docs:
-            docs/declarations.md
-
-            Driving it from a program or an agent: --json, and docs/agents.md
-            Exit codes: 0 configured success; 1 incomplete/failed run; 2 input or command error.
-            Success does not mean complete unprotection. See docs/quick-start.md.
-
-            Development:
-              cilantro corpus run [--manifest PATH] [--samples DIR] [--output DIR] [--strict]
-
-            Docs and issues: https://github.com/jgajek/cilantro
+            Success means the configured run finished, not complete unprotection or equivalent
+            behavior. Review NEEDS REVIEW, REMAINING and VALIDATION before relying on the code.
+            Exit codes: 0 configured success; 1 incomplete/failed run; 2 argument/input/error.
+            Docs: docs/quick-start.md   Issues: https://github.com/jgajek/cilantro
             """);
+        if (all)
+            Console.WriteLine(
+                """
+
+                Specialist controls:
+                  --no-recursion                Extract children without cleaning further stages;
+                                                native wrappers still continue to their managed stage
+                  --keep-names                  Preserve obfuscated identifiers for name comparisons
+                  --keep-runtime                Retain protector helpers for investigating protection
+                  --no-devirtualize             Keep VM stubs; still write supported VM listings
+                  --generic-recovery            Attempt verified cleanup without a recognized protector
+                  --fail-on-partial             Withhold success/cleaned output on incomplete passes
+                  --library FILE                Read this managed dependency statically (repeatable)
+                  --host-profile FILE           Supply facts about the sample's expected machine
+                  --declarations FILE           Supply host facts, libraries, budgets or skipped passes
+                  --allow-declared-calls        Trust call assertions in --declarations; review them first
+                  --reviewed-dependencies FILE  Preserve exact matches to independently reviewed DLLs
+
+                --strict also disables permissive interpretation and implicit host assumptions. It
+                may recover less; it is not a stronger correctness verdict. For a readable VM
+                reconstruction, compare a separate ordinary run.
+                See docs/declarations.md for facts, budgets and the risks of call assertions.
+
+                Before 1.0: --recover-embedded, --status and --remove-runtime are now automatic.
+                --rename/--devirtualize were removed; default recovery includes both. --report-dir
+                was replaced by -o DIR. --output now means a case folder, not a cleaned filename.
+
+                Development: cilantro corpus run [--manifest PATH] [--samples DIR] [--output DIR] [--strict]
+                """);
+    }
 }

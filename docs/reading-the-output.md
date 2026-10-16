@@ -7,7 +7,7 @@ Start by answering three questions: **which file should I inspect, was that file
 | Section | Analyst action |
 | --- | --- |
 | Result | Establish whether recovery emitted a cleaned file, completed analysis only, or stopped short. |
-| Open | Follow the recommended assembly and HTML report paths. |
+| Output | Follow the recommended assembly, HTML report and case-folder paths. |
 | Needs review | Investigate material failures and reconstruction disagreements, including child findings. |
 | Artifacts | Identify the wrapper, loaded assemblies, dependencies, native files and resource bundles. |
 | Next | Use the suggestion as a starting point, checking the actual artifact role. |
@@ -77,7 +77,7 @@ Read paths from `Wrote`; the following names are typical, not a naming contract.
 | `NAME.renames.json` | Original-to-replacement names, when produced |
 | `NAME.config.json` | Recovered constants, when available; not a general malware configuration decoder |
 | `NAME.embedded.json` | Child nodes, links, hashes, statuses and run manifests |
-| `NAME.status.json` | Requested progress and terminal state |
+| `NAME.status.json` | Automatic CLI progress and terminal state; opt-in for core callers |
 | `NAME.virtualized/` | VM programs and lifted IL listings, when produced |
 | Extracted files and cleaned assemblies | Original recovered bytes and transformed analysis copies |
 

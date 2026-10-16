@@ -7,13 +7,14 @@ internal static class ConsoleTheme
     internal static bool Enabled(bool redirected, string? noColor, string? term, bool disabled) =>
         !redirected && noColor is null && term != "dumb" && !disabled;
 
-    internal static bool ForOutput(bool disabled = false) => Enabled(
-        Console.IsOutputRedirected, Environment.GetEnvironmentVariable("NO_COLOR"),
-        Environment.GetEnvironmentVariable("TERM"), disabled);
+    internal static bool ForOutput(bool disabled = false) => ForStream(Console.IsOutputRedirected, -11, disabled);
 
-    internal static bool ForError(bool disabled = false) => Enabled(
-        Console.IsErrorRedirected, Environment.GetEnvironmentVariable("NO_COLOR"),
-        Environment.GetEnvironmentVariable("TERM"), disabled);
+    internal static bool ForError(bool disabled = false) => ForStream(Console.IsErrorRedirected, -12, disabled);
+
+    private static bool ForStream(bool redirected, int standardHandle, bool disabled) =>
+        Enabled(redirected, Environment.GetEnvironmentVariable("NO_COLOR"),
+            Environment.GetEnvironmentVariable("TERM"), disabled) &&
+        (!OperatingSystem.IsWindows() || WindowsConsole.TryEnableVirtualTerminal(standardHandle));
 
     internal static string Paint(string text, ConsoleTone tone, bool color)
     {

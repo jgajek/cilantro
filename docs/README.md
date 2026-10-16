@@ -2,6 +2,8 @@
 
 Start with the analyst workflow. This tree targets **1.0.0**; the [preparation notes](releases/1.0.0.md) distinguish the new console presentation from the **0.10.6** recovery-validation baseline. These pages do not announce a published release.
 
+The normal command is `cilantro sample.exe`. It follows embedded stages and keeps all artifacts in a fresh case folder; `-o DIR` chooses that folder. Follow **OUTPUT** when it finishes. See the [option meanings and migration guide](quick-start.md) for the simplified CLI; `--help-all` lists specialist controls.
+
 ## Analyze a sample
 
 | Your question | Read |

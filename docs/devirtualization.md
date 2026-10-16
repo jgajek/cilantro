@@ -15,7 +15,7 @@ Resource-resolution callbacks raised by assembly resource lookups receive the re
 - With reconstruction enabled, supported methods are emitted into the cleaned assembly with `[RebuiltFromReading]` markers. Additional interpreter programs can become helper methods.
 - The report records reconstructed counts, coverage, comparisons, and remaining issues.
 
-Ordinary CLI runs enable reconstruction. `--no-devirtualize` disables rebuilding while still allowing disassembly. Strict CLI runs require explicit `--devirtualize`. MCP defaults reconstruction off; set `devirtualize: true` explicitly.
+Ordinary CLI runs enable reconstruction. `--no-devirtualize` disables rebuilding while still allowing disassembly. Strict CLI runs leave VM stubs unchanged; compare a separate ordinary run when reconstruction is wanted. MCP defaults reconstruction off; set `devirtualize: true` explicitly.
 
 ## How the reading is established
 

@@ -5,10 +5,10 @@ Use CILantro to turn a protected input into artifacts you can inspect. Keep the 
 ## Recover a dropper and follow its payload
 
 ```text
-cilantro sample.exe --recover-embedded --report-dir case/run-01 --output case/run-01/cleaned.exe --status
+cilantro sample.exe -o case/run-01
 ```
 
-1. Open the HTML report named in **Open**. Check the recommended artifact and the root's result.
+1. Open the HTML report named in **OUTPUT**. Check the recommended artifact and the root's result.
 2. Follow the artifact tree. Distinguish an assembly observed at a load operation from a resource-only bundle or bundled library.
 3. Open the **cleaned child** for a recovered managed stage. Retain its **extracted original** for independent comparison or another recovery attempt.
 4. Review that child's remaining work and validation, not just the parent's. A wrapper can recover successfully while a child remains incomplete.
@@ -16,7 +16,7 @@ cilantro sample.exe --recover-embedded --report-dir case/run-01 --output case/ru
 
 Use SHA-256 and parent-child links when correlating files. Different names can identify identical bytes; one assembly can be referenced by several parents. The recommended file is selected from extraction provenance, not malware-family attribution.
 
-Supported native Reactor wrappers automatically continue into their managed stage. `--recover-embedded` follows further extracted managed assemblies. A native root can have no root-level cleaned path while its child has a usable managed output. Managed-wrapper reassembly is available for supported shapes; do not assume every cleaned wrapper embeds every cleaned child.
+Supported native Reactor wrappers automatically continue into their managed stage. Ordinary CLI runs also follow further extracted managed assemblies; use `--no-recursion` to leave those further children extracted but uncleaned. A native root can have no root-level cleaned path while its child has a usable managed output. Managed-wrapper reassembly is available for supported shapes; do not assume every cleaned wrapper embeds every cleaned child.
 
 ## Read application code after cleanup
 
@@ -31,7 +31,7 @@ Ordinary switches, async `MoveNext` state machines, exception handling and initi
 ## Extract content without emitting cleaned assemblies
 
 ```text
-cilantro sample.exe --analyze-only --recover-embedded --report-dir case/extraction
+cilantro sample.exe --analyze-only -o case/extraction
 ```
 
 This still performs analysis and supported extraction, but suppresses cleaned root and child assemblies. It is useful when you want recovered bytes and provenance before reviewing transformations. It is not a passive header scan and can take as long as substantial recovery work.
@@ -43,11 +43,11 @@ Search the recovered code and resources for configuration and indicators using y
 Use separate directories and the same untouched input:
 
 ```text
-cilantro sample.exe --recover-embedded --report-dir case/default --output case/default/cleaned.exe
-cilantro sample.exe --strict --rename --devirtualize --recover-embedded --report-dir case/strict --output case/strict/cleaned.exe
+cilantro sample.exe -o case/default
+cilantro sample.exe --strict -o case/strict
 ```
 
-The explicit flags keep renaming and reconstruction requested in both trials. Strict mode changes handling of unknown behavior; it may recover less or withhold an output. Compare diagnostics and outputs before treating a difference as a bug.
+The first run favors readability and supported VM reconstruction. Strict mode stops at unknown behavior, disables implicit machine assumptions, and leaves identifiers and VM stubs unchanged. It may recover less or withhold output. These are different analysis policies; compare diagnostics and outputs before treating a difference as a bug.
 
 For a name-sensitive comparison, use `--keep-names`. For investigation of protector internals, use `--keep-runtime`; for VM listing work without reconstruction, use `--no-devirtualize`. Those are diagnostic choices, not commands for maximum protector removal.
 
@@ -56,7 +56,7 @@ For a name-sensitive comparison, use `--keep-names`. For investigation of protec
 If traversal stopped at a child, use its extracted original path from the report:
 
 ```text
-cilantro "case/run-01/path-from-report/child.dll" --recover-embedded --report-dir case/child-trial --output case/child-trial/cleaned.dll --status
+cilantro "case/run-01/path-from-report/child.dll" -o case/child-trial
 ```
 
 The path above is illustrative; copy the real path rather than guessing it. Record the parent hash and link so the new trial retains provenance. Prefer the extracted original over repeatedly cleaning an already transformed copy.

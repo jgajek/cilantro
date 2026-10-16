@@ -46,7 +46,7 @@ An input already rewritten by another tool may have lost metadata, resources or 
 
 Ordinary CLI runs enable renaming, supported VM reconstruction and runtime cleanup. Static interpretation may use bundled host assumptions and continue past some unsupported calls with unknown values; those qualifications are recorded.
 
-`--strict` disables implicit assumptions and permissive interpretation and defaults renaming/reconstruction off. Add `--rename --devirtualize` explicitly if you want those transformations in strict mode. Strict mode does not validate facts you supplied yourself, and it is not a stronger full-unprotection certificate.
+`--strict` disables implicit assumptions and permissive interpretation and leaves names and VM stubs unchanged. Compare it with an ordinary run to investigate differences; the simplified CLI has no positive renaming/reconstruction overrides in strict mode. Core/MCP callers retain independent controls. Strict mode does not validate facts you supplied yourself, and it is not a stronger full-unprotection certificate.
 
 `--generic-recovery` permits supported generic rewrites when no protector is recognized. It does not establish a protector identity or bypass other emission checks. `--keep-runtime` and `--no-devirtualize` deliberately retain material that default recovery may remove or reconstruct.
 

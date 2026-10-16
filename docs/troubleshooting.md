@@ -22,7 +22,7 @@ Start with the exact input hash, tool version, command and final report. Use a n
 
 ## Long-running work
 
-Use `--status` for a CLI run, or `start_unpack` and `unpack_status` through MCP. Status reports identify the pass, process and elapsed time. The pass counter is not a reliable completion percentage: expensive interpretation can dominate one pass.
+CLI runs automatically maintain `NAME.status.json` in the case folder. Through MCP, use `start_unpack` and `unpack_status`. Status reports identify the pass, process and elapsed time. The pass counter is not a reliable completion percentage: expensive interpretation can dominate one pass.
 
 Large assemblies and virtualization can take minutes or longer. Check that the process is still alive and that status or CPU activity advances. An unchanged status file alone does not prove a hang; a stale file does not prove a process is still running. A polling timeout does not cancel background work. Do not launch duplicate runs into the same directory.
 
@@ -39,7 +39,7 @@ Read the blocker JSON and use its exact remedy keys. For example, a case that ex
 ```
 
 ```text
-cilantro sample.exe --declarations case.json --recover-embedded --report-dir case/retry --output case/retry/cleaned.exe
+cilantro sample.exe --declarations case.json -o case/retry
 ```
 
 Choose a bound based on the reported limit; 40 million is only an example and may be lower than an adaptive allowance already in use. A smaller declaration does not necessarily reduce built-in limits. Host facts, libraries and asserted call outcomes are separate inputs. See [declarations](declarations.md).

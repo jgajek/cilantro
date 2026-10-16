@@ -15,20 +15,24 @@ Download the Windows x64 or Linux x64 archive from [Releases](https://github.com
 From PowerShell in the unpacked tool directory:
 
 ```powershell
-.\cilantro.exe C:\cases\sample.exe --recover-embedded --report-dir C:\cases\run-01 --output C:\cases\run-01\cleaned.exe --status
+.\cilantro.exe C:\cases\sample.exe
 ```
 
 On Linux:
 
 ```sh
-./cilantro /cases/sample.exe --recover-embedded --report-dir /cases/run-01 --output /cases/run-01/cleaned.exe --status
+./cilantro /cases/sample.exe
 ```
 
-Follow **Open** in the summary to the recommended assembly and HTML report. Open the assembly in your .NET decompiler, then inspect the artifact tree and **Needs review**, **Remaining**, and **Validation**. A dropper's most useful output may be a cleaned child rather than the cleaned input.
+The normal run recovers the input and embedded managed stages, with progress and a status file included. All outputs go into `sample.cilantro/` beside the input; retries use `sample.cilantro-2/`, and so on. Use `-o C:\cases\run-01` (or `-o /cases/run-01`) to choose a new or empty case folder. `--output` takes a directory, not a cleaned filename.
+
+Follow **OUTPUT** in the summary to the recommended assembly, HTML report and case folder. Open the assembly in your .NET decompiler, then inspect the artifact tree and **Needs review**, **Remaining**, and **Validation**. A dropper's most useful output may be a cleaned child rather than the cleaned input.
 
 The console opens with the Reveal banner and streams analysis phases and pass outcomes, followed by a result summary and artifact paths. Interactive terminals use green, cyan, amber and red to distinguish results, progress and review items. Use `--no-color` or `NO_COLOR` for plain text; redirected output is plain automatically. `--json` emits only the machine-readable run/error object.
 
 Use a new output directory for each trial. The original input is preserved; extracted original bytes and cleaned child copies are distinct. Outputs remain malware artifacts: recovery does not make them safe to execute.
+
+Use `--analyze-only` for reports/extracted originals without cleaned assemblies, `--strict` for a comparison without implicit host assumptions, and `--json` for scripts. `--help` covers the common workflow; `--help-all` explains specialist controls. See the [CLI reference](docs/quick-start.md) for each option and migration from older commands.
 
 ## What you get
 

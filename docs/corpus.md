@@ -133,8 +133,8 @@ The standard corpus runner disables reconstruction, so it cannot gate removal of
 
 ```powershell
 New-Item -ItemType Directory -Force results | Out-Null
-cilantro C:/cilantro-verify/samples/Qbjuef.exe --recover-embedded --declarations corpus/reconstruction.declarations.json --output results/Qbjuef.cleaned.exe --report-dir results --json > results/qbjuef-run.json
-cilantro C:/cilantro-verify/samples/Mlfhntkcvb.payload.Lqcuzgc.dll --declarations corpus/reconstruction.declarations.json --output results/Mlfhntkcvb.cleaned.dll --report-dir results --json > results/mlfhntkcvb-run.json
+cilantro C:/cilantro-verify/samples/Qbjuef.exe --declarations corpus/reconstruction.declarations.json -o results/qbjuef-case --json > results/qbjuef-run.json
+cilantro C:/cilantro-verify/samples/Mlfhntkcvb.payload.Lqcuzgc.dll --declarations corpus/reconstruction.declarations.json -o results/mlfhntkcvb-case --json > results/mlfhntkcvb-run.json
 pwsh -NoProfile -File corpus/verify-reconstruction.ps1 -ReportDirectory results
 ```
 
