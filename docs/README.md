@@ -1,6 +1,6 @@
 # Documentation
 
-Start with the analyst workflow. These pages describe CILantro **1.0.0**; see the [release notes](releases/1.0.0.md) for features and validation scope.
+Start with the analyst workflow. These pages describe CILantro **1.0.1**; see the [release notes](releases/1.0.1.md) for features and validation scope.
 
 The normal command is `cilantro sample.exe`. It follows embedded stages and keeps all artifacts in a fresh case folder; `-o DIR` chooses that folder. Follow **OUTPUT** when it finishes. See the [option reference](quick-start.md); `--help-all` lists specialist controls.
 
@@ -27,4 +27,4 @@ The normal command is `cilantro sample.exe`. It follows embedded stages and keep
 
 ## Build and release
 
-[Development](development.md) covers builds, tests and local publishing. [Code organization](code-organization.md) maps the implementation. The [1.0.0 release notes](releases/1.0.0.md) describe the release.
+[Development](development.md) covers builds, tests and local publishing. [Code organization](code-organization.md) maps the implementation. The [1.0.1 release notes](releases/1.0.1.md) describe the release.

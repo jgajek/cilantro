@@ -103,7 +103,7 @@ jobs:
             status-report troubleshooting; do
             cp "../../docs/$document.md" docs/
           done
-          cp ../../docs/releases/1.0.0.md docs/releases/
+          cp ../../docs/releases/*.md docs/releases/
           cp ../../docs/assets/* docs/assets/
           mkdir -p corpus/schema corpus/probes/Probe
           cp ../../corpus/*.json corpus/
