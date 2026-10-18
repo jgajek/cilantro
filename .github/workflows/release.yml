@@ -100,7 +100,7 @@ jobs:
           for document in README agents analyst-workflows code-organization compatibility \
             completion-progress corpus declarations development devirtualization how-confuserex-works \
             how-net-reactor-works how-recovery-works protection-removal quick-start reading-the-output \
-            status-report troubleshooting; do
+            status-report troubleshooting performance; do
             cp "../../docs/$document.md" docs/
           done
           cp ../../docs/releases/*.md docs/releases/
@@ -108,6 +108,7 @@ jobs:
           mkdir -p corpus/schema corpus/probes/Probe
           cp ../../corpus/*.json corpus/
           cp ../../corpus/*.ps1 corpus/
+          cp ../../corpus/*.py corpus/
           cp ../../corpus/schema/*.json corpus/schema/
           cp ../../corpus/probes/README.md corpus/probes/
           cp ../../corpus/probes/*.ps1 corpus/probes/

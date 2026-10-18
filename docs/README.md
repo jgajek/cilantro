@@ -35,4 +35,4 @@ The [malware walkthrough](protection-removal.md) shows the approach in practice:
 | Investigate a detailed VM comparison | [VM validation reference](assets/vm-validation-reference.md) |
 | Reproduce the walkthrough captures | [Evidence appendix](assets/protection-removal-notes.md) |
 
-Published binaries are available from [Releases](https://github.com/jgajek/cilantro/releases). See the [1.0.1 release notes](releases/1.0.1.md) for that release's changes.
+Published binaries are available from [Releases](https://github.com/jgajek/cilantro/releases). See the [1.0.2 release notes](releases/1.0.2.md) for that release's changes.

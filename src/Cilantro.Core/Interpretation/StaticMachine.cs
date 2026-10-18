@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Cilantro.Core.Analysis;
 
 namespace Cilantro.Core.Interpretation;
 
@@ -8,6 +9,7 @@ public sealed class StaticMachine
 {
     private readonly StaticMachineLimits _limits;
     private readonly IStaticIntrinsicRegistry _intrinsics;
+    private readonly bool _usesDefaultIntrinsics;
     private readonly bool _modelTypeInitialization;
 
     // Answers about the shape of the metadata, which does not change while an interpretation runs.
@@ -29,6 +31,7 @@ public sealed class StaticMachine
     {
         _limits = limits ?? new StaticMachineLimits();
         _limits.Validate();
+        _usesDefaultIntrinsics = intrinsics is null;
         _intrinsics = intrinsics ?? StaticIntrinsicRegistry.CreateDefault();
         _modelTypeInitialization = modelTypeInitialization;
         State = new StaticMachineState(_limits);
@@ -51,6 +54,11 @@ public sealed class StaticMachine
     {
         ArgumentNullException.ThrowIfNull(method);
         ArgumentNullException.ThrowIfNull(budget);
+        _resolvedMethods.Clear();
+        _virtualTargets.Clear();
+        _localDefaults.Clear();
+        _resolvedIntrinsics.Clear();
+        using var typeLookup = new TypeDefinitionLookupScope(State.IsAssembled(method.Module) ? null : method.Module);
         var directInitializerType = _modelTypeInitialization && method.Name == ".cctor"
             ? method.DeclaringType
             : null;
@@ -130,6 +138,11 @@ public sealed class StaticMachine
         IReadOnlyList<StaticValue>? arguments = null)
     {
         ArgumentNullException.ThrowIfNull(method);
+        _resolvedMethods.Clear();
+        _virtualTargets.Clear();
+        _localDefaults.Clear();
+        _resolvedIntrinsics.Clear();
+        using var typeLookup = new TypeDefinitionLookupScope(State.IsAssembled(method.Module) ? null : method.Module);
         var budget = new StaticWorkBudget(_limits.MaximumSteps);
         var result = Reenter(method, arguments ?? [], budget, 0);
         return new StaticExecutionResult(
@@ -305,9 +318,10 @@ public sealed class StaticMachine
         // Nothing describes itself to a graph with no room to hear it. This is the ordinary state of a
         // long interpretation, not a corner of one, and describing a frame is the costliest thing a
         // frame does before it runs an instruction.
+        var defaults = LocalDefaults(method);
         var labelled = State.Provenance.Saturated
             ? null
-            : Labelled(method, expectedArguments);
+            : Labelled(method, expectedArguments, defaults.Length);
         var mutableArguments = new StaticValue[arguments.Count];
         for (var at = 0; at < mutableArguments.Length; at++)
         {
@@ -322,14 +336,13 @@ public sealed class StaticMachine
                         labelled.Declaring);
         }
         var argumentReferences = new Dictionary<int, StaticValue>();
-        var variables = method.Body.Variables;
-        var locals = new StaticValue[variables.Count];
+        var locals = new StaticValue[defaults.Length];
         for (var at = 0; at < locals.Length; at++)
         {
             locals[at] = labelled is null
-                ? State.Provenance.Unrecorded(DefaultValue(variables[at].Type))
+                ? State.Provenance.Unrecorded(defaults[at])
                 : State.Provenance.Origin(
-                    DefaultValue(variables[at].Type),
+                    defaults[at],
                     ProvenanceKind.Default,
                     labelled.Locals[at],
                     labelled.LocalTypes[at]);
@@ -453,17 +466,17 @@ public sealed class StaticMachine
                     case Code.Ldarg:
                     case Code.Ldarg_S:
                         stack.Add(LoadSlot(mutableArguments, argumentReferences,
-                            ArgumentIndex(method, instruction.Operand)));
+                            ArgumentIndex(instruction.Operand)));
                         break;
                     case Code.Starg:
                     case Code.Starg_S:
                         StoreSlot(mutableArguments, argumentReferences,
-                            ArgumentIndex(method, instruction.Operand), Pop(stack), State.Heap);
+                            ArgumentIndex(instruction.Operand), Pop(stack), State.Heap);
                         break;
                     case Code.Ldarga:
                     case Code.Ldarga_S:
                         stack.Add(AddressOfSlot(mutableArguments, argumentReferences,
-                            ArgumentIndex(method, instruction.Operand), State.Heap));
+                            ArgumentIndex(instruction.Operand), State.Heap));
                         break;
 
                     case Code.Ldloc_0: stack.Add(LoadSlot(locals, localReferences, 0)); break;
@@ -1121,7 +1134,7 @@ public sealed class StaticMachine
                                     return AllocationFailure(instruction, "object");
                                 callArguments = [constructed, .. callArguments];
                             }
-                            var definition = target.ResolveMethodDef() ??
+                            var definition = ResolvedMethod(target) ??
                                 ResolveThroughInstantiation(target);
                             if ((instruction.OpCode.Code == Code.Callvirt ||
                                  definition is { HasBody: false }) &&
@@ -1174,7 +1187,7 @@ public sealed class StaticMachine
                             {
                                 callResult = FrameResult.Success(unresolvedFactoryResult);
                             }
-                            else if (_intrinsics.TryResolve(target, out var intrinsic))
+                            else if (TryResolveIntrinsic(target, out var intrinsic))
                             {
                                 // A model that refuses knows what was asked but not where from, and
                                 // where from is half of what makes the refusal worth reading.
@@ -1313,7 +1326,7 @@ public sealed class StaticMachine
                                     method,
                                     instruction,
                                     callResult.Value,
-                                    _intrinsics.TryResolve(target, out _)
+                                    TryResolveIntrinsic(target, out _)
                                         ? ProvenanceKind.Intrinsic
                                         : ProvenanceKind.Call,
                                     [callResult.Value, .. callArguments]));
@@ -2161,7 +2174,7 @@ public sealed class StaticMachine
         }
 
         State.Heap.TryGetModelValue<StaticValue>(callArguments[0], DelegateTargetKey, out var receiver);
-        var definition = bound.ResolveMethodDef();
+        var definition = ResolvedMethod(bound);
         var open = State.Heap.TryGetModelValue<bool>(callArguments[0], DelegateOpenKey, out var isOpen) &&
             isOpen;
         var unbound = open || (definition?.IsStatic ?? bound.MethodSig?.HasThis != true);
@@ -2179,7 +2192,7 @@ public sealed class StaticMachine
         // obfuscator runtime usually means a framework method it chose to reach through a delegate
         // rather than a direct call. It is the same call either way, so it is dispatched the same
         // way: the model answers it, and where there is no model the ordinary path says so.
-        if (!_intrinsics.TryResolve(bound, out var intrinsic))
+        if (!TryResolveIntrinsic(bound, out var intrinsic))
             return false;
         var answered = intrinsic.Invoke(Assisting(budget, depth), bound, arguments);
         result = new FrameResult(
@@ -2237,6 +2250,43 @@ public sealed class StaticMachine
             return false;
         State.Heap.TrySetModelValue(value, LoaderFrameworkIntrinsic.HomeModuleMark, true);
         return true;
+    }
+
+    private readonly Dictionary<IMethod, IStaticIntrinsic?> _resolvedIntrinsics =
+        new(ReferenceEqualityComparer.Instance);
+
+    private bool TryResolveIntrinsic(IMethod method, out IStaticIntrinsic intrinsic)
+    {
+        // Built-in matchers depend only on metadata. User-supplied registries may
+        // intentionally change their answer, and emitted modules are mutable.
+        if (!_usesDefaultIntrinsics || State.IsAssembled(method.Module))
+            return _intrinsics.TryResolve(method, out intrinsic);
+        if (_resolvedIntrinsics.TryGetValue(method, out var known))
+        {
+            intrinsic = known!;
+            return known is not null;
+        }
+        var found = _intrinsics.TryResolve(method, out intrinsic);
+        _resolvedIntrinsics[method] = found ? intrinsic : null;
+        return found;
+    }
+
+    // Resolution walks dnlib's lazy metadata and can probe framework assemblies. The same
+    // operand recurs throughout interpreter loops. Clear at public execution boundaries so a
+    // caller can edit metadata between executions on a warm machine.
+    private readonly Dictionary<IMethod, MethodDef?> _resolvedMethods =
+        new(ReferenceEqualityComparer.Instance);
+
+    private MethodDef? ResolvedMethod(IMethod target)
+    {
+        if (target is MethodDef definition)
+            return definition;
+        // Reflection.Emit scratch modules can acquire declarations while the machine runs.
+        if (State.IsAssembled(target.Module))
+            return target.ResolveMethodDef();
+        if (_resolvedMethods.TryGetValue(target, out var known))
+            return known;
+        return _resolvedMethods[target] = target.ResolveMethodDef();
     }
 
     /// <summary>
@@ -2486,7 +2536,7 @@ public sealed class StaticMachine
         }
 
         State.Heap.TryGetModelValue<StaticValue>(callee, DelegateTargetKey, out var receiver);
-        var definition = bound.ResolveMethodDef();
+        var definition = ResolvedMethod(bound);
         // Framework callbacks use the same binding as an explicit delegate Invoke:
         // an open instance delegate receives its receiver in the supplied arguments.
         var open = State.Heap.TryGetModelValue<bool>(callee, DelegateOpenKey, out var isOpen) && isOpen;
@@ -2502,7 +2552,7 @@ public sealed class StaticMachine
 
         // A callback into the framework rather than into the file is still a call, and the model is
         // what answers it — the same answer a direct call to it would have got.
-        return _intrinsics.TryResolve(bound, out var intrinsic)
+        return TryResolveIntrinsic(bound, out var intrinsic)
             ? intrinsic.Invoke(Assisting(budget, depth), bound, callArguments)
             : IntrinsicResult.Invalid($"{bound.FullName} has no body here to run.");
     }
@@ -2526,14 +2576,14 @@ public sealed class StaticMachine
         StaticWorkBudget budget,
         int depth)
     {
-        if (method.ResolveMethodDef() is { HasBody: true } definition && MayRun(definition))
+        if (ResolvedMethod(method) is { HasBody: true } definition && MayRun(definition))
         {
             var result = ExecuteFrame(
                 definition, [.. arguments], budget, depth + 1, GenericScope.For(method, null));
             return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
         }
 
-        if (method.ResolveMethodDef() is { IsVirtual: true } declared &&
+        if (ResolvedMethod(method) is { IsVirtual: true } declared &&
             !declared.IsStatic &&
             arguments.Count > 0 &&
             method.DeclaringType?.Module is { } module &&
@@ -2545,7 +2595,7 @@ public sealed class StaticMachine
             return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
         }
 
-        return _intrinsics.TryResolve(method, out var intrinsic)
+        return TryResolveIntrinsic(method, out var intrinsic)
             ? intrinsic.Invoke(Assisting(budget, depth), method, [.. arguments])
             : IntrinsicResult.Invalid($"{method.FullName} has no body here to run.");
     }
@@ -2569,14 +2619,29 @@ public sealed class StaticMachine
         }
     }
 
+    private readonly Dictionary<(IMethod Target, string? RuntimeType, ModuleDef Module), MethodDef?> _virtualTargets = [];
+
     private MethodDef? ResolveVirtualTarget(
         IMethod target,
         StaticValue instance,
         ModuleDef module)
     {
-        var expected = target.ResolveMethodDef();
+        var runtimeType = State.Heap.TryGetRuntimeTypeName(instance, out var name) ? name : null;
+        if (State.IsAssembled(module) || State.IsAssembled(target.Module))
+            return ResolveVirtualTargetCore(target, runtimeType, module);
+        var key = (target, runtimeType, module);
+        if (_virtualTargets.TryGetValue(key, out var known))
+            return known;
+        // Dispatch depends on the operand and receiver's type, never its current fields.
+        // Cache misses too; framework receivers often have no executable override here.
+        return _virtualTargets[key] = ResolveVirtualTargetCore(target, runtimeType, module);
+    }
+
+    private MethodDef? ResolveVirtualTargetCore(IMethod target, string? runtimeTypeName, ModuleDef module)
+    {
+        var expected = ResolvedMethod(target);
         var comparer = new SigComparer();
-        if (State.Heap.TryGetRuntimeTypeName(instance, out var runtimeTypeName) &&
+        if (runtimeTypeName is not null &&
             TypeNamed(module, runtimeTypeName) is { } runtimeType)
         {
             for (var type = runtimeType; type is not null; type = type.BaseType?.ResolveTypeDef())
@@ -3108,15 +3173,12 @@ public sealed class StaticMachine
                 : $"{method} IL_{instruction.Offset:X4}");
     }
 
-    private static int ArgumentIndex(MethodDef method, object operand)
+    private static int ArgumentIndex(object operand)
     {
         if (operand is Parameter parameter)
-        {
-            var index = method.Parameters.IndexOf(parameter);
-            if (index >= 0)
-                return index;
+            // ParameterList maintains Index, including the hidden receiver. Searching the
+            // same locked list on every ldarg adds no information.
             return parameter.Index;
-        }
         return operand switch
         {
             byte value => value,
@@ -3134,6 +3196,25 @@ public sealed class StaticMachine
         int value => value,
         _ => throw new InvalidOperationException("Invalid local operand.")
     };
+
+    // LocalList is a locked dnlib LazyList. Copy scalar defaults once per execution,
+    // rather than reading each local's type again on every entry into a hot helper.
+    private readonly Dictionary<MethodDef, StaticValue[]> _localDefaults =
+        new(ReferenceEqualityComparer.Instance);
+
+    private StaticValue[] LocalDefaults(MethodDef method)
+    {
+        var mutable = State.IsAssembled(method.Module);
+        if (!mutable && _localDefaults.TryGetValue(method, out var known))
+            return known;
+        var variables = method.Body.Variables;
+        var defaults = new StaticValue[variables.Count];
+        for (var at = 0; at < defaults.Length; at++)
+            defaults[at] = DefaultValue(variables[at].Type);
+        if (!mutable)
+            _localDefaults[method] = defaults;
+        return defaults;
+    }
 
     /// <summary>
     /// What a frame tells provenance about where its arguments and locals came from.
@@ -3155,12 +3236,12 @@ public sealed class StaticMachine
     private readonly Dictionary<MethodDef, FrameLabels> _labelled =
         new(ReferenceEqualityComparer.Instance);
 
-    private FrameLabels Labelled(MethodDef method, int arguments)
+    private FrameLabels Labelled(MethodDef method, int arguments, int localCount)
     {
         var variables = method.Body.Variables;
         if (_labelled.TryGetValue(method, out var known) &&
             known.Arguments.Length == arguments &&
-            known.Locals.Length == variables.Count)
+            known.Locals.Length == localCount)
         {
             return known;
         }
@@ -3168,8 +3249,8 @@ public sealed class StaticMachine
         var argued = new string[arguments];
         for (var at = 0; at < argued.Length; at++)
             argued[at] = $"{method.MDToken}/arg{at}";
-        var locals = new string[variables.Count];
-        var types = new string[variables.Count];
+        var locals = new string[localCount];
+        var types = new string[localCount];
         for (var at = 0; at < locals.Length; at++)
         {
             locals[at] = $"{method.MDToken}/local{at}";
@@ -3275,7 +3356,7 @@ public sealed class StaticMachine
         Instruction instruction,
         StaticValue value,
         string detail) =>
-        State.Provenance.Origin(
+        State.Provenance.Saturated ? State.Provenance.Unrecorded(value) : State.Provenance.Origin(
             value,
             ProvenanceKind.Literal,
             Located(method, instruction),
@@ -3287,7 +3368,7 @@ public sealed class StaticMachine
         StaticValue value,
         ProvenanceKind kind,
         params ReadOnlySpan<StaticValue> inputs) =>
-        State.Provenance.Operation(
+        State.Provenance.Saturated ? State.Provenance.Unrecorded(value) : State.Provenance.Operation(
             value,
             kind,
             Located(method, instruction),

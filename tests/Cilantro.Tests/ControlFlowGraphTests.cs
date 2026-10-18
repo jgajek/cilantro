@@ -6,6 +6,67 @@ namespace Cilantro.Tests;
 
 public sealed class ControlFlowGraphTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NestedFilterAndOpenEndedRegionsKeepEveryInstructionMembership(bool openEnded)
+    {
+        using var module = new ModuleDefUser("regions");
+        var il = Enumerable.Range(0, 32).Select(_ => OpCodes.Nop.ToInstruction()).ToArray();
+        il[^1].OpCode = OpCodes.Ret;
+        var method = Method(module, il);
+        var ranges = new[]
+        {
+            (Try: 1, End: 10, Filter: -1, Handler: 10, HandlerEnd: 25),
+            (Try: 3, End: 6, Filter: 6, Handler: 8, HandlerEnd: 10),
+            (Try: 11, End: 15, Filter: -1, Handler: 15, HandlerEnd: openEnded ? 32 : 28)
+        };
+        foreach (var range in ranges)
+            method.Body.ExceptionHandlers.Add(new ExceptionHandler(
+                range.Filter < 0 ? ExceptionHandlerType.Finally : ExceptionHandlerType.Filter)
+            {
+                TryStart = il[range.Try], TryEnd = il[range.End],
+                FilterStart = range.Filter < 0 ? null : il[range.Filter],
+                HandlerStart = il[range.Handler], HandlerEnd = range.HandlerEnd == 32 ? null : il[range.HandlerEnd]
+            });
+        var graph = ControlFlowGraph.Build(method);
+        for (var index = 0; index < il.Length; index++)
+        {
+            var expected = ranges.Select((range, clause) => (
+                Handler: method.Body.ExceptionHandlers[clause],
+                InTry: index >= range.Try && index < range.End,
+                InHandler: index >= range.Handler && index < range.HandlerEnd,
+                InFilter: range.Filter >= 0 && index >= range.Filter && index < range.Handler))
+                .Where(region => region.InTry || region.InHandler || region.InFilter);
+            Assert.Equal(expected, graph.RegionsOf(il[index]).Select(region =>
+                (region.Handler, region.InTry, region.InHandler, region.InFilter)));
+        }
+    }
+
+    [Fact]
+    public void LookupScopesNestAndDoNotRetainRenamedTypesAfterDisposal()
+    {
+        using var module = new ModuleDefUser("lookup");
+        var type = new TypeDefUser("Tests", "Original");
+        module.Types.Add(type);
+        Assert.False(module.EnableTypeDefFindCache);
+        using (new TypeDefinitionLookupScope(module))
+        {
+            Assert.Same(type, module.Find("Tests.Original", false));
+            using (new TypeDefinitionLookupScope(module))
+                Assert.True(module.EnableTypeDefFindCache);
+            Assert.True(module.EnableTypeDefFindCache);
+        }
+        Assert.False(module.EnableTypeDefFindCache);
+        type.Name = "Renamed";
+        using (new TypeDefinitionLookupScope(module))
+        {
+            Assert.Null(module.Find("Tests.Original", false));
+            Assert.Same(type, module.Find("Tests.Renamed", false));
+        }
+        Assert.False(module.EnableTypeDefFindCache);
+    }
+
     [Fact]
     public void DuplicateTargetsKeepDistinctKindsAndFirstOccurrenceOrder()
     {

@@ -216,6 +216,10 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         for (var index = 1; index < instructions.Count; index++)
         {
             var branch = instructions[index];
+            // Feeding can follow jumps and scan their incoming edges. Only conditional
+            // branches (including switch) consume a condition that this fold can replace.
+            if (branch.OpCode.FlowControl != FlowControl.Cond_Branch)
+                continue;
             if (Feeding(instructions, entered, index) is not { } producer)
                 continue;
             // Reconstructed truth tests duplicate a reference before testing it, leaving

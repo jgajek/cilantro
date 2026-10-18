@@ -919,20 +919,49 @@ public static class VirtualSemantics
     private const int Tabular = 64;
 
     /// <summary>One place the engine keeps something, remembered well enough to put it back.</summary>
-    private sealed record Place(
+    private readonly record struct Place(
         string Path,
         StaticValue Owner,
         FieldDef? Field,
         int Index,
         StaticValue Value);
 
+    // A trial takes several complete snapshots of the same tables. Their paths depend
+    // only on the prefix and index, so format them once. The cap limits retained text,
+    // never the elements included in a snapshot.
+    private sealed class ElementPaths
+    {
+        private const int MaximumElements = 65_536;
+        private readonly Dictionary<string, string[]> paths = new(StringComparer.Ordinal);
+        private int elements;
+        public int SnapshotSize { get; set; }
+
+        public string[]? For(string prefix, int length)
+        {
+            paths.TryGetValue(prefix, out var known);
+            if (known is not null && known.Length >= length)
+                return known;
+            if (length > MaximumElements - elements + (known?.Length ?? 0))
+                return null;
+            var built = new string[length];
+            var previous = known?.Length ?? 0;
+            known?.CopyTo(built, 0);
+            for (var index = previous; index < length; index++)
+                built[index] = $"{prefix}[{index}]";
+            elements += length - previous;
+            paths[prefix] = built;
+            return built;
+        }
+    }
+
     private static List<Place> Footprint(
         StaticHeap heap,
         ModuleDef module,
         StaticValue engine,
-        List<StaticValue> stack)
+        List<StaticValue> stack,
+        ElementPaths? paths = null)
     {
-        var held = new List<Place>();
+        var held = new List<Place>(paths?.SnapshotSize ?? 0);
         var visited = new HashSet<long>();
         var queue = new Queue<(StaticValue Value, string Path, int Depth)>();
         queue.Enqueue((engine, string.Empty, 0));
@@ -960,10 +989,12 @@ public static class VirtualSemantics
                 // costs more than it could ever say.
                 if (items.Count <= Tabular)
                 {
+                    var sites = paths?.For(path, items.Count);
                     for (var index = 0; index < items.Count; index++)
                     {
-                        held.Add(new Place($"{path}[{index}]", value, null, index, items[index]));
-                        Follow(queue, $"{path}[{index}]", items[index], depth);
+                        var site = sites?[index] ?? $"{path}[{index}]";
+                        held.Add(new Place(site, value, null, index, items[index]));
+                        Follow(queue, site, items[index], depth);
                     }
                 }
                 continue;
@@ -971,12 +1002,14 @@ public static class VirtualSemantics
 
             if (heap.TryGetLength(value, out var length) && heap.TryGetArrayElementType(value, out _))
             {
+                var sites = paths?.For(path, length);
                 for (var index = 0; index < length; index++)
                 {
                     if (heap.TryReadArray(value, index, out var element))
                     {
-                        held.Add(new Place($"{path}[{index}]", value, null, index, element));
-                        Follow(queue, $"{path}[{index}]", element, depth);
+                        var site = sites?[index] ?? $"{path}[{index}]";
+                        held.Add(new Place(site, value, null, index, element));
+                        Follow(queue, site, element, depth);
                     }
                 }
                 continue;
@@ -986,11 +1019,14 @@ public static class VirtualSemantics
             {
                 if (heap.TryReadField(value, field, out var stored))
                 {
-                    held.Add(new Place($"{path}.{field.Name}", value, field, 0, stored));
-                    Follow(queue, $"{path}.{field.Name}", stored, depth);
+                    var site = $"{path}.{field.Name}";
+                    held.Add(new Place(site, value, field, 0, stored));
+                    Follow(queue, site, stored, depth);
                 }
             }
         }
+        if (paths is not null)
+            paths.SnapshotSize = held.Count;
         return held;
     }
 
@@ -1143,6 +1179,7 @@ public static class VirtualSemantics
     {
         refused = string.Empty;
         var trials = new List<Trial>();
+        var paths = new ElementPaths();
         foreach (var seeds in sets ?? Seeds)
         {
             stack.Clear();
@@ -1170,13 +1207,13 @@ public static class VirtualSemantics
                 before.Add(seeds[position]);
             }
 
-            var footprint = Footprint(heap, module, engine, stack);
+            var footprint = Footprint(heap, module, engine, stack, paths);
             var staged = Stage(heap, staging, engine, operation);
             var seeded = Sown(
                 machine, module, heap, factory, slotType, footprint, operand, trials.Count);
             var prepared = seeded.Count == 0 && !staged
                     ? footprint
-                    : Footprint(heap, module, engine, stack);
+                    : Footprint(heap, module, engine, stack, paths);
             var was = prepared
                 .ToDictionary(place => place.Path, place => place.Value.Bits);
             var top = stack[^1];
@@ -1204,7 +1241,7 @@ public static class VirtualSemantics
                 return [];
             }
 
-            var settled = Footprint(heap, module, engine, stack);
+            var settled = Footprint(heap, module, engine, stack, paths);
             var moved = new HashSet<long>();
             var where = new List<string>();
             foreach (var place in settled)

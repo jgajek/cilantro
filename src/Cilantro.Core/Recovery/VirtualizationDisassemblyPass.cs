@@ -43,6 +43,16 @@ public sealed class VirtualizationDisassemblyPass : DeobfuscationPass
                 ["No method was replaced by interpreter bytecode, so there is nothing to read."]);
         }
 
+        // Probes repeatedly look up engine and wrapper types by name. dnlib otherwise
+        // walks every type for each lookup. This pass only reads metadata; discard the
+        // index before later passes rename, add or remove declarations.
+        using var typeLookup = new TypeDefinitionLookupScope(context.Module);
+        return ReadPrograms(context, virtualized);
+    }
+
+    private static (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) ReadPrograms(
+        ArtifactContext context, IReadOnlyList<VirtualizedMethod> virtualized)
+    {
         var programs = new List<VirtualProgram>();
         var diagnostics = new List<string>();
         EnsureOtherProgramOperations(context, diagnostics);

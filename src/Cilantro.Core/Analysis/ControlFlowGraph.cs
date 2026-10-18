@@ -217,10 +217,36 @@ public sealed class ControlFlowGraph
         IList<Instruction> instructions,
         Dictionary<Instruction, int> indices)
     {
-        var result = new Dictionary<Instruction, IReadOnlyList<ExceptionRegion>>();
-        foreach (var instruction in instructions)
+        var result = new Dictionary<Instruction, IReadOnlyList<ExceptionRegion>>(instructions.Count);
+        // Region membership changes only at clause boundaries. Share one immutable
+        // snapshot across each interval instead of allocating and testing every clause
+        // again for every instruction (and every CFG rebuilt during simplification).
+        var boundaries = new HashSet<int> { 0 };
+        foreach (var handler in method.Body.ExceptionHandlers)
         {
-            var index = indices[instruction];
+            Boundary(handler.TryStart);
+            Boundary(handler.TryEnd);
+            Boundary(handler.HandlerStart);
+            Boundary(handler.HandlerEnd);
+            Boundary(handler.FilterStart);
+        }
+        IReadOnlyList<ExceptionRegion> current = [];
+        for (var index = 0; index < instructions.Count; index++)
+        {
+            if (boundaries.Contains(index))
+                current = Memberships(index);
+            result[instructions[index]] = current;
+        }
+        return result;
+
+        void Boundary(Instruction? instruction)
+        {
+            if (instruction is not null && indices.TryGetValue(instruction, out var index))
+                boundaries.Add(index);
+        }
+
+        IReadOnlyList<ExceptionRegion> Memberships(int index)
+        {
             var memberships = new List<ExceptionRegion>();
             foreach (var handler in method.Body.ExceptionHandlers)
             {
@@ -231,9 +257,8 @@ public sealed class ControlFlowGraph
                 if (inTry || inHandler || inFilter)
                     memberships.Add(new ExceptionRegion(handler, inTry, inHandler, inFilter));
             }
-            result[instruction] = memberships;
+            return memberships.Count == 0 ? [] : memberships.ToArray();
         }
-        return result;
 
         bool Contains(int index, Instruction? start, Instruction? end)
         {

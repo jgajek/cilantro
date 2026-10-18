@@ -62,7 +62,7 @@ Each case includes an offline report, extracted originals, cleaned assemblies wh
 
 CILantro supports specific protection implementations and configurations. A successful run means its configured policy was met; structural verification checks metadata and CIL. Read the report's remaining work and reconstruction comparisons before drawing a conclusion about a particular path.
 
-The tool does not identify malware families, fetch downloaded stages or recreate the original source project. Recovery outputs remain malware artifacts. The [support guide](docs/compatibility.md) explains coverage, and the [validation report](docs/status-report.md) records the corpus and release checks. Current release notes: [1.0.1](docs/releases/1.0.1.md).
+The tool does not identify malware families, fetch downloaded stages or recreate the original source project. Recovery outputs remain malware artifacts. The [support guide](docs/compatibility.md) explains coverage, and the [validation report](docs/status-report.md) records the corpus and release checks. Current release notes: [1.0.2](docs/releases/1.0.2.md).
 
 ## Continue the investigation
 

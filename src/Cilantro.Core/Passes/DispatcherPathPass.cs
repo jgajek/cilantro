@@ -38,6 +38,10 @@ public class DispatcherPathPass : DeobfuscationPass
     internal static int Rewrite(MethodDef method, bool preserveEffects = false)
     {
         var graph = ControlFlowGraph.Build(method);
+        var eligible = method.Body.Variables.Where(v => v.Type.ElementType is ElementType.I4 or ElementType.U4).ToHashSet();
+        foreach (var instruction in method.Body.Instructions)
+            if (instruction.OpCode.Code is Code.Ldloca or Code.Ldloca_S)
+                eligible.Remove(instruction.GetLocal(method.Body.Variables));
         var plans = new List<(Instruction Value, Instruction Branch, TraceResult Result, Local? Store)>();
         foreach (var block in graph.Blocks)
         {
@@ -58,13 +62,17 @@ public class DispatcherPathPass : DeobfuscationPass
             if (sharedStore is null && (il.Length < 3 || !il[^3].IsLdcI4() || !il[^2].IsStloc())) continue;
             var constant = sharedStore is null ? il[^3] : carried!;
             var local = (sharedStore ?? il[^2]).GetLocal(method.Body.Variables);
-            if (local?.Type.ElementType is not (ElementType.I4 or ElementType.U4) ||
-                method.Body.Instructions.Any(i => i.OpCode.Code is Code.Ldloca or Code.Ldloca_S && i.GetLocal(method.Body.Variables) == local))
+            if (local is null || !eligible.Contains(local))
                 continue;
-            if (Trace(graph, il[^1], target, local, constant.GetLdcI4Value(), sharedStore is not null) is { } result && result.Target != target)
+            if (Trace(graph, il[^1], target, local, constant.GetLdcI4Value(), sharedStore is not null, eligible) is { } result && result.Target != target)
+            {
                 plans.Add((constant, il[^1], result, sharedStore is null ? null : local));
+                // Only the first plan is committed before rebuilding the graph. Later
+                // candidates would be discarded and recomputed against the changed body.
+                break;
+            }
         }
-        if (plans.Count == 0) return RewriteKnownStore(method, graph, preserveEffects);
+        if (plans.Count == 0) return RewriteKnownStore(method, graph, preserveEffects, eligible);
         using var transaction = new BodyMutationTransaction(method);
         var before = EvaluationStackAnalyzer.Analyze(method);
         if (!before.Valid) return 0;
@@ -84,7 +92,8 @@ public class DispatcherPathPass : DeobfuscationPass
         return 1;
     }
 
-    private static int RewriteKnownStore(MethodDef method, ControlFlowGraph graph, bool preserveEffects)
+    private static int RewriteKnownStore(MethodDef method, ControlFlowGraph graph, bool preserveEffects,
+        IReadOnlySet<Local> eligible)
     {
         if (!method.Body.Instructions.Any(i => i.OpCode.FlowControl == FlowControl.Cond_Branch) ||
             !EvaluationStackAnalyzer.Analyze(method).Valid) return 0;
@@ -96,7 +105,7 @@ public class DispatcherPathPass : DeobfuscationPass
             if (il.Length < 2 || !il[^2].IsStloc() || !stores.TryGetValue(il[^2], out var value) ||
                 il[^1].OpCode.Code is not (Code.Br or Code.Br_S) || il[^1].Operand is not Instruction target ||
                 il[^2].GetLocal(method.Body.Variables) is not { } local) continue;
-            if (Trace(graph, il[^1], target, local, value, false) is not { } result || result.Target == target)
+            if (Trace(graph, il[^1], target, local, value, false, eligible) is not { } result || result.Target == target)
                 continue;
             using var transaction = new BodyMutationTransaction(method);
             // Keep the original computation and store at their original sites. Only the
@@ -132,13 +141,9 @@ public class DispatcherPathPass : DeobfuscationPass
     }
 
     private static TraceResult? Trace(ControlFlowGraph graph, Instruction source,
-        Instruction start, Local local, int value, bool stackCarried)
+        Instruction start, Local local, int value, bool stackCarried, IReadOnlySet<Local> eligible)
     {
         var values = new Dictionary<Local, int> { [local] = value };
-        var eligible = graph.Method.Body.Variables.Where(v => v.Type.ElementType is ElementType.I4 or ElementType.U4).ToHashSet();
-        foreach (var instruction in graph.Method.Body.Instructions)
-            if (instruction.OpCode.Code is Code.Ldloca or Code.Ldloca_S)
-                eligible.Remove(instruction.GetLocal(graph.Method.Body.Variables));
         if (!eligible.Contains(local)) return null;
         TraceResult Result(Instruction target) => new(values[local], target,
             values.Where(p => p.Key != local).ToDictionary(p => p.Key, p => p.Value));

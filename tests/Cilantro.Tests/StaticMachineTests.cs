@@ -6,6 +6,159 @@ namespace Cilantro.Tests;
 
 public sealed class StaticMachineTests
 {
+    [Fact]
+    public void CustomRegistriesMayChangeTheirSelectionBetweenCalls()
+    {
+        using var module = NewModule();
+        var target = new MemberRefUser(module, "Read", MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            module.CorLibTypes.GetTypeRef("Fixture", "External"));
+        var caller = NewMethod(module, "Caller", target.MethodSig);
+        caller.Body.Instructions.Add(OpCodes.Call.ToInstruction(target));
+        caller.Body.Instructions.Add(OpCodes.Call.ToInstruction(target));
+        caller.Body.Instructions.Add(OpCodes.Add.ToInstruction());
+        caller.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var registry = new ChangingRegistry();
+        var result = new StaticMachine(intrinsics: registry).Execute(caller);
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(3, result.Value.AsInt32());
+    }
+
+    private sealed class ChangingRegistry : IStaticIntrinsicRegistry
+    {
+        public int Invocations { get; set; }
+        public bool TryResolve(IMethod method, out IStaticIntrinsic intrinsic)
+        {
+            intrinsic = new SelectedIntrinsic(this, Invocations == 0 ? 1 : 2);
+            return true;
+        }
+    }
+
+    private sealed class SelectedIntrinsic(ChangingRegistry registry, int value) : IStaticIntrinsic
+    {
+        public bool Matches(IMethod method) => true;
+        public IntrinsicResult Invoke(IntrinsicContext context, IMethod method, IReadOnlyList<StaticValue> arguments)
+        {
+            registry.Invocations++;
+            return IntrinsicResult.Completed(StaticValue.FromInt32(value));
+        }
+    }
+
+    [Fact]
+    public void AssembledModulesDoNotKeepResolutionAcrossMetadataEditsInsideAnExecution()
+    {
+        using var module = NewModule();
+        var first = NewMethod(module, "First", MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            OpCodes.Ldc_I4_1, OpCodes.Ret);
+        NewMethod(module, "Second", first.MethodSig, OpCodes.Ldc_I4_2, OpCodes.Ret);
+        var target = new MemberRefUser(module, "First", first.MethodSig, first.DeclaringType);
+        var caller = NewMethod(module, "Caller", first.MethodSig);
+        caller.Body.Instructions.Add(OpCodes.Call.ToInstruction(target));
+        caller.Body.Instructions.Add(OpCodes.Call.ToInstruction(target));
+        caller.Body.Instructions.Add(OpCodes.Add.ToInstruction());
+        caller.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var machine = new StaticMachine();
+        machine.State.RegisterAssembledModule(module);
+        machine.FrameExited = method => { if (method == first) target.Name = "Second"; };
+        var result = machine.Execute(caller);
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(3, result.Value.AsInt32());
+        Assert.False(module.EnableTypeDefFindCache);
+    }
+
+    [Fact]
+    public void LocalDefaultsAreRefreshedWhenATypeChangesBetweenExecutions()
+    {
+        using var module = NewModule();
+        var method = NewMethod(module, "DefaultLocal", MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            OpCodes.Ldloc_0, OpCodes.Ret);
+        var local = new Local(module.CorLibTypes.Int32);
+        method.Body.Variables.Add(local);
+        var machine = new StaticMachine();
+        Assert.Equal(StaticValueKind.Int32, machine.Execute(method).Value.Kind);
+        local.Type = module.CorLibTypes.Int64;
+        method.MethodSig.RetType = module.CorLibTypes.Int64;
+        Assert.Equal(StaticValueKind.Int64, machine.Execute(method).Value.Kind);
+    }
+
+    [Fact]
+    public void RepeatedVirtualCallsDispatchByReceiverType()
+    {
+        using var module = NewModule();
+        var baseType = new TypeDefUser("Tests", "Base", module.CorLibTypes.Object.TypeDefOrRef);
+        module.Types.Add(baseType);
+        var signature = MethodSig.CreateInstance(module.CorLibTypes.Int32);
+        var declared = new MethodDefUser("Value", signature)
+        {
+            Attributes = MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.Abstract
+        };
+        baseType.Methods.Add(declared);
+        var machine = new StaticMachine();
+        var receivers = new List<StaticValue>();
+        foreach (var number in new[] { 1, 2 })
+        {
+            var type = new TypeDefUser("Tests", "Derived" + number, baseType);
+            module.Types.Add(type);
+            var implementation = new MethodDefUser("Value", signature)
+            {
+                Attributes = MethodAttributes.Public | MethodAttributes.Virtual,
+                Body = new CilBody()
+            };
+            implementation.Body.Instructions.Add(Instruction.CreateLdcI4(number));
+            implementation.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            type.Methods.Add(implementation);
+            Assert.True(machine.State.Heap.TryAllocateObject(type.FullName, out var receiver));
+            receivers.Add(receiver);
+        }
+        var caller = NewMethod(module, "Caller", MethodSig.CreateStatic(module.CorLibTypes.Int32,
+            module.CorLibTypes.Object, module.CorLibTypes.Object));
+        foreach (var argument in new[] { OpCodes.Ldarg_0, OpCodes.Ldarg_1, OpCodes.Ldarg_0 })
+        {
+            caller.Body.Instructions.Add(argument.ToInstruction());
+            caller.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(declared));
+        }
+        caller.Body.Instructions.Add(OpCodes.Add.ToInstruction());
+        caller.Body.Instructions.Add(OpCodes.Add.ToInstruction());
+        caller.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var result = machine.Execute(caller, receivers);
+        Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        Assert.Equal(4, result.Value.AsInt32());
+    }
+
+    [Fact]
+    public void MethodResolutionIsRefreshedBetweenWarmExecutions()
+    {
+        using var module = NewModule();
+        var first = NewMethod(module, "First", MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            OpCodes.Ldc_I4_1, OpCodes.Ret);
+        NewMethod(module, "Second", MethodSig.CreateStatic(module.CorLibTypes.Int32),
+            OpCodes.Ldc_I4_2, OpCodes.Ret);
+        var target = new MemberRefUser(module, "First", first.MethodSig, first.DeclaringType);
+        var caller = NewMethod(module, "Caller", first.MethodSig);
+        caller.Body.Instructions.Add(OpCodes.Call.ToInstruction(target));
+        caller.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var machine = new StaticMachine();
+        Assert.Equal(1, machine.Execute(caller).Value.AsInt32());
+        target.Name = "Second";
+        Assert.Equal(2, machine.Execute(caller).Value.AsInt32());
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void SaturatedOperationsKeepTheSameBudgetMarkerAndValue(int maximumNodes)
+    {
+        var graph = new ProvenanceGraph(maximumNodes, 8, 8);
+        while (!graph.Saturated)
+            graph.Origin(StaticValue.FromInt32(graph.Count), ProvenanceKind.Literal, "site", "value");
+        var expected = graph.Origin(StaticValue.FromInt32(42), ProvenanceKind.Literal, "site", "42");
+        var actual = graph.Operation(StaticValue.FromInt32(42), ProvenanceKind.Binary, "other", "add",
+            expected, expected, StaticValue.Unknown);
+        Assert.Equal(expected.ProvenanceId, actual.ProvenanceId);
+        Assert.Equal(42, actual.AsInt32());
+        Assert.True(graph.Count <= maximumNodes);
+    }
+
     [Theory]
     [InlineData("m_ptr")]
     [InlineData("m_pData")]

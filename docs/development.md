@@ -15,6 +15,8 @@ dotnet run --project src/Cilantro.Cli -c Release --no-build -- --help
 
 Release configuration matters for interpreter performance. For a short edit/test cycle, add `--filter "Cost!=High"` to the test command. For release validation, run the full available suite and account for sample-dependent skips. Use [corpus gates](corpus.md) and the [benign probe harness](../corpus/probes/README.md) for recovery changes.
 
+For performance changes, use the [corpus timing and output comparison workflow](performance.md).
+
 Do not execute malware to test the tool. Static recovery, report inspection, hashes, and decompiler checks can operate on the malware corpus; executable behavioral trials use the benign source-built probes.
 
 ## Publish locally

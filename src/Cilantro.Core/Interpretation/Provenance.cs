@@ -126,6 +126,9 @@ public sealed class ProvenanceGraph
         string detail,
         params ReadOnlySpan<StaticValue> inputs)
     {
+        // Intern always returns the budget node once full, regardless of the parents.
+        if (Saturated)
+            return Unrecorded(value);
         Span<int> parents = inputs.Length <= MostOperandsOnTheStack
             ? stackalloc int[MostOperandsOnTheStack]
             : new int[inputs.Length];

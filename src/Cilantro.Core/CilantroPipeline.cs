@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "1.0.1";
+    public const string Version = "1.0.2";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of

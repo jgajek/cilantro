@@ -26,6 +26,10 @@ For example, recovering a readable command handler is useful even if another pat
 
 These checks support the stated corpus scope. They do not establish behavior for every input or complete protection removal on an unfamiliar file.
 
+## 1.0.2 release validation
+
+The performance update passed all 2,931 tests with private fixtures available: zero failures or skips. Tests ran in `C:/cilantro-verify`. Two optimized pinned-corpus runs each passed all 24 cases, and all 110 detailed reports/listings matched the original build after excluding pass durations and output paths. Corpus wall time fell by 59.5% on the measured host; see the [performance report](performance.md) for the complete measurements and GC tradeoff.
+
 ## 1.0.1 release validation
 
 The banner/documentation-packaging update passed 2,848 public tests, with 37 sample-dependent skips. CI and both release build jobs passed. Downloaded Windows x64 and Linux x64 archives passed checksum and documentation-link checks; both CLI/MCP pairs passed version, help, benign recovery, JSON-error and MCP initialization/tool-list smoke checks. The updated banner was confirmed on both platforms.
