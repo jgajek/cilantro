@@ -8,11 +8,9 @@ Recover readable .NET code and embedded payloads from supported **.NET Reactor, 
 
 A protected method can hide a PowerShell launcher behind an empty-looking stub. A loader can disguise `Assembly.Load` behind a proxy and encrypt the type and method it invokes next. CILantro works through supported protection layers so you can follow that behavior in a .NET decompiler.
 
-It also **lifts supported Reactor VM bytecode into CIL and reconstructs method bodies**, making those programs available for decompilation. See the [before-and-after malware walkthrough](docs/protection-removal.md) for VM reconstruction, hidden process execution, in-memory loading and command handling.
+It also **lifts supported Reactor VM bytecode into CIL and reconstructs method bodies**, making those programs available for decompilation. See the [before-and-after malware walkthrough](docs/protection-removal.md) for VM reconstruction, hidden process execution, in-memory loading and command handling. **Babel .NET recovery** includes generated strings, numeric tables, token-bound delegate adapters and encrypted/compressed resource streams, including supported layers wrapped by Reactor.
 
 Recovery uses a bounded interpreter. It does not launch the sample or load its code into the host CLR.
-
-**Babel .NET recovery** includes generated strings, numeric tables, token-bound delegate adapters and encrypted/compressed resource streams, including supported layers wrapped by Reactor. The nine captured [Babel corpus inputs](corpus/babel-static.manifest.json) pass their recovery gates and export 17 hash-verified streams without introducing IL-verifier regressions. Some adapters retain their original access context, and missing input resources remain unresolved; see [Babel coverage](docs/compatibility.md#babel-net-coverage).
 
 ## Recover a sample
 
