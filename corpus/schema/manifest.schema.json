@@ -27,7 +27,7 @@
           },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "localName": { "type": "string", "minLength": 1 },
-          "expectedDetection": { "enum": ["reactor", "reactor-bootstrap", "confuserex", "none"] },
+          "expectedDetection": { "enum": ["reactor", "reactor-bootstrap", "confuserex", "babel", "none"] },
           "expectedCapabilities": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
@@ -68,6 +68,22 @@
           "maximumSurplusResources": { "type": ["integer", "null"] },
           "expectUnsupportedReason": { "type": ["string", "null"], "minLength": 1 },
           "minimumConstantStringSites": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumRecoveredStringSites": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumNumericTableSites": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumProxyCallsRestored": { "type": ["integer", "null"], "minimum": 0 },
+          "devirtualize": { "type": "boolean" },
+          "expectedMissingResourceNames": {
+            "type": ["array", "null"],
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true,
+            "minItems": 1
+          },
+          "expectedDecodedResourceSha256": {
+            "type": ["array", "null"],
+            "items": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "minItems": 1,
+            "uniqueItems": true
+          },
           "minimumVirtualOperationsRead": {
             "type": ["number", "null"],
             "minimum": 0,

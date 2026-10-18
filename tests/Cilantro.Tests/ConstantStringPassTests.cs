@@ -9,6 +9,22 @@ namespace Cilantro.Tests;
 public sealed class ConstantStringPassTests
 {
     [Fact]
+    public void BabelMarkerEnablesConstantStringRecovery()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            BabelTests.Marker(module);
+            var type = SyntheticContext.AddType(module, "Holder");
+            type.Methods.Add(Decoder(module, "Hidden"));
+            type.Methods.Add(Caller(module, "Uses", type.Methods[0]));
+        });
+        new BabelDetectionPass().Run(context);
+        var result = new ConstantStringPass().Run(context);
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(1, result.Changes);
+    }
+
+    [Fact]
     public void ACallToADecoderThatOnlyEverReturnsOneStringBecomesTheString()
     {
         using var context = SyntheticContext.Build(module =>

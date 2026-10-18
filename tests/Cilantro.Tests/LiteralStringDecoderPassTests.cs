@@ -7,6 +7,19 @@ namespace Cilantro.Tests;
 
 public sealed class LiteralStringDecoderPassTests
 {
+    [Fact]
+    public void BabelDecoderRunsBeforeUnpackingAndPreservesItsResult()
+    {
+        using var context = Fixture(false, false);
+        context.SetFact("babel.structure", new Cilantro.Core.Analysis.BabelStructureFacts(true, false, 0, false, 0.99));
+        var before = Invoke(context);
+        var result = new LiteralStringDecoderPass(babelOnly: true).Run(context);
+        Assert.Equal(3, result.Changes);
+        Assert.Equal(before, Invoke(context));
+        var passes = CilantroPipeline.CreateDefaultPasses().Select(pass => pass.Name).ToList();
+        Assert.True(passes.IndexOf("babel-literal-strings") < passes.IndexOf("payload-extraction"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

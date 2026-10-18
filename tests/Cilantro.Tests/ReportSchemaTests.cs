@@ -33,6 +33,7 @@ public sealed class ReportSchemaTests
         { "status.schema.json", string.Empty, typeof(RunStatus) },
         { "analysis.schema.json", string.Empty, typeof(ArtifactReport) },
         { "analysis.schema.json", "resource", typeof(ResourceInfo) },
+        { "analysis.schema.json", "decodedResource", typeof(DecodedResourceInfo) },
         { "analysis.schema.json", "payload", typeof(PayloadInfo) },
         { "analysis.schema.json", "evidence", typeof(Evidence) },
         { "analysis.schema.json", "pass", typeof(PassResult) },

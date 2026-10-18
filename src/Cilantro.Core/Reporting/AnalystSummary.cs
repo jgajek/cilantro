@@ -73,6 +73,9 @@ public sealed record AnalystSummary(string Outcome, string Protection, IReadOnly
             }
             sections.Add(new("Artifacts", inventory));
         }
+        if (report.DecodedResources is { Count: > 0 } decodedResources)
+            sections.Add(new("Decoded resources", decodedResources.Select(resource =>
+                new AnalystItem($"{resource.SourceResource}: {N(resource.DecodedLength)} decoded bytes; SHA-256 {resource.DecodedSha256}", resource.WrittenTo)).ToArray()));
         var next = new List<AnalystItem>();
         if (lead?.Cleaned is not null || lead is null && result.OutputPath is not null)
             next.Add(new("Open the recommended cleaned assembly in ILSpy or dnSpyEx to inspect its code."));

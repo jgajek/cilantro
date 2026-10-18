@@ -26,6 +26,10 @@ public class ArrayParameterTypingPass : DeobfuscationPass
             (referenceContracts.Contains(m) || !exposed.Contains(m.DeclaringType) || namedHandles.IsClosed(m) || propertyHandles.IsClosed(m)) &&
             (referenceContracts.Contains(m) || (!names.Contains(m.Name.String) && !names.Contains(m.FullName)) || scopedNames.ExcludesAll(m)) &&
             m.MethodSig.Params.Any(p => p.ElementType == ElementType.Object)).ToHashSet();
+        // Babel adapters already carry their required conversions, or retain their access-skipping
+        // runtime. Caller-derived refinements can name private subtypes inaccessible at this site.
+        if (context.TryGetFact<IReadOnlySet<MethodDef>>(Cilantro.Core.Proxy.BabelProxyRecoveryPass.ContractsFact, out var adapters) && adapters is not null)
+            candidates.ExceptWith(adapters);
         var arrayConsumers = candidates.Where(ConsumesRecoveredType).ToHashSet();
         foreach (var reference in context.Module.GetMemberRefs().Where(r => r.IsMethodRef))
             if (reference.ResolveMethodDef() is { } definition) candidates.Remove(definition);

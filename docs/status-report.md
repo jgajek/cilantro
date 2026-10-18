@@ -26,6 +26,14 @@ For example, recovering a readable command handler is useful even if another pat
 
 These checks support the stated corpus scope. They do not establish behavior for every input or complete protection removal on an unfamiliar file.
 
+## 1.0.3 release validation
+
+The Babel update passed all nine hash-pinned captured inputs, recovering 17 streams with matching exported hashes and no newly broken or worsened methods under differential Microsoft ILVerify checks. Five directly recognized corpus payloads and three Reactor-wrapped payloads are joined by one additional Malware Vault capture. These entries overlap earlier root/payload coverage and do not add nine independent malware families to the root totals above.
+
+Tests in `C:/cilantro-verify` passed 2,903 cases with 37 unrelated private-fixture tests skipped. A further 47 targeted manifest/schema/adapter/concurrency checks passed, as did the historical Rrdsk and two ConfuserEx corpus cases. The pin_mxi capture retains 363 adapters requiring their original access/dispatch context and its original 69 verifier findings; its numeric resource `YQLy` is missing from the input. See [Babel coverage](compatibility.md#babel-net-coverage) and [release notes](releases/1.0.3.md).
+
+The version-stamped 1.0.3 rerun passed 2,904 tests with 37 skips after the final schema checks; it excluded the separately completed Babel corpus gate. The CLI reported `1.0.3` and the assembly-version consistency test passed.
+
 ## 1.0.2 release validation
 
 The performance update passed all 2,931 tests with private fixtures available: zero failures or skips. Tests ran in `C:/cilantro-verify`. Two optimized pinned-corpus runs each passed all 24 cases, and all 110 detailed reports/listings matched the original build after excluding pass durations and output paths. Corpus wall time fell by 59.5% on the measured host; see the [performance report](performance.md) for the complete measurements and GC tradeoff.

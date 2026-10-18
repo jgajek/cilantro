@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "1.0.2";
+    public const string Version = "1.0.3";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -58,6 +58,7 @@ public sealed class CilantroPipeline
         new MetadataPreflightPass(),
         new ReactorDetectionPass(),
         new ConfuserExDetectionPass(),
+        new BabelDetectionPass(),
         new ProtectorIdentityPass(),
         new MethodProtectionAnalysisPass(),
         new FieldRvaRecoveryPass(),
@@ -91,11 +92,13 @@ public sealed class CilantroPipeline
         new CfgDeadCodePass(),
         new ControlFlowCompletionPass(),
         new TypeRestorationPass(),
+        new BabelProxyRecoveryPass(),
         new DelegateProxyPass(),
         new StringRecoveryPass(),
         // Strings the protector left to per-string decoders rather than to its table are folded
         // after the table, because a decoder can read a table entry but never the other way round.
         new ConstantStringPass(),
+        new LiteralStringDecoderPass(babelOnly: true),
         new NumericTableRecoveryPass(),
         new IntegerHelperRecoveryPass(),
         // ConfuserEx keeps its literals in one buffer that its own getters read, which is neither a
@@ -114,6 +117,7 @@ public sealed class CilantroPipeline
         // table that could not assume a numbering is only possible from here on.
         new StringTableRelearningPass(),
         new StringLookupRecoveryPass(),
+        new BabelResourceRecoveryPass(),
         // Resource classification and payload extraction run last because a JIT-hook artifact hides
         // every resource consumer behind an encrypted body and an encrypted name literal. Last has to
         // mean after the late reading as well as after the early one: a build that renumbered its
@@ -133,6 +137,7 @@ public sealed class CilantroPipeline
         new NumericTableRecheckPass(),
         new IntegerHelperRecheckPass(),
         new PayloadExtractionPass(),
+        new BabelUnpackingPass(),
         new CosturaExtractionPass(),
         new ResourceEntryExtractionPass(),
         // Building the read-back methods precedes cleanup, which would otherwise delete the very
@@ -173,6 +178,8 @@ public sealed class CilantroPipeline
         // Generated factories must first lose proven constant guards. Reconstruct before
         // reachability cleanup so their discarded emitters no longer retain virtual targets.
         new EmittedMethodReconstructionPass(),
+        new BabelResourceCompletionPass(),
+        new BabelUnpackingCompletionPass(),
         new DispatcherPathCompletionPass(),
         new IntegrityVerdictPass(),
         new MemoryIntegrityCompletionPass(),
@@ -547,6 +554,7 @@ public sealed class CilantroPipeline
         }
 
         options.Progress?.Invoke(new(inputPath, PipelineStage.Reporting));
+        WriteBabelResources(context, reportDirectory, stem);
         var resourceInfos = ResourceInspector.Inspect(context.Module);
         var report = BuildReport(context, resourceInfos, verification, payloadPaths);
         WriteJson(analysisPath, report);
@@ -722,7 +730,25 @@ public sealed class CilantroPipeline
             context.TryGetFact<IReadOnlyList<RebuiltMethodReport>>(
                 RebuiltBodyDigestPass.DigestFact, out var rebuiltDigest)
                 ? rebuiltDigest
-                : null);
+                : null,
+            context.TryGetFact<IReadOnlyList<BabelDecodedResource>>(BabelResourceRecoveryPass.ResourcesFact, out var decoded)
+                ? decoded?.Select(resource => resource.Info).ToArray() : null);
+    }
+
+    private static void WriteBabelResources(ArtifactContext context, string directory, string stem)
+    {
+        if (!context.TryGetFact<IReadOnlyList<BabelDecodedResource>>(BabelResourceRecoveryPass.ResourcesFact, out var resources) ||
+            resources is null || resources.Count == 0) return;
+        var destination = Path.Combine(directory, stem + ".babel-resources");
+        Directory.CreateDirectory(destination);
+        var written = resources.Select((resource, index) =>
+        {
+            var path = Path.Combine(destination, $"{index:D4}.{resource.Info.DecodedSha256}.bin");
+            File.WriteAllBytes(path, resource.Bytes);
+            return resource with { Info = resource.Info with { WrittenTo = path } };
+        }).ToArray();
+        context.SetFact<IReadOnlyList<BabelDecodedResource>>(BabelResourceRecoveryPass.ResourcesFact, written);
+        WriteJson(Path.Combine(directory, stem + ".babel-resources.json"), written.Select(resource => resource.Info).ToArray());
     }
 
     /// <summary>What the run was told, as the report says it.</summary>

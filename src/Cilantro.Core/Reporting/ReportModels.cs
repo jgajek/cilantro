@@ -72,6 +72,9 @@ public sealed record PayloadInfo(
 
 public sealed record ExtractedPayload(PayloadInfo Info, byte[] Bytes);
 
+public sealed record DecodedResourceInfo(string SourceResource, string SourceSha256,
+    int DecodedLength, string DecodedSha256, string Decoder, string? WrittenTo = null);
+
 public sealed record ArtifactReport(
     string ToolVersion,
     string InputPath,
@@ -119,7 +122,8 @@ public sealed record ArtifactReport(
     /// <summary>
     /// What each body built back from a virtual program reaches, named as the cleaned copy names it.
     /// </summary>
-    IReadOnlyList<RebuiltMethodReport>? RebuiltMethods = null);
+    IReadOnlyList<RebuiltMethodReport>? RebuiltMethods = null,
+    IReadOnlyList<DecodedResourceInfo>? DecodedResources = null);
 
 /// <summary>
 /// The way into a body the tool built rather than recovered.

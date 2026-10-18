@@ -1,5 +1,6 @@
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Cilantro.Core.Interpretation;
 
 namespace Cilantro.Core.Proxy;
 
@@ -58,7 +59,12 @@ public static class ProxyArgumentNarrowing
     /// difference is an object — a byref against a value, a pointer, a generic parameter — none of
     /// which a conversion in front of the call can reconcile.
     /// </remarks>
-    public static Reconciliation? Plan(MethodDef adapter, IMethod target)
+    public static Reconciliation? Plan(MethodDef adapter, IMethod target) => BuildPlan(adapter, target, false, true);
+
+    public static Reconciliation? PlanDirect(MethodDef wrapper, IMethod target, bool constructing) =>
+        BuildPlan(wrapper, target, constructing, false);
+
+    private static Reconciliation? BuildPlan(MethodDef adapter, IMethod target, bool constructing, bool trailingDelegate)
     {
         ArgumentNullException.ThrowIfNull(adapter);
         ArgumentNullException.ThrowIfNull(target);
@@ -71,10 +77,10 @@ public static class ProxyArgumentNarrowing
 
         // The adapter's last parameter is the proxy type itself, which the call site loads and the
         // rewrite drops; everything before it is an argument the target is getting.
-        var given = adapterSignature.Params.SkipLast(1).ToArray();
+        var given = (trailingDelegate ? adapterSignature.Params.SkipLast(1) : adapterSignature.Params).ToArray();
 
         var wanted = new List<TypeSig>();
-        if (signature.HasThis)
+        if (signature.HasThis && !constructing)
         {
             if (target.DeclaringType?.ToTypeSig() is not { } receiver)
                 return null;
@@ -94,7 +100,8 @@ public static class ProxyArgumentNarrowing
                     ? byReference
                     : receiver);
         }
-        wanted.AddRange(signature.Params);
+        var scope = GenericScope.For(target, null);
+        wanted.AddRange(signature.Params.Select(parameter => scope?.Bind(parameter) ?? parameter));
         if (given.Length != wanted.Count)
             return null;
 
@@ -107,6 +114,12 @@ public static class ProxyArgumentNarrowing
                 return null;
             if (have.FullName == want.FullName)
                 continue;
+            if (!trailingDelegate && position == 0 && signature.HasThis && !constructing &&
+                have.ElementType == ElementType.Object && want is ByRefSig address && IsValue(address.Next))
+            {
+                conversions.Add(new Conversion(position, OpCodes.Unbox, address.Next.ToTypeDefOrRef()));
+                continue;
+            }
             if (have.IsByRef || have.IsPointer || have.IsGenericParameter ||
                 want.IsByRef || want.IsPointer || want.IsGenericParameter)
             {

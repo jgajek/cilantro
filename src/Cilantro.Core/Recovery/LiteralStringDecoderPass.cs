@@ -1,4 +1,5 @@
 using Cilantro.Core.Interpretation;
+using Cilantro.Core.Analysis;
 using Cilantro.Core.Verification;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
@@ -7,16 +8,19 @@ using System.Text.Json;
 namespace Cilantro.Core.Recovery;
 
 /// <summary>Completes literal string/key decoder chains exposed by late recovery.</summary>
-public sealed class LiteralStringDecoderPass : DeobfuscationPass
+public sealed class LiteralStringDecoderPass(bool babelOnly = false) : DeobfuscationPass
 {
-    public override string Name => "literal-string-decoders";
+    public override string Name => babelOnly ? "babel-literal-strings" : "literal-string-decoders";
     public override bool GatesEmission => false;
-    public override IReadOnlyCollection<string> Dependencies => ["control-flow-finalization"];
+    public override IReadOnlyCollection<string> Dependencies => babelOnly
+        ? ["babel-detection", "constant-strings"] : ["control-flow-finalization"];
 
     private sealed record Site(MethodDef Caller, Instruction Text, Instruction Key, Instruction Call, MethodDef Decoder);
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
+        if (babelOnly && (!context.TryGetFact<BabelStructureFacts>("babel.structure", out var babel) || babel?.IsBabel != true))
+            return (PassStatus.Success, 0, ["No Babel literal string recovery required."]);
         var count = 0;
         var literals = new HashSet<Instruction>();
         using var batch = new BodyMutationBatch();

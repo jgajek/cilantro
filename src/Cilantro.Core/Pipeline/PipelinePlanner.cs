@@ -28,6 +28,8 @@ public static class PipelinePlanner
         "loader-call-elision",
         "constant-predicates",
         "constant-strings",
+        "babel-literal-strings",
+        "babel-proxies",
         "global-predicate-folding",
         "global-predicate-recheck",
         "dispatcher-deobfuscation",
@@ -79,6 +81,7 @@ public static class PipelinePlanner
         "metadata-preflight" => PipelinePhase.Preflight,
         "reactor-detection" or
         "confuserex-detection" or
+        "babel-detection" or
         "protector-identity" or
         "method-protection" or
         "field-rva-recovery" or
@@ -94,6 +97,8 @@ public static class PipelinePlanner
         "antitamper-neutralization" or
         "constant-predicates" or
         "constant-strings" or
+        "babel-literal-strings" or
+        "babel-proxies" or
         "confuserex-constants" or
         "global-predicate-folding" or
         "dispatcher-deobfuscation" or

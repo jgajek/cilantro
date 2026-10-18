@@ -8,7 +8,8 @@ public enum ProtectorFamily
 
     /// <summary>The Confuser/ConfuserEx lineage.</summary>
     Confuser,
-    ManagedBootstrap
+    ManagedBootstrap,
+    Babel
 }
 
 /// <summary>Which protector the run is dealing with, and how sure it is.</summary>
@@ -37,6 +38,7 @@ public sealed record ProtectorIdentity(
         ProtectorFamily.Reactor => "reactor",
         ProtectorFamily.Confuser => "confuserex",
         ProtectorFamily.ManagedBootstrap => "managed-bootstrap",
+        ProtectorFamily.Babel => "babel",
         _ => "none"
     };
 }
@@ -57,7 +59,7 @@ public sealed class ProtectorIdentityPass : DeobfuscationPass
 
     public override string Name => "protector-identity";
     public override IReadOnlyCollection<string> Dependencies =>
-        ["reactor-detection", "confuserex-detection"];
+        ["reactor-detection", "confuserex-detection", "babel-detection"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
@@ -91,6 +93,9 @@ public sealed class ProtectorIdentityPass : DeobfuscationPass
         context.TryGetFact<ConfuserExStructureFacts>("confuserex.structure", out var confuser);
         var reactorScore = reactor?.IsReactor == true ? reactor.Confidence : 0;
         var confuserScore = confuser?.IsConfuserExProtected == true ? confuser.Confidence : 0;
+        context.TryGetFact<BabelStructureFacts>("babel.structure", out var babel);
+        if (babel?.IsBabel == true && babel.Confidence > Math.Max(reactorScore, confuserScore))
+            return new(ProtectorFamily.Babel, "Babel .NET", "unknown", babel.Confidence, babel.CapabilityNames);
 
         if (confuserScore > reactorScore && confuser is not null)
         {

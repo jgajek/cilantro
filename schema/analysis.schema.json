@@ -29,7 +29,8 @@
     "ContinuedPast",
     "Strict",
     "Protector",
-    "RebuiltMethods"
+    "RebuiltMethods",
+    "DecodedResources"
   ],
   "properties": {
     "ToolVersion": { "type": "string" },
@@ -81,10 +82,28 @@
       "description": "The way into each body the tool built from a virtualized method rather than recovered. Null where the run built none.",
       "type": ["array", "null"],
       "items": { "$ref": "#/$defs/rebuiltMethod" }
+    },
+    "DecodedResources": {
+      "description": "Decoded Babel data streams, independently interpreted twice and written with source/output hashes.",
+      "type": ["array", "null"],
+      "items": { "$ref": "#/$defs/decodedResource" }
     }
   },
   "additionalProperties": false,
   "$defs": {
+    "decodedResource": {
+      "type": "object",
+      "required": ["SourceResource", "SourceSha256", "DecodedLength", "DecodedSha256", "Decoder", "WrittenTo"],
+      "properties": {
+        "SourceResource": { "type": "string" },
+        "SourceSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "DecodedLength": { "type": "integer", "minimum": 0 },
+        "DecodedSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "Decoder": { "type": "string" },
+        "WrittenTo": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
     "rebuiltMethod": {
       "title": "What a body built from interpreter bytecode turned out to do",
       "description": "A lifted body is faithful, and faithful to a private instruction format is a long way from readable. The machine's slots had no types, so a slot is declared as whatever the program writes to it where every path agrees and as an object where they do not. The framework calls leaving the body were never obfuscated, so naming them is the way in. Everything here is named as the cleaned copy names it, this being written after renaming rather than before.",

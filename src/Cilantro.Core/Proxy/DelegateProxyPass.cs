@@ -60,6 +60,8 @@ public sealed class DelegateProxyPass : DeobfuscationPass
         {
             return (PassStatus.Success, 0, ["No delegate proxies were detected."]);
         }
+        if (context.TryGetFact<bool>(BabelProxyRecoveryPass.CompleteFact, out var babelComplete) && babelComplete)
+            return (PassStatus.Success, 0, ["The Babel token-based proxy bindings were validated and their adapters recovered by babel-proxies."]);
 
         var fields = proxyTypes
             .SelectMany(type => type.Fields)

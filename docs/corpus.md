@@ -9,6 +9,7 @@ A manifest pins the exact input hash and the results expected from that file. Th
 | [Reactor 6](../corpus/reactor-6-nonvirt.manifest.json) | Real-world inputs, recovered stages, native wrappers and validation oracles |
 | [Reactor 7.5](../corpus/reactor-7-static.manifest.json) | Source-built benign probes with pinned protected and unprotected identities |
 | [ConfuserEx](../corpus/confuserex-1-static.manifest.json) | Two whole-section anti-tamper samples |
+| [Babel .NET](../corpus/babel-static.manifest.json) | Nine captured inputs, including three Reactor-wrapped layers, decoded resource hashes and token-bound proxies |
 
 Read each manifest's expectations rather than inferring coverage from its filename.
 
@@ -21,17 +22,22 @@ dotnet build Cilantro.slnx -c Release
 dotnet run --project src/Cilantro.Cli -c Release --no-build -- corpus run --manifest corpus/reactor-6-nonvirt.manifest.json --samples samples --output artifacts/corpus/reactor6
 dotnet run --project src/Cilantro.Cli -c Release --no-build -- corpus run --manifest corpus/reactor-7-static.manifest.json --samples samples --output artifacts/corpus/reactor7
 dotnet run --project src/Cilantro.Cli -c Release --no-build -- corpus run --manifest corpus/confuserex-1-static.manifest.json --samples samples --output artifacts/corpus/confuserex
+dotnet run --project src/Cilantro.Cli -c Release --no-build -- corpus run --manifest corpus/babel-static.manifest.json --samples samples --output artifacts/corpus/babel
 ```
 
 Use isolated output directories. The runner validates identities and writes `corpus.outcomes.json`; missing inputs are distinct from failed assertions. Entries can select analysis-only or feature-specific policies. Passing a manifest does not test every combination of options.
 
 `minimumRecoveredStringSites` gates the total of constant-folded and table/lookup-restored string sites. `minimumConstantStringSites` targets constant folding specifically. A replacement may retain an initialization call to preserve its effects; read pass diagnostics before treating a retained call as failed recovery.
 
+The Babel manifest also gates `minimumNumericTableSites`, `minimumProxyCallsRestored` and `expectedDecodedResourceSha256`. Each decoded hash must match both the report and the exported file. `expectedMissingResourceNames` requires the named resource to be absent from the original metadata and the actual missing-resource diagnostic to survive in the report; pin_mxi captures this incomplete-input case. A passing case therefore includes that recorded limitation.
+
+Set `CILANTRO_BABEL_SAMPLES` to the nine-input directory and run `dotnet test --filter FullyQualifiedName~BabelCorpusTests` for the recovery gate plus differential Microsoft ILVerify checks. Set `CILANTRO_BABEL_RESULTS` to preserve reports and outputs in a chosen results directory; otherwise temporary results are removed. These tests never execute the samples. In this workspace, run builds, tests and their temporary files under `C:/cilantro-verify`.
+
 Oracle comparisons retain raw resource differences and named-type method deficits. A removed protector resource qualifies only when input and oracle bytes match the cleanup record's SHA-256 and the resource is physically absent from the output. A removed private helper requires a matching input token/name, a unique private static generated-name signature in the oracle, the specific cleanup record, a surviving declaring type, and physical absence. Public or preserved-name member loss and unexplained deficits still fail. The reported attribution lists make these qualifications visible.
 
 ## Reconstruction cleanup gates
 
-The corpus runner disables reconstruction. Test ordinary CLI reconstruction separately with matching pinned inputs and declarations:
+The corpus runner disables reconstruction unless an entry explicitly sets `devirtualize: true`. The Babel manifest enables it for the two VM-wrapped inputs. Test ordinary CLI reconstruction separately with matching pinned inputs and declarations:
 
 ```powershell
 New-Item -ItemType Directory -Force results | Out-Null

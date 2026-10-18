@@ -381,15 +381,23 @@ public sealed class StringLookupRecoveryTests
     /// to hold is being used, not decoded: there is no literal to write in its place, and counting
     /// its calls as strings left undone would report a gap that no rewrite could ever close.
     /// </remarks>
-    [Fact]
-    public void AMethodCalledOnlyWithACallersParameterIsLeftAsProgramLogic()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AMethodCalledOnlyWithACallersParameterIsLeftAsProgramLogic(bool boxedParameter)
     {
         using var context = SyntheticContext.Build(module =>
         {
             var type = SyntheticContext.AddType(module, "Holder");
             var fetch = Fetcher(module, "Fetch", "slot");
             type.Methods.Add(fetch);
-            type.Methods.Add(ParameterCaller(module, "Uses", fetch));
+            var caller = ParameterCaller(module, "Uses", fetch);
+            if (boxedParameter)
+            {
+                caller.MethodSig.Params[0] = module.CorLibTypes.Object;
+                caller.Body.Instructions.Insert(1, OpCodes.Unbox_Any.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef));
+            }
+            type.Methods.Add(caller);
         });
 
         Triage(context);

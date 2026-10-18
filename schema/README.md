@@ -13,6 +13,8 @@ Use this reference when writing a consumer for CILantro results. Run with `--jso
 
 Changes, rename maps, and embedded recovery graphs are additional outputs named by the manifest. The corpus [manifest schema](../corpus/schema/manifest.schema.json) describes a development input, not a recovery output.
 
+Analysis reports expose Babel stream exports as `DecodedResources`, including source resource name/hash, decoded length/hash, decoder and written path. The adjacent `.babel-resources.json` index lists the same records. Data streams remain separate from extracted managed assembly artifacts.
+
 `Success` is the configured pipeline outcome, `Verified` is structural verification, and `RebuiltCheck` is the bounded reconstruction comparison result. Read them independently and inspect child manifests when present. None is an exhaustive-unprotection flag.
 
 ## Compatibility

@@ -78,12 +78,12 @@ public sealed class ConstantStringPass : DeobfuscationPass
         // An ordinary assembly is full of methods that return a fixed string, and folding those
         // would be an edit made for no reason. The point here is a protector hiding strings, so
         // the pass only runs where one was found.
-        if (!context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts) ||
-            facts is null ||
-            !facts.IsReactor)
+        context.TryGetFact<ReactorStructureFacts>("reactor.structure", out var facts);
+        context.TryGetFact<BabelStructureFacts>("babel.structure", out var babel);
+        if (facts?.IsReactor != true && babel?.IsBabel != true)
         {
             return (PassStatus.Success, 0,
-                ["No Reactor structure was detected, so no string decoder was looked for."]);
+                ["No Reactor or Babel structure was detected, so no string decoder was looked for."]);
         }
 
         var candidates = Candidates(context.Module);

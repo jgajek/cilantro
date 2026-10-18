@@ -1,0 +1,207 @@
+{
+  "manifestVersion": 1,
+  "profile": "babel-static",
+  "description": "Babel generated strings, numeric tables, modern stream decoding and token-bound delegate proxies, including Reactor-wrapped variants. Hash-pinned private binaries are supplied separately. pin_mxi is a captured incomplete input: its numeric initializer requests YQLy, absent from the original resource directory; recovery must retain that limitation rather than invent numeric values.",
+  "samples": [
+    {
+      "id": "frzfqnvunjz",
+      "tier": "profiled",
+      "sha256": "4518c434748834e892578fd071a3b28fdfdecdbda4957c55e18af5c32fff3e98",
+      "localName": "Frzfqnvunjz.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 177,
+      "minimumNumericTableSites": 459,
+      "maximumUnreachableInstructions": 0,
+      "expectedDecodedResourceSha256": [
+        "ffa986e1095d8a8e159500e7115c90b3f1a508272301b2e486c33b92642ea255",
+        "fb7094c2e6217249404de52da1987701f83a4b24cb4fbc2b8fe437cdc620f748"
+      ]
+    },
+    {
+      "id": "ggdzylx",
+      "tier": "profiled",
+      "sha256": "0c8c4665baef659af1bb5d6a6e3ccbf54cd9d3c31d63e2c147a601f42722098c",
+      "localName": "Ggdzylx.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 177,
+      "minimumNumericTableSites": 445,
+      "maximumUnreachableInstructions": 0,
+      "expectedDecodedResourceSha256": [
+        "4dc9fa67e6716afe2df6bdedc2cefdbc7015672673a127fecd4ef07216f2ec43",
+        "f2e7eccf808b0b53b5be967d3151438cb0ffe8f89f8e20737f9964595bba6cc2"
+      ]
+    },
+    {
+      "id": "ktjtiuwiixd",
+      "tier": "profiled",
+      "sha256": "bf3f63c70625003090603f53dddd5160e9fa32b0eb233e509d166c219846ada9",
+      "localName": "Ktjtiuwiixd.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 177,
+      "minimumNumericTableSites": 452,
+      "maximumUnreachableInstructions": 0,
+      "expectedDecodedResourceSha256": [
+        "d79cb027c485ed9196016059b47ef14d95087f6c57ad5a5cd085b1211ef22802",
+        "b2d81191a7f786a6afb64564a34f6a7658978eabed953d2a7d38e2429d5b53cd"
+      ]
+    },
+    {
+      "id": "lqcuzgc",
+      "tier": "profiled",
+      "sha256": "81cf796c987dbffeb950e38d7e4bc01e85bec2ef4b5a9750d9642843f8460c2a",
+      "localName": "Lqcuzgc.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 172,
+      "minimumNumericTableSites": 705,
+      "expectedDecodedResourceSha256": [
+        "75f6e32cf8283839d3e774f98a22b7e6266222554bb3c6b65e353dfc694f348f",
+        "7d5ed839ed4ff1d31aa99032dc39ccb4afd5b923cf10adb98d40221c70a90e1a"
+      ],
+      "maximumUnreachableInstructions": 0,
+      "devirtualize": true,
+      "minimumVirtualOperationsRead": 1.0,
+      "minimumVirtualOperationsWalked": 0.998,
+      "requireConsistentVirtualStack": true
+    },
+    {
+      "id": "msfhjjpkive",
+      "tier": "profiled",
+      "sha256": "d87154f2c6c6be9cf93d1477d9ae702a22f71856a931982073f8ff0592eb11cd",
+      "localName": "Msfhjjpkive.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 177,
+      "minimumNumericTableSites": 458,
+      "maximumUnreachableInstructions": 0,
+      "expectedDecodedResourceSha256": [
+        "bd048bb11a8161338da5aaf390eba0e7ee24051e0148105baf8380284dbbfc84",
+        "0bd842cec941c3375ba310cd7e5b3426041c2cc582c27db91235d49bcbc692e7"
+      ]
+    },
+    {
+      "id": "pin-mxi-decoded-stage",
+      "tier": "profiled",
+      "sha256": "222b5936b3a50ddc2646ffade0b8a598c594a372e502623d5b72ed6ec86c9b36",
+      "localName": "pin_mxi_decoded_stage.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 1221,
+      "minimumNumericTableSites": 0,
+      "maximumUnreachableInstructions": 0,
+      "expectedDecodedResourceSha256": [
+        "ff87070745dac22ca17d8e0d40b39946ec8893e817541d1a6c34c2ccdd1917e3"
+      ],
+      "minimumProxyCallsRestored": 1990,
+      "expectedMissingResourceNames": [
+        "YQLy"
+      ]
+    },
+    {
+      "id": "ptnifif",
+      "tier": "profiled",
+      "sha256": "e4e746f968a3ec89027484ab233d3d38c7778458a898d30f31bb74a2c97059d2",
+      "localName": "Ptnifif.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 152,
+      "minimumNumericTableSites": 452,
+      "maximumUnreachableInstructions": 0,
+      "expectedDecodedResourceSha256": [
+        "f33562577b494b5651b5ca9a57e7a596c831456eeb1f5385dd064f6ce169f594",
+        "6a95913c7ba047ddd1a8392a214208ee29253666e7d1f23b0861b8984b88c996"
+      ]
+    },
+    {
+      "id": "uescfpvjk",
+      "tier": "profiled",
+      "sha256": "aa553a78dbe09a93d7046d2ce025519a9f58e02aa897c0d17a82f9a0a03105ce",
+      "localName": "Uescfpvjk.dll",
+      "expectedDetection": "reactor",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 172,
+      "minimumNumericTableSites": 698,
+      "expectedDecodedResourceSha256": [
+        "92d61a191075a14ea395c142ae6f4922f2b4c592108c112daecfd1804b266ad1",
+        "ef3096e7149324fa1485a56dbdf8086cba92372de17f096927b84d5fb95604b1"
+      ],
+      "maximumUnreachableInstructions": 0,
+      "devirtualize": true,
+      "minimumVirtualOperationsRead": 1.0,
+      "minimumVirtualOperationsWalked": 0.998,
+      "requireConsistentVirtualStack": true
+    },
+    {
+      "id": "zebekeadu",
+      "tier": "profiled",
+      "sha256": "417032e561fe410a246fea4f580b7ae8de4a8cc5098a508931a78322916199dd",
+      "localName": "Zebekeadu.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [
+        "emitted-string-runtime",
+        "numeric-table-runtime"
+      ],
+      "oracleSha256": null,
+      "maximumRemainingStubs": 0,
+      "minimumStringSiteCoverage": 1.0,
+      "minimumRecoveredStringSites": 152,
+      "minimumNumericTableSites": 461,
+      "maximumUnreachableInstructions": 0,
+      "expectedDecodedResourceSha256": [
+        "95b1cfc86f7cf38093d6a680e2aecd82773c955c62b5f2d1aa7406d54b7150a8",
+        "adf70d11c1b1701d8cfe139732942aecf5f565d4aee241fb2abe66110bb5254a"
+      ]
+    }
+  ]
+}

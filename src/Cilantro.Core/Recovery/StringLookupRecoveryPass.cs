@@ -394,6 +394,12 @@ public sealed class StringLookupRecoveryPass : DeobfuscationPass
                 index--;
                 continue;
             }
+            if (code == Code.Unbox_Any && instructions[index].Operand is ITypeDefOrRef boxed &&
+                boxed.FullName == "System.Int32" && boxed.DefinitionAssembly?.FullName == method.Module.CorLibTypes.AssemblyRef.FullName)
+            {
+                index--;
+                continue;
+            }
             return code is Code.Ldarg or Code.Ldarg_S or Code.Ldarg_0 or
                 Code.Ldarg_1 or Code.Ldarg_2 or Code.Ldarg_3;
         }

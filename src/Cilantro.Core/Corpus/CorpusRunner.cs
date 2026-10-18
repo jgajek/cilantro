@@ -56,7 +56,12 @@ public sealed record CorpusSample(
     IReadOnlyList<string>? Libraries = null,
     string? Declarations = null,
     bool AllowDeclaredCalls = false,
-    int? MinimumRecoveredStringSites = null);
+    int? MinimumRecoveredStringSites = null,
+    int? MinimumNumericTableSites = null,
+    IReadOnlyList<string>? ExpectedDecodedResourceSha256 = null,
+    bool Devirtualize = false,
+    int? MinimumProxyCallsRestored = null,
+    IReadOnlyList<string>? ExpectedMissingResourceNames = null);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -251,16 +256,13 @@ public static class CorpusRunner
         // per-sample expectations and from every pass status being recorded in the outcome. The
         // interpretation mode is asked for by whoever runs the corpus rather than written into the
         // manifest, because the point of running it both ways is to compare the same expectations.
-        // Renaming and building virtualized methods back are what a triage run does for the analyst
-        // reading the result, and neither is what this harness measures: one rewrites the names an
-        // outcome is compared by, and the other doubles the time a virtualized sample takes to say
-        // something the manifest does not ask about. Both are pinned off so that an outcome means
-        // the same thing in every run rather than following the mode.
+        // Keep names stable for comparisons. Reconstruction stays off unless the entry explicitly
+        // enables it to expose an inner layer or gate reconstructed bodies.
         var result = new CilantroPipeline().Run(path, new PipelineOptions(
             AnalyzeOnly: analysisOnly,
             PreserveTokens: true,
             RenameSymbols: false,
-            Devirtualize: false,
+            Devirtualize: sample.Devirtualize,
             OutputPath: outputPath,
             ReportDirectory: sampleOutputDirectory,
             HostProfilePath: Beside(manifestDirectory, sample.HostProfile),
@@ -301,6 +303,30 @@ public static class CorpusRunner
                 diagnostics.Add($"Expected an unsupported diagnostic mentioning '{expectedReason}'.");
         }
         ValidateRecoveryExpectations(sample, result.Report.Recovery, diagnostics);
+        if (sample.MinimumNumericTableSites is int numericMinimum)
+        {
+            var numericSites = result.Report.Passes.Where(pass => pass.Pass.StartsWith("numeric-tables", StringComparison.Ordinal))
+                .Sum(pass => pass.Changes);
+            if (numericSites < numericMinimum)
+                diagnostics.Add($"Recovered {numericSites} numeric-table sites, below {numericMinimum}.");
+        }
+        foreach (var expected in sample.ExpectedDecodedResourceSha256 ?? [])
+        {
+            var decoded = result.Report.DecodedResources?.FirstOrDefault(resource => resource.DecodedSha256 == expected);
+            if (decoded?.WrittenTo is not { } decodedPath || !File.Exists(decodedPath) ||
+                Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(decodedPath))) != expected)
+                diagnostics.Add($"Decoded resource {expected} was not recovered and written with matching bytes.");
+        }
+        if (sample.MinimumProxyCallsRestored is int proxyMinimum && result.Report.Recovery.ProxyCallsRestored < proxyMinimum)
+            diagnostics.Add($"Recovered proxy calls {result.Report.Recovery.ProxyCallsRestored} is below {proxyMinimum}.");
+        if (sample.ExpectedMissingResourceNames is { Count: > 0 } missingResourceNames)
+        {
+            using var original = ModuleDefMD.Load(path);
+            foreach (var missingName in missingResourceNames)
+                if (original.Resources.Any(resource => resource.Name == missingName) || !result.Report.Passes.Any(pass =>
+                        pass.Diagnostics.Any(note => note.Contains($"Resource '{missingName}' is not registered", StringComparison.Ordinal))))
+                    diagnostics.Add($"Expected absent input resource {missingName} was not identified as unavailable by recovery.");
+        }
 
         OracleComparison? oracle = null;
         if (sample.OracleSha256 is not null &&

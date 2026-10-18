@@ -4,13 +4,15 @@
   <img src="docs/assets/cilantro-flow-lockup.png" alt="CILantro Flow logo: a cilantro leaf with branching recovery paths above the CILantro wordmark" width="320">
 </p>
 
-Recover readable .NET code and embedded payloads from supported **.NET Reactor and ConfuserEx** malware samples.
+Recover readable .NET code and embedded payloads from supported **.NET Reactor, ConfuserEx and Babel .NET** protection layers. See the [support guide](docs/compatibility.md) for the supported features and sample evidence.
 
 A protected method can hide a PowerShell launcher behind an empty-looking stub. A loader can disguise `Assembly.Load` behind a proxy and encrypt the type and method it invokes next. CILantro works through supported protection layers so you can follow that behavior in a .NET decompiler.
 
 It also **lifts supported Reactor VM bytecode into CIL and reconstructs method bodies**, making those programs available for decompilation. See the [before-and-after malware walkthrough](docs/protection-removal.md) for VM reconstruction, hidden process execution, in-memory loading and command handling.
 
 Recovery uses a bounded interpreter. It does not launch the sample or load its code into the host CLR.
+
+**Babel .NET recovery** includes generated strings, numeric tables, token-bound delegate adapters and encrypted/compressed resource streams, including supported layers wrapped by Reactor. The nine captured [Babel corpus inputs](corpus/babel-static.manifest.json) pass their recovery gates and export 17 hash-verified streams without introducing IL-verifier regressions. Some adapters retain their original access context, and missing input resources remain unresolved; see [Babel coverage](docs/compatibility.md#babel-net-coverage).
 
 ## Recover a sample
 
@@ -62,7 +64,7 @@ Each case includes an offline report, extracted originals, cleaned assemblies wh
 
 CILantro supports specific protection implementations and configurations. A successful run means its configured policy was met; structural verification checks metadata and CIL. Read the report's remaining work and reconstruction comparisons before drawing a conclusion about a particular path.
 
-The tool does not identify malware families, fetch downloaded stages or recreate the original source project. Recovery outputs remain malware artifacts. The [support guide](docs/compatibility.md) explains coverage, and the [validation report](docs/status-report.md) records the corpus and release checks. Current release notes: [1.0.2](docs/releases/1.0.2.md).
+The tool does not identify malware families, fetch downloaded stages or recreate the original source project. Recovery outputs remain malware artifacts. The [support guide](docs/compatibility.md) explains coverage, and the [validation report](docs/status-report.md) records the corpus and release checks. Current release notes: [1.0.3](docs/releases/1.0.3.md).
 
 ## Continue the investigation
 
@@ -78,4 +80,4 @@ The tool does not identify malware families, fetch downloaded stages or recreate
 
 Include the tool version, input SHA-256, exact command, affected artifact/method and relevant diagnostics. Identify whether the input is untouched, extracted or previously rewritten. Review reports for private case data before sharing; do not post malware binaries in public issues. See the [reporting guide](docs/troubleshooting.md#report-a-reproducible-problem).
 
-Contributors need the .NET 10 SDK; see [development](docs/development.md). CILantro is [MIT-licensed](LICENSE), uses [dnlib](https://github.com/0xd4d/dnlib), and is independent of Eziriz, ConfuserEx and other recovery tools.
+Contributors need the .NET 10 SDK; see [development](docs/development.md). CILantro is [MIT-licensed](LICENSE), uses [dnlib](https://github.com/0xd4d/dnlib), and is independent of Eziriz, Babel, ConfuserEx and other recovery tools.

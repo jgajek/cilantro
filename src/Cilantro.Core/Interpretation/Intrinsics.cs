@@ -3717,6 +3717,27 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return InvokeRuntimeHelpers(context, name, arguments);
         if (type is "System.IntPtr" or "System.UIntPtr")
             return InvokePointer(context, name, arguments);
+        if (type == "System.ModuleHandle" && name is "ResolveTypeHandle" or "ResolveMethodHandle" or "ResolveFieldHandle" &&
+            method.MethodSig?.Params.Count == 1 && arguments.Count == 2 && arguments[1].Kind == StaticValueKind.Int32)
+        {
+            var owner = arguments[0];
+            if (owner.Kind == StaticValueKind.ManagedReference && !context.State.Heap.TryReadManaged(owner, out owner))
+                return IntrinsicResult.Invalid("The module-handle receiver is unavailable.");
+            if (!context.State.Heap.TryGetModelValue<bool>(owner, HomeModuleMark, out var home) || !home ||
+                context.State.ModuleMetadata is not { } source)
+                return IntrinsicResult.Invalid("Metadata handle resolution requires the known owning module.");
+            var token = unchecked((uint)arguments[1].AsInt32());
+            var member = source.ResolveToken(token);
+            var valid = name switch
+            {
+                "ResolveTypeHandle" => member is ITypeDefOrRef,
+                "ResolveMethodHandle" => member is IMethod { MethodSig: not null },
+                _ => member is IField { FieldSig: not null }
+            };
+            if (!valid) return IntrinsicResult.Invalid($"Token 0x{token:X8} is not a valid member for {name}.");
+            return context.State.Heap.TryAllocateMetadataHandle(member!, out var resolvedHandle)
+                ? IntrinsicResult.Completed(resolvedHandle) : AllocationFailure("resolved metadata handle");
+        }
         if (type == "System.ModuleHandle" &&
             name == "GetRuntimeTypeHandleFromMetadataToken" &&
             arguments.Count == 2)
@@ -4562,9 +4583,21 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             name = "get_DeclaringType";
         }
 
+        if (type == "System.Type" && arguments.Count == 1 && name is "MakeByRefType" or "MakePointerType" or "MakeArrayType" &&
+            ReflectionEmitIntrinsic.Signatures(heap, arguments[0], context.State.ModuleMetadata) is { } elementSignature)
+        {
+            TypeSig constructed = name switch
+            {
+                "MakeByRefType" => new ByRefSig(elementSignature),
+                "MakePointerType" => new PtrSig(elementSignature),
+                _ => new SZArraySig(elementSignature)
+            };
+            return Describing(heap, "System.Type", constructed);
+        }
+
         if (name is "GetParameters" or "get_ReturnType" or "get_ParameterType" or "get_DeclaringType"
                 or "get_Name" or "get_IsStatic" or "get_IsAbstract" or "get_IsVirtual"
-                or "get_IsPublic" or "get_IsValueType" or "get_FieldType" or "get_MetadataToken"
+                or "get_IsPublic" or "get_IsAssembly" or "get_IsValueType" or "get_FieldType" or "get_MetadataToken"
                 or "get_IsByRef" or "get_IsPointer" or "get_IsArray" or "get_IsEnum"
                 or "get_IsInterface" or "get_IsClass" or "get_IsSealed" or "get_IsPrimitive"
                 or "get_IsGenericType" or "get_FullName" or "get_Namespace" or "GetElementType"
@@ -4637,9 +4670,13 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 : AllocationFailure("runtime type");
         }
 
-        if (!heap.TryAllocateObject(type, out var result))
+        var runtimeMemberType = type == "System.Reflection.MethodBase" && metadata is IMethod handledMethod
+            ? handledMethod.Name.String is ".ctor" or ".cctor" ? "System.Reflection.ConstructorInfo" : "System.Reflection.MethodInfo"
+            : type;
+        if (!heap.TryAllocateObject(runtimeMemberType, out var result))
             return AllocationFailure("metadata object");
         heap.TrySetModelValue(result, "Metadata", metadata);
+        if (metadata is IMethod { MethodSig: not null }) heap.TrySetModelValue(result, ReflectionEmitIntrinsic.Confirmed, true);
         return IntrinsicResult.Completed(result);
     }
 
@@ -5004,21 +5041,26 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     {
         if (subject?.Find(typeName, isReflectionName: false) is not null)
             return null;
-        if (Recognized.TryGetValue(typeName, out var known))
-            return known;
-        if (!typeName.StartsWith("System.", StringComparison.Ordinal) &&
-            !typeName.StartsWith("Microsoft.", StringComparison.Ordinal))
-            return Recognized[typeName] = null;
-        if (typeName.Contains('<', StringComparison.Ordinal))
-            return Recognized[typeName] = Constructed(typeName, subject);
-        // Metadata separates a nested type from the one that holds it with a slash and reflection
-        // with a plus, and names arrive here in both spellings.
-        var asked = typeName.Replace('/', '+');
-        known = Type.GetType(asked, throwOnError: false) ??
-            AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType(asked, throwOnError: false))
-                .FirstOrDefault(candidate => candidate is not null);
-        return Recognized[typeName] = known;
+        // Corpus runs interpret independent modules concurrently. Constructed() recursively
+        // consults this cache, so use a reentrant lock for both lookup and publication.
+        lock (Recognized)
+        {
+            if (Recognized.TryGetValue(typeName, out var known))
+                return known;
+            if (!typeName.StartsWith("System.", StringComparison.Ordinal) &&
+                !typeName.StartsWith("Microsoft.", StringComparison.Ordinal))
+                return Recognized[typeName] = null;
+            if (typeName.Contains('<', StringComparison.Ordinal))
+                return Recognized[typeName] = Constructed(typeName, subject);
+            // Metadata separates a nested type from the one that holds it with a slash and reflection
+            // with a plus, and names arrive here in both spellings.
+            var asked = typeName.Replace('/', '+');
+            known = Type.GetType(asked, throwOnError: false) ??
+                AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(assembly => assembly.GetType(asked, throwOnError: false))
+                    .FirstOrDefault(candidate => candidate is not null);
+            return Recognized[typeName] = known;
+        }
     }
 
     /// <summary>
@@ -5295,6 +5337,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
     private static IntrinsicResult DescribeMember(StaticHeap heap, string name, object described)
     {
+        if (name == "get_DeclaringType" && described is IMemberRef { DeclaringType: { } constructedOwner })
+            return Describing(heap, "System.Type", constructedOwner);
         // Resolve signature questions in the call site's generic scope before resolving the
         // definition: the definition alone loses both method and declaring-type arguments.
         // A MethodSpec can also name a framework MemberRef with no local definition at all.
@@ -5361,6 +5405,10 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 return Truth(publicCandidate.IsPublic);
             case "get_IsPublic" when described is FieldDef publicField:
                 return Truth(publicField.IsPublic);
+            case "get_IsAssembly" when described is FieldDef assemblyField:
+                return Truth(assemblyField.IsAssembly);
+            case "get_IsAssembly" when described is MethodDef assemblyMethod:
+                return Truth(assemblyMethod.IsAssembly);
             case "get_IsByRef":
                 return Truth(described is ByRefSig);
             case "get_IsPointer":
