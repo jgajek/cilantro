@@ -142,6 +142,30 @@ public sealed class PayloadExtractionPass : DeobfuscationPass
                 read.EntryPointToken,
                 read.Resources, Origin: PayloadOrigin.AssemblyLoad);
             payloads.Add(new ExtractedPayload(info, item.Image));
+            if (ConfuserExCompressorRebuild.TryRebuild(context, item.Root, item.Image,
+                    out var standalone, out var entryToken, out var rebuildDiagnostic))
+            {
+                var rebuiltHash = Convert.ToHexStringLower(SHA256.HashData(standalone));
+                var rebuiltInfo = info with
+                {
+                    SourceResource = origin + " (standalone rebuild)",
+                    DecodedStreamSha256 = item.Sha256,
+                    PayloadLength = standalone.Length,
+                    PayloadSha256 = rebuiltHash,
+                    EntryPointToken = entryToken,
+                    Origin = PayloadOrigin.StandaloneRebuilt
+                };
+                payloads.Add(new ExtractedPayload(rebuiltInfo, standalone));
+                context.AddChange(new ChangeRecord(Name, "rebuild-confuserex-compressor",
+                    origin, $"Restored entry point 0x{entryToken:X8} in standalone assembly {rebuiltHash}."));
+                diagnostics.Add($"Rebuilt standalone compressor payload with entry point " +
+                    $"0x{entryToken:X8}, SHA-256 {rebuiltHash}.");
+            }
+            else if (rebuildDiagnostic.Length > 0)
+            {
+                incomplete = true;
+                diagnostics.Add($"{origin}: {rebuildDiagnostic}");
+            }
             context.AddEvidence(new Evidence(
                 "extracted-payload",
                 $"Recovered managed assembly {item.AssemblyName} ({item.Image.Length} bytes) " +

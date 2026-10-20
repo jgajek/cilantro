@@ -16,7 +16,11 @@ The pinned validation corpus accounts for **43 roots**, including **28 undamaged
 | Application preservation | Surviving-body, switch, reconstruction and payload checks distinguish application behavior from attributable protector infrastructure. |
 | Payload chains | Required captured identities and payloads were accounted for across the roots. Reviewed dependency copies retain their bytes and recorded provenance. |
 
-Support includes Reactor 6 samples, source-built Reactor 7.5 probes, and two pinned ConfuserEx samples. Configuration and implementation determine support; a protector version label alone is insufficient. An input damaged by another recovery tool is outside the undamaged-input scope and may remain unsupported.
+Support includes Reactor 6 samples, source-built Reactor 7.5 probes, two historical ConfuserEx samples and 51 source-built ConfuserEx/ConfuserEx 2 protected captures. Configuration and implementation determine support; a protector version label alone is insufficient. An input damaged by another recovery tool is outside the undamaged-input scope and may remain unsupported.
+
+## 1.0.5 release validation
+
+The Release configuration passed 3,423 tests with zero failures and 177 private-sample skips on Windows, including eight generated ConfuserEx corpus tests. The hash-pinned ConfuserEx profiles contain 51 protected captures. Cleaned executables from both official editions match the benign oracle on three inputs across the tested profiles; compressor payload extraction is hash gated. The CLI banner was inspected in a live analysis run and displays the uppercase **L** and version 1.0.5. An attempt to run the older private malware tests on this host was stopped because Windows Defender blocked a copied sample; those tests are excluded from this validation count.
 
 ## Apply this evidence to a case
 

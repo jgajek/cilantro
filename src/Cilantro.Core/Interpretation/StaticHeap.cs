@@ -1514,6 +1514,14 @@ public sealed class StaticMachineState
     /// </remarks>
     public IReadOnlyList<byte[]> CapturedAssemblyLoads => _capturedAssemblyLoads;
 
+    private readonly List<IMethod> _resolvedMethodObservations = [];
+    public IReadOnlyList<IMethod> ResolvedMethodObservations => _resolvedMethodObservations;
+    public void ObserveResolvedMethod(IMethod method)
+    {
+        if (_resolvedMethodObservations.Count < 4096)
+            _resolvedMethodObservations.Add(method);
+    }
+
     private readonly List<byte[]> _capturedAssemblyLoads = [];
     private readonly List<MappedImageProtection> _imageProtections = [];
     internal IReadOnlyList<MappedImageProtection> ImageProtections => _imageProtections;

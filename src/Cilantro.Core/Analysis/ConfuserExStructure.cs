@@ -12,7 +12,8 @@ public enum ConfuserExCapability
     AntiTamper = 1 << 2,
     ConstantsTable = 1 << 3,
     ControlFlowSwitchDispatch = 1 << 4,
-    AntiDebug = 1 << 5
+    AntiDebug = 1 << 5,
+    JitAntiTamper = 1 << 6
 }
 
 public sealed record ConfuserExStructureFacts(
@@ -26,7 +27,8 @@ public sealed record ConfuserExStructureFacts(
     bool DeclaresDebuggerProbe,
     int ModuleInitializerCallCount,
     ConfuserExCapability Capabilities,
-    double Confidence)
+    double Confidence,
+    string? WatermarkVersion = null)
 {
     public bool IsConfuserExProtected => Confidence >= 0.55;
 
@@ -43,6 +45,7 @@ public sealed record ConfuserExStructureFacts(
                 ConfuserExCapability.ConstantsTable => "constants-table",
                 ConfuserExCapability.ControlFlowSwitchDispatch => "switch-dispatch-control-flow",
                 ConfuserExCapability.AntiDebug => "anti-debug",
+                ConfuserExCapability.JitAntiTamper => "jit-anti-tamper",
                 _ => value.ToString()
             })
             .ToArray();
@@ -84,12 +87,35 @@ public static class ConfuserExStructureDetector
         var inEncrypted = encrypted is null
             ? 0
             : methods.Count(method => IsWithin(encrypted, (uint)method.RVA));
+        var jitStubs = methods.Count(method => method.HasBody &&
+            method.Body.Instructions.Count == 2 &&
+            method.Body.Instructions[0].OpCode.Code == dnlib.DotNet.Emit.Code.Ldnull &&
+            method.Body.Instructions[1].OpCode.Code == dnlib.DotNet.Emit.Code.Throw);
 
         var global = module.GlobalType;
+        // Both the original 1.0 release and mkaring's continuation put their own
+        // ConfusedByAttribute on the module, including the producer version. This is the
+        // strongest clue on modules protected only with constants, resources or proxies:
+        // those configurations have neither encrypted sections nor invisible names.
+        var watermark = module.CustomAttributes
+            .FirstOrDefault(attribute => attribute.TypeFullName == "ConfusedByAttribute" &&
+                attribute.ConstructorArguments.Count == 1 &&
+                attribute.ConstructorArguments[0].Value is UTF8String);
+        var watermarkVersion = watermark?.ConstructorArguments[0].Value?.ToString();
         var initializerCalls = ModuleInitializerCallCount(global);
         var virtualProtect = DeclaresNative(global, "VirtualProtect");
         var debuggerProbe = DeclaresNative(global, "IsDebuggerPresent") ||
-            DeclaresNative(global, "CheckRemoteDebuggerPresent");
+            DeclaresNative(global, "CheckRemoteDebuggerPresent") ||
+            // The default Safe mode uses managed Debugger probes in a worker thread.
+            global.Methods.Any(method => method.HasBody &&
+                method.Body.Instructions.Any(instruction =>
+                    instruction.Operand is IMethod called &&
+                    called.DeclaringType?.FullName == "System.Diagnostics.Debugger" &&
+                    called.Name.String is "get_IsAttached" or "IsLogging") &&
+                method.Body.Instructions.Any(instruction =>
+                    instruction.Operand is IMethod called &&
+                    called.DeclaringType?.FullName == "System.Environment" &&
+                    called.Name == "FailFast"));
 
         var capabilities = ConfuserExCapability.None;
         if (invisible >= 10) capabilities |= ConfuserExCapability.InvisibleNames;
@@ -98,6 +124,9 @@ public static class ConfuserExStructureDetector
         // decrypt before any of the method bodies the metadata places inside it can run.
         if (encrypted is not null && inEncrypted > 0 && initializerCalls > 0 && virtualProtect)
             capabilities |= ConfuserExCapability.AntiTamper;
+        if (encrypted is not null && inEncrypted == 0 && jitStubs > 0 &&
+            initializerCalls > 0 && virtualProtect)
+            capabilities |= ConfuserExCapability.JitAntiTamper;
         if (debuggerProbe) capabilities |= ConfuserExCapability.AntiDebug;
         if (HasConstantsInitializer(global)) capabilities |= ConfuserExCapability.ConstantsTable;
 
@@ -106,6 +135,7 @@ public static class ConfuserExStructureDetector
         // were meant to reach exactly. No combination of these six misses its gate today, but the
         // arithmetic should not be what decides that.
         var points = 0;
+        if (watermarkVersion is not null) points += 60;
         if (invisible >= 10) points += 30;
         if (encrypted is not null) points += 30;
         if (inEncrypted > 0) points += 20;
@@ -125,7 +155,8 @@ public static class ConfuserExStructureDetector
             debuggerProbe,
             initializerCalls,
             capabilities,
-            score);
+            score,
+            watermarkVersion);
     }
 
     /// <summary>

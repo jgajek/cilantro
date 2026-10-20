@@ -3582,6 +3582,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         "System.Reflection.AssemblyName",
         "System.Globalization.CultureInfo",
         "System.Reflection.Module",
+        "System.Runtime.InteropServices.GCHandle",
         "System.AppDomain",
         "System.ResolveEventHandler",
         "System.ResolveEventArgs"
@@ -3948,6 +3949,32 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? IntrinsicResult.Completed(cultureText) : AllocationFailure("culture name");
         if (type == "System.Reflection.Module")
             return InvokeModule(context, name, arguments);
+        if (type == "System.Runtime.InteropServices.GCHandle")
+        {
+            var gcHeap = context.State.Heap;
+            var gcOwner = arguments.Count > 0 ? arguments[0] : StaticValue.Unknown;
+            if (gcOwner.Kind == StaticValueKind.ManagedReference &&
+                !gcHeap.TryReadManaged(gcOwner, out gcOwner))
+                return IntrinsicResult.Unknown("GCHandle receiver could not be read.");
+            if (name == "Alloc" && arguments.Count == 2 &&
+                arguments[1].Kind == StaticValueKind.Int32 &&
+                arguments[1].AsInt32() == 3 &&
+                gcHeap.TryAllocateObject(type, out var handle))
+            {
+                gcHeap.TrySetModelValue(handle, "Target", arguments[0]);
+                return IntrinsicResult.Completed(handle);
+            }
+            if (name == "get_Target" && arguments.Count == 1 &&
+                gcHeap.TryGetModelValue(gcOwner, "Target", out StaticValue target))
+                return IntrinsicResult.Completed(target);
+            if (name == "Free" && arguments.Count == 1 &&
+                gcHeap.TryGetModelValue(gcOwner, "Target", out StaticValue _))
+            {
+                gcHeap.TrySetModelValue(gcOwner, "Target", StaticValue.Null);
+                return IntrinsicResult.Completed();
+            }
+            return IntrinsicResult.Unknown("GCHandle operation is not a closed pinned-buffer operation.");
+        }
         if (type == "System.Resources.ResourceManager")
             return InvokeResourceManager(context, name, arguments);
         if (type == "System.AppDomain")
@@ -4244,6 +4271,27 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             else if (owning is IFullName spelled)
                 heap.TrySetModelValue(owner, ReachedThroughMark, spelled.FullName);
             return IntrinsicResult.Completed(owner);
+        }
+        if (name == "get_Module" && arguments.Count == 1 &&
+            heap.TryGetModelValue<object>(arguments[0], "Metadata", out var ownedMember) &&
+            ownedMember is IMemberRef ownedReference &&
+            ownedReference.Module == context.State.ModuleMetadata)
+        {
+            if (!heap.TryAllocateObject("System.Reflection.Module", out var owner))
+                return AllocationFailure("member module");
+            heap.TrySetModelValue(owner, HomeModuleMark, true);
+            return IntrinsicResult.Completed(owner);
+        }
+        if (name == "GetOptionalCustomModifiers" && arguments.Count == 1 &&
+            heap.TryGetModelValue<object>(arguments[0], "Metadata", out var modifiedMember) &&
+            modifiedMember is FieldDef { FieldSig.Type: CModOptSig modifier })
+        {
+            if (!heap.TryAllocateArray(context.State.ModuleMetadata?.CorLibTypes.GetTypeRef("System", "Type").ToTypeSig(), 1, out var modifiers) ||
+                !heap.TryAllocateType(modifier.Modifier.FullName, out var describedModifier) ||
+                !heap.TrySetModelValue(describedModifier, "Metadata", modifier.Modifier) ||
+                !heap.TryWriteArray(modifiers, 0, describedModifier))
+                return AllocationFailure("optional custom modifier");
+            return IntrinsicResult.Completed(modifiers);
         }
         if (type == "System.Type" &&
             name == "GetType" &&
@@ -9077,6 +9125,19 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         // an assembly the machine has never seen.
         if (name == "GetEntryAssembly" && arguments.Count == 0)
             return IntrinsicResult.Completed(StaticValue.Null);
+        // ConfuserEx's compressor loads a netmodule into its stub assembly. Record the
+        // verified byte buffer before the later reflective entry-point dispatch.
+        if (name == "LoadModule" && arguments.Count == 3 &&
+            context.State.Heap.TryGetString(arguments[1], out var moduleName) &&
+            moduleName is { Length: > 0 } &&
+            context.State.Heap.GetBytesSnapshot(arguments[2]) is { Length: > 0 } moduleImage)
+        {
+            context.State.CaptureAssemblyLoad(moduleImage);
+            if (!context.State.Heap.TryAllocateObject("System.Reflection.Module", out var loadedModule))
+                return AllocationFailure("loaded module model");
+            context.State.Heap.TrySetModelValue(loadedModule, LoadedImage, moduleImage);
+            return IntrinsicResult.Completed(loadedModule);
+        }
         // Loading an assembly from a byte array is where a packer stops being a packer: whatever it
         // decrypted, decompressed, or reassembled, this is the call in which it names the result as
         // the thing to run. The bytes are taken and the load is not performed, and the caller gets a
@@ -9574,6 +9635,26 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         string name,
         IReadOnlyList<StaticValue> arguments)
     {
+        if (name == "ResolveSignature" && arguments.Count == 2 &&
+            context.State.Heap.TryGetModelValue<bool>(arguments[0], HomeModuleMark, out var home) && home &&
+            arguments[1].Kind == StaticValueKind.Int32 &&
+            context.State.ModuleMetadata is ModuleDefMD metadata)
+        {
+            var token = unchecked((uint)arguments[1].AsInt32());
+            uint signatureIndex;
+            if ((token >> 24) == 0x11 &&
+                metadata.Metadata.TablesStream.TryReadStandAloneSigRow(token & 0x00ff_ffff, out var row))
+                signatureIndex = row.Signature;
+            else if ((token >> 24) == 0x04 &&
+                metadata.Metadata.TablesStream.TryReadFieldRow(token & 0x00ff_ffff, out var fieldRow))
+                signatureIndex = fieldRow.Signature;
+            else return IntrinsicResult.Invalid("Signature token is not a field or standalone signature in the home module.");
+            var signature = metadata.Metadata.BlobStream.Read(signatureIndex);
+            return signature is { Length: > 0 and <= 4096 } &&
+                context.State.Heap.TryAllocateByteArray(signature, out var blob)
+                ? IntrinsicResult.Completed(blob)
+                : IntrinsicResult.Invalid("Signature blob is absent or exceeds the bounded read.");
+        }
         // Reactor asks whether the module it cached is the one it is running in, and the answer it
         // wants is reference identity, which the models already carry. Comparing them is modeling
         // the operator rather than assuming a verdict: two models are equal when they are the same
@@ -9632,6 +9713,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             {
                 context.State.Heap.TrySetModelValue(
                     resolved, ReflectionEmitIntrinsic.Confirmed, true);
+                if (name == "ResolveMethod")
+                    context.State.ObserveResolvedMethod((IMethod)member);
             }
 
             return IntrinsicResult.Completed(resolved);

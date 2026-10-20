@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using Cilantro.Core.Recovery;
 
 namespace Cilantro.Core.Analysis;
 
@@ -226,6 +227,12 @@ public sealed class MetadataPreflightPass : DeobfuscationPass
 
         if (NativePackDetector.TryDescribe(context.Module, out var nativeReason))
         {
+            if (ConfuserExX86NativePass.TryPlan(context, out var nativePlan))
+            {
+                context.SetFact("confuserex.x86.nativePlan", nativePlan);
+                return (PassStatus.Success, 0,
+                    [$"Recognized {nativePlan.Count} closed ConfuserEx x86 expression stub(s) for CIL translation."]);
+            }
             context.SetFact("preflight.nativeCodeBoundary", true);
             context.AddEvidence(new Evidence("native-code-boundary", nativeReason, Confidence: 1.0));
             return (PassStatus.Unsupported, 0,

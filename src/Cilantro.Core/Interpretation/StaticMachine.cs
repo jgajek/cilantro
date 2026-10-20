@@ -1193,6 +1193,20 @@ public sealed class StaticMachine
                             {
                                 callResult = invoked;
                             }
+                            else if (target.DeclaringType?.FullName == "System.Object" &&
+                                target.Name == "GetHashCode" && callArguments.Length == 1 &&
+                                State.Heap.TryGetModelValue<object>(callArguments[0], "Metadata",
+                                    out var constructedMetadata) &&
+                                constructedMetadata is TypeDef constructedType &&
+                                constructedType.Module == method.Module &&
+                                constructedType.BaseType?.FullName == "System.Attribute" &&
+                                constructedType.Methods.Where(candidate => candidate.HasBody &&
+                                    candidate.IsVirtual && !candidate.IsNewSlot &&
+                                    candidate.MethodSig is { Params.Count: 0, RetType.ElementType: ElementType.I4 })
+                                    .Take(2).ToArray() is [{ } hashOverride])
+                            {
+                                callResult = ExecuteFrame(hashOverride, callArguments, budget, depth + 1);
+                            }
                             else if (definition is not null && definition.HasBody &&
                                 BelongsToSubject(definition, method))
                             {
@@ -1202,6 +1216,16 @@ public sealed class StaticMachine
                                     budget,
                                     depth + 1,
                                     GenericScope.For(target, generics));
+                            }
+                            else if (definition is not null &&
+                                BelongsToSubject(definition, method) &&
+                                callArguments.Length == 1 &&
+                                callArguments[0].Kind == StaticValueKind.Int32 &&
+                                ConfuserExNativeExpression.TryEvaluate(definition,
+                                    State.ModuleFileBytes, callArguments[0].AsInt32(),
+                                    out var nativeExpression))
+                            {
+                                callResult = FrameResult.Success(StaticValue.FromInt32(nativeExpression));
                             }
                             else if (definition is not null &&
                                 BelongsToSubject(definition, method) &&
@@ -2539,6 +2563,14 @@ public sealed class StaticMachine
 
         if (declaring == "Microsoft.Win32.Registry")
             return RegistryIntrinsic.TryOpenHive(State.Heap, name, out value);
+        // ConfuserEx 2's LZMA wrapper reads the four-byte output length after checking
+        // this framework field. Treating it as an unwritten external static reverses
+        // the length on little-endian hosts and requests a bogus giant array.
+        if (declaring == "System.BitConverter" && name == "IsLittleEndian")
+        {
+            value = StaticValue.FromInt32(BitConverter.IsLittleEndian ? 1 : 0);
+            return true;
+        }
         return declaring == "System.String" && name == "Empty" &&
             State.Heap.TryAllocateString(string.Empty, out value);
     }

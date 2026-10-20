@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "1.0.4";
+    public const string Version = "1.0.5";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -58,6 +58,7 @@ public sealed class CilantroPipeline
         new MetadataPreflightPass(),
         new ReactorDetectionPass(),
         new ConfuserExDetectionPass(),
+        new ConfuserExX86NativePass(),
         new BabelDetectionPass(),
         new DotfuscatorDetectionPass(),
         new ProtectorIdentityPass(),
@@ -113,10 +114,12 @@ public sealed class CilantroPipeline
         // table a reading can index nor a decoder per string. It runs beside the other two because
         // what it produces is the same thing: an ldstr where a call used to be.
         new ConfuserExConstantsPass(),
+        new ConfuserExStrongProxyPass(),
         // Forwarder redirection runs after the rewrites, not before: replacing a resolver call with
         // its string or a proxy dispatch with a direct call is what leaves many of Reactor's
         // wrappers as the bare pass-throughs this pass can prove and skip.
         new MethodInliningPass(),
+        new ConfuserExCheckPass(),
         // Token recovery follows it for the same reason in reverse: the sites it reads are the ones
         // redirection just brought into view.
         new TokenRecoveryPass(),
@@ -126,6 +129,7 @@ public sealed class CilantroPipeline
         new StringTableRelearningPass(),
         new StringLookupRecoveryPass(),
         new BabelResourceRecoveryPass(),
+        new ConfuserExResourcePass(),
         // Resource classification and payload extraction run last because a JIT-hook artifact hides
         // every resource consumer behind an encrypted body and an encrypted name literal. Last has to
         // mean after the late reading as well as after the early one: a build that renumbered its
@@ -977,7 +981,8 @@ public sealed class CilantroPipeline
         {
             var safeName = ArtifactStem(payload.Info.AssemblyName,
                 Convert.ToHexStringLower(SHA256.HashData(payload.Bytes)), usedNames);
-            var path = Path.Combine(directory, $"{safeName}.dll");
+            var extension = payload.Info.Origin == PayloadOrigin.StandaloneRebuilt ? ".exe" : ".dll";
+            var path = Path.Combine(directory, $"{safeName}{extension}");
             File.WriteAllBytes(path, payload.Bytes);
             paths.Add(path);
         }

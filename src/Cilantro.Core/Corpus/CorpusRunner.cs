@@ -68,7 +68,8 @@ public sealed record CorpusSample(
     int? MinimumRetiredProxyInitializers = null,
     int? MinimumLateProxyCallSites = null,
     int? MinimumRecoveredNumericArrays = null,
-    IReadOnlyList<CorpusDataFile>? BabelCodeSources = null);
+    IReadOnlyList<CorpusDataFile>? BabelCodeSources = null,
+    int? MinimumForwarderCallsInlined = null);
 
 public sealed record CorpusDataFile(string LocalName, string Sha256);
 
@@ -358,9 +359,19 @@ public static class CorpusRunner
         }
         if (sample.MinimumProxyCallsRestored is int proxyMinimum && result.Report.Recovery.ProxyCallsRestored < proxyMinimum)
             diagnostics.Add($"Recovered proxy calls {result.Report.Recovery.ProxyCallsRestored} is below {proxyMinimum}.");
+        if (sample.MinimumForwarderCallsInlined is int forwarderMinimum)
+        {
+            var inlined = result.Report.Passes.Where(pass =>
+                pass.Pass == "method-inlining" && pass.Status == PassStatus.Success)
+                .Sum(pass => pass.Changes);
+            if (inlined < forwarderMinimum)
+                diagnostics.Add($"Inlined forwarder calls {inlined} is below {forwarderMinimum}.");
+        }
         if (sample.MinimumNeutralizedCheckSites is int checkMinimum)
         {
-            var checks = result.Report.Passes.Where(pass => pass.Pass is "dotfuscator-checks" or "babel-checks" && pass.Status == PassStatus.Success).Sum(pass => pass.Changes);
+            var checks = result.Report.Passes.Where(pass =>
+                pass.Pass is "dotfuscator-checks" or "babel-checks" or "confuserex-checks" &&
+                pass.Status == PassStatus.Success).Sum(pass => pass.Changes);
             if (checks < checkMinimum) diagnostics.Add($"Neutralized check sites {checks} is below {checkMinimum}.");
         }
         if (sample.MinimumMaterializedHashStrings is int hashMinimum)

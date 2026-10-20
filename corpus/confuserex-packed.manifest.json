@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "profile": "confuserex-packed",
+  "description": "Official ConfuserEx compressor captures. Payload hashes gate byte-exact extraction and standalone entry-point rebuilding.",
+  "samples": [
+    {
+      "id": "confuserex-1-packed",
+      "tier": "profiled",
+      "sha256": "a66d42361368a52ccfd988839ae9efed9e1972828555df4fa9b7bacee62b7e04",
+      "localName": "confuserex-advanced/confuserex-1/packed/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": null,
+      "expectedPayloadSha256": ["e33f717904cfb890592f28892a1d346934ce2dd677bdea44f34506be0e6c85eb", "9a4529468f3a711c7baf0a2a0db66e4c3d51e4a24bad76bcf4d11b9851b54c4f"]
+    },
+    {
+      "id": "confuserex-2-packed",
+      "tier": "profiled",
+      "sha256": "c5dff6d4b1980d46c33702056ecc39c1c3a6fcf723049987a6b4f947848a56cf",
+      "localName": "confuserex-advanced/confuserex-2/packed/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": null,
+      "expectedPayloadSha256": ["46f7d9ca409d6f1367025ed03ac5cf80451ac79455eefec71ef6aeca34a86b1a", "9755d7136b604f910c000eb2da3bcb1dbc36f2cf1da4841e97fc9a4f2254aa38"]
+    }
+  ]
+}

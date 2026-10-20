@@ -42,7 +42,7 @@ Follow **OUTPUT** to the recommended assembly and HTML report. Open the assembly
 | Debugging, integrity and root checks | Removed protection checks while retaining application notifications. |
 | Obsolete protector code | Less generated machinery obscuring the application. |
 
-Coverage includes Babel 12.1 method encryption, password/external method files and all seven cipher choices, plus Dotfuscator 7.9 managed and native-key v2 strings. The [compatibility guide](docs/compatibility.md) lists versions, required files and limits.
+Coverage includes ConfuserEx 1.0.0 and ConfuserEx 2 (mkaring 1.6.0) constants, resources, proxies, anti-tamper and compressor payloads; Babel 12.1 method encryption and all seven cipher choices; and Dotfuscator 7.9 managed and native-key v2 strings. The [compatibility guide](docs/compatibility.md) lists versions, required files and limits.
 
 ## Useful options
 
@@ -62,7 +62,7 @@ Coverage includes Babel 12.1 method encryption, password/external method files a
 
 Start from an untouched protected input and keep its companion files. Read the report before treating a recovered path as complete: unknown decoders, missing data and damaged inputs can leave work unresolved. Cleaned malware remains malware; a successful structural check does not establish that it is safe to execute.
 
-CILantro does not identify malware families, fetch remote stages or recreate the original source project. See the [validation results](docs/status-report.md) and [1.0.4 release notes](docs/releases/1.0.4.md) for the tested scope.
+CILantro does not identify malware families, fetch remote stages or recreate the original source project. See the [validation results](docs/status-report.md) and [1.0.5 release notes](docs/releases/1.0.5.md) for the tested scope.
 
 ## Continue the investigation
 

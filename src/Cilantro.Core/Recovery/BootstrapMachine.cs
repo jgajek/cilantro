@@ -265,7 +265,8 @@ public static class BootstrapMachine
         ArtifactContext context,
         int maximumSteps,
         out StaticMachine? machine,
-        out string diagnostic)
+        out string diagnostic,
+        bool modelTypeInitialization = true)
     {
         ArgumentNullException.ThrowIfNull(context);
         machine = null;
@@ -273,7 +274,7 @@ public static class BootstrapMachine
         var environment = Environment(context);
         var candidate = new StaticMachine(
             Limits(maximumSteps, environment.Declarations.Budgets),
-            modelTypeInitialization: true);
+            modelTypeInitialization: modelTypeInitialization);
         if (!TryTell(context, candidate, out diagnostic))
             return false;
 

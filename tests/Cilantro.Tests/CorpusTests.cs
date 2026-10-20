@@ -51,9 +51,11 @@ public sealed class CorpusTests
             sample.ExpectedCapabilities.Count > 0 ||
             sample.ExpectedPayloadSha256 is { Count: > 0 } ||
             sample.MinimumRecoveredStringSites is > 0 ||
+            sample.MinimumRedirectedDispatcherEdges is > 0 ||
             sample.MinimumNumericTableSites is > 0 ||
             sample.MinimumResourcesRestored is > 0 ||
             sample.MinimumProxyCallsRestored is > 0 ||
+            sample.MinimumForwarderCallsInlined is > 0 ||
             sample.ExpectedDecodedResourceSha256 is { Count: > 0 } ||
             sample.MinimumNeutralizedCheckSites is > 0 ||
             sample.ExpectedRestoredBodyCount is > 0 ||

@@ -145,9 +145,12 @@ public sealed class ConfuserExConstantsPass : DeobfuscationPass
 
         var unanswered = asks.Length - agreed.Count;
         var incomplete = unanswered > 0 || sites.Unproven > 0 || sites.Unhandled > 0;
+        var retired = !incomplete && arrays == 0 && status == PassStatus.Success &&
+            RetireUnusedInitializers(context, getters, initializers);
         return (incomplete ? PassStatus.Partial : PassStatus.Success, changes,
         [
             .. notes,
+            .. retired ? new[] { "Removed the unused constants-table startup call(s)." } : [],
             $"Read {constants.Count} constant(s) from {getters.Count} getter(s): " +
             $"{strings} string(s), {arrays} array(s).",
             arrays > 0
@@ -170,6 +173,45 @@ public sealed class ConfuserExConstantsPass : DeobfuscationPass
                 : [],
             .. refused.Take(10)
         ]);
+    }
+
+    private static bool RetireUnusedInitializers(
+        ArtifactContext context,
+        IReadOnlyList<MethodDef> getters,
+        IReadOnlyList<MethodDef> initializers)
+    {
+        var cctor = context.Module.GlobalType.FindStaticConstructor();
+        if (cctor?.HasBody != true || initializers.Count == 0)
+            return false;
+        var wanted = getters.ToHashSet();
+        if (context.Module.GetTypes().SelectMany(type => type.Methods)
+            .Where(method => method.HasBody)
+            .SelectMany(method => method.Body.Instructions)
+            .Any(instruction => instruction.Operand is IMethod called &&
+                called.ResolveMethodDef() is { } target && wanted.Contains(target)))
+            return false;
+
+        var toRemove = cctor.Body.Instructions.Where(instruction =>
+            instruction.OpCode.Code == Code.Call &&
+            (instruction.Operand as IMethod)?.ResolveMethodDef() is { } target &&
+            initializers.Contains(target)).ToArray();
+        if (toRemove.Length != initializers.Count)
+            return false;
+        using var batch = new BodyMutationBatch();
+        batch.Capture(cctor);
+        foreach (var instruction in toRemove)
+        {
+            instruction.OpCode = OpCodes.Nop;
+            instruction.Operand = null;
+        }
+        if (!AssemblyVerifier.Verify(context.Module, context.OriginalIdentity,
+                context.OriginalStructure, CilantroPipeline.BuildRewriteAllowance(context)).Passed)
+            return false;
+        batch.Commit();
+        foreach (var initializer in initializers)
+            context.AddChange(new ChangeRecord("confuserex-constants", "retire-constants-initializer",
+                initializer.FullName, "All getter sites were restored; the constants table is no longer read."));
+        return true;
     }
 
     // ---- what the module says about itself -------------------------------------------------

@@ -45,7 +45,8 @@ public enum PayloadOrigin
     EmbeddedDependency,
     NativeWrapper,
     ResourceCodec,
-    NativeDependency
+    NativeDependency,
+    StandaloneRebuilt
 }
 
 /// <param name="WrittenTo">

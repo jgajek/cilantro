@@ -1,0 +1,47 @@
+{
+  "manifestVersion": 1,
+  "profile": "confuserex-combined-strong",
+  "description": "Official ConfuserEx editions protecting a benign probe with strong proxies, constants, control flow, resources, normal anti-tamper, startup checks and renaming.",
+  "samples": [
+    {
+      "id": "confuserex-combined-strong-oracle",
+      "tier": "oracle",
+      "sha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "localName": "confuserex-combined-strong/oracle/ConfuserExProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "confuserex-1-combined-strong",
+      "tier": "profiled",
+      "sha256": "77fcfb9c214edbe956cf8f4e098d984dd304b3a554c4aba7996b30dd80fe7490",
+      "localName": "confuserex-combined-strong/confuserex-1/combined-strong/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 8,
+      "minimumProxyCallsRestored": 42,
+      "minimumResourcesRestored": 1,
+      "minimumRedirectedDispatcherEdges": 500,
+      "minimumNeutralizedCheckSites": 2,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-2-combined-strong",
+      "tier": "profiled",
+      "sha256": "364341d32db47dc8a49bef7fc7c5e78d28508d3598a06e7f5cd28a301a04af74",
+      "localName": "confuserex-combined-strong/confuserex-2/combined-strong/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 8,
+      "minimumProxyCallsRestored": 12,
+      "minimumResourcesRestored": 1,
+      "minimumRedirectedDispatcherEdges": 500,
+      "minimumNeutralizedCheckSites": 2,
+      "requireOracleResourceParity": true
+    }
+  ]
+}

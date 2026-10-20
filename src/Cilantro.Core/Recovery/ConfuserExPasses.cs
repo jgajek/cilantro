@@ -31,7 +31,8 @@ public sealed class ConfuserExDetectionPass : DeobfuscationPass
 
         context.AddEvidence(new Evidence(
             "protector",
-            $"ConfuserEx: {string.Join(", ", facts.CapabilityNames)}.",
+            $"ConfuserEx{(facts.WatermarkVersion is null ? "" : $" {facts.WatermarkVersion}")}: " +
+            $"{string.Join(", ", facts.CapabilityNames)}.",
             Confidence: facts.Confidence));
         foreach (var capability in facts.CapabilityNames)
             context.AddEvidence(new Evidence("capability", capability, Confidence: facts.Confidence));
@@ -75,7 +76,7 @@ public sealed class ConfuserExDetectionPass : DeobfuscationPass
 public sealed class ConfuserExAntiTamperPass : DeobfuscationPass
 {
     public override string Name => "confuserex-antitamper";
-    public override IReadOnlyCollection<string> Dependencies => ["confuserex-detection"];
+    public override IReadOnlyCollection<string> Dependencies => ["confuserex-x86-native"];
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
@@ -85,6 +86,48 @@ public sealed class ConfuserExAntiTamperPass : DeobfuscationPass
             !facts.IsConfuserExProtected)
         {
             return (PassStatus.Success, 0, ["Not ConfuserEx-protected; nothing to decrypt."]);
+        }
+        if (facts.Capabilities.HasFlag(ConfuserExCapability.JitAntiTamper))
+        {
+            var jitSection = ConfuserExStructureDetector.FindEncryptedSection(context.OriginalImage);
+            var jitRoot = context.Module.GlobalType.FindStaticConstructor();
+            if (jitSection is null || jitRoot is not { HasBody: true })
+                return (PassStatus.Unsupported, 0, ["The JIT anti-tamper section or initializer is missing."]);
+            var jitLimits = BootstrapMachine.Environment(context).Declarations.Budgets.Over(
+                new StaticMachineLimits(64_000_000, 64, 256 * 1024 * 1024,
+                    256 * 1024 * 1024, 1_000_000, 8_192, 96));
+            if (!ImageRewriteRecovery.TryInterpret(context, jitRoot, jitLimits,
+                    out var jitRewrite, out var jitDiagnostic) || jitRewrite is null)
+                return (PassStatus.Unsupported, 0,
+                    [$"JIT anti-tamper section interpretation stopped: {jitDiagnostic}"]);
+            var jitPolicy = new ConfuserExSectionRewritePolicy(jitSection, context.Module);
+            if (!jitPolicy.TryReplay(context.OriginalImage, jitRewrite.ImageWrites,
+                    out var jitRestored, out _, out var jitReplayDiagnostic))
+                return (PassStatus.Unsupported, 0,
+                    [$"JIT anti-tamper section replay was refused: {jitReplayDiagnostic}"]);
+            if (!ConfuserExJitBodyIndex.TryRead(context.Module, context.OriginalImage,
+                    jitSection, jitRestored, out var jitEntries, out var jitIndexDiagnostic))
+                return (PassStatus.Unsupported, 0,
+                    [$"JIT anti-tamper body index was refused: {jitIndexDiagnostic}"]);
+            if (!ConfuserExJitBodyDecoder.TryFindKey(context.Module, out var jitKey))
+                return (PassStatus.Unsupported, 0,
+                    ["JIT anti-tamper body decryption key was not proven."]);
+            if (!ConfuserExJitBodyDecoder.TryDecode(jitRestored, jitEntries, jitKey,
+                    out var jitRecords, out var jitBodyDiagnostic))
+                return (PassStatus.Unsupported, 0,
+                    [$"JIT anti-tamper body decoding was refused: {jitBodyDiagnostic}"]);
+            if (!ConfuserExJitBodyDecoder.TryRestore(context, jitRecords, out var jitRestoreDiagnostic))
+                return (PassStatus.Unsupported, 0,
+                    [$"JIT anti-tamper method reconstruction was refused: {jitRestoreDiagnostic}"]);
+            foreach (var record in jitRecords)
+                context.AddChange(new ChangeRecord(Name, "restore-jit-method-body",
+                    record.Method.MDToken.ToString(),
+                    "Rebuilt IL, local variables and exception clauses from the decrypted JIT body index."));
+            context.SetFact("confuserex.antitamper.complete", true);
+            context.SetFact("confuserex.antitamper.restored", jitRecords.Count);
+            return (PassStatus.Success, jitRecords.Count,
+                [$"Decrypted JIT section with {jitRewrite.ImageWrites.Count} mapped-image writes and " +
+                 $"rebuilt {jitRecords.Count} indexed method body/bodies."]);
         }
         if (!facts.Capabilities.HasFlag(ConfuserExCapability.AntiTamper))
         {

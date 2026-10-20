@@ -372,10 +372,14 @@ public static class PayloadChainRecovery
     }
 
     private static bool IsMemoryLoad(IMethod called) =>
-        called.Name == "Load" &&
         called.DeclaringType?.FullName == "System.Reflection.Assembly" &&
-        called.MethodSig?.Params.Count == 1 &&
-        called.MethodSig.Params[0].FullName == "System.Byte[]";
+        called.MethodSig is { } signature &&
+        (called.Name == "Load" && signature.Params.Count == 1 &&
+            signature.Params[0].FullName == "System.Byte[]" ||
+         called.Name == "LoadModule" && signature.HasThis &&
+            signature.Params.Count == 2 &&
+            signature.Params[0].FullName == "System.String" &&
+            signature.Params[1].FullName == "System.Byte[]");
 
     /// <summary>
     /// Interprets a root and returns the images it tried to load that parse as assemblies.

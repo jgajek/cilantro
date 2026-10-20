@@ -1,0 +1,37 @@
+{
+  "probe": "corpus/probes/ConfuserExProbe/ConfuserExProbe.csproj",
+  "generator": "corpus/probes/confuserex.ps1",
+  "targetFramework": "net48",
+  "seed": "cilantro-2026",
+  "original": {
+    "source": "https://github.com/yck1509/ConfuserEx",
+    "sourceCommit": "3e3e4ae8ef01e3a169591e9b7803408e38cce7ca",
+    "release": "v1.0.0",
+    "archiveSha256": "7810adc7b8650ae4590190798da35f6a4cb491bd2c71e122ee2f2468f8eb1374",
+    "cliSha256": "2b3e5cb7f96589e5377700a5f7f25e9fc6a14539e85256e6ac6e85c07f769f61"
+  },
+  "continuation": {
+    "source": "https://github.com/mkaring/ConfuserEx",
+    "sourceCommit": "657fb58dcf7c7a408c60ab496bfdf6442d751787",
+    "release": "v1.6.0",
+    "archiveSha256": "a00de7cddc740f7edb1baab4c6c9073553dcc88f7e873d15b7fd34ddd33753d7",
+    "cliSha256": "0790671f930bd1375fa06ece29a776404cee44695e083cace46c905433644130"
+  },
+  "captureManifest": "corpus/confuserex-generated.manifest.json",
+  "captureCount": 18,
+  "oracleCount": 1,
+  "additionalManifest": "corpus/confuserex-advanced.manifest.json",
+  "additionalCaptureCount": 25,
+  "combinedStrongManifest": "corpus/confuserex-combined-strong.manifest.json",
+  "combinedStrongCaptureCount": 2,
+  "combinedHardManifest": "corpus/confuserex-combined-hard.manifest.json",
+  "combinedHardCaptureCount": 4,
+  "packedManifest": "corpus/confuserex-packed.manifest.json",
+  "packedCaptureCount": 2,
+  "binaryLocation": "samples/confuserex-generated",
+  "additionalBinaryLocation": "samples/confuserex-advanced",
+  "variantBinaryLocation": "samples/confuserex-variants",
+  "combinedStrongBinaryLocation": "samples/confuserex-combined-strong",
+  "combinedHardBinaryLocation": "samples/confuserex-combined-hard",
+  "binaryTrackedInGit": false
+}

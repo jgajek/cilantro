@@ -1,0 +1,269 @@
+{
+  "manifestVersion": 1,
+  "profile": "confuserex-generated",
+  "description": "Source-built benign ConfuserEx 1.0.0 and mkaring continuation 1.6.0 captures across isolated and combined protections. Binary fixtures are local; corpus/probes/confuserex.ps1 regenerates them from pinned official releases.",
+  "samples": [
+    {
+      "id": "confuserex-oracle",
+      "tier": "oracle",
+      "sha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "localName": "confuserex-generated/oracle/ConfuserExProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "confuserex-1-constants",
+      "tier": "profiled",
+      "sha256": "8a13643b07fcad4f52be7c3e755841ea0dd6402857e4b01abe03988dd2377810",
+      "localName": "confuserex-generated/confuserex-1/constants/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "constants-table"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 6
+    },
+    {
+      "id": "confuserex-1-flow",
+      "tier": "profiled",
+      "sha256": "4381b19e7f8f6b2729926b52c939d86477e6aac445b871aa4c3194f647304438",
+      "localName": "confuserex-generated/confuserex-1/flow/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRedirectedDispatcherEdges": 10
+    },
+    {
+      "id": "confuserex-1-proxy",
+      "tier": "profiled",
+      "sha256": "b055f2d346a02db5acf05867349e3144395ee408e7aaf3d9478852655adb5189",
+      "localName": "confuserex-generated/confuserex-1/proxy/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumForwarderCallsInlined": 10
+    },
+    {
+      "id": "confuserex-1-resources",
+      "tier": "profiled",
+      "sha256": "a70615d59b9ee1f3810a2d45c786b967a061ea1335fec4223a1aebfb1a01bd6d",
+      "localName": "confuserex-generated/confuserex-1/resources/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumResourcesRestored": 1,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-1-tamper",
+      "tier": "profiled",
+      "sha256": "e67ba7b7306dbb2d69feda137be8e916e252b36b37847619a15f8b9f13f491fd",
+      "localName": "confuserex-generated/confuserex-1/tamper/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "encrypted-section",
+        "anti-tamper"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "expectedRestoredBodyCount": 3
+    },
+    {
+      "id": "confuserex-1-checks",
+      "tier": "profiled",
+      "sha256": "3d9363a770ffeffda0ccb1da6fdef05662b512684a18a37041c49d83b382d148",
+      "localName": "confuserex-generated/confuserex-1/checks/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "anti-debug"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumNeutralizedCheckSites": 2
+    },
+    {
+      "id": "confuserex-1-renamed",
+      "tier": "profiled",
+      "sha256": "559446db41be1c0e5ec26e28268383eb51d25bb07a44566c56420b5d94ac48ab",
+      "localName": "confuserex-generated/confuserex-1/renamed/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "expectedRestoredBodyCount": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-1-combined-no-rename",
+      "tier": "profiled",
+      "sha256": "dcfb242782609dd7ee088569ea6e814c6ac13c12ebe4b1b621a3fa1edf3c1ec9",
+      "localName": "confuserex-generated/confuserex-1/combined-no-rename/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "constants-table",
+        "encrypted-section",
+        "anti-tamper",
+        "anti-debug"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 8,
+      "minimumResourcesRestored": 1,
+      "minimumRedirectedDispatcherEdges": 500,
+      "minimumNeutralizedCheckSites": 2,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-1-combined",
+      "tier": "profiled",
+      "sha256": "29c4327b38d0afae20b1eaf206913878de2e32420919c9d0da1b05c2278167eb",
+      "localName": "confuserex-generated/confuserex-1/combined/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "constants-table",
+        "encrypted-section",
+        "anti-tamper",
+        "anti-debug"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 8,
+      "minimumResourcesRestored": 1,
+      "minimumRedirectedDispatcherEdges": 500,
+      "minimumNeutralizedCheckSites": 2,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-2-constants",
+      "tier": "profiled",
+      "sha256": "03c61ce43597073f657fde1f276f65fd86262c1f1d631abbd3fc98dacac1bcc1",
+      "localName": "confuserex-generated/confuserex-2/constants/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "constants-table"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 6
+    },
+    {
+      "id": "confuserex-2-flow",
+      "tier": "profiled",
+      "sha256": "afe561493dbb81d6a7fd14da52923f373218eac6fc9d426190f3489fb30ef4ba",
+      "localName": "confuserex-generated/confuserex-2/flow/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRedirectedDispatcherEdges": 10
+    },
+    {
+      "id": "confuserex-2-proxy",
+      "tier": "profiled",
+      "sha256": "87ae04e36ace0a171d15add23d06c6153328d411c06d974d4fe53deba892088c",
+      "localName": "confuserex-generated/confuserex-2/proxy/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumForwarderCallsInlined": 11
+    },
+    {
+      "id": "confuserex-2-resources",
+      "tier": "profiled",
+      "sha256": "4b9a178ee6adce38e8d37453d3343dab12156dd9dbf96dd8035d7496848b6f96",
+      "localName": "confuserex-generated/confuserex-2/resources/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumResourcesRestored": 1,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-2-tamper",
+      "tier": "profiled",
+      "sha256": "49adcf147c863ee88ead3a5cc2e157fd392a09ad82349b7bd1af0ee7487804e3",
+      "localName": "confuserex-generated/confuserex-2/tamper/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "encrypted-section",
+        "anti-tamper"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "expectedRestoredBodyCount": 2
+    },
+    {
+      "id": "confuserex-2-checks",
+      "tier": "profiled",
+      "sha256": "697cdc8ecce10fa44d7378690636932377682783d0ff0a4d2901c8fcbcaf80fb",
+      "localName": "confuserex-generated/confuserex-2/checks/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "anti-debug"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumNeutralizedCheckSites": 2
+    },
+    {
+      "id": "confuserex-2-renamed",
+      "tier": "profiled",
+      "sha256": "3a79b8e37adc012a9a74145366a212107d0f64294db76abfe1f00e9bcb5c6d94",
+      "localName": "confuserex-generated/confuserex-2/renamed/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "expectedRestoredBodyCount": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-2-combined-no-rename",
+      "tier": "profiled",
+      "sha256": "5da0389d96bff4d3eccc6089873face1b14e32e957b1991d77c1dd4a5983b172",
+      "localName": "confuserex-generated/confuserex-2/combined-no-rename/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "constants-table",
+        "encrypted-section",
+        "anti-tamper",
+        "anti-debug"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 8,
+      "minimumResourcesRestored": 1,
+      "minimumRedirectedDispatcherEdges": 500,
+      "minimumNeutralizedCheckSites": 2,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "confuserex-2-combined",
+      "tier": "profiled",
+      "sha256": "af4a26831e34f3271d246e43ac0309f6a5b40decba2880305791ca7c3e6e2af7",
+      "localName": "confuserex-generated/confuserex-2/combined/ConfuserExProbe.exe",
+      "expectedDetection": "confuserex",
+      "expectedCapabilities": [
+        "constants-table",
+        "encrypted-section",
+        "anti-tamper",
+        "anti-debug"
+      ],
+      "oracleSha256": "030b99acb2c77f64c2191790ffbaae38e1483adb1f36c46dfde9e578d311ce2d",
+      "maximumRemainingStubs": 0,
+      "minimumRecoveredStringSites": 8,
+      "minimumResourcesRestored": 1,
+      "minimumRedirectedDispatcherEdges": 500,
+      "minimumNeutralizedCheckSites": 2,
+      "requireOracleResourceParity": true
+    }
+  ]
+}
