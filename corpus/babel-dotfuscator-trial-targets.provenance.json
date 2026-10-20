@@ -1,0 +1,231 @@
+{
+  "validatedAt": "2026-10-20",
+  "scope": "Built-in protection families in the installed Babel 12.1 and Dotfuscator 7.9 trials, as defined by the feature audit. Unknown/custom decoder graphs, unavailable application state, discarded original information and future producer builds do not establish a recovery guarantee.",
+  "featureAudit": {
+    "path": "docs/babel-dotfuscator-targets.md",
+    "sha256": "286520b5d4bf46a7d32b78bd0da8f1061d7e10b5abfd796788c87d48a78fa57e"
+  },
+  "exclusions": [
+    {
+      "reason": "The trial compiler reports the component unavailable.",
+      "evidence": "corpus/babel-12-baseline.provenance.json",
+      "product": "Babel",
+      "feature": "Stream string encryption"
+    },
+    {
+      "reason": "Separate required activation key unavailable in the supplied evaluation setup.",
+      "product": "Dotfuscator",
+      "feature": "Shelf Life"
+    }
+  ],
+  "cipherExtension": "corpus/babel-12-ciphers.provenance.json",
+  "fullRegression": {
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/ciphers/full-suite.log",
+      "sha256": "1921939e3ffd9cda4419489abc403d3ec70cf1361496ef3d981971642c83811d"
+    },
+    "skipped": 37,
+    "total": 3943,
+    "duration": "12 m 6 s",
+    "passed": 3906,
+    "skipScope": "Unrelated private fixtures; all Babel and Dotfuscator corpus environment gates enabled.",
+    "failed": 0
+  },
+  "inputAudit": {
+    "missingOrChanged": 0,
+    "mainEntries": 362,
+    "babelDataCompanions": 6,
+    "manifests": 30,
+    "sha256": "1c200c28a6b6ad65b8062c8296ccb9a342e4f088fd878fa3484f302dff3298bd"
+  },
+  "manifests": [
+    {
+      "sha256": "1b3c69f8e252727586d408b2012374e97de8f53e5f07ebc252648862e101c4e1",
+      "path": "corpus/babel-12-baseline.manifest.json",
+      "samples": 30,
+      "profile": "babel-12-baseline"
+    },
+    {
+      "sha256": "6d2b0ff0014dfd09d06439f4d4ef6c40a3ab01b53918820445a231718cc20f5c",
+      "path": "corpus/babel-12-ciphers.manifest.json",
+      "samples": 24,
+      "profile": "babel-12-ciphers"
+    },
+    {
+      "sha256": "352d90e791ec648f8f4784a3d214189fe5288d7d0e63d0afbbc1cbde5b906aa1",
+      "path": "corpus/babel-12-embedding-identities.manifest.json",
+      "samples": 15,
+      "profile": "babel-12-embedding-identities"
+    },
+    {
+      "sha256": "57f32f5643fa95b109fb21192822dce14afc806c052088d370f2853a1a3ec89b",
+      "path": "corpus/babel-12-embedding.manifest.json",
+      "samples": 15,
+      "profile": "babel-12-embedding"
+    },
+    {
+      "sha256": "890b66fb8893cf6ed681ad00f9c1e854270430316691d228203aeaf79dd3e9eb",
+      "path": "corpus/babel-12-external-bases.manifest.json",
+      "samples": 12,
+      "profile": "babel-12-external-bases"
+    },
+    {
+      "sha256": "3417f61536e7697ab859b25398b816cf7018c6d237ccebea5a27784f3aa95e95",
+      "path": "corpus/babel-12-external-combined.manifest.json",
+      "samples": 6,
+      "profile": "babel-12-external-combined"
+    },
+    {
+      "sha256": "8209870449b440dfa21fed17c7c4e4301a63e244cd1d36bbd9940f404434924a",
+      "path": "corpus/babel-12-external.manifest.json",
+      "samples": 6,
+      "profile": "babel-12-external"
+    },
+    {
+      "sha256": "9a1422437b6521241894e675f0a7924d85bea41946b2b3cd9594b228a880b1dd",
+      "path": "corpus/babel-12-generics.manifest.json",
+      "samples": 21,
+      "profile": "babel-12-generics"
+    },
+    {
+      "sha256": "4ee7941081c6f9337069a21b1a39a2ab18b0564c3595316f499f80c787c6e98a",
+      "path": "corpus/babel-12-hardening.manifest.json",
+      "samples": 12,
+      "profile": "babel-12-hardening"
+    },
+    {
+      "sha256": "18ff75f027120b243bc658f51eb3b597075a6020a0a9bce3a663899d9cae4ee5",
+      "path": "corpus/babel-12-hierarchy.manifest.json",
+      "samples": 12,
+      "profile": "babel-12-hierarchy"
+    },
+    {
+      "sha256": "3d7d52b3f46897a6ca9abb5aacdb37eb0a7dce6e62f09d22d513ed7f0d64349e",
+      "path": "corpus/babel-12-methods.manifest.json",
+      "samples": 21,
+      "profile": "babel-12-methods"
+    },
+    {
+      "sha256": "476dc154712ce699a6312cc78c35e96cd98c50adabd0ac690f99fbb258351089",
+      "path": "corpus/babel-12-password-combined.manifest.json",
+      "samples": 6,
+      "profile": "babel-12-password-combined"
+    },
+    {
+      "sha256": "92eef13bc2f02f62d5f4736969d24c0ec26f9e13948f1bc95d98ad99c1171390",
+      "path": "corpus/babel-12-password.manifest.json",
+      "samples": 6,
+      "profile": "babel-12-password"
+    },
+    {
+      "sha256": "6a6bcfdf90a20914c3af1ce44039cf646a94cf1008d10cafb8744afb2e48bfbe",
+      "path": "corpus/babel-static.manifest.json",
+      "samples": 9,
+      "profile": "babel-static"
+    },
+    {
+      "sha256": "8f0ca6cd6705914a02a8cfce87931f3c8de4f2fdbd0ddf4e7de87a61c3095087",
+      "path": "corpus/dotfuscator-7-check-interactions.manifest.json",
+      "samples": 12,
+      "profile": "dotfuscator-7-check-interactions"
+    },
+    {
+      "sha256": "97d0aeedd047ae5dcb5e574faa504fbc3426bdcb16d5b635b45a4cec55c1bc76",
+      "path": "corpus/dotfuscator-7-checks.manifest.json",
+      "samples": 33,
+      "profile": "dotfuscator-7-checks"
+    },
+    {
+      "sha256": "7e4d2096997fae56e6f7a7a5d97770be33623b63363e09069611bf2fccdc73f3",
+      "path": "corpus/dotfuscator-7-native-linux-arm64.manifest.json",
+      "samples": 8,
+      "profile": "dotfuscator-7-native-linux-arm64"
+    },
+    {
+      "sha256": "a8590f39e106a52ab5fbba16f9f9b16ff7935bc30ea6423bdf1cd3728cc0d946",
+      "path": "corpus/dotfuscator-7-native-linux-x64.manifest.json",
+      "samples": 8,
+      "profile": "dotfuscator-7-native-linux-x64"
+    },
+    {
+      "sha256": "c6ed5e58ab29f144187de34b3ff573717cd51d8a366f2ba07a316c3177be3212",
+      "path": "corpus/dotfuscator-7-native-osx-arm64.manifest.json",
+      "samples": 6,
+      "profile": "dotfuscator-7-native-osx-arm64"
+    },
+    {
+      "sha256": "81cd8ab65bf092e7a62d54759b8b968a676b714690f5534f092a41c399f2e3d3",
+      "path": "corpus/dotfuscator-7-native-osx-x64.manifest.json",
+      "samples": 6,
+      "profile": "dotfuscator-7-native-osx-x64"
+    },
+    {
+      "sha256": "a2798f7990ff89438fa38e9a6b1a503d606f0866e2cd318c74fdb1d03562de51",
+      "path": "corpus/dotfuscator-7-native-x86.manifest.json",
+      "samples": 8,
+      "profile": "dotfuscator-7-native-x86"
+    },
+    {
+      "sha256": "47ff23655a280aea52efcbea3d631762faae9d5428155569ffec4c381c0817bc",
+      "path": "corpus/dotfuscator-7-native.manifest.json",
+      "samples": 13,
+      "profile": "dotfuscator-7-native"
+    },
+    {
+      "sha256": "3c3ba43ce3d4a131773f94d6418e42bff08f3bd0769a60a43c58f49aca85d152",
+      "path": "corpus/dotfuscator-7-resource-contracts.manifest.json",
+      "samples": 12,
+      "profile": "dotfuscator-7-resource-contracts"
+    },
+    {
+      "sha256": "1de15ce348ffb4a5f38f1339ec314b03c617d8184996ef952e99f5acbe26b7b4",
+      "path": "corpus/dotfuscator-7-resource-interactions.manifest.json",
+      "samples": 12,
+      "profile": "dotfuscator-7-resource-interactions"
+    },
+    {
+      "sha256": "9f5bf1181d802ac6ff59f814fc90a772adebb77860c98f75f7cb8f42ac267097",
+      "path": "corpus/dotfuscator-7-resource-types.manifest.json",
+      "samples": 6,
+      "profile": "dotfuscator-7-resource-types"
+    },
+    {
+      "sha256": "b7ca3022d134557e38af51556399268c87b19e5b75fae87dadfe417cd406ad65",
+      "path": "corpus/dotfuscator-7-resources.manifest.json",
+      "samples": 6,
+      "profile": "dotfuscator-7-resources"
+    },
+    {
+      "sha256": "edd6b08c22526e63878ee738fc52f1ab78574b5310f0efdc8a25b6c677485a9b",
+      "path": "corpus/dotfuscator-7-root-checks.manifest.json",
+      "samples": 7,
+      "profile": "dotfuscator-7-root-checks"
+    },
+    {
+      "sha256": "8db6e371cd942400ea65d3efc31e40209591a0cac9559d1fb5d0f9fec8b12d9f",
+      "path": "corpus/dotfuscator-7-satellite-resources.manifest.json",
+      "samples": 6,
+      "profile": "dotfuscator-7-satellite-resources"
+    },
+    {
+      "sha256": "9a1b26b5a2938a5f20b7f865e0728605d516d2e6f33319342484460de7d391f1",
+      "path": "corpus/dotfuscator-7-signatures.manifest.json",
+      "samples": 9,
+      "profile": "dotfuscator-7-signatures"
+    },
+    {
+      "sha256": "298727b937e0f161d8cebcdaf7229ddcc4975ae1dba5cf040b600b8de65c921e",
+      "path": "corpus/dotfuscator-7-static.manifest.json",
+      "samples": 15,
+      "profile": "dotfuscator-7-static"
+    }
+  ],
+  "limits": [
+    "Reviewed generated implementations only; custom decoders and unavailable runtime state can remain unresolved.",
+    "macOS native companions are reviewed statically; macOS runtime execution is unvalidated.",
+    "Linux ARM64 runtime comparisons use emulation.",
+    "Android Root Check recovery has desktop clean-verdict replay, not rooted/non-rooted device execution.",
+    "Original identifiers and producer-discarded information are not reconstructed without additional source material.",
+    "The legacy Dotfuscator codeprotection setting produced no transform in eight inspected application methods; no separate code-encryption support is claimed."
+  ]
+}

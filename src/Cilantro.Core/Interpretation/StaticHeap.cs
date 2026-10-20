@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using dnlib.DotNet;
 
 namespace Cilantro.Core.Interpretation;
@@ -95,6 +96,25 @@ public sealed class StaticHeap
         return true;
     }
 
+    internal bool TryAllocateSubtypeObject(TypeSig knownBase, out StaticValue reference)
+    {
+        reference = StaticValue.Unknown;
+        if (!TryReserve(16)) return false;
+        reference = Add(new HeapInstance(knownBase.FullName, [], [], knownBase));
+        return true;
+    }
+
+    internal bool TryAllocateOpaqueObject(string typeName, out StaticValue reference)
+    {
+        reference = StaticValue.Unknown;
+        if (!TryReserve(16)) return false;
+        reference = Add(new HeapInstance(typeName, [], [], OpaqueFields: true));
+        return true;
+    }
+
+    internal bool HasUnknownRuntimeType(StaticValue reference) =>
+        TryObject(reference, out var item) && item is HeapInstance { KnownBase: not null };
+
     private readonly Dictionary<string, StaticValue> _types = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -121,7 +141,7 @@ public sealed class StaticHeap
     public bool TryGetObjectType(StaticValue reference, out string typeName)
     {
         typeName = string.Empty;
-        if (!TryObject(reference, out var item) || item is not HeapInstance instance)
+        if (!TryObject(reference, out var item) || item is not HeapInstance { KnownBase: null } instance)
             return false;
         typeName = instance.TypeName;
         return true;
@@ -141,8 +161,9 @@ public sealed class StaticHeap
         value = StaticValue.Unknown;
         if (!TryObject(reference, out var item) || item is not HeapInstance instance)
             return false;
-        if (instance.Fields.TryGetValue(field.FullName, out value))
+        if (instance.Fields.TryGetValue(InstanceFieldKey(field), out value))
             return true;
+        if (instance.KnownBase is not null || instance.OpaqueFields) return false;
         if (TryReadOverlapping(instance, field, out value))
             return true;
         value = DefaultFieldValue(field.FieldSig?.Type);
@@ -227,7 +248,7 @@ public sealed class StaticHeap
         value = StaticValue.Unknown;
         return TryObject(reference, out var item) &&
             item is HeapInstance instance &&
-            instance.Fields.TryGetValue(field.FullName, out value);
+            instance.Fields.TryGetValue(InstanceFieldKey(field), out value);
     }
 
     public bool TryWriteField(StaticValue reference, IField field, StaticValue value)
@@ -246,9 +267,13 @@ public sealed class StaticHeap
             }
         }
 
-        instance.Fields[field.FullName] = value;
+        instance.Fields[InstanceFieldKey(field)] = value;
         return true;
     }
+
+    // A constructed generic field and its definition name the same slot within one object.
+    // Static fields retain their construction-specific keys in StaticMachineState.
+    private static string InstanceFieldKey(IField field) => field.ResolveFieldDef() is { IsStatic: false } definition ? definition.FullName : field.FullName;
 
     public bool TrySetModelValue(StaticValue reference, string name, object? value)
     {
@@ -275,7 +300,7 @@ public sealed class StaticHeap
             return false;
         typeName = item switch
         {
-            HeapInstance instance => instance.TypeName,
+            HeapInstance { KnownBase: null } instance => instance.TypeName,
             HeapArray array => array.ElementType + "[]",
             HeapString => "System.String",
             _ => string.Empty
@@ -313,10 +338,12 @@ public sealed class StaticHeap
         reference = StaticValue.Unknown;
         if (!TryObject(instance, out var item) || item is not HeapInstance value)
             return false;
-        if (!value.Fields.ContainsKey(field.FullName))
-            value.Fields[field.FullName] = DefaultFieldValue(field.FieldSig?.Type);
+        var key = InstanceFieldKey(field);
+        if ((value.KnownBase is not null || value.OpaqueFields) && !value.Fields.ContainsKey(key)) return false;
+        if (!value.Fields.ContainsKey(key))
+            value.Fields[key] = DefaultFieldValue(field.FieldSig?.Type);
         var id = _nextManagedReferenceId++;
-        _managedCells[id] = new FieldLocation(value, field.FullName);
+        _managedCells[id] = new FieldLocation(value, key);
         reference = StaticValue.FromManagedReference(id);
         return true;
     }
@@ -402,7 +429,9 @@ public sealed class StaticHeap
         var initial = DefaultArrayValue(storageName, IsReferenceType(elementType) && !unsized);
         var values = new StaticValue[length];
         Array.Fill(values, initial);
-        reference = Add(new HeapArray(typeName, storageName, unsized, initial, values));
+        var primitiveElement = elementType?.ElementType is ElementType.Boolean or ElementType.Char or ElementType.I1 or ElementType.U1 or
+            ElementType.I2 or ElementType.U2 or ElementType.I4 or ElementType.U4 or ElementType.I8 or ElementType.U8 or ElementType.R4 or ElementType.R8;
+        reference = Add(new HeapArray(typeName, storageName, unsized, initial, values, primitiveElement));
         return true;
     }
 
@@ -423,7 +452,7 @@ public sealed class StaticHeap
             array.Storage,
             array.Unsized,
             array.DefaultValue,
-            [.. array.Values]));
+            [.. array.Values], array.PrimitiveElement));
         return true;
     }
 
@@ -440,7 +469,7 @@ public sealed class StaticHeap
             "System.Byte",
             false,
             StaticValue.FromInt32(0),
-            new StaticValue[bytes.Length]);
+            new StaticValue[bytes.Length], true);
         for (var i = 0; i < bytes.Length; i++)
             array.Values[i] = StaticValue.FromInt32(bytes[i]).WithProvenance(provenanceId);
         reference = Add(array).WithProvenance(provenanceId);
@@ -515,6 +544,8 @@ public sealed class StaticHeap
         elementType = array.ElementType;
         return true;
     }
+
+    internal bool HasPrimitiveArrayElement(StaticValue reference) => TryObject(reference, out var item) && item is HeapArray { PrimitiveElement: true };
 
     public bool TryReadArray(StaticValue reference, int index, out StaticValue value)
     {
@@ -1150,14 +1181,17 @@ public sealed class StaticHeap
         string Storage,
         bool Unsized,
         StaticValue DefaultValue,
-        StaticValue[] Values) : HeapObject;
+        StaticValue[] Values,
+        bool PrimitiveElement) : HeapObject;
     private sealed record HeapRegion(byte[] Bytes, string Kind, long BaseAddress) : HeapObject;
     private sealed record HeapString(string Value) : HeapObject;
     private sealed record HeapMetadataHandle(object Metadata) : HeapObject;
     private sealed record HeapInstance(
         string TypeName,
         Dictionary<string, StaticValue> Fields,
-        Dictionary<string, object?> ModelValues) : HeapObject;
+        Dictionary<string, object?> ModelValues,
+        TypeSig? KnownBase = null,
+        bool OpaqueFields = false) : HeapObject;
 
     private abstract class ManagedLocation
     {
@@ -1303,9 +1337,48 @@ public readonly record struct MappedImageProtection(uint Rva, uint Size, uint Pr
 
 public sealed class StaticMachineState
 {
+    private readonly Dictionary<string, (string Name, byte[] Bytes, string Sha256)> _companionFiles = new(StringComparer.Ordinal);
+    private int _companionFileBytes;
+
+    internal static bool ValidCompanionName(string name) => name.Length is > 0 and <= 200 && name is not ("." or "..") &&
+        name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && name.IndexOfAny(['/', '\\', ':']) < 0;
+
+    internal string? CompanionBaseDirectory
+    {
+        get
+        {
+            if (_companionFiles.Count == 0) return null;
+            var directory = Path.GetDirectoryName(ModulePath)!;
+            return Path.EndsInDirectorySeparator(directory) ? directory : directory + Path.DirectorySeparatorChar;
+        }
+    }
+
+    /// <summary>Mounts a copied data file beside the registered module; interpretation never opens a host file.</summary>
+    public bool RegisterCompanionFile(string name, ReadOnlySpan<byte> bytes)
+    {
+        if (!ValidCompanionName(name) || !Path.IsPathFullyQualified(ModulePath) || bytes.Length is <= 0 or > 16 * 1024 * 1024 ||
+            bytes.Length > 32 * 1024 * 1024 - _companionFileBytes || _companionFiles.Count >= 16 ||
+            name.Equals(Path.GetFileName(ModulePath), StringComparison.OrdinalIgnoreCase) ||
+            _companionFiles.Values.Any(file => file.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return false;
+        var copy = bytes.ToArray();
+        _companionFiles.Add(Path.Combine(Path.GetDirectoryName(ModulePath)!, name), (name, copy, Convert.ToHexStringLower(SHA256.HashData(copy))));
+        _companionFileBytes += copy.Length;
+        return true;
+    }
+
+    internal bool TryReadCompanionFile(string path, string operation, out byte[] bytes)
+    {
+        bytes = [];
+        if (!_companionFiles.TryGetValue(path, out var file)) return false;
+        Observe(LoaderObservationKind.CompanionFileRead,
+            System.Text.Json.JsonSerializer.Serialize(new CompanionFileRead(file.Name, file.Sha256, file.Bytes.Length, operation)));
+        bytes = file.Bytes;
+        return true;
+    }
     // Runtime settings belong to a machine, even when intrinsic instances are reused.
     internal Dictionary<string, StaticValue> NetworkSettings { get; } = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StaticValue> _staticFields = new(StringComparer.Ordinal);
+    private readonly Dictionary<TypeDef, MethodDef> _preservedApplicationTypes = [];
     private readonly Dictionary<string, StaticValue> _staticFieldReferences =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, byte[]> _resources = new(StringComparer.Ordinal);
@@ -1484,6 +1557,7 @@ public sealed class StaticMachineState
 
     public StaticValue ReadStaticField(IField field)
     {
+        RequireStaticState(field);
         if (_staticFieldReferences.TryGetValue(field.FullName, out var reference) &&
             Heap.TryReadManaged(reference, out var referencedValue))
         {
@@ -1501,6 +1575,7 @@ public sealed class StaticMachineState
 
     public void WriteStaticField(IField field, StaticValue value)
     {
+        RequireStaticState(field);
         _staticFields[field.FullName] = value;
         Evidence.RecordStaticFieldWrite(field.FullName);
         if (_staticFieldReferences.TryGetValue(field.FullName, out var reference))
@@ -1509,11 +1584,41 @@ public sealed class StaticMachineState
 
     public StaticValue GetStaticFieldReference(IField field)
     {
+        RequireStaticState(field);
         if (_staticFieldReferences.TryGetValue(field.FullName, out var reference))
             return reference;
         reference = Heap.AllocateManagedCell(ReadStaticField(field));
         _staticFieldReferences[field.FullName] = reference;
         return reference;
+    }
+
+    internal void PreserveApplicationTypeState(TypeDef type, MethodDef constructionStub)
+    {
+        _preservedApplicationTypes.Add(type, constructionStub);
+        CompleteTypeInitialization(type);
+    }
+
+    // An unresolved external base has unknown ancestors and static storage.
+    // Construction may bind its metadata, but cannot default any foreign state.
+    internal bool PreserveExternalApplicationState { get; set; }
+
+    internal bool IsPreservedStaticField(IField field)
+    {
+        if (field.ResolveFieldDef() is { IsStatic: false }) return false;
+        var declaration = field.DeclaringType is TypeSpec { TypeSig: GenericInstSig owner } ? owner.GenericType.TypeDefOrRef : field.DeclaringType;
+        if (PreserveExternalApplicationState && declaration?.ResolveTypeDef()?.Module != ModuleMetadata) return true;
+        return declaration is not null && (declaration.ResolveTypeDef() is { } definition && _preservedApplicationTypes.ContainsKey(definition) ||
+            _preservedApplicationTypes.Keys.Any(type => new SigComparer().Equals(type, declaration)));
+    }
+
+    internal bool IsPreservedInitializer(MethodDef method) => method.Name == ".cctor" &&
+        (PreserveExternalApplicationState && method.Module != ModuleMetadata ||
+        _preservedApplicationTypes.TryGetValue(method.DeclaringType, out var stub) && method != stub);
+
+    private void RequireStaticState(IField field)
+    {
+        if (IsPreservedStaticField(field))
+            throw new InvalidOperationException("Application static state is opaque during method-image construction: " + field.FullName);
     }
 
     public void RegisterResource(string name, ReadOnlySpan<byte> bytes)
@@ -1671,10 +1776,11 @@ public sealed class StaticMachineState
     }
 
     /// <summary>Registers the on-disk path and bytes of the analysed assembly. This is the
-    /// only file the machine can observe; every other path is modelled as absent.</summary>
+    /// default file the machine can observe. Explicit data companions must be mounted separately.</summary>
     public void RegisterModuleFile(string path, ReadOnlySpan<byte> bytes)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
+        _companionFiles.Clear(); _companionFileBytes = 0;
         ModulePath = path;
         ModuleFileBytes = bytes.ToArray();
         ModuleFileIsAbsent = false;
@@ -1697,6 +1803,7 @@ public sealed class StaticMachineState
     /// </remarks>
     public void RegisterModuleBytes(ReadOnlySpan<byte> bytes)
     {
+        _companionFiles.Clear(); _companionFileBytes = 0;
         ModulePath = string.Empty;
         ModuleFileBytes = bytes.ToArray();
         ModuleFileIsAbsent = true;

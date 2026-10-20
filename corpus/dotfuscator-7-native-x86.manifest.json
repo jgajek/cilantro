@@ -1,0 +1,101 @@
+{
+  "manifestVersion": 1,
+  "profile": "dotfuscator-7-native-x86",
+  "description": "Dotfuscator 7.9 native-key v2 strings with signed per-input environment files and the reviewed native library. The 17-site validation probes exclude encryption in TransformBuffer because the protector itself corrupts that Byte[] method; retain the original 19-site capture separately to verify its existing replacement-character behavior.",
+  "samples": [
+    {
+      "id": "net48-oracle",
+      "tier": "oracle",
+      "sha256": "d3c9484f98ed2295266c0a8d30fa35411a676f3ccd7af7a14edcbdb20708393e",
+      "localName": "dotfuscator-net48-x86-oracle.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-native-x86-strings",
+      "tier": "detected",
+      "sha256": "dcefe8e2c49b58befa0760914e138e4b3edb8ec285a9b0be4752994468e9c80c",
+      "localName": "dotfuscator-v2-x86/net48-strings/Probe.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "d3c9484f98ed2295266c0a8d30fa35411a676f3ccd7af7a14edcbdb20708393e",
+      "requireOracleResourceParity": true,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "minimumRecoveredStringSites": 17
+    },
+    {
+      "id": "net48-native-x86-combined",
+      "tier": "detected",
+      "sha256": "0e1863670dce7d4c2987da49c28d25b5f175ca6e4216ce7dd02e7d7031a05465",
+      "localName": "dotfuscator-v2-x86/net48-combined/Probe.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "d3c9484f98ed2295266c0a8d30fa35411a676f3ccd7af7a14edcbdb20708393e",
+      "requireOracleResourceParity": true,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "minimumRecoveredStringSites": 17
+    },
+    {
+      "id": "net48-native-x86-renamed",
+      "tier": "detected",
+      "sha256": "9dc277c87bdbb4b907f3055c4bb6d5191d7059f7a6496a4c5cbb99bcfe0fdadf",
+      "localName": "dotfuscator-v2-x86/net48-renamed/Probe.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "d3c9484f98ed2295266c0a8d30fa35411a676f3ccd7af7a14edcbdb20708393e",
+      "requireOracleResourceParity": true,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "minimumRecoveredStringSites": 17
+    },
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "1a7aca73f1f9926ff7b1eb3f46d19ae50001d50d07a900c08f46b72119190665",
+      "localName": "dotfuscator-net8.0-x86-oracle.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-native-x86-strings",
+      "tier": "detected",
+      "sha256": "821b9f202c1a4fc9f12918a77d592adda800f97e31ce2844da57fd2047dc9668",
+      "localName": "dotfuscator-v2-x86/net8.0-strings/Probe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1a7aca73f1f9926ff7b1eb3f46d19ae50001d50d07a900c08f46b72119190665",
+      "requireOracleResourceParity": true,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "minimumRecoveredStringSites": 17
+    },
+    {
+      "id": "net8.0-native-x86-combined",
+      "tier": "detected",
+      "sha256": "c5a98ea65c4f94507c1c4ca9e62b5d56fa9096e6016211a25a6b74426435a3d6",
+      "localName": "dotfuscator-v2-x86/net8.0-combined/Probe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1a7aca73f1f9926ff7b1eb3f46d19ae50001d50d07a900c08f46b72119190665",
+      "requireOracleResourceParity": true,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "minimumRecoveredStringSites": 17
+    },
+    {
+      "id": "net8.0-native-x86-renamed",
+      "tier": "detected",
+      "sha256": "53e638db1f6f5f4542c3917f900519c8315b4cafb29a127f14022161fcd19cea",
+      "localName": "dotfuscator-v2-x86/net8.0-renamed/Probe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1a7aca73f1f9926ff7b1eb3f46d19ae50001d50d07a900c08f46b72119190665",
+      "requireOracleResourceParity": true,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "minimumRecoveredStringSites": 17
+    }
+  ]
+}

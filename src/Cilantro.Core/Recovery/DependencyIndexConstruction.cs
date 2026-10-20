@@ -231,7 +231,7 @@ internal static class DependencyIndexConstruction
     }
 
     private static bool Framework(TypeRef type, ModuleDef module) =>
-        type.DefinitionAssembly?.FullName == module.CorLibTypes.AssemblyRef.FullName;
+        DependencyFrameworkScope.Matches(type, module);
 
     private static bool AllowedCall(IMethod called, ModuleDef module) => called.MethodSig is { HasThis: true } &&
         called.MethodSig.ParamsAfterSentinel?.Count is not > 0 && called.DeclaringType is TypeRef type && Framework(type, module) &&

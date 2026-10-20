@@ -1,0 +1,70 @@
+{
+  "manifestVersion": 1,
+  "profile": "dotfuscator-7-resource-types",
+  "description": "Source-built Dotfuscator 7.9 resource-encryption probes across net48/net8.0/net10.0; mixed primitive resource entries, strings and binary values.",
+  "samples": [
+    {
+      "id": "net48-resource-oracle",
+      "tier": "oracle",
+      "sha256": "797e3465188031acb3e85e91780aa0058d6a78cb735ad35e7137fb8df3043957",
+      "localName": "dotfuscator-resource-types/net48/oracle/ResourceTypesProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-resources",
+      "tier": "detected",
+      "sha256": "766b498be409862245bbc14774aa95083eb569ce5f4a55bab6279323183522e7",
+      "localName": "dotfuscator-resource-types/net48/protected/ResourceTypesProbe.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "797e3465188031acb3e85e91780aa0058d6a78cb735ad35e7137fb8df3043957",
+      "requireOracleResourceParity": false,
+      "minimumResourcesRestored": 1,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-resource-oracle",
+      "tier": "oracle",
+      "sha256": "cd9fee574db0dd16d734dcd8a0b3d5a1ea8b6c00129c8b153341c3a9f17c50c9",
+      "localName": "dotfuscator-resource-types/net8.0/oracle/ResourceTypesProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-resources",
+      "tier": "detected",
+      "sha256": "b9f040a6269ae3cd7df86727ad04216fd74534ea7a312b83237e56cac4ec30c9",
+      "localName": "dotfuscator-resource-types/net8.0/protected/ResourceTypesProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "cd9fee574db0dd16d734dcd8a0b3d5a1ea8b6c00129c8b153341c3a9f17c50c9",
+      "requireOracleResourceParity": false,
+      "minimumResourcesRestored": 1,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-resource-oracle",
+      "tier": "oracle",
+      "sha256": "52f38fd0486cd70ff3fa0cbe02d56ede681b63830f4694cf388fe9685ccd4b0a",
+      "localName": "dotfuscator-resource-types/net10.0/oracle/ResourceTypesProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-resources",
+      "tier": "detected",
+      "sha256": "bb13fefae4046b54f736c1fff5f0e08224f3dfd69d6e2d16e8b8eba72e9cf0f7",
+      "localName": "dotfuscator-resource-types/net10.0/protected/ResourceTypesProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "52f38fd0486cd70ff3fa0cbe02d56ede681b63830f4694cf388fe9685ccd4b0a",
+      "requireOracleResourceParity": false,
+      "minimumResourcesRestored": 1,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    }
+  ]
+}

@@ -8,6 +8,33 @@ namespace Cilantro.Tests;
 public sealed class MethodInliningPassTests
 {
     [Fact]
+    public void ReflectionOfTheExecutingMethodKeepsTheForwarderFrame()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Frames"); host.Attributes = TypeAttributes.Public;
+            var api = new Importer(module).Import(typeof(System.Reflection.MethodBase).GetMethod("GetCurrentMethod")!);
+            var wrapper = new MethodDefUser("Forward", MethodSig.CreateStatic(api.MethodSig.RetType), MethodImplAttributes.IL | MethodImplAttributes.NoInlining,
+                MethodAttributes.Public | MethodAttributes.Static) { Body = new CilBody() };
+            wrapper.Body.Instructions.Add(OpCodes.Call.ToInstruction(api)); wrapper.Body.Instructions.Add(OpCodes.Ret.ToInstruction()); host.Methods.Add(wrapper);
+            var caller = new MethodDefUser("Caller", wrapper.MethodSig.Clone(), MethodAttributes.Public | MethodAttributes.Static) { Body = new CilBody() };
+            caller.Body.Instructions.Add(OpCodes.Call.ToInstruction(wrapper)); caller.Body.Instructions.Add(OpCodes.Ret.ToInstruction()); host.Methods.Add(caller);
+        });
+        Assert.Equal(0, new MethodInliningPass().Run(context).Changes);
+        // Only this source-built benign module is loaded. A frame-sensitive API
+        // would return Caller instead of Forward if the adapter were erased.
+        using var bytes = new MemoryStream(); context.Module.Write(bytes);
+        var loader = new System.Runtime.Loader.AssemblyLoadContext(Guid.NewGuid().ToString(), true);
+        try
+        {
+            var assembly = loader.LoadFromStream(new MemoryStream(bytes.ToArray()));
+            var returned = Assert.IsAssignableFrom<System.Reflection.MethodBase>(assembly.GetType("Synthetic.Frames")!.GetMethod("Caller")!.Invoke(null, null));
+            Assert.Equal("Forward", returned.Name);
+        }
+        finally { loader.Unload(); }
+    }
+
+    [Fact]
     public void RedirectsPassThroughForwarderToItsTarget()
     {
         using var context = SyntheticContext.Build(module =>

@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>RootCheckProbe</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageDownload Include="Microsoft.Android.Ref.34" Version="[34.0.154]" />
+    <PackageDownload Include="Microsoft.Maui.Controls.Core" Version="[10.0.100]" />
+    <PackageDownload Include="Microsoft.Maui.Core" Version="[10.0.100]" />
+    <PackageDownload Include="Microsoft.Maui.Essentials" Version="[10.0.100]" />
+    <PackageDownload Include="Microsoft.Android.Sdk.Windows" Version="[35.0.105]" />
+    <Reference Include="Mono.Android">
+      <HintPath>$(NuGetPackageRoot)/microsoft.android.ref.34/34.0.154/ref/net8.0/Mono.Android.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Java.Interop">
+      <HintPath>$(NuGetPackageRoot)/microsoft.android.ref.34/34.0.154/ref/net8.0/Java.Interop.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <UsingTask TaskName="Xamarin.Android.Tasks.GenerateResourceDesignerAssembly"
+             AssemblyFile="$(NuGetPackageRoot)/microsoft.android.sdk.windows/35.0.105/tools/Xamarin.Android.Build.Tasks.dll" />
+  <Target Name="GenerateCorpusResourceDesigner" AfterTargets="Build">
+    <WriteLinesToFile File="$(IntermediateOutputPath)root-case-map.txt" Overwrite="true" />
+    <GenerateResourceDesignerAssembly
+      RTxtFile="$(MSBuildProjectDirectory)/R.txt"
+      IsApplication="false" DesignTimeBuild="false" Deterministic="true"
+      OutputFile="$(TargetDir)_Microsoft.Android.Resource.Designer.dll"
+      TargetFrameworkIdentifier=".NETCoreApp" TargetFrameworkVersion="v10.0"
+      ProjectDir="$(MSBuildProjectDirectory)/" ResourceDirectory="Resources"
+      Resources="$(MSBuildProjectDirectory)/Resources/values/probe.xml"
+      CaseMapFile="$(IntermediateOutputPath)root-case-map.txt"
+      FrameworkDirectories="$(NuGetPackageRoot)/microsoft.android.ref.34/34.0.154/ref/net8.0;@(ReferencePath->'%(RootDir)%(Directory)')"
+      AssemblyName="RootCheckProbe" />
+  </Target>
+</Project>

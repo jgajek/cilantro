@@ -26,6 +26,11 @@ For example, recovering a readable command handler is useful even if another pat
 
 These checks support the stated corpus scope. They do not establish behavior for every input or complete protection removal on an unfamiliar file.
 
+## Babel and Dotfuscator trial validation
+
+On 2026-10-20 the full regression run passed 3,906 tests with zero failures and 37 unrelated private-fixture skips. All fourteen Babel corpora and all Dotfuscator corpora were enabled. The input audit matched 362 main entries and six external-code companions across thirty manifests.
+
+The cipher extension restores twenty-one encrypted methods across seven Babel cipher choices and three frameworks, with zero remaining encrypted stubs, exact application resource parity, twenty-one matching source/protected/cleaned executions and seven net48 differential ILVerify comparisons. All seven .NET 8 captures produce byte-identical Windows/Linux analyzer outputs. See the [trial-target audit](babel-dotfuscator-targets.md) for the agreed feature scope, exclusions and platform limits, and [cipher provenance](../corpus/babel-12-ciphers.provenance.json) for source hashes and regression evidence.
 ## 1.0.3 release validation
 
 The Babel update passed all nine hash-pinned captured inputs, recovering 17 streams with matching exported hashes and no newly broken or worsened methods under differential Microsoft ILVerify checks. Five directly recognized corpus payloads and three Reactor-wrapped payloads are joined by one additional Malware Vault capture. These entries overlap earlier root/payload coverage and do not add nine independent malware families to the root totals above.

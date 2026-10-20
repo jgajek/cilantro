@@ -1,0 +1,579 @@
+{
+  "capturedAt": "2026-10-19",
+  "fixtures": [
+    {
+      "Framework": "net48",
+      "Profile": "flow",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "4e414385918fd3f59e6b6662448054ebfd820b26429fcb3b5020906e7a9ff347",
+      "OracleSha256": "5e15986a5bae45452f778c40dc386918a718f109f1efe6c9af9c79792faeb96d",
+      "ProtectedSha256": "c1ce305642417e63426c04880b990e1a061bd5f23debdd1d0930662e06c2932d",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8795179ac9bc39cfab86509f237ceec047f335ba6c597e95c2cafe5e9815971a"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "f8ef706603c83a42b364f34205489769664390b992fa72ba19c95eaefec1bc74"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "1d85adb74239dbb2bfacaaafd1bba534ae127ddf2f2c10f4885f11057ba01a88"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "c3619d9640e12c415209bd2554d212498083fe660f2dd4c970e5293bcdf3f970"
+        }
+      ]
+    },
+    {
+      "Framework": "net48",
+      "Profile": "renamed-v1",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "0e1c252107904ed53e38dbcedd22244b9fd4df96e1a547a9f9e160441ecfa0e6",
+      "OracleSha256": "5e15986a5bae45452f778c40dc386918a718f109f1efe6c9af9c79792faeb96d",
+      "ProtectedSha256": "a76821fd1a596bc66c882aea9b854127ea3320aa493df29a5c82b0b1389dbeca",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8795179ac9bc39cfab86509f237ceec047f335ba6c597e95c2cafe5e9815971a"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "f8ef706603c83a42b364f34205489769664390b992fa72ba19c95eaefec1bc74"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "0ff24418d90b1495af15a128ef52e7bf9fb413648ff89eb82d8f254d24196a82"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "fd0468aab6e5d4f26e4917e1ec02cbbf143bab381a42a3df5bd2591be1948dcf"
+        }
+      ]
+    },
+    {
+      "Framework": "net48",
+      "Profile": "renamed-v2-reviewed",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "1570cc07d07e5da8914a24086e3cedde28a1bf31b74f458f31afe4d5149c15f9",
+      "OracleSha256": "5e15986a5bae45452f778c40dc386918a718f109f1efe6c9af9c79792faeb96d",
+      "ProtectedSha256": "5f6e9d9af21faaac38a16f66371e3f97aa50ed430ab8e8972aaa20f669765e15",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8795179ac9bc39cfab86509f237ceec047f335ba6c597e95c2cafe5e9815971a"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "f8ef706603c83a42b364f34205489769664390b992fa72ba19c95eaefec1bc74"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "f4a68299a9d7d6727960d89888794a67c94b105a5a30f62d8f502dfd4ae97596"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "30cfefe52c54ffaf23b8c509ccd555028fb3a2238ff477752b7bff5354362e34"
+        },
+        {
+          "path": "protected/environment0f617e02.bin",
+          "sha256": "b724041069800b792d882adcfc1b59e549c9bcb9a6d58533c31eccee1a65a138"
+        },
+        {
+          "path": "protected/runtimes/linux-arm64/native/Runtime.Extensions.so",
+          "sha256": "a8927d23c2d1e9cabc0e1435818f6a850261a609987aca5c2f03a38bf621ee31"
+        },
+        {
+          "path": "protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+          "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+        },
+        {
+          "path": "protected/runtimes/osx-arm64/native/Runtime.Extensions.dylib",
+          "sha256": "764d3343142ca5bde865aaed719a6913a154a7619434e4ce3eae468175b44d81"
+        },
+        {
+          "path": "protected/runtimes/osx-x64/native/Runtime.Extensions.dylib",
+          "sha256": "f0cbfe9a0e8c80627fcd87c779cb2c5155377d0cb0e0f765fcb581c4ea55c852"
+        },
+        {
+          "path": "protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+          "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+        },
+        {
+          "path": "protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+          "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+        }
+      ]
+    },
+    {
+      "Framework": "net8.0",
+      "Profile": "flow",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "f8a2a11ddd064b1d6ed8edcf115cce68433083a9a2bffa70202d324567d10f91",
+      "OracleSha256": "f8f4f58c70bc0dab4a2894c79ec39ac3e319f4ca412c8525e61319d79a89cdc8",
+      "ProtectedSha256": "5e039d44552d5c64009aca1ae1082c040ba5190861031038030fa41d386780db",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8a6b12baaecfb126d50448c035b2be1a3c2cb4e61bbe5e30655502ec8562c57b"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "a6872f7373f57055fecb84c810a56a70f219c3c19c7a6354652072db9a3830f8"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "1288f39bd3be9027def423b94f966197aa0cbbaaba7c72f5ea0646b908ca793b"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "98cc45096ea19e226d5426d26718114d3d58919c82d5fb01a69c70d2cf20b712"
+        }
+      ]
+    },
+    {
+      "Framework": "net8.0",
+      "Profile": "renamed-v1",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "adac0839ceeefc093c18a0d0734cb1cd5cd7db1cf0707f29eb70b9a4b8625cac",
+      "OracleSha256": "f8f4f58c70bc0dab4a2894c79ec39ac3e319f4ca412c8525e61319d79a89cdc8",
+      "ProtectedSha256": "97c36d6184135500a88616b177434b53efef1ce080e417f46fc91ba9b97839df",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8a6b12baaecfb126d50448c035b2be1a3c2cb4e61bbe5e30655502ec8562c57b"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "a6872f7373f57055fecb84c810a56a70f219c3c19c7a6354652072db9a3830f8"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "bf51d3ef2570233bf37087397e27e0231ac9447b02f10235bffb8a78fabc3478"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "575f3017449452c41a54dd98acfc6d0f66134e696ca5dc1e6124ef129a5ed952"
+        }
+      ]
+    },
+    {
+      "Framework": "net8.0",
+      "Profile": "renamed-v2-reviewed",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "b5a66cec9e6ca2d0a28e8426b7d1c137e8282393dd9e1afaf8b396b9c89d646f",
+      "OracleSha256": "f8f4f58c70bc0dab4a2894c79ec39ac3e319f4ca412c8525e61319d79a89cdc8",
+      "ProtectedSha256": "10c2c4be7bc6dc28b69108a3e7285fe2b06ef7eefe2bbe135f0a484ab21e1a57",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8a6b12baaecfb126d50448c035b2be1a3c2cb4e61bbe5e30655502ec8562c57b"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "a6872f7373f57055fecb84c810a56a70f219c3c19c7a6354652072db9a3830f8"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "bf131a133d779318218e12e7c875153ca6009a11220a166efbda236e2e64cd1b"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "1a63e16381ff7e4ae1b85d6dd009f03c8ea777d9a4343f4339c93303d70cade2"
+        },
+        {
+          "path": "protected/environment0f617e02.bin",
+          "sha256": "b0c7eadf83fbf29120e8fd0f26477564e1d74f7e06e6972b04b07c359725ee70"
+        },
+        {
+          "path": "protected/runtimes/linux-arm64/native/Runtime.Extensions.so",
+          "sha256": "a8927d23c2d1e9cabc0e1435818f6a850261a609987aca5c2f03a38bf621ee31"
+        },
+        {
+          "path": "protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+          "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+        },
+        {
+          "path": "protected/runtimes/osx-arm64/native/Runtime.Extensions.dylib",
+          "sha256": "764d3343142ca5bde865aaed719a6913a154a7619434e4ce3eae468175b44d81"
+        },
+        {
+          "path": "protected/runtimes/osx-x64/native/Runtime.Extensions.dylib",
+          "sha256": "f0cbfe9a0e8c80627fcd87c779cb2c5155377d0cb0e0f765fcb581c4ea55c852"
+        },
+        {
+          "path": "protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+          "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+        },
+        {
+          "path": "protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+          "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+        }
+      ]
+    },
+    {
+      "Framework": "net10.0",
+      "Profile": "flow",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "7aa131583e58f0549b61189d9f335ec54172e9bd2a45db0256a4eeb53e13f81b",
+      "OracleSha256": "76ef9bfd7387ef70e49871c552e26d666515b869e89c3cd040099860472734a4",
+      "ProtectedSha256": "b6ccae36842be303ec2abc76b2951d7cb5a86889162bfb63979078a31c053353",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "aebda5c83f2f4316a9cf23e6eee834672bb44cb5495132328bc32e3616588264"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "37f89727a773ebccfc4d2eddc5b74d8f79abee0e051f49a040037b55b664be7d"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "0e9563218acd546366aa012fca07e6026184efe5bfb82864d154979e224b07ec"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "ae679adc7e44139bbd1b2b4a632c37fe6c0aad8c7595c01db219a4de6ec4612b"
+        }
+      ]
+    },
+    {
+      "Framework": "net10.0",
+      "Profile": "renamed-v1",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "54d250525bbdb3df03663d1d8270012f3e29aebaf88c3109493e22fb28a26cae",
+      "OracleSha256": "76ef9bfd7387ef70e49871c552e26d666515b869e89c3cd040099860472734a4",
+      "ProtectedSha256": "9e7a30430903ebe778142a8104c8242df59ee23ee17c2b2fb15b9a951ac9329c",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "aebda5c83f2f4316a9cf23e6eee834672bb44cb5495132328bc32e3616588264"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "37f89727a773ebccfc4d2eddc5b74d8f79abee0e051f49a040037b55b664be7d"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "6187b15a2f1d88522fc34cd8e5c210024fb1ceea0edf82668983f9a265cb4b76"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "a8d2d277d074b64a7dacab03d52b9bec517a0b49080d5d4683c64e26706eb108"
+        }
+      ]
+    },
+    {
+      "Framework": "net10.0",
+      "Profile": "renamed-v2-reviewed",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "3f767df24ffb03a2068f52533115d884e5e2b1fb915f93acdcaaf46c151cd628",
+      "OracleSha256": "76ef9bfd7387ef70e49871c552e26d666515b869e89c3cd040099860472734a4",
+      "ProtectedSha256": "f271f109caecc244bc83dde39a997e22bc93d9d2d85fc680fab48ba1f601d9ab",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "aebda5c83f2f4316a9cf23e6eee834672bb44cb5495132328bc32e3616588264"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "37f89727a773ebccfc4d2eddc5b74d8f79abee0e051f49a040037b55b664be7d"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "d5c59bf2383287a400719b5cc75b54aaa4908b43e9b7ca2bbac0ffa146bd6ecf"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "32ef8134460b3512c41eca11b0678c8e970834559b508a06a1cac1ba71762db3"
+        },
+        {
+          "path": "protected/environment0f617e02.bin",
+          "sha256": "2e1e2cb4a03b3c2db7ada11290a4c1cfb4dcc4c4768e05df3a3510582ce3b1cf"
+        },
+        {
+          "path": "protected/runtimes/linux-arm64/native/Runtime.Extensions.so",
+          "sha256": "a8927d23c2d1e9cabc0e1435818f6a850261a609987aca5c2f03a38bf621ee31"
+        },
+        {
+          "path": "protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+          "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+        },
+        {
+          "path": "protected/runtimes/osx-arm64/native/Runtime.Extensions.dylib",
+          "sha256": "764d3343142ca5bde865aaed719a6913a154a7619434e4ce3eae468175b44d81"
+        },
+        {
+          "path": "protected/runtimes/osx-x64/native/Runtime.Extensions.dylib",
+          "sha256": "f0cbfe9a0e8c80627fcd87c779cb2c5155377d0cb0e0f765fcb581c4ea55c852"
+        },
+        {
+          "path": "protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+          "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+        },
+        {
+          "path": "protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+          "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+        }
+      ]
+    }
+  ],
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "description": "Benign localized resources combined with high control flow, renaming and managed/native strings. The runtime proof reforms expanded short branches only while copying metadata, then restores the exact original branch forms.",
+  "evidenceRoot": "C:/cilantro-verify/dotfuscator/resource-interactions",
+  "sources": [
+    {
+      "path": "corpus/probes/dotfuscator-resource-interactions.ps1",
+      "sha256": "4ea3ac2ddcb5e3b84b29e54fd61e2c8b9b560ac81a121cd930b9c8ae17d5fadb"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/DotfuscatorSatelliteResources.csproj",
+      "sha256": "fc43fcfb22d783775e1ce8cd517edde11ac620a975c83b9dcf6fb6b925740834"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Program.cs",
+      "sha256": "3e41c83f7cfe8f0c0ec44ec95b284ec6ab863255d05f93999532a72336b5c06f"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Secrets.resx",
+      "sha256": "516fd4b33b0c679b544682894e9a895fc494f85633866da31aaa69a7ba60ab04"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Secrets.fr.resx",
+      "sha256": "847b3a4e652d3c80658612c28f679f926694821da2cc8cbea1d294562ea073cf"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Secrets.fr-CA.resx",
+      "sha256": "e5a88df3127acebe9e9e553f6adc68fd8b61ef2f79463fe49099efc8a0f4c826"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorResourceRuntime.cs",
+      "sha256": "2c562a3db36b7f29be098829601da6adaf3aeb04c5b76917215e9c3b1b807b18"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorResourceRetirementTests.cs",
+      "sha256": "bffa3681a6c47b3a12c7225c89b8c296436dcbf554c463ba2d9194febd38f90a"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorResourceInteractionTests.cs",
+      "sha256": "f0fe10f52c69ba4e318eb0c2df13d290894d9f245c0840c41c3d49e5cb962c10"
+    }
+  ],
+  "producerControls": [
+    {
+      "id": "net48-renamed-v2",
+      "capture": {
+        "Framework": "net48",
+        "Profile": "renamed-v2",
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "fc92418740cd240a9b1eae49bd053da39dad2d8dd67eb7a627c2003226e46dff",
+        "OracleSha256": "5e15986a5bae45452f778c40dc386918a718f109f1efe6c9af9c79792faeb96d",
+        "ProtectedSha256": "6191fd1d8f86859f31234c804838b023649c5edc3a9af7c22ebc527eaf69564d",
+        "Companions": [
+          {
+            "path": "oracle/fr/SatelliteProbe.resources.dll",
+            "sha256": "8795179ac9bc39cfab86509f237ceec047f335ba6c597e95c2cafe5e9815971a"
+          },
+          {
+            "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+            "sha256": "f8ef706603c83a42b364f34205489769664390b992fa72ba19c95eaefec1bc74"
+          },
+          {
+            "path": "protected/fr/SatelliteProbe.resources.dll",
+            "sha256": "885823dcd1bbe9df4afd24b7b84ac95fd2f522679e1e96e7629dc7ac037961d4"
+          },
+          {
+            "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+            "sha256": "a2ec118e283bb32ed85c8c724c42c82a339fc0ab19bb48d533220bde202f7b45"
+          },
+          {
+            "path": "protected/environment0f617e02.bin",
+            "sha256": "cdec108a21a6d06f2a8581745a94c1424c0f1f6fb4007afd6b5b34f2d9be0308"
+          },
+          {
+            "path": "protected/runtimes/linux-arm64/native/Runtime.Extensions.so",
+            "sha256": "a8927d23c2d1e9cabc0e1435818f6a850261a609987aca5c2f03a38bf621ee31"
+          },
+          {
+            "path": "protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+            "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+          },
+          {
+            "path": "protected/runtimes/osx-arm64/native/Runtime.Extensions.dylib",
+            "sha256": "764d3343142ca5bde865aaed719a6913a154a7619434e4ce3eae468175b44d81"
+          },
+          {
+            "path": "protected/runtimes/osx-x64/native/Runtime.Extensions.dylib",
+            "sha256": "f0cbfe9a0e8c80627fcd87c779cb2c5155377d0cb0e0f765fcb581c4ea55c852"
+          },
+          {
+            "path": "protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+            "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+          },
+          {
+            "path": "protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+            "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+          }
+        ]
+      },
+      "status": "Producer failure reproduced: protected lookup throws NullReferenceException; cleaned lookup returns null and caller throws ArgumentNullException. No behavior-equivalence claim.",
+      "behaviorEvidence": "C:/cilantro-verify/dotfuscator/resource-interactions/net48-renamed-v2/behavior.json"
+    },
+    {
+      "id": "net8.0-renamed-v2",
+      "capture": {
+        "Framework": "net8.0",
+        "Profile": "renamed-v2",
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "e7191a73a8db35f2839f77d792d2666466ac494aebf737961714afd054749572",
+        "OracleSha256": "f8f4f58c70bc0dab4a2894c79ec39ac3e319f4ca412c8525e61319d79a89cdc8",
+        "ProtectedSha256": "4244f64e700df9e5a0054367367236e167cbbe63eec92c87591d2c2358118548",
+        "Companions": [
+          {
+            "path": "oracle/fr/SatelliteProbe.resources.dll",
+            "sha256": "8a6b12baaecfb126d50448c035b2be1a3c2cb4e61bbe5e30655502ec8562c57b"
+          },
+          {
+            "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+            "sha256": "a6872f7373f57055fecb84c810a56a70f219c3c19c7a6354652072db9a3830f8"
+          },
+          {
+            "path": "protected/fr/SatelliteProbe.resources.dll",
+            "sha256": "46d54cfa1bdd5443cddb25710e18e22b907ff7f2b6e4dccae54e2d50ed81386a"
+          },
+          {
+            "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+            "sha256": "63c0a895388fed6a3a6395e9b0900b52adac0b4e505177affc0d3b45e0048e49"
+          },
+          {
+            "path": "protected/environment0f617e02.bin",
+            "sha256": "a17d759463f6de624df2a3f7e191a8e23311cce44d7698de5441521af2107b3e"
+          },
+          {
+            "path": "protected/runtimes/linux-arm64/native/Runtime.Extensions.so",
+            "sha256": "a8927d23c2d1e9cabc0e1435818f6a850261a609987aca5c2f03a38bf621ee31"
+          },
+          {
+            "path": "protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+            "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+          },
+          {
+            "path": "protected/runtimes/osx-arm64/native/Runtime.Extensions.dylib",
+            "sha256": "764d3343142ca5bde865aaed719a6913a154a7619434e4ce3eae468175b44d81"
+          },
+          {
+            "path": "protected/runtimes/osx-x64/native/Runtime.Extensions.dylib",
+            "sha256": "f0cbfe9a0e8c80627fcd87c779cb2c5155377d0cb0e0f765fcb581c4ea55c852"
+          },
+          {
+            "path": "protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+            "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+          },
+          {
+            "path": "protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+            "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+          }
+        ]
+      },
+      "status": "Captured and statically recovered; runtime execution not validated.",
+      "behaviorEvidence": null
+    },
+    {
+      "id": "net10.0-renamed-v2",
+      "capture": {
+        "Framework": "net10.0",
+        "Profile": "renamed-v2",
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "76e6e15a20948f70a4cb54a8216a6a5f69877cc4dcb6df0c4d11026d50ba7cb3",
+        "OracleSha256": "76ef9bfd7387ef70e49871c552e26d666515b869e89c3cd040099860472734a4",
+        "ProtectedSha256": "1ec6087c54fcefa3af1671ccd4adc9a30a16ac31f86e86dca10948ef7024eb8d",
+        "Companions": [
+          {
+            "path": "oracle/fr/SatelliteProbe.resources.dll",
+            "sha256": "aebda5c83f2f4316a9cf23e6eee834672bb44cb5495132328bc32e3616588264"
+          },
+          {
+            "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+            "sha256": "37f89727a773ebccfc4d2eddc5b74d8f79abee0e051f49a040037b55b664be7d"
+          },
+          {
+            "path": "protected/fr/SatelliteProbe.resources.dll",
+            "sha256": "a2bdd37621c0edcff231eb30f88338549908338f256ebfa37c137cb27b1f9957"
+          },
+          {
+            "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+            "sha256": "cfd114b2914bb792572598da06253f3b924c85f1962ce91f1d4334da8a08d30b"
+          },
+          {
+            "path": "protected/environment0f617e02.bin",
+            "sha256": "ea2ededb51fa4060b1a47c958e40c54fdd00486019196e2fd7f445ec659fca29"
+          },
+          {
+            "path": "protected/runtimes/linux-arm64/native/Runtime.Extensions.so",
+            "sha256": "a8927d23c2d1e9cabc0e1435818f6a850261a609987aca5c2f03a38bf621ee31"
+          },
+          {
+            "path": "protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+            "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+          },
+          {
+            "path": "protected/runtimes/osx-arm64/native/Runtime.Extensions.dylib",
+            "sha256": "764d3343142ca5bde865aaed719a6913a154a7619434e4ce3eae468175b44d81"
+          },
+          {
+            "path": "protected/runtimes/osx-x64/native/Runtime.Extensions.dylib",
+            "sha256": "f0cbfe9a0e8c80627fcd87c779cb2c5155377d0cb0e0f765fcb581c4ea55c852"
+          },
+          {
+            "path": "protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+            "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+          },
+          {
+            "path": "protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+            "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+          }
+        ]
+      },
+      "status": "Captured and statically recovered; runtime execution not validated.",
+      "behaviorEvidence": null
+    }
+  ],
+  "v2Selection": "String encryption selects Program and Secrets except get_Bytes. The byte-array resource itself remains selected for resource encryption.",
+  "limits": "Review covers the captured 7.9 combinations only; arbitrary runtime variants, serialized object resources and alternate native builds remain unvalidated.",
+  "validation": {
+    "runtimeComparisonsPassed": 9,
+    "resourceEntries": 135,
+    "resourceContainers": 27,
+    "encryptedStringSites": 69,
+    "runtimeTypesRemoved": 21,
+    "remainingSwitchDispatchers": 0,
+    "remainingUnreachableInstructions": 0,
+    "differentialNet48Captures": 3,
+    "differentialNet48BrokenMethods": 0,
+    "differentialNet48WorsenedMethods": 0,
+    "focusedTestsPassed": 66,
+    "focusedTestLog": "C:/cilantro-verify/dotfuscator/resource-interactions-focused.log",
+    "runtimeEvidence": "C:/cilantro-verify/dotfuscator/resource-interactions-runtime-evidence.json",
+    "runtimeEvidenceSha256": "c4946a9eb2d7fc121ab3a3b8dc90c1eed926ae9394a964c5b9d6c704ce0ed755",
+    "fullTestLog": "C:/cilantro-verify/dotfuscator/resource-interactions-full.log",
+    "fullTestStatus": "passed",
+    "fullTestsPassed": 3468,
+    "fullTestsSkipped": 37,
+    "fullTestsFailed": 0,
+    "fullTestsTotal": 3505
+  }
+}

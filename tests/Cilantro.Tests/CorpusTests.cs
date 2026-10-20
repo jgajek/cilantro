@@ -43,10 +43,25 @@ public sealed class CorpusTests
         // unprotected file. A capability list is the usual way to assert something; pinning the hash
         // of a recovered payload is the other, and is what a native bootstrap has instead, since its
         // capabilities belong to the assembly inside it and this run never reads that.
+        // Measured strings/dispatcher bounds also assert recovery without inferring
+        // capabilities from a watermark. Exploratory unsupported cases gate an
+        // explicit refusal rather than claiming successful recovery.
         Assert.All(manifest.Samples, sample => Assert.True(
             sample.ExpectedDetection == "none" ||
             sample.ExpectedCapabilities.Count > 0 ||
-            sample.ExpectedPayloadSha256 is { Count: > 0 },
+            sample.ExpectedPayloadSha256 is { Count: > 0 } ||
+            sample.MinimumRecoveredStringSites is > 0 ||
+            sample.MinimumNumericTableSites is > 0 ||
+            sample.MinimumResourcesRestored is > 0 ||
+            sample.MinimumProxyCallsRestored is > 0 ||
+            sample.ExpectedDecodedResourceSha256 is { Count: > 0 } ||
+            sample.MinimumNeutralizedCheckSites is > 0 ||
+            sample.ExpectedRestoredBodyCount is > 0 ||
+            // Explicit zero-body controls pin producer omissions without claiming recovery.
+            sample.ExpectedRestoredBodyCount == 0 && sample.MaximumRemainingStubs == 0 &&
+                sample.MaximumSurplusResources == 0 && sample.RequireOracleResourceParity ||
+            sample.MaximumRemainingSwitchDispatchers == 0 && sample.RequireOracleResourceParity ||
+            sample.Tier == "exploratory" && !string.IsNullOrWhiteSpace(sample.ExpectUnsupportedReason),
             $"{sample.Id} expects a protector but asserts nothing it must recover."));
     }
 

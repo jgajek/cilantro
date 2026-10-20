@@ -46,8 +46,12 @@ public sealed class BabelCorpusTests
             foreach (var sample in manifest.Samples)
             {
                 if (sample.Id == "pin-mxi-decoded-stage")
+                {
                     Assert.Contains(outcome.Samples.Single(entry => entry.Id == sample.Id).Passes,
                         pass => pass.Pass == "babel-proxies" && pass.Diagnostics.Any(note => note.Contains("2353/2353 Babel proxy bindings")));
+                    Assert.Contains(outcome.Samples.Single(entry => entry.Id == sample.Id).Passes,
+                        pass => pass.Pass == "babel-proxies" && pass.Diagnostics.Any(note => note.Contains("Recovered 413 direct calls in accessible caller contexts")));
+                }
                 var original = Path.Combine(samples, sample.LocalName);
                 var cleaned = Path.Combine(directory, sample.Id, "cleaned.bin");
                 var difference = IlVerification.Against(IlVerification.Read(original), IlVerification.Read(cleaned));

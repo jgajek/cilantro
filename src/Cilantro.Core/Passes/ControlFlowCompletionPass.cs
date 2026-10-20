@@ -156,18 +156,34 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             var operation = instructions[index];
             var code = operation.OpCode.Code;
             if (code is not (Code.Add or Code.Sub or Code.Mul or Code.Xor or Code.And or Code.Or or
-                Code.Shl or Code.Shr or Code.Shr_Un or Code.Neg or Code.Not)) continue;
+                Code.Shl or Code.Shr or Code.Shr_Un or Code.Neg or Code.Not or
+                Code.Conv_I1 or Code.Conv_U1 or Code.Conv_I2 or Code.Conv_U2 or Code.Conv_I4 or Code.Conv_U4 or
+                Code.Div or Code.Div_Un or Code.Rem or Code.Rem_Un or Code.Ceq or Code.Clt or Code.Clt_Un or Code.Cgt or Code.Cgt_Un)) continue;
             var right = Feeding(instructions, entered, index);
             if (right is null || !right.IsLdcI4()) continue;
             var b = right.GetLdcI4Value();
             int value;
             Instruction? left = null;
-            if (code is Code.Neg or Code.Not) value = code == Code.Neg ? unchecked(-b) : ~b;
+            if (code is Code.Neg or Code.Not or Code.Conv_I1 or Code.Conv_U1 or Code.Conv_I2 or Code.Conv_U2 or Code.Conv_I4 or Code.Conv_U4)
+                value = code switch
+                {
+                    Code.Neg => unchecked(-b),
+                    Code.Not => ~b,
+                    Code.Conv_I1 => unchecked((sbyte)b),
+                    Code.Conv_U1 => unchecked((byte)b),
+                    Code.Conv_I2 => unchecked((short)b),
+                    Code.Conv_U2 => unchecked((ushort)b),
+                    _ => b
+                };
             else
             {
                 left = Feeding(instructions, entered, instructions.IndexOf(right));
                 if (left is null || !left.IsLdcI4()) continue;
                 var a = left.GetLdcI4Value();
+                // Preserve exceptional divisions, including the signed overflow
+                // case. Unsigned division has no corresponding overflow.
+                if (code is Code.Div or Code.Div_Un or Code.Rem or Code.Rem_Un && b == 0 ||
+                    code is Code.Div or Code.Rem && a == int.MinValue && b == -1) continue;
                 value = code switch
                 {
                     Code.Add => unchecked(a + b),
@@ -179,6 +195,15 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                     Code.Shl => a << b,
                     Code.Shr => a >> b,
                     Code.Shr_Un => (int)((uint)a >> b),
+                    Code.Div => a / b,
+                    Code.Div_Un => unchecked((int)((uint)a / (uint)b)),
+                    Code.Rem => a % b,
+                    Code.Rem_Un => unchecked((int)((uint)a % (uint)b)),
+                    Code.Ceq => a == b ? 1 : 0,
+                    Code.Clt => a < b ? 1 : 0,
+                    Code.Clt_Un => (uint)a < (uint)b ? 1 : 0,
+                    Code.Cgt => a > b ? 1 : 0,
+                    Code.Cgt_Un => (uint)a > (uint)b ? 1 : 0,
                     _ => throw new InvalidOperationException()
                 };
             }
@@ -754,7 +779,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// <summary>
     /// Deletes unreachable instructions while preserving retained instructions' exception regions.
     /// </summary>
-    private static int RemoveUnreachable(MethodDef method)
+    internal static int RemoveUnreachable(MethodDef method)
     {
         var ordinary = CfgDeadCodePass.ComputeReachable(method);
         var instructions = method.Body.Instructions;

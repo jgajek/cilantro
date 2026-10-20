@@ -197,6 +197,12 @@ public sealed class StaticMachine
     /// <summary>Called as each frame is left, so an observer can follow the call structure.</summary>
     public Action<MethodDef>? FrameExited { get; set; }
 
+    /// <summary>A scoped, independently proved replacement for a method's CIL during interpretation.</summary>
+    internal Func<IntrinsicContext, MethodDef, IReadOnlyList<StaticValue>, IntrinsicResult?>? MethodSummary { get; set; }
+    internal Func<StaticValue, bool>? UnknownIdentity { get; set; }
+    internal Func<StaticValue, TypeSig, bool>? ProvedSubtypeCast { get; set; }
+    internal Func<MethodDef, Instruction, TypeSig, StaticValue, bool>? UnknownBoxTransport { get; set; }
+
     /// <summary>
     /// Called before each instruction runs, for an observer that needs to see inside a frame.
     /// </summary>
@@ -245,6 +251,8 @@ public sealed class StaticMachine
         int depth,
         GenericScope? generics)
     {
+        if (State.IsPreservedInitializer(method))
+            return FrameResult.Fail(StaticExecutionStatus.Unknown, "Application initializers are preserved, not executed by method-image construction.");
         if (depth > _limits.MaximumRecursionDepth)
         {
             var deep = $"Call depth exceeded {_limits.MaximumRecursionDepth}.";
@@ -312,6 +320,13 @@ public sealed class StaticMachine
             return FrameResult.Fail(
                 StaticExecutionStatus.InvalidProgram,
                 $"{method.FullName} expected {expectedArguments} arguments, got {arguments.Count}.");
+
+        if (MethodSummary?.Invoke(Assisting(budget, depth), method, arguments) is { } summary)
+        {
+            if (summary.Status == StaticExecutionStatus.Completed)
+                State.Observe(LoaderObservationKind.ProvedMethodSummary, method.FullName);
+            return new FrameResult(summary.Status, summary.Value, summary.Diagnostic);
+        }
 
         var instructions = method.Body.Instructions;
         var indices = Indexed(instructions);
@@ -424,7 +439,8 @@ public sealed class StaticMachine
                             "ldftn"));
                         break;
                     case Code.Ldvirtftn:
-                        Pop(stack);
+                        if (State.Heap.HasUnknownRuntimeType(Pop(stack)))
+                            return FrameResult.Fail(StaticExecutionStatus.Unknown, "Virtual method pointers require the receiver's runtime type.");
                         State.Heap.TryAllocateMetadataHandle(instruction.Operand, out var virtualFunction);
                         stack.Add(virtualFunction);
                         break;
@@ -600,7 +616,7 @@ public sealed class StaticMachine
                             stack.Add(TrackOperation(
                                 method,
                                 instruction,
-                                Compare(instruction.OpCode.Code, left, right),
+                                IdentityUnknown(left, right) ? StaticValue.Unknown : Compare(instruction.OpCode.Code, left, right),
                                 ProvenanceKind.Comparison,
                                 left,
                                 right));
@@ -647,7 +663,7 @@ public sealed class StaticMachine
                         {
                             var right = Pop(stack);
                             var left = Pop(stack);
-                            var condition = BranchCompare(instruction.OpCode.Code, left, right);
+                            var condition = IdentityUnknown(left, right) ? null : BranchCompare(instruction.OpCode.Code, left, right);
                             if (condition is null)
                                 return UnknownBranch(instruction);
                             if (condition.Value)
@@ -739,7 +755,7 @@ public sealed class StaticMachine
                                 return UnknownNumber(instruction, "array length");
 
                             var elementType = (instruction.Operand as ITypeDefOrRef)?.ToTypeSig();
-                            if (!State.Heap.TryAllocateArray(elementType, length.AsInt32(), out var array))
+                            if (!State.Heap.TryAllocateArray(elementType, ArrayNumber(length), out var array))
                                 return AllocationFailure(instruction, "array");
                             stack.Add(array);
                             break;
@@ -768,7 +784,7 @@ public sealed class StaticMachine
                             var indexValue = Pop(stack);
                             if (!indexValue.IsKnown)
                                 return UnknownNumber(instruction, "array index");
-                            var index = indexValue.AsInt32();
+                            var index = ArrayNumber(indexValue);
                             var array = Pop(stack);
                             if (!State.Heap.TryReadArray(array, index, out var value))
                                 throw new InvalidOperationException("Array read is out of bounds.");
@@ -796,7 +812,7 @@ public sealed class StaticMachine
                             var stored = Pop(stack);
                             if (!stored.IsKnown)
                                 return UnknownNumber(instruction, "array index");
-                            var index = stored.AsInt32();
+                            var index = ArrayNumber(stored);
                             var array = Pop(stack);
                             if (!State.Heap.TryWriteArray(
                                     array,
@@ -817,7 +833,7 @@ public sealed class StaticMachine
                             var addressed = Pop(stack);
                             if (!addressed.IsKnown)
                                 return UnknownNumber(instruction, "array index");
-                            var index = addressed.AsInt32();
+                            var index = ArrayNumber(addressed);
                             var array = Pop(stack);
                             if (!State.Heap.TryGetArrayElementReference(array, index, out var reference))
                                 throw new InvalidOperationException("Array address is out of bounds.");
@@ -1040,6 +1056,11 @@ public sealed class StaticMachine
                             var type = Denoted(instruction.Operand, generics) as TypeSig ??
                                 ((ITypeDefOrRef)instruction.Operand).ToTypeSig();
                             var value = Pop(stack);
+                            // A certified stub can transport an unknown T through box T and the
+                            // matching invocation unbox without choosing T's runtime representation.
+                            // Unknown values remain unknown to every observation/branch in between.
+                            if (!value.IsKnown && UnknownBoxTransport?.Invoke(method, instruction, type, value) == true)
+                            { stack.Add(value); break; }
                             // Boxing a reference type is an identity operation, including arrays
                             // of structs and generic parameters instantiated with reference types.
                             var referenceType = IsReferenceForBoxing(type, method.Module);
@@ -1063,12 +1084,20 @@ public sealed class StaticMachine
                     case Code.Isinst:
                         {
                             var value = Pop(stack);
+                            if (!value.IsKnown)
+                                return FrameResult.Fail(StaticExecutionStatus.Unknown, "A type test received an unknown value.");
                             if (value.Kind == StaticValueKind.Null)
                             {
                                 stack.Add(value);
                                 break;
                             }
                             var expected = (instruction.Operand as ITypeDefOrRef)?.FullName;
+                            if (State.Heap.HasUnknownRuntimeType(value))
+                            {
+                                if (instruction.Operand is ITypeDefOrRef type && (type.ToTypeSig().ElementType == ElementType.Object ||
+                                    ProvedSubtypeCast?.Invoke(value, type.ToTypeSig()) == true)) { stack.Add(value); break; }
+                                return FrameResult.Fail(StaticExecutionStatus.Unknown, "A type test depends on the receiver's unknown subtype.");
+                            }
                             if (Castable(value, expected, instruction.Operand as ITypeDefOrRef))
                             {
                                 stack.Add(value);
@@ -1091,6 +1120,12 @@ public sealed class StaticMachine
                             var boxed = Pop(stack);
                             var type = Denoted(instruction.Operand, generics) as TypeSig ??
                                 ((ITypeDefOrRef)instruction.Operand).ToTypeSig();
+                            if (State.Heap.HasUnknownRuntimeType(boxed))
+                            {
+                                if (type.ElementType == ElementType.Object || ProvedSubtypeCast?.Invoke(boxed, type) == true)
+                                { stack.Add(boxed); break; }
+                                return FrameResult.Fail(StaticExecutionStatus.Unknown, "Unboxing depends on the receiver's unknown subtype.");
+                            }
                             var referenceType = IsReferenceForBoxing(type, method.Module);
                             if (referenceType is null || type.ContainsGenericParameter)
                                 return FrameResult.Fail(StaticExecutionStatus.Unknown,
@@ -1136,6 +1171,8 @@ public sealed class StaticMachine
                             }
                             var definition = ResolvedMethod(target) ??
                                 ResolveThroughInstantiation(target);
+                            if (instruction.OpCode.Code == Code.Callvirt && UnknownVirtualReceiver(target, definition, callArguments))
+                                return FrameResult.Fail(StaticExecutionStatus.Unknown, "Virtual dispatch depends on the receiver's unknown subtype.");
                             if ((instruction.OpCode.Code == Code.Callvirt ||
                                  definition is { HasBody: false }) &&
                                 callArguments.Length > 0)
@@ -1824,6 +1861,9 @@ public sealed class StaticMachine
             : unchecked((ulong)left.AsInt64()).CompareTo(unchecked((ulong)right.AsInt64()));
     }
 
+    private bool IdentityUnknown(StaticValue left, StaticValue right) => left.Kind != StaticValueKind.Null && right.Kind != StaticValueKind.Null &&
+        (UnknownIdentity?.Invoke(left) == true || UnknownIdentity?.Invoke(right) == true);
+
     private static bool? Truth(StaticValue value) => value.Kind switch
     {
         StaticValueKind.Unknown => null,
@@ -2181,6 +2221,8 @@ public sealed class StaticMachine
         StaticValue[] arguments = unbound
             ? [.. callArguments[1..]]
             : [receiver, .. callArguments[1..]];
+        if (UnknownVirtualReceiver(bound, definition, arguments))
+        { result = FrameResult.Fail(StaticExecutionStatus.Unknown, "Delegate dispatch depends on an unknown receiver subtype."); return true; }
         if (definition is { HasBody: true } && MayRun(definition))
         {
             result = ExecuteFrame(
@@ -2439,6 +2481,7 @@ public sealed class StaticMachine
     /// <summary>Whether what is on the stack can stand as an instance of the named type.</summary>
     private bool Castable(StaticValue value, string? expected, ITypeDefOrRef? named) =>
         expected == "System.Object" ||
+        expected == "System.Delegate" && State.Heap.TryGetModelValue<IMethod>(value, DelegateMethodKey, out var boundDelegate) && boundDelegate is not null ||
         State.Heap.TryGetRuntimeTypeName(value, out var actual) &&
         (string.Equals(actual, expected, StringComparison.Ordinal) ||
             InheritsModel(actual, expected) ||
@@ -2518,7 +2561,8 @@ public sealed class StaticMachine
                 return failure is { } stopped
                     ? new IntrinsicResult(stopped.Status, stopped.Value, stopped.Diagnostic)
                     : IntrinsicResult.Completed();
-            });
+            },
+            budget.TryConsumeSteps);
 
     /// <summary>
     /// Runs a delegate on behalf of a modeled API that was handed one.
@@ -2543,6 +2587,8 @@ public sealed class StaticMachine
         StaticValue[] callArguments = open || (definition?.IsStatic ?? bound.MethodSig?.HasThis != true)
             ? [.. arguments]
             : [receiver, .. arguments];
+        if (UnknownVirtualReceiver(bound, definition, callArguments))
+            return IntrinsicResult.Unknown("Callback dispatch depends on an unknown receiver subtype.");
         if (definition is { HasBody: true } && MayRun(definition))
         {
             var result = ExecuteFrame(
@@ -2576,14 +2622,17 @@ public sealed class StaticMachine
         StaticWorkBudget budget,
         int depth)
     {
-        if (ResolvedMethod(method) is { HasBody: true } definition && MayRun(definition))
+        var definition = ResolvedMethod(method) ?? ResolveThroughInstantiation(method);
+        if (UnknownVirtualReceiver(method, definition, arguments))
+            return IntrinsicResult.Unknown("Reflection dispatch depends on an unknown receiver subtype.");
+        if (definition is { HasBody: true } && MayRun(definition))
         {
             var result = ExecuteFrame(
                 definition, [.. arguments], budget, depth + 1, GenericScope.For(method, null));
             return new IntrinsicResult(result.Status, result.Value, result.Diagnostic);
         }
 
-        if (ResolvedMethod(method) is { IsVirtual: true } declared &&
+        if (definition is { IsVirtual: true } declared &&
             !declared.IsStatic &&
             arguments.Count > 0 &&
             method.DeclaringType?.Module is { } module &&
@@ -2620,6 +2669,10 @@ public sealed class StaticMachine
     }
 
     private readonly Dictionary<(IMethod Target, string? RuntimeType, ModuleDef Module), MethodDef?> _virtualTargets = [];
+
+    private bool UnknownVirtualReceiver(IMethod target, MethodDef? definition, IReadOnlyList<StaticValue> arguments) =>
+        target.MethodSig?.HasThis == true && arguments.Count > 0 && State.Heap.HasUnknownRuntimeType(arguments[0]) &&
+        (definition is null || definition.IsVirtual && !definition.IsFinal);
 
     private MethodDef? ResolveVirtualTarget(
         IMethod target,
@@ -3186,6 +3239,15 @@ public sealed class StaticMachine
             int value => value,
             _ => throw new InvalidOperationException("Invalid argument operand.")
         };
+    }
+
+    private static int ArrayNumber(StaticValue value)
+    {
+        // Array indices and lengths accept native integers. The bounded heap
+        // uses Int32 indices, so refuse large native values instead of truncating.
+        if (!value.IsInteger || value.AsInt64() is < int.MinValue or > int.MaxValue)
+            throw new InvalidOperationException("Array index or length exceeds the bounded integer range.");
+        return (int)value.AsInt64();
     }
 
     private static int LocalIndex(object operand) => operand switch

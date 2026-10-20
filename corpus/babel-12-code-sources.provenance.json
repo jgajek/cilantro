@@ -1,0 +1,281 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": "Babel 12.1 Enterprise trial",
+  "status": "recovered",
+  "scope": "Initial availability audit: external .eil and password-protected internal method code are trial-enabled. The original six failures below are historical. Both configurations subsequently recovered, including combined string/resource/proxy/control-flow captures, with linked final regression evidence.",
+  "sources": [
+    {
+      "path": "corpus/probes/babel-code-sources.ps1",
+      "sha256": "c16fd02c9a687acc436c2ec5c1d7cbc041fd17aa4f33f82200c36174c145029f"
+    },
+    {
+      "path": "corpus/probes/BabelCodeSources/Program.cs",
+      "sha256": "11108718ba2cea794a6f93d3a71aade5d21262c15e8eb5bed8fab1cce10cf955"
+    },
+    {
+      "path": "corpus/probes/BabelCodeSources/BabelCodeSources.csproj",
+      "sha256": "8f602b4046719c33b0e090006f1345f81e0aca5793d75f7913f8ee5548ea2fff"
+    }
+  ],
+  "evidenceRoot": "C:/cilantro-verify/babel/code-sources-v3",
+  "blockers": {
+    "external": "AppDomain.get_BaseDirectory is unmodeled; supplying external code requires a bounded explicit companion-data contract, not unrestricted interpreter filesystem access.",
+    "password": "SymmetricAlgorithm.get_KeySize is unmodeled; further decoder operations still need validation."
+  },
+  "captures": [
+    {
+      "id": "net10.0-external",
+      "files": [
+        {
+          "name": "BabelCodeSources.deps.json",
+          "sha256": "d7b91bc403ee837e554504959cb19fa64b8723b6b6f72a8b36c352a76394ffb0",
+          "length": 442
+        },
+        {
+          "name": "BabelCodeSources.dll",
+          "sha256": "3200dbb3ba850104b7180ebe7268a682ad23d35bc4e39fd510cf7a2b12a1dba6",
+          "length": 62976
+        },
+        {
+          "name": "BabelCodeSources.runtimeconfig.json",
+          "sha256": "c230a317a54dd960bcbeb5f347f52e18dc665a26f7efda2159fced9a5ac7e097",
+          "length": 342
+        },
+        {
+          "name": "probe-code.eil",
+          "sha256": "b3aff4e9a5cb25e5237c07d989f0ea846257119649845346f79d8ade2761cd6a",
+          "length": 323
+        }
+      ],
+      "rules": "<Rules><Rule name=\"code source probe\" feature=\"msil encryption\" exclude=\"false\"><Target>Methods</Target><Pattern>BabelCodeSources.Program::Encrypted*</Pattern><Properties><Source>probe-code</Source></Properties></Rule></Rules>",
+      "producerMatch": true,
+      "recovery": {
+        "Id": "net10.0-external",
+        "ExitCode": 1,
+        "Verified": true,
+        "Restored": 0,
+        "Remaining": 1,
+        "MethodPass": [
+          {
+            "Pass": "babel-method-images",
+            "Status": "unsupported",
+            "Changes": 0,
+            "Diagnostics": [
+              "Babel method image 06000001: System.Int32 BabelCodeSources.Program::Encrypted(System.Int32) IL_0018 -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) args=[Int32:22120524,Null:0,Null:0,HeapReference:1] -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) IL_0026 -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_003F -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_0007 ->  ::(System.Int32) args=[HeapReference:10,Int32:22120524] ->  ::(System.Int32) IL_0005 ->  ::(System.Int32) args=[HeapReference:10,Int32:1] ->  ::(System.Int32) IL_011C -> System.Object 1::(System.String) args=[HeapReference:3317] -> System.Object 1::(System.String) IL_0001 -> System.IO.Stream BabelCodeSources.Program::GetSourceStream(System.String) args=[HeapReference:3317] -> System.IO.Stream BabelCodeSources.Program::GetSourceStream(System.String) IL_0005 -> System.String System.AppDomain::get_BaseDirectory() args=[HeapReference:3340] -> System.String System.AppDomain::get_BaseDirectory(): Unsupported AppDomain operation get_BaseDirectory."
+            ],
+            "Duration": "00:00:00.3226849"
+          }
+        ],
+        "Blockers": []
+      }
+    },
+    {
+      "id": "net10.0-password",
+      "files": [
+        {
+          "name": "BabelCodeSources.deps.json",
+          "sha256": "d7b91bc403ee837e554504959cb19fa64b8723b6b6f72a8b36c352a76394ffb0",
+          "length": 442
+        },
+        {
+          "name": "BabelCodeSources.dll",
+          "sha256": "c86b1c951fca9fcef5e3e2b52f9561ce4b2d3fa0ccace783f894967df686d289",
+          "length": 63488
+        },
+        {
+          "name": "BabelCodeSources.runtimeconfig.json",
+          "sha256": "c230a317a54dd960bcbeb5f347f52e18dc665a26f7efda2159fced9a5ac7e097",
+          "length": 342
+        }
+      ],
+      "rules": "<Rules><Rule name=\"code source probe\" feature=\"msil encryption\" exclude=\"false\"><Target>Methods</Target><Pattern>BabelCodeSources.Program::Encrypted*</Pattern><Properties><Source>probe-code</Source><Password>CILantro benign code-source password 73</Password><Internal>true</Internal></Properties></Rule></Rules>",
+      "producerMatch": true,
+      "recovery": {
+        "Id": "net10.0-password",
+        "ExitCode": 1,
+        "Verified": true,
+        "Restored": 0,
+        "Remaining": 1,
+        "MethodPass": [
+          {
+            "Pass": "babel-method-images",
+            "Status": "unsupported",
+            "Changes": 0,
+            "Diagnostics": [
+              "Babel method image 06000001: System.Int32 BabelCodeSources.Program::Encrypted(System.Int32) IL_0018 -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) args=[Int32:22120524,Null:0,Null:0,HeapReference:1] -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) IL_0026 -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_003F -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_0007 ->  ::(System.Int32) args=[HeapReference:10,Int32:22120524] ->  ::(System.Int32) IL_0005 ->  ::(System.Int32) args=[HeapReference:10,Int32:1] ->  ::(System.Int32) IL_0176 -> System.IO.Stream ::(,System.IO.Stream,System.String) args=[HeapReference:10,HeapReference:242,HeapReference:269,HeapReference:270] -> System.IO.Stream ::(,System.IO.Stream,System.String) IL_0030 -> System.Int32 System.Security.Cryptography.SymmetricAlgorithm::get_KeySize() args=[HeapReference:271] -> System.Int32 System.Security.Cryptography.SymmetricAlgorithm::get_KeySize(): Unsupported cryptography operation get_KeySize."
+            ],
+            "Duration": "00:00:00.1905574"
+          }
+        ],
+        "Blockers": []
+      }
+    },
+    {
+      "id": "net48-external",
+      "files": [
+        {
+          "name": "BabelCodeSources.exe",
+          "sha256": "804d518ccdb06b6b7ddde1f3e7374dbe59e2e4ef869df0e099a0466f66b52b77",
+          "length": 62976
+        },
+        {
+          "name": "probe-code.eil",
+          "sha256": "e84a859b96d34e3345b4a1630bb6fbc5b6468fce333191fb972fa31b5c100dfc",
+          "length": 307
+        }
+      ],
+      "rules": "<Rules><Rule name=\"code source probe\" feature=\"msil encryption\" exclude=\"false\"><Target>Methods</Target><Pattern>BabelCodeSources.Program::Encrypted*</Pattern><Properties><Source>probe-code</Source></Properties></Rule></Rules>",
+      "producerMatch": true,
+      "recovery": {
+        "Id": "net48-external",
+        "ExitCode": 1,
+        "Verified": true,
+        "Restored": 0,
+        "Remaining": 1,
+        "MethodPass": [
+          {
+            "Pass": "babel-method-images",
+            "Status": "unsupported",
+            "Changes": 0,
+            "Diagnostics": [
+              "Babel method image 06000003: System.Int32 BabelCodeSources.Program::Encrypted(System.Int32) IL_0018 -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) args=[Int32:20845272,Null:0,Null:0,HeapReference:1] -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) IL_0026 -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:20845272,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_003F -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:20845272,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_0007 ->  ::(System.Int32) args=[HeapReference:10,Int32:20845272] ->  ::(System.Int32) IL_0005 ->  ::(System.Int32) args=[HeapReference:10,Int32:1] ->  ::(System.Int32) IL_011C -> System.Object 1::(System.String) args=[HeapReference:3317] -> System.Object 1::(System.String) IL_0001 -> System.IO.Stream BabelCodeSources.Program::GetSourceStream(System.String) args=[HeapReference:3317] -> System.IO.Stream BabelCodeSources.Program::GetSourceStream(System.String) IL_0005 -> System.String System.AppDomain::get_BaseDirectory() args=[HeapReference:3340] -> System.String System.AppDomain::get_BaseDirectory(): Unsupported AppDomain operation get_BaseDirectory."
+            ],
+            "Duration": "00:00:00.3185076"
+          }
+        ],
+        "Blockers": []
+      }
+    },
+    {
+      "id": "net48-password",
+      "files": [
+        {
+          "name": "BabelCodeSources.exe",
+          "sha256": "20e8d6cd5b57ecc43cb338324d0decf81e1b810b3e897c4dc4f5fc0b3fe1a2d4",
+          "length": 62976
+        }
+      ],
+      "rules": "<Rules><Rule name=\"code source probe\" feature=\"msil encryption\" exclude=\"false\"><Target>Methods</Target><Pattern>BabelCodeSources.Program::Encrypted*</Pattern><Properties><Source>probe-code</Source><Password>CILantro benign code-source password 73</Password><Internal>true</Internal></Properties></Rule></Rules>",
+      "producerMatch": true,
+      "recovery": {
+        "Id": "net48-password",
+        "ExitCode": 1,
+        "Verified": true,
+        "Restored": 0,
+        "Remaining": 1,
+        "MethodPass": [
+          {
+            "Pass": "babel-method-images",
+            "Status": "unsupported",
+            "Changes": 0,
+            "Diagnostics": [
+              "Babel method image 06000003: System.Int32 BabelCodeSources.Program::Encrypted(System.Int32) IL_0018 -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) args=[Int32:20845272,Null:0,Null:0,HeapReference:1] -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) IL_0026 -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:20845272,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_003F -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:20845272,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_0007 ->  ::(System.Int32) args=[HeapReference:10,Int32:20845272] ->  ::(System.Int32) IL_0005 ->  ::(System.Int32) args=[HeapReference:10,Int32:1] ->  ::(System.Int32) IL_0176 -> System.IO.Stream ::(,System.IO.Stream,System.String) args=[HeapReference:10,HeapReference:242,HeapReference:269,HeapReference:270] -> System.IO.Stream ::(,System.IO.Stream,System.String) IL_0043 -> System.Int32 System.Security.Cryptography.SymmetricAlgorithm::get_KeySize() args=[HeapReference:271] -> System.Int32 System.Security.Cryptography.SymmetricAlgorithm::get_KeySize(): Unsupported cryptography operation get_KeySize."
+            ],
+            "Duration": "00:00:00.1701017"
+          }
+        ],
+        "Blockers": []
+      }
+    },
+    {
+      "id": "net8.0-external",
+      "files": [
+        {
+          "name": "BabelCodeSources.deps.json",
+          "sha256": "7df430aa9f0a6d40f3404a0450d088646dfc932950732822abf3a96b1641b103",
+          "length": 440
+        },
+        {
+          "name": "BabelCodeSources.dll",
+          "sha256": "e009bdd07087c1100e9623664f136d76f5be6cde0e6fd833120ec889b7bff2e8",
+          "length": 62976
+        },
+        {
+          "name": "BabelCodeSources.runtimeconfig.json",
+          "sha256": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "length": 340
+        },
+        {
+          "name": "probe-code.eil",
+          "sha256": "41e9e71a8c5d0f1ac71dea7728e6405e0d071e2e90b787204f10013ced5d25cd",
+          "length": 323
+        }
+      ],
+      "rules": "<Rules><Rule name=\"code source probe\" feature=\"msil encryption\" exclude=\"false\"><Target>Methods</Target><Pattern>BabelCodeSources.Program::Encrypted*</Pattern><Properties><Source>probe-code</Source></Properties></Rule></Rules>",
+      "producerMatch": true,
+      "recovery": {
+        "Id": "net8.0-external",
+        "ExitCode": 1,
+        "Verified": true,
+        "Restored": 0,
+        "Remaining": 1,
+        "MethodPass": [
+          {
+            "Pass": "babel-method-images",
+            "Status": "unsupported",
+            "Changes": 0,
+            "Diagnostics": [
+              "Babel method image 06000001: System.Int32 BabelCodeSources.Program::Encrypted(System.Int32) IL_0018 -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) args=[Int32:22120524,Null:0,Null:0,HeapReference:1] -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) IL_0026 -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_003F -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_0007 ->  ::(System.Int32) args=[HeapReference:10,Int32:22120524] ->  ::(System.Int32) IL_0005 ->  ::(System.Int32) args=[HeapReference:10,Int32:1] ->  ::(System.Int32) IL_011C -> System.Object 1::(System.String) args=[HeapReference:3317] -> System.Object 1::(System.String) IL_0001 -> System.IO.Stream BabelCodeSources.Program::GetSourceStream(System.String) args=[HeapReference:3317] -> System.IO.Stream BabelCodeSources.Program::GetSourceStream(System.String) IL_0005 -> System.String System.AppDomain::get_BaseDirectory() args=[HeapReference:3340] -> System.String System.AppDomain::get_BaseDirectory(): Unsupported AppDomain operation get_BaseDirectory."
+            ],
+            "Duration": "00:00:00.3241133"
+          }
+        ],
+        "Blockers": []
+      }
+    },
+    {
+      "id": "net8.0-password",
+      "files": [
+        {
+          "name": "BabelCodeSources.deps.json",
+          "sha256": "7df430aa9f0a6d40f3404a0450d088646dfc932950732822abf3a96b1641b103",
+          "length": 440
+        },
+        {
+          "name": "BabelCodeSources.dll",
+          "sha256": "b93e036472825f78b3232047223bcaa9083754ba0b46096f8ef603af77458ff7",
+          "length": 63488
+        },
+        {
+          "name": "BabelCodeSources.runtimeconfig.json",
+          "sha256": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "length": 340
+        }
+      ],
+      "rules": "<Rules><Rule name=\"code source probe\" feature=\"msil encryption\" exclude=\"false\"><Target>Methods</Target><Pattern>BabelCodeSources.Program::Encrypted*</Pattern><Properties><Source>probe-code</Source><Password>CILantro benign code-source password 73</Password><Internal>true</Internal></Properties></Rule></Rules>",
+      "producerMatch": true,
+      "recovery": {
+        "Id": "net8.0-password",
+        "ExitCode": 1,
+        "Verified": true,
+        "Restored": 0,
+        "Remaining": 1,
+        "MethodPass": [
+          {
+            "Pass": "babel-method-images",
+            "Status": "unsupported",
+            "Changes": 0,
+            "Diagnostics": [
+              "Babel method image 06000001: System.Int32 BabelCodeSources.Program::Encrypted(System.Int32) IL_0018 -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) args=[Int32:22120524,Null:0,Null:0,HeapReference:1] -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) IL_0026 -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_003F -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) args=[HeapReference:3,Int32:22120524,Null:0,Null:0] -> 1 1::(System.Int32,System.Reflection.MethodBase,System.Object) IL_0007 ->  ::(System.Int32) args=[HeapReference:10,Int32:22120524] ->  ::(System.Int32) IL_0005 ->  ::(System.Int32) args=[HeapReference:10,Int32:1] ->  ::(System.Int32) IL_0176 -> System.IO.Stream ::(,System.IO.Stream,System.String) args=[HeapReference:10,HeapReference:242,HeapReference:269,HeapReference:270] -> System.IO.Stream ::(,System.IO.Stream,System.String) IL_0030 -> System.Int32 System.Security.Cryptography.SymmetricAlgorithm::get_KeySize() args=[HeapReference:271] -> System.Int32 System.Security.Cryptography.SymmetricAlgorithm::get_KeySize(): Unsupported cryptography operation get_KeySize."
+            ],
+            "Duration": "00:00:00.1611001"
+          }
+        ],
+        "Blockers": []
+      }
+    }
+  ],
+  "passwordRecovery": {
+    "provenance": "corpus/babel-12-password.provenance.json",
+    "restoredBodies": 3,
+    "retiredTables": 3,
+    "matchingThreeWayComparisons": 3,
+    "date": "2026-10-20"
+  },
+  "externalRecovery": {
+    "provenance": "corpus/babel-12-external.provenance.json",
+    "newRecoveredBodies": 9,
+    "totalFinalBehaviorComparisons": 12,
+    "date": "2026-10-20"
+  }
+}

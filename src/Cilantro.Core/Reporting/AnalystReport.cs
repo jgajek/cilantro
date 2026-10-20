@@ -34,6 +34,20 @@ internal static class AnalystReport
             .Append(E(summary.Outcome)).Append("</h1><p>").Append(E(Path.GetFileName(result.Report.InputPath)))
             .Append(" · ").Append(E(summary.Protection)).Append("</p></header>");
         var artifacts = AnalystArtifact.Of(result);
+        if (result.DependencyPaths.Count > 0)
+        {
+            html.Append("<section><h2>Restored dependencies</h2><p>Keep these DLLs beside the cleaned assembly.</p><ul>");
+            foreach (var dependency in result.DependencyPaths)
+                html.Append("<li>").Append(Link(dependency, directory)).Append("</li>");
+            html.Append("</ul></section>");
+        }
+        if (result.ResourceSatellitePaths.Count > 0)
+        {
+            html.Append("<section><h2>Restored resource satellites</h2><p>Keep these culture directories beside the cleaned assembly.</p><ul>");
+            foreach (var satellite in result.ResourceSatellitePaths)
+                html.Append("<li>").Append(Link(satellite, directory)).Append("</li>");
+            html.Append("</ul></section>");
+        }
         foreach (var section in summary.Sections.Where(section => !section.DetailsOnly && section.Items.Count > 0))
         {
             if (section.Title == "Artifacts")

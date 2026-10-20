@@ -1,0 +1,244 @@
+{
+  "neutralizedCallSites": 18,
+  "nativeImportNote": "Only the Windows kernel32.dll module spelling is case-normalized in v2 managed templates. Export names, other library names, managed code, signed environments and native library hashes remain exact.",
+  "fixtures": [
+    {
+      "Framework": "net48",
+      "Config": "combined-flow",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "51a808c621ea8d33cea2839ec6622e59a40d4f897dad73b36bfdcdafea253b66",
+      "OracleSha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2",
+      "ProtectedSha256": "fa653e5e6cdf23b3027e57ead14b105a38cfe69badc726204c77f1d94e159e6c",
+      "Id": "net48-combined-flow",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 0.0
+    },
+    {
+      "Framework": "net48",
+      "Config": "combined-renamed",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "ec08bdc55390455407d5ca78c83ba2c57705f7bfe355558c3f1d254188f78938",
+      "OracleSha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2",
+      "ProtectedSha256": "97fcadd071f491f648a84449a774eb526040b001d9c4eab58c4ce0f8b51604c9",
+      "Id": "net48-combined-renamed",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 7.0
+    },
+    {
+      "Framework": "net48",
+      "Config": "combined-native",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "acda9537031053ecdf1fcf98e16f11f4826401aa2ea9e179c9d216033dbd85d8",
+      "OracleSha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2",
+      "ProtectedSha256": "6b9cf7ef1204948da2b40aee50ac48d955a7dedb2574e0188163bc5014000034",
+      "Id": "net48-combined-native",
+      "EnvironmentFile": "environment0f617e02.bin",
+      "EnvironmentSha256": "d63b9555cbf07ab7aae7e84ce6ad0648214580cf1e27e45a9b684136dfad73dd",
+      "NativeCompanionSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 4.0
+    },
+    {
+      "Framework": "net8.0",
+      "Config": "combined-flow",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "e3a04c271a1116be2ebbdbb1265e2036c8f9e2b3604a258963dbf627654c3716",
+      "OracleSha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721",
+      "ProtectedSha256": "92fd584476ddd807d418a466f81221f4b7ecb5b5251e77c9e1e41317c58d503b",
+      "Id": "net8.0-combined-flow",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 0.0
+    },
+    {
+      "Framework": "net8.0",
+      "Config": "combined-renamed",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "03b35114fc2cb1259f9cf8a0f06965778ee4740c059b5d53c3a789e6cb964ce8",
+      "OracleSha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721",
+      "ProtectedSha256": "eec97d0b27d5d1761b9eba1855878b3f26072440491bff456ab0ec1b6a0ddded",
+      "Id": "net8.0-combined-renamed",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 7.0
+    },
+    {
+      "Framework": "net8.0",
+      "Config": "combined-native",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "193e4a8ab921c1baf6f8fe0599867b9948f7e755af8396ec5b5e29b053ff8e8d",
+      "OracleSha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721",
+      "ProtectedSha256": "b4fd187f97fe92bd424d3ccd242406b557ae7247611c55f0e20cc6595e2fa696",
+      "Id": "net8.0-combined-native",
+      "EnvironmentFile": "environment0f617e02.bin",
+      "EnvironmentSha256": "3c11d4ba0c81a7a8722afefcc63d99c471c424e9ca06cd8d65584ee92a77637f",
+      "NativeCompanionSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 4.0
+    },
+    {
+      "Framework": "net10.0",
+      "Config": "combined-flow",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "1cbf3229f7439534b8bbfc686d69a1335ffaba9392a494aa65e24189a32a924d",
+      "OracleSha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5",
+      "ProtectedSha256": "783d423a75592ff601f33807a38fa9d9efd53856b94ffc17b0c7c3a149c27909",
+      "Id": "net10.0-combined-flow",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 0.0
+    },
+    {
+      "Framework": "net10.0",
+      "Config": "combined-renamed",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "a8cd8a0a6e571a2762a5aa555155565c03cc3e3f57d6a4c1622f91a0671dd42d",
+      "OracleSha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5",
+      "ProtectedSha256": "568289dee4bb74228313ccc9376315f451862620d7e656f82fd950021fbefe4a",
+      "Id": "net10.0-combined-renamed",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 7.0
+    },
+    {
+      "Framework": "net10.0",
+      "Config": "combined-native",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "11dd591c8b168804a781d6a7e26b887e57c5990932866f309729c0624d274b33",
+      "OracleSha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5",
+      "ProtectedSha256": "42f732c35b60eb8b65b9fe9136212c38630c4843a9c22537f87d6c12cbb5f4ed",
+      "Id": "net10.0-combined-native",
+      "EnvironmentFile": "environment0f617e02.bin",
+      "EnvironmentSha256": "6306ac7405dc333a8ec6fd4b8c0cbcc3e9807a9fe905c3681ca4e35154f58885",
+      "NativeCompanionSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "DefaultBehaviorPassed": true,
+      "NotificationBehaviorPassed": true,
+      "NeutralizedCalls": 2,
+      "RecoveredStrings": 4.0
+    }
+  ],
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0+2381db6511",
+  "limitations": [
+    "Code encryption, root/shelf-life/Android checks, other native-library builds and arbitrary/custom decoders remain unvalidated."
+  ],
+  "reviewedCheckFamilies": 27,
+  "runtimeComparisons": 18,
+  "sources": [
+    {
+      "path": "corpus/probes/DotfuscatorChecks/DotfuscatorChecks.csproj",
+      "sha256": "7d53121cee4a61e34c7c7fc8f000988b1c91087f0db26c1e0782dafb195f4b63"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorChecks/Program.cs",
+      "sha256": "2ef307350d31134ddfd0b297e900b8c78e7e7d21c6f8ea4bf2671743c27f7000"
+    },
+    {
+      "path": "corpus/probes/dotfuscator-checks.ps1",
+      "sha256": "90b5a80971425a0e0edb81e61ac95891c1fb46360cd09c488cf9a6dc6ea0e9e2"
+    }
+  ],
+  "proof": "Fresh private copies undergo bounded existing control-flow rewrites. Complete metadata/import/layout/dispatch and successor graphs must equal independently reviewed baseline fingerprints. Canonical edges retain all nonempty instructions and exception-region membership. Only unused private generated instance marker fields with exact attributes/type/default framing are omitted from proof copies; emitted metadata is not removed by the proof.",
+  "description": "Nine source-built debugging plus integrity check fixtures combined with high control flow; includes renaming, managed v1 strings and native-key v2 strings on net48/net8/net10.",
+  "canonicalBaselines": [
+    {
+      "framework": "net48",
+      "fingerprints": [
+        "fb31b9d945d5ad0cb53dd0cb2c2ca32ffe9f315822a94c456fb9c3dc75772828",
+        "a62b02a7143fc19f497fc7a2be762b1f010562e741da36936695a225ce68ab73",
+        "feb02b4421469885aaf41a0de0e5d0c0128a0e909d46df372bf9ba3b845d35da"
+      ]
+    },
+    {
+      "framework": "net8.0",
+      "fingerprints": [
+        "98cdc0fe2117b9706348643c1953cee6872da05dceec3dc434b3f8e2ad30aa1e",
+        "8706f55e81042049c50727f727bc455148478766999c82f35d1a3f40d510ded0",
+        "8849831d077cdf19b1273de06bf1537af2d2b45cbb63ff208928e93e316a591e"
+      ]
+    },
+    {
+      "framework": "net10.0",
+      "fingerprints": [
+        "a863e2d6ee27fdf9c22fa547d7e3bfef37975b457cedaf29e857b017ce87e043",
+        "90819447ad989653aa7e3f53d5589b46edf6f4694d60f911dec9fcf2cb6aeb67",
+        "4f2da2705d1b3ac81808314932d905cb6923d79862806c5814709e794b96e3aa"
+      ]
+    }
+  ],
+  "reviewedBaseline": "corpus/dotfuscator-7-checks.manifest.json",
+  "runtimeComparisonsPassed": 18,
+  "capturedAt": "2026-10-19",
+  "validation": {
+    "differentialNet48IlVerifyComparisons": 3,
+    "passedTests": 3350,
+    "failedTests": 0,
+    "focusedTestsPassed": 47,
+    "canonicalAndInteractionTestsPassed": 21,
+    "testLog": "native-retirement-full-verified.log",
+    "scope": "All three Babel corpora and every Dotfuscator corpus enabled. CLR execution is limited to repository-built benign probes.",
+    "skippedTests": 37,
+    "runtimeEvidenceTestLog": "generic-types-final-verified.log"
+  },
+  "proofSources": [
+    {
+      "path": "src/Cilantro.Core/Analysis/CanonicalRuntimeBody.cs",
+      "sha256": "da55a700097d43c094553c7b72e6c098e18e0f6e16aa886a54302095fec576c1"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorCheckNormalization.cs",
+      "sha256": "60868c0e5f041f25906b9e53302bb1119705b652fdaf0ba22d21da1e17eaef24"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeShape.cs",
+      "sha256": "8f74c1c588fe8b655e1daabe41c423fe359a39fa9a1bd6335ab8ff77e5b59f2e"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorV2Shape.cs",
+      "sha256": "f9495c200962c87db734af24efd05bdea20b868f293289bbd71132d996594621"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorCheckPass.cs",
+      "sha256": "7f23638cae9f48fe27c42bf2f7b89534af0a1775bb115c523424ef5f1f8d6459"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeBodyNormalization.cs",
+      "sha256": "e8f041041bf94b45d66d90799858b2e39d6e7791a0def4f7fee4520739d84c41"
+    }
+  ],
+  "nativeRuntimeRetirement": {
+    "testLog": "native-retirement-full-verified.log",
+    "runtimeComparisonsPassed": 18,
+    "skippedTests": 37,
+    "passedTests": 3350,
+    "recoveryDirectory": "cleaned_native_retirement_complete",
+    "failedTests": 0,
+    "nativeBridgeTypesRemoved": 3,
+    "remainingSwitchDispatchers": 0,
+    "runtimeEvidence": "native-retirement-runtime-evidence.json"
+  },
+  "responseRetirement": {
+    "path": "corpus/dotfuscator-7-response-retirement.provenance.json",
+    "sha256": "3db99d99cb3e520b9047bc86ceb704addbfeb27aa6eef77486a2c0dbbd8bdec7"
+  }
+}

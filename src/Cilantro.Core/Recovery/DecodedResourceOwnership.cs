@@ -8,6 +8,8 @@ internal sealed record DecodedResourceOwnership(RecoveredResourceOrigin Resource
     IReadOnlyList<MethodDef> Readers, IReadOnlyList<TypeDef> ProxyTypes, RestoredResourceBundle? Bundle)
 {
     internal const string Fact = "cleanup.decodedResourceOwners";
+    internal bool IsNumericConstruction { get; init; }
+    internal bool IsMethodImageConstruction { get; init; }
 
     // dnlib clears a method's DeclaringType when cleanup removes it. Preserve the
     // positively observed owner identity before retirement detaches those readers.
@@ -15,7 +17,8 @@ internal sealed record DecodedResourceOwnership(RecoveredResourceOrigin Resource
         .Select(m => m.DeclaringType).Where(t => t is not null).Distinct().ToArray();
 
     internal static void Remember(ArtifactContext context, RecoveredResourceOrigin resource,
-        IEnumerable<MethodDef> readers, IEnumerable<TypeDef>? proxyTypes = null, RestoredResourceBundle? bundle = null)
+        IEnumerable<MethodDef> readers, IEnumerable<TypeDef>? proxyTypes = null, RestoredResourceBundle? bundle = null, bool numericConstruction = false,
+        bool methodImageConstruction = false)
     {
         var methods = readers.Distinct().ToArray();
         var types = proxyTypes?.Distinct().ToArray() ?? [];
@@ -26,7 +29,8 @@ internal sealed record DecodedResourceOwnership(RecoveredResourceOrigin Resource
             !context.Module.Resources.OfType<EmbeddedResource>().Any(resource.Matches) ||
             bundle is not null && (bundle.Source != resource || !bundle.IsPreserved(context.Module))) return;
         context.TryGetFact<IReadOnlyList<DecodedResourceOwnership>>(Fact, out var earlier);
-        context.SetFact<IReadOnlyList<DecodedResourceOwnership>>(Fact, [.. earlier ?? [], new(resource, methods, types, bundle)]);
+        context.SetFact<IReadOnlyList<DecodedResourceOwnership>>(Fact, [.. earlier ?? [], new(resource, methods, types, bundle)
+            { IsNumericConstruction = numericConstruction, IsMethodImageConstruction = methodImageConstruction }]);
     }
 
     internal static IReadOnlyList<RecoveredResourceOrigin> ObservedOwnedReads(ArtifactContext context,

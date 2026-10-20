@@ -1,0 +1,367 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "description": "Static support for reviewed macOS x64/ARM64 native-key v2 companions. Eight native-only package variants reuse four existing source-built AnyCPU CoreCLR captures. No macOS runtime execution has been performed.",
+  "manifests": [
+    "corpus/dotfuscator-7-native-osx-x64.manifest.json",
+    "corpus/dotfuscator-7-native-osx-arm64.manifest.json"
+  ],
+  "nativeReview": [
+    {
+      "rid": "osx-x64",
+      "binary": {
+        "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/Runtime.Extensions.dylib",
+        "sha256": "f0cbfe9a0e8c80627fcd87c779cb2c5155377d0cb0e0f765fcb581c4ea55c852"
+      },
+      "entry": "0x82e0",
+      "signatureVerifier": "0x5720",
+      "environmentLoader": "0x5990",
+      "frameBuilder": "0x1db0",
+      "xorshift": "0x4ab0",
+      "publicKey": {
+        "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/public-key.json",
+        "sha256": "59624308bacd7758d6b0f9082c1df3593a00b2ffd6f203eab0dd2d1a67f637f2"
+      },
+      "disassembly": [
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/eck.asm",
+          "sha256": "2273f11edc6acb87885852e66d8acd41be9aa0089e8f8d1f7ea325d99c12cffc"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/exec_validation.asm",
+          "sha256": "08316912f81961f0f70e9820a6946bb7cd3d948bcc17cd3a581aea6bb4c0d80c"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/fill_source_buffer.asm",
+          "sha256": "4a3d9195e74278692e89aadef246a68f6f5e54eff0a09e585c1ac241a294447a"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/bit_mix.asm",
+          "sha256": "1c78737069d81b2123f02c269e2b7e9bd7bf277a7810009b4906d830648b3e17"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/load_env_data.asm",
+          "sha256": "136b95057e5466f80b8df785ec001642c9addbba2e3a81b13ed86cb8b194f847"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/validate_ecdsa_signature.asm",
+          "sha256": "e59cd30a4b4ca611a8df0731d486ddd06c0ca4cc9bef52743d15eb96a56361b2"
+        }
+      ],
+      "decompilation": [
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/eck-reviewed.c",
+          "sha256": "84aeae1ed7ffab756cefeb8f20bf30ff364ec881af4fed9f7c20891460b746be"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/exec_validation.c",
+          "sha256": "2bba4498362773561cf583b40adbe10cc9e0353a3878598117567d02b16b11ca"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/fill_source_buffer.c",
+          "sha256": "eb7a735c43ae3f599c8f601561888dbe862771906bcbe80d23bd61135a76ef92"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/bit_mix.c",
+          "sha256": "6b35ebcf142684a2c72377fa09eb2dd084114b5f2634b4805932767fc4d2c8bd"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/load_env_data.c",
+          "sha256": "ac299fd3c29faa42990b95a23a32494b9d184aacf2e15564e440d9d9fa4eb297"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/x64/validate_ecdsa_signature.c",
+          "sha256": "ee739d287012832c16475ec29c93002c320dac54f9afd21e3079cce54be70863"
+        }
+      ]
+    },
+    {
+      "rid": "osx-arm64",
+      "binary": {
+        "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/Runtime.Extensions.dylib",
+        "sha256": "764d3343142ca5bde865aaed719a6913a154a7619434e4ce3eae468175b44d81"
+      },
+      "entry": "0x9dc0",
+      "signatureVerifier": "0x752c",
+      "environmentLoader": "0x77c0",
+      "frameBuilder": "0x4744",
+      "xorshift": "0x672c",
+      "publicKey": {
+        "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/public-key.json",
+        "sha256": "3c55855c36dd3d4d32c84814531c9f6f80485107b8edd96807e4da4aa3acf413"
+      },
+      "disassembly": [
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/eck.asm",
+          "sha256": "5c2729ae82b522ed09af644ce7fab33c2eb42aa06a2fe2ceb1d13db2a8d82fe4"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/exec_validation.asm",
+          "sha256": "685584ecaa131ca7d7a84aaeba77972220ebcc5cbc5528cb85fe5ea82688f263"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/fill_source_buffer.asm",
+          "sha256": "c843edd8406ef1287800de262c19a19c6e81cf99f44f57378a3990db3365dc49"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/bit_mix.asm",
+          "sha256": "e541a54d24a62b25cebbe52e86ed55ecb6a0a3096ef828c3bc55fe1187d4baf2"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/load_env_data.asm",
+          "sha256": "8144d02595edf966d797b3a9164648977ec48fb8388a861cb5f0dfc453866d13"
+        },
+        {
+          "path": "C:/cilantro-verify/dotfuscator/macos-review/arm64/validate_ecdsa_signature.asm",
+          "sha256": "f19e6ef462f4de05b19ab96d4837ad6c3e944440f5a01974a2f4bf4e0783db08"
+        }
+      ],
+      "decompilation": null
+    }
+  ],
+  "reviewedProtocol": {
+    "entry": "__eck",
+    "environmentLength": 20480,
+    "prefix": "319affa2",
+    "suffix": "445a4daa",
+    "signatureCoverage": 18432,
+    "signatureBytes": 64,
+    "signature": "ECDSA P-256/SHA-256, two big-endian 32-byte r/s values",
+    "publicKeyMatchesManagedVerifier": true,
+    "environmentSuccessFlags": 15,
+    "cleanCheckFlags": "All six additional runtime-check bytes are zero. Recovery deliberately selects this clean verdict, as for the previously reviewed Windows/Linux builds.",
+    "domain": "DFSE2|v2|Key",
+    "domainLength": 12,
+    "parts": "Zero delimiter, four-byte big-endian length, then payload bytes for each caller-context part.",
+    "digest": "SHA-256",
+    "nativeSeed": "Big-endian uint32 at environment offset 0x4000 XOR 0x3b527b1c",
+    "mask": "32-bit xorshift 13/17/5; native/managed XOR masks cancel only after signed seed binding.",
+    "inspection": "x64 decompilation and disassembly; ARM64 disassembly (ARM64 decompiler unavailable). No native library or sample code was executed during recovery or review."
+  },
+  "sources": [
+    {
+      "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+      "sha256": "550b1cdc780488d54b00e22fe5a6b3f0bf8138e661faae2535420f530254da43"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+      "sha256": "0d2a467546604606326ec7124ffe9d889e68063cd55fbf62b8a4c6a4c2ae223d"
+    },
+    {
+      "path": "corpus/probes/dotfuscator-macos.ps1",
+      "sha256": "3b802a48cf3a3e1cc62d66f640530bdafc1bb74f396fa3da7b5cdfadd55538b6"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorMacOsCorpusTests.cs",
+      "sha256": "871b4fdba87c3f7036b448cffea849ceee9c888af15888a917d23d5859792224"
+    }
+  ],
+  "packages": [
+    {
+      "id": "net8.0-osx-x64-all-signatures",
+      "rid": "osx-x64",
+      "recoveredSites": 20,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net8.0-osx-x64-all-signatures/cleaned-recovery.json",
+        "sha256": "66609b8acc9267a124047aa184ce349b406fa22f57ec8b9e490deb7cc0fd8e9e"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net8.0-osx-x64-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "a9423ef1cceb0099ba7d037128b3843d61dd33eea503a55ed486d9233cd38460"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "a9423ef1cceb0099ba7d037128b3843d61dd33eea503a55ed486d9233cd38460"
+      }
+    },
+    {
+      "id": "net8.0-osx-arm64-all-signatures",
+      "rid": "osx-arm64",
+      "recoveredSites": 20,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net8.0-osx-arm64-all-signatures/cleaned-recovery.json",
+        "sha256": "050c6a900480b6b897da8d0e4a5ea660e1cb492dfbf2d5c23a1f4c39b9d61f4e"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net8.0-osx-arm64-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "a9423ef1cceb0099ba7d037128b3843d61dd33eea503a55ed486d9233cd38460"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "a9423ef1cceb0099ba7d037128b3843d61dd33eea503a55ed486d9233cd38460"
+      }
+    },
+    {
+      "id": "net8.0-osx-x64-renamed-reviewed",
+      "rid": "osx-x64",
+      "recoveredSites": 17,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net8.0-osx-x64-renamed-reviewed/cleaned-recovery.json",
+        "sha256": "fc62b51895ab527079d44cc0603f28d2f6ac4fc5861410aa601cd72b0b5e899b"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net8.0-osx-x64-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "6a44a343b17ebce4a27b0b9e0a344e3c51f623d895702bc9a2e0a16d71c312ae"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "6a44a343b17ebce4a27b0b9e0a344e3c51f623d895702bc9a2e0a16d71c312ae"
+      }
+    },
+    {
+      "id": "net8.0-osx-arm64-renamed-reviewed",
+      "rid": "osx-arm64",
+      "recoveredSites": 17,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net8.0-osx-arm64-renamed-reviewed/cleaned-recovery.json",
+        "sha256": "7d9738355e65ba25f85607658b95e4273be02e0cbcceecb5b7ef7f8cab9f8ce0"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net8.0-osx-arm64-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "6a44a343b17ebce4a27b0b9e0a344e3c51f623d895702bc9a2e0a16d71c312ae"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "6a44a343b17ebce4a27b0b9e0a344e3c51f623d895702bc9a2e0a16d71c312ae"
+      }
+    },
+    {
+      "id": "net10.0-osx-x64-all-signatures",
+      "rid": "osx-x64",
+      "recoveredSites": 20,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net10.0-osx-x64-all-signatures/cleaned-recovery.json",
+        "sha256": "cbb239b6ae1055a0f043cc34224378baa9aad0a45b5b219b0e3c290cc6fc9ed4"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net10.0-osx-x64-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5752ad21c6de1a45fc253b1af870be4f1652a7cb0736b4f601c1f06169d8b55e"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5752ad21c6de1a45fc253b1af870be4f1652a7cb0736b4f601c1f06169d8b55e"
+      }
+    },
+    {
+      "id": "net10.0-osx-arm64-all-signatures",
+      "rid": "osx-arm64",
+      "recoveredSites": 20,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net10.0-osx-arm64-all-signatures/cleaned-recovery.json",
+        "sha256": "248abe60f4a72ca5a6ea0efe55e982fa5ed0b0e9dfec72b4de32b3939ba54941"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net10.0-osx-arm64-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5752ad21c6de1a45fc253b1af870be4f1652a7cb0736b4f601c1f06169d8b55e"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5752ad21c6de1a45fc253b1af870be4f1652a7cb0736b4f601c1f06169d8b55e"
+      }
+    },
+    {
+      "id": "net10.0-osx-x64-renamed-reviewed",
+      "rid": "osx-x64",
+      "recoveredSites": 17,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net10.0-osx-x64-renamed-reviewed/cleaned-recovery.json",
+        "sha256": "58e9ed922a1e32f6568c34a3c6148d24139a5c6fd3caa216fa0531ace15439cb"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net10.0-osx-x64-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5b7da3c1e7565a2d096b71e9005ef343ad10ceb0cfa80385991735d2c618a55b"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5b7da3c1e7565a2d096b71e9005ef343ad10ceb0cfa80385991735d2c618a55b"
+      }
+    },
+    {
+      "id": "net10.0-osx-arm64-renamed-reviewed",
+      "rid": "osx-arm64",
+      "recoveredSites": 17,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "matchesWindowsRecovery": true,
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus/net10.0-osx-arm64-renamed-reviewed/cleaned-recovery.json",
+        "sha256": "590abaa5bf7dae7ce7aa669f8e9ba04bd324d7860f6cefde1853d4277ea54462"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\macos-corpus\\net10.0-osx-arm64-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5b7da3c1e7565a2d096b71e9005ef343ad10ceb0cfa80385991735d2c618a55b"
+      },
+      "windowsBaseline": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5b7da3c1e7565a2d096b71e9005ef343ad10ceb0cfa80385991735d2c618a55b"
+      }
+    }
+  ],
+  "validation": {
+    "distinctManagedCaptures": 4,
+    "packageVariants": 8,
+    "recoveredSites": 148.0,
+    "byteIdenticalWindowsRecoveryComparisons": 8,
+    "runtimeBridgesRetired": 8,
+    "macOsRuntimeComparisons": 0,
+    "comparison": {
+      "path": "C:/cilantro-verify/dotfuscator/macos-corpus/cleaned-comparison.json",
+      "sha256": "1d672f96622c3f6b33838be293a99242146ff1b7ed652a21a163eb4d25e17062"
+    },
+    "sourceRuntimeEvidence": {
+      "path": "C:/Users/jgaje/Documents/Codex/CILantro/corpus/dotfuscator-7-signatures.provenance.json",
+      "sha256": "42a1481fab1372473529b825c88048c6fb24de6a50a6346e02539289ff290f9a"
+    },
+    "focusedTests": {
+      "path": "C:/cilantro-verify/dotfuscator/macos-review/focused-tests-final.log",
+      "sha256": "faffc5ff850c2a41de2e864dc6515137a2dc2e3963819ddae1eebc887ba01688"
+    },
+    "focusedTestsPassed": 43,
+    "focusedMacOsTestsPassed": 20,
+    "fullSuite": {
+      "passed": 3618,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3655,
+      "duration": "6 m 42 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/macos-review/full-tests.log",
+        "sha256": "a2331e57a7325cbbcd4fde88927e27ecf777f2a5df65dc85fb744fcdc9d093d4"
+      }
+    }
+  },
+  "limitations": [
+    "macOS execution and physical Apple hardware remain unvalidated. Byte-identical output comparisons use previously Windows-validated source captures.",
+    "These are native companion packaging variants, not eight independent producer builds.",
+    "Other native library identities retain the existing fail-closed gate. Required-x86 inputs do not accept macOS libraries."
+  ]
+}

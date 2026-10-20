@@ -1,0 +1,103 @@
+{
+  "manifestVersion": 1,
+  "profile": "babel-12-external-combined",
+  "description": "Three licensed Babel 12.1 external method-code captures with source-built oracles and hash-pinned .eil companions. Explicit data-only snapshots feed bounded interpretation; restored bodies, zero encrypted stubs, resource parity and runtime behavior are verified.",
+  "samples": [
+    {
+      "id": "net48-oracle",
+      "tier": "oracle",
+      "sha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "localName": "babel-12-external-combined/net48-external/oracle/BabelCodeSources.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-external",
+      "tier": "profiled",
+      "sha256": "7aaa3838f280e359f46939cbcfb69119d30789f1bda5ddf20b64d6f4df68013a",
+      "localName": "babel-12-external-combined/net48-external/protected/BabelCodeSources.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "eVbzB"
+      ],
+      "babelCodeSources": [
+        {
+          "localName": "babel-12-external-combined/net48-external/protected/probe-code.eil",
+          "sha256": "3ebabdb00ab1ff926354a48cbb95a776149fa0d3075dd0dc3dc6ba8bdafaf4a1"
+        }
+      ]
+    },
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "localName": "babel-12-external-combined/net8.0-external/oracle/BabelCodeSources.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-external",
+      "tier": "profiled",
+      "sha256": "9b85b4478f98da07726462b17414dbe2581b91200bf5703d6028ecf3bd04274c",
+      "localName": "babel-12-external-combined/net8.0-external/protected/BabelCodeSources.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "olXl"
+      ],
+      "babelCodeSources": [
+        {
+          "localName": "babel-12-external-combined/net8.0-external/protected/probe-code.eil",
+          "sha256": "f6afe48008285576e4d2e5fa84e7ac4f794c026f65969d64a30646636bfadca3"
+        }
+      ]
+    },
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "localName": "babel-12-external-combined/net10.0-external/oracle/BabelCodeSources.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-external",
+      "tier": "profiled",
+      "sha256": "a665fb30660f2108f8e2b04e26fe8bccbec6a02dfa5d5ad61f0a971b420284c6",
+      "localName": "babel-12-external-combined/net10.0-external/protected/BabelCodeSources.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "olXl"
+      ],
+      "babelCodeSources": [
+        {
+          "localName": "babel-12-external-combined/net10.0-external/protected/probe-code.eil",
+          "sha256": "c51d233f3b8d9b834f0229776f9e81375f47c7379549b3b1c6ef0440bab9ca44"
+        }
+      ]
+    }
+  ]
+}

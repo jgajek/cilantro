@@ -266,6 +266,7 @@ public class MethodInliningPass : DeobfuscationPass
         // are precisely the ones that call straight into the framework.
         if (call.OpCode.Code is not (Code.Call or Code.Callvirt or Code.Newobj) ||
             call.Operand is not IMethod target ||
+            IsContextSensitiveTarget(target) ||
             target.ResolveMethodDef() == method ||
             body[^1].OpCode.Code != Code.Ret)
         {
@@ -278,6 +279,12 @@ public class MethodInliningPass : DeobfuscationPass
         }
         return new ForwardTarget(target, call.OpCode, []);
     }
+
+    internal static bool IsContextSensitiveTarget(IMethod target) => target.FullName is
+        "System.Reflection.MethodBase System.Reflection.MethodBase::GetCurrentMethod()" or
+        "System.Reflection.Assembly System.Reflection.Assembly::GetCallingAssembly()" or
+        "System.String System.Environment::get_StackTrace()" || target.Name == ".ctor" &&
+        target.DeclaringType.FullName is "System.Diagnostics.StackTrace" or "System.Diagnostics.StackFrame";
 
     private static bool CanSkipInitializer(MethodDef forwarder, MethodDef caller) =>
         // A static caller in the same type already has the wrapper's initialization semantics.

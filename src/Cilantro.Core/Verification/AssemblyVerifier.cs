@@ -156,10 +156,10 @@ public static class AssemblyVerifier
         IReadOnlySet<string> removed)
     {
         var expected = new HashSet<string>(original, StringComparer.Ordinal);
-        foreach (var name in removed)
-            expected.Remove(name);
         foreach (var name in added)
             expected.Add(name);
+        foreach (var name in removed)
+            expected.Remove(name);
         return expected.SetEquals(current);
     }
 

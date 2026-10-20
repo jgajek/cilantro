@@ -1,0 +1,581 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": "Babel Obfuscator 12.1.0.0 Enterprise floating trial",
+  "scope": "Nine benign legacy reflection-level-4/ildasm, combined XOR/resource/switch, and all-six-control-flow-option captures. Target analysis is static. Runtime comparisons execute only repository-built probes. Existing recovery handles these configurations; no new recovery algorithm is claimed.",
+  "manifest": {
+    "path": "corpus/babel-12-hardening.manifest.json",
+    "sha256": "4ee7941081c6f9337069a21b1a39a2ab18b0564c3595316f499f80c787c6e98a"
+  },
+  "sources": [
+    {
+      "path": "corpus/probes/babel-hardening.ps1",
+      "sha256": "b1ff4e4a8e6c3f3ad76d65da6d60f10c490bf92747798cec7d57fb4f3cd143f7"
+    },
+    {
+      "path": "corpus/probes/BabelProbe/Program.cs",
+      "sha256": "ec4d66190cdcf2c59edc5f6b002c523131c1bfff6a1c2c8c4658677ba2c766d9"
+    },
+    {
+      "path": "corpus/probes/BabelProbe/BabelProbe.csproj",
+      "sha256": "78c3bce757347b068c49b1a1401436b4565e295979c89f94bfc9642fe0bf0003"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelHardeningCorpusTests.cs",
+      "sha256": "9300147120c31d14c8a61c47a30eb0e875b337e385b6a517853d42b5360c34f1"
+    },
+    {
+      "path": "src/Cilantro.Core/Passes/AntiDisassemblyMetadataPass.cs",
+      "sha256": "a67792d1dc01faf270dff26e5960e37de793ba9840e627705502670c3a04a8cc"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/RawMetadataPreflight.cs",
+      "sha256": "b2b7ef8f839b8c24d9079bbe0214ffc91ec87c917be77163c20a14d0e0595b08"
+    }
+  ],
+  "totals": {
+    "captures": 9,
+    "oracles": 3,
+    "matchingThreeWayComparisons": 9,
+    "metadataCaptures": 6,
+    "normalizedDuplicateModuleAssemblyRows": 6,
+    "normalizedDuplicateHeapLayouts": 6,
+    "removedDisassemblySuppressionMarkers": 6,
+    "combinedCapturesWithEightRecoveredStringsAndRestoredResources": 3,
+    "allControlFlowCaptures": 3
+  },
+  "metadataAudit": {
+    "path": "C:/cilantro-verify/babel/feature-audit/metadata-audit.json",
+    "sha256": "638caaf0e461dca2d0a9cbe44e796ba47fa25ddc1244f5b2bdf67f174e0b6e8d"
+  },
+  "tests": {
+    "path": "C:/cilantro-verify/babel/feature-audit/focused-tests.log",
+    "sha256": "b68f0634da5f47d5c8e38d2024d3ea874685e7a2d879f06ed0e22c0f9b88119f",
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0,
+    "net48Comparisons": 3,
+    "originalMetadataInputsRejectedByMicrosoftReader": 2,
+    "comparison": "Metadata captures compare repaired outputs against source oracles because protected compressed metadata contains illegal tables for the Microsoft reader. The all-flow capture uses protected/output differential verification. Outputs have no unreadable methods or new findings."
+  },
+  "captures": [
+    {
+      "fixture": {
+        "Id": "net10.0-flow-all",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--controlflow",
+          "goto=on",
+          "--controlflow",
+          "if=on",
+          "--controlflow",
+          "switch=on",
+          "--controlflow",
+          "case=on",
+          "--controlflow",
+          "call=on",
+          "--controlflow",
+          "chain=on"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "617425e5f0a596cdce3e329eafd2c4df22d7e42d3911b393a61f5d039d4b030d"
+      },
+      "cleanedSha256": "da321c2bf43f5d3447ab542566c12ee3a0e574f2aa8df26374aa1cfe096bcd82",
+      "behavior": {
+        "Id": "net10.0-flow-all",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "dcc876980015c735b40ef7642b7432838f9ea25bee53757f0829f891271bc888"
+    },
+    {
+      "fixture": {
+        "Id": "net10.0-metadata",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--reflection",
+          "4",
+          "--ildasm"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "164c9dad89ea05b531deb48f694ab41a8b803048b978ebf60cd098ebdfa46ed8"
+      },
+      "cleanedSha256": "1cc114c91dae136dd4ce5b10ccb06de1ce790a25358e76afd9e3d0e611a5fccd",
+      "behavior": {
+        "Id": "net10.0-metadata",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "4128b9f72ab906211f75927bd893766f7bbc62c434c2752b8551c228042b1a0c"
+    },
+    {
+      "fixture": {
+        "Id": "net10.0-metadata-combined",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--reflection",
+          "4",
+          "--ildasm",
+          "--stringencryption",
+          "xor",
+          "--resourceencryption",
+          "--controlflow",
+          "switch=on"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "169eaa41267870253843dbfa70ba0d2a723ef5c64d7d9ebe8c9d53be0584463f"
+      },
+      "cleanedSha256": "ca494c44ffb3cd7980d57e8c107239c0c3591a64e5dfbec85ed76f1b4f0ee2b6",
+      "behavior": {
+        "Id": "net10.0-metadata-combined",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "3ced638b981e33bdd74d2d0465f2c84f4b6541b89ec7c02c913f6523fe0ea9ca"
+    },
+    {
+      "fixture": {
+        "Id": "net48-flow-all",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--controlflow",
+          "goto=on",
+          "--controlflow",
+          "if=on",
+          "--controlflow",
+          "switch=on",
+          "--controlflow",
+          "case=on",
+          "--controlflow",
+          "call=on",
+          "--controlflow",
+          "chain=on"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "e5d428c03100f1f7a1d1e6e49d36ff275d290e98db14577da628592045fe148e"
+      },
+      "cleanedSha256": "366fd094bc7d258e1390ffeafe54177ba9e16e8f8430f731008904d719f5af05",
+      "behavior": {
+        "Id": "net48-flow-all",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "27fc4bc48e3f003998b8494d70103ac62bbfdef81a2f82c55797c63ffa491a3e"
+    },
+    {
+      "fixture": {
+        "Id": "net48-metadata",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--reflection",
+          "4",
+          "--ildasm"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "d07242e2be868a89e48941c302a72bd29ee9cc43fb8f48662585517c42be360b"
+      },
+      "cleanedSha256": "2d1ef453b437c9a189796fc0328634c4a9d1e827edeb6a8434834b754fd8b7f6",
+      "behavior": {
+        "Id": "net48-metadata",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "f81ff8d1878cf74614c12e5bb9994e1a55423f4e361042c954146d8e0e1ada25"
+    },
+    {
+      "fixture": {
+        "Id": "net48-metadata-combined",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--reflection",
+          "4",
+          "--ildasm",
+          "--stringencryption",
+          "xor",
+          "--resourceencryption",
+          "--controlflow",
+          "switch=on"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "57e89b155c1542e3d86f81b39be9ff27f866a929ba1404ab59b00166d04f42ae"
+      },
+      "cleanedSha256": "fa5d7e5cdea1c16924e12b78945f50b50cbc30dfed73f788b4564f9eb7229af2",
+      "behavior": {
+        "Id": "net48-metadata-combined",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "d6dceae1de8cf150955bbac8752a8371a12562e84fbaf5ed6097c2f5ba3e3c6a"
+    },
+    {
+      "fixture": {
+        "Id": "net8.0-flow-all",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--controlflow",
+          "goto=on",
+          "--controlflow",
+          "if=on",
+          "--controlflow",
+          "switch=on",
+          "--controlflow",
+          "case=on",
+          "--controlflow",
+          "call=on",
+          "--controlflow",
+          "chain=on"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "c79454e946431a95881986791048f3e06a1bb950821ba8ada12b02992792914b"
+      },
+      "cleanedSha256": "8cb0e92aca4e41ddda2b7febc715d817971a63ffdb8e6bfc1109704130419372",
+      "behavior": {
+        "Id": "net8.0-flow-all",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "5fda3c487f18842699571f165ed38e5704c6bf4d404c5e9a4459ae8115a4fa4a"
+    },
+    {
+      "fixture": {
+        "Id": "net8.0-metadata",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--reflection",
+          "4",
+          "--ildasm"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "c5617548e9985cd0e18782ab0995920256021863f69e2a915af5a1f270df4129"
+      },
+      "cleanedSha256": "405ca74ce0c5c175a643c1179f771e7490cab86929885dc4f310f5eab3e9e280",
+      "behavior": {
+        "Id": "net8.0-metadata",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "bf033243d7923b197786892d0c11afc7ca44dbbd43d6026247a0abf8bc8aa769"
+    },
+    {
+      "fixture": {
+        "Id": "net8.0-metadata-combined",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--reflection",
+          "4",
+          "--ildasm",
+          "--stringencryption",
+          "xor",
+          "--resourceencryption",
+          "--controlflow",
+          "switch=on"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "7ceba874792f5e2f99f0878ad0e583bd4a05a470379ade815d8cb6b246dfa066"
+      },
+      "cleanedSha256": "f9ccbd55269716aed5ca7fcf8147042681f7a84925b338a64d51283f16d796e6",
+      "behavior": {
+        "Id": "net8.0-metadata-combined",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "protectionLogSha256": "a289528c522737073a9ab4b0f2d68e9ae5a189138ba30c47df56c75fe4e4c1e4"
+    }
+  ]
+}

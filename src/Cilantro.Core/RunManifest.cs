@@ -110,7 +110,8 @@ public sealed record RunManifest(
                 result.BlockerReportPath,
                 result.RenameMapPath,
                 result.ConfigReportPath,
-                result.VirtualProgramPaths) { Report = result.ReadableReportPath, Embedded = result.EmbeddedRecoveryReportPath },
+                result.VirtualProgramPaths) { Report = result.ReadableReportPath, Embedded = result.EmbeddedRecoveryReportPath,
+                    ResourceSatellites = result.ResourceSatellitePaths, Dependencies = result.DependencyPaths },
             report.Payloads,
             report.Recovery,
             result.RebuiltMethods,
@@ -152,6 +153,10 @@ public sealed record RunOutputs(
 
     /// <summary>Bounded embedded-assembly recovery results and parent-child links.</summary>
     public string? Embedded { get; init; }
+
+    /// <summary>Restored culture resource assemblies required by the cleaned assembly.</summary>
+    public IReadOnlyList<string> ResourceSatellites { get; init; } = [];
+    public IReadOnlyList<string> Dependencies { get; init; } = [];
 }
 
 /// <summary>Why a run could not be attempted, in the same channel as the run itself.</summary>

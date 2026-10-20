@@ -8,6 +8,37 @@ namespace Cilantro.Tests;
 public sealed class AnalysisArgumentsTests
 {
     [Fact]
+    public void ExplicitBabelCodeSourcesAcceptRepeatedAndInlinePaths()
+    {
+        var directory = Directory.CreateTempSubdirectory("Cilantro.CodeArguments.").FullName;
+        try
+        {
+            var input = PipelineProgressTests.WritePlain(directory);
+            var one = Path.Combine(directory, "one.eil"); var two = Path.Combine(directory, "two.eil");
+            File.WriteAllBytes(one, [1]); File.WriteAllBytes(two, [2]);
+            var options = AnalysisArguments.Parse([input, "--babel-code-source=" + one, "--babel-code-source", two]).PreparePipelineOptions();
+            Assert.Equal(new[] { one, two }, options.BabelCodeSourceFiles);
+            Assert.Throws<ArgumentException>(() => AnalysisArguments.Parse([input, "--babel-code-source", Path.Combine(directory, "missing.eil")]).PreparePipelineOptions());
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+    [Fact]
+    public void ExplicitSigningKeysAcceptRepeatedAndInlinePaths()
+    {
+        var directory = Directory.CreateTempSubdirectory("Cilantro.SigningArguments.").FullName;
+        try
+        {
+            var input = PipelineProgressTests.WritePlain(directory);
+            var one = Path.Combine(directory, "one.snk"); var two = Path.Combine(directory, "two.snk");
+            File.WriteAllBytes(one, [1]); File.WriteAllBytes(two, [2]);
+            var options = AnalysisArguments.Parse([input, "--signing-key=" + one, "--signing-key", two]).PreparePipelineOptions();
+            Assert.Equal(new[] { one, two }, options.StrongNameKeyFiles);
+            Assert.Throws<ArgumentException>(() => AnalysisArguments.Parse([input, "--signing-key", Path.Combine(directory, "missing.snk")]).PreparePipelineOptions());
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task FileAloneRecoversChildrenWritesStatusAndKeepsAllArtifactsInANewCaseFolder()
     {
         var directory = Directory.CreateTempSubdirectory("cilantro simplest ");

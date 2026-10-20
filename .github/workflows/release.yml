@@ -97,7 +97,7 @@ jobs:
           cp ../../LICENSE ../../README.md .
           cp -r ../../schema ../../profiles .
           mkdir -p docs/releases docs/assets
-          for document in README agents analyst-workflows code-organization compatibility \
+          for document in README agents analyst-workflows babel-dotfuscator-targets code-organization compatibility \
             completion-progress corpus declarations development devirtualization how-confuserex-works \
             how-net-reactor-works how-recovery-works protection-removal quick-start reading-the-output \
             status-report troubleshooting performance; do
@@ -105,14 +105,12 @@ jobs:
           done
           cp ../../docs/releases/*.md docs/releases/
           cp ../../docs/assets/* docs/assets/
-          mkdir -p corpus/schema corpus/probes/Probe
+          mkdir -p corpus/schema
           cp ../../corpus/*.json corpus/
           cp ../../corpus/*.ps1 corpus/
           cp ../../corpus/*.py corpus/
           cp ../../corpus/schema/*.json corpus/schema/
-          cp ../../corpus/probes/README.md corpus/probes/
-          cp ../../corpus/probes/*.ps1 corpus/probes/
-          cp ../../corpus/probes/Probe/*.cs ../../corpus/probes/Probe/*.csproj ../../corpus/probes/Probe/*.txt corpus/probes/Probe/
+          git -C ../.. archive HEAD corpus/probes | tar -x
           if [ "${{ matrix.runtime }}" = "win-x64" ]; then
             zip -r ../../${{ matrix.artifact }} .
           else

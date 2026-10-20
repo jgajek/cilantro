@@ -215,7 +215,7 @@ internal static class DependencyIndexConsumers
     {
         result = Kind.None;
         if (called.MethodSig is not { HasThis: true } || called.MethodSig.ParamsAfterSentinel?.Count is > 0 ||
-            called.DeclaringType is not TypeRef type || type.DefinitionAssembly?.FullName != module.CorLibTypes.AssemblyRef.FullName ||
+            called.DeclaringType is not TypeRef type || !DependencyFrameworkScope.Matches(type, module) ||
             arguments.Length == 0 || arguments.Skip(1).Any(Sensitive)) return false;
         var receiver = arguments[0] & ~Kind.Null;
         switch (called.FullName)

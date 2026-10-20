@@ -1,0 +1,31 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "description": "Feature availability investigation only; no method-encryption support is established.",
+  "legacyCodeProtection": {
+    "buildExitCode": 0,
+    "configuration": {
+      "path": "C:/cilantro-verify/dotfuscator/code-protection-availability/config.xml",
+      "sha256": "7146e019948b5249264bfbcc73ebf32aafba85e7b77ffc165041587e384bcb35"
+    },
+    "build": {
+      "path": "C:/cilantro-verify/dotfuscator/code-protection-availability/build.json",
+      "sha256": "9d037a75a04ca4cdeeefe563ebbe213e0c8cc92c30bd4e545aedfc07bcf7f776"
+    },
+    "methodComparison": {
+      "path": "C:/cilantro-verify/dotfuscator/code-protection-availability/body-comparison.json",
+      "sha256": "37b86620948e51ff0cc7d1b13bdd7a6b96d4ea27c50508315202349475f4e464"
+    },
+    "applicationMethodsCompared": 8,
+    "applicationMethodsWithUnchangedCil": 8,
+    "scope": "The accepted legacy codeprotection element did not alter any Probe application instruction or operand. No separate code-encryption transform was reported."
+  },
+  "extendedCliHelp": {
+    "path": "C:/cilantro-verify/dotfuscator/extended-help.txt",
+    "sha256": "b372fc0e3fca0a57c6e11c9a5cfdb2fb5dbfe3cc66bce305d52ddab95f3938d7"
+  },
+  "documentation": [
+    "https://support.preemptive.com/hc/en-us/articles/31821638981521-Command-Line-Reference",
+    "https://support.preemptive.com/hc/en-us/articles/31821885804945-Config-File-Reference"
+  ]
+}

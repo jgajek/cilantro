@@ -1,0 +1,584 @@
+{
+  "capturedAt": "2026-10-20",
+  "compiler": "Babel Obfuscator 12.1.0.0 Enterprise floating trial",
+  "description": "Nine independent single-method encrypted captures of local generic inheritance. License keys are excluded from options, logs and provenance.",
+  "sources": [
+    {
+      "path": "corpus/probes/BabelHierarchyProbe/BabelHierarchyProbe.csproj",
+      "sha256": "77e722aec8d183241c0d875564e966039a6c4a7f3fcd483a40d254af55f5838b"
+    },
+    {
+      "path": "corpus/probes/BabelHierarchyProbe/Program.cs",
+      "sha256": "33d21620af4e68664140e64754ecc5d4900f74042fa1c1e172b21057a1e9bc3f"
+    },
+    {
+      "path": "corpus/probes/BabelHierarchyCaller/BabelHierarchyCaller.csproj",
+      "sha256": "722ddea4ad6586759055f389a7ef2e9b21503505da932a2f8767cdaf57a87f4d"
+    },
+    {
+      "path": "corpus/probes/BabelHierarchyCaller/Program.cs",
+      "sha256": "07b8de9038b958bf9c79b736e2c6fb18306b68ae3fe3d213a18b5b789f3e5f1c"
+    },
+    {
+      "path": "corpus/probes/babel-hierarchy.ps1",
+      "sha256": "5b379a60c70edf6690c2845e31d125eb5d8888669d9bd9e7dbbe548fe812d147"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/GenericOwnerHierarchy.cs",
+      "sha256": "9ff5a3e0dd8cbff1940cf35c99c284a779ab6281078e98e8d79c58176de9479d"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/ParametricTypeIntrinsic.cs",
+      "sha256": "ebd89f38ed8e0150852bb8db26c71e8ef7192e004997aaa51d8c5c81162b62fc"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/ParametricListMembers.cs",
+      "sha256": "506b23ae16160a3946addc78179014dcff7428bff8debf5e45d84a5c68203484"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelGenericStub.cs",
+      "sha256": "9214a57678c3251d58f7be55ec38da8f5869d4cbcae9823006e3686de4150303"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+      "sha256": "79a38bfb5a10ce84e535bbd1c662dcf03b75c9a2c383ffac798a6b667a23f002"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelHierarchyTests.cs",
+      "sha256": "1a39be6801b82b6885ef44d5312dac267be089dde64873d407fcb6a7ae332a66"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelHierarchyCorpusTests.cs",
+      "sha256": "b8bf74891809d1b7909fb68f2231abc71f78b17b996acff3c508d21377a8bef3"
+    }
+  ],
+  "manifest": {
+    "path": "C:/Users/jgaje/Documents/Codex/CILantro/corpus/babel-12-hierarchy.manifest.json",
+    "sha256": "18ff75f027120b243bc658f51eb3b597075a6020a0a9bce3a663899d9cae4ee5"
+  },
+  "fixtures": [
+    {
+      "id": "net48-deep",
+      "capture": {
+        "Id": "net48-deep",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.DeepBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "98bb79da8a5583f24851fa5f4223372999f23e672746a5a5da8c75527eb45c7a",
+        "ProtectedSha256": "c3c70741c07c6e075c17cb75c6b8827b0df3420497ea59eef6066f40b47ac5fc"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-deep/fixture.json",
+        "sha256": "f2d9342df7276e0cae43dda187aadaa1bf51d9674a75e63f12827415300c1045"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-deep/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.exe",
+        "sha256": "f633dcf6dc1ef2bb49fbf7f7ddf1f3cefad6e5f97bc9e423c7606ca5328eccb8"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-deep/Verify-behavior.json",
+        "sha256": "25926c918a6add419cae9b878c3adb3318e15bba9e4bffd2b8919c2400fca699"
+      },
+      "callerCases": 26
+    },
+    {
+      "id": "net48-swapped",
+      "capture": {
+        "Id": "net48-swapped",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.SwappedBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "98bb79da8a5583f24851fa5f4223372999f23e672746a5a5da8c75527eb45c7a",
+        "ProtectedSha256": "0c61b4bbc00343eec29a94d3cb573f75089eaef7d25487fae11d345e86ea0db9"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-swapped/fixture.json",
+        "sha256": "daeb6daf6bf04b66e1caa32fcf9c5d7c6b48ae7c68e40a33dceb4f1cda8baeb6"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-swapped/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.exe",
+        "sha256": "1cc3c49d6ff166285bf9d05413db69c94eee5a2ab5581381cd7fe80cc88c8c8d"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-swapped/Verify-behavior.json",
+        "sha256": "175680329d8c2d5131ddb586b176746432f5adbfd717d463685d16fe84dbaf4d"
+      },
+      "callerCases": 13
+    },
+    {
+      "id": "net48-nested",
+      "capture": {
+        "Id": "net48-nested",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.NestedBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "98bb79da8a5583f24851fa5f4223372999f23e672746a5a5da8c75527eb45c7a",
+        "ProtectedSha256": "d1ae7cca56be91a6a661825eba43cce5400c79e18ec6848e535c4052b462b59d"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-nested/fixture.json",
+        "sha256": "b0c792583b593bdeb947615710e2d8cda895d80694c489853ef663874568c0f8"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-nested/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.exe",
+        "sha256": "7f3e8941c2baca497cd559c2d6d22566cc66cb540df49cee035b28646f18d050"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net48-nested/Verify-behavior.json",
+        "sha256": "93e5cedb6175c2a964ba034e58b5fb4e8fbd1fa90f414b6015faad683e698591"
+      },
+      "callerCases": 13
+    },
+    {
+      "id": "net8.0-deep",
+      "capture": {
+        "Id": "net8.0-deep",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.DeepBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9243d7bc750413dcfe5c52928eefe5be9f3782b79fe2e9c41ecfc1d49a83a69d",
+        "ProtectedSha256": "f06caf0a72539e1cc1d07e6171b91d43dd6d15d23f844e270ba8ab7b631ab6de"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-deep/fixture.json",
+        "sha256": "cfae9deb7b39317b2ba68ea20e3918bd56655d94ecaf066afb7b09fe2b956169"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-deep/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.dll",
+        "sha256": "2f0d7df70104f51281e6bdfd869a87e76137d1b3a45f37c6eeae6f5de47cde56"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-deep/Verify-behavior.json",
+        "sha256": "3f6b9238bafd2b748facf2a61f1b9e65a92dfe7315d54d9e317b7b4c9873baf7"
+      },
+      "callerCases": 26
+    },
+    {
+      "id": "net8.0-swapped",
+      "capture": {
+        "Id": "net8.0-swapped",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.SwappedBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9243d7bc750413dcfe5c52928eefe5be9f3782b79fe2e9c41ecfc1d49a83a69d",
+        "ProtectedSha256": "f12b2046821a84fb36ef71ee22942f32150fe62064f9905f945ab712cfc58834"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-swapped/fixture.json",
+        "sha256": "282e6e51afcff77ba15550dcaa768ee469daddb6c173fa2d059eb56f4be2ed4b"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-swapped/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.dll",
+        "sha256": "a97fb275abae02601fd0553ba627d1c9945b546bc336d8383c1cf417bf682c62"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-swapped/Verify-behavior.json",
+        "sha256": "3c354edbcd8fa70057419038c232b2dcb4c6cba26de5bce933190cccf8e5408d"
+      },
+      "callerCases": 13
+    },
+    {
+      "id": "net8.0-nested",
+      "capture": {
+        "Id": "net8.0-nested",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.NestedBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9243d7bc750413dcfe5c52928eefe5be9f3782b79fe2e9c41ecfc1d49a83a69d",
+        "ProtectedSha256": "c5da09560fe5eb228dc5c19c6ca5718f8a7478eebec92554c63735b44641e7bd"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-nested/fixture.json",
+        "sha256": "d775ced45102cc5c1dc9ea6cc57ead4fdf3b7fe4403edf816667a3172c8a7990"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-nested/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.dll",
+        "sha256": "7af2d99c2964046e15549bfb4ab5fd02fb2729ce74aea782f94cf6de6f68c111"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net8.0-nested/Verify-behavior.json",
+        "sha256": "2ae5370ccfb331416f232a348a0a737915a6c6e3b3c0f78f025893819f257fad"
+      },
+      "callerCases": 13
+    },
+    {
+      "id": "net10.0-deep",
+      "capture": {
+        "Id": "net10.0-deep",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.DeepBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "c605a3362c102cffc20ab65de4b66762d3612db542d4b825bd2934cd80d614aa",
+        "ProtectedSha256": "0d57a04723f9434cb50e85f16c330d48770e61b181bdc044d445335508ee8bc7"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-deep/fixture.json",
+        "sha256": "eb0d4dc0b80e87f5b6c79033a839f9e99813fa74dda1ec6c4fe19cbdbcae1612"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-deep/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.dll",
+        "sha256": "7f1e1acbe25d06ad34b20b92935c0dc4bf25f3730ca99ea011653fb2d12445f1"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-deep/Verify-behavior.json",
+        "sha256": "8ca9553f28699cb159b94a48e5e0c4f85ad43bcfc8ad85cca913f65d15d5c68a"
+      },
+      "callerCases": 26
+    },
+    {
+      "id": "net10.0-swapped",
+      "capture": {
+        "Id": "net10.0-swapped",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.SwappedBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "c605a3362c102cffc20ab65de4b66762d3612db542d4b825bd2934cd80d614aa",
+        "ProtectedSha256": "f9b4fb2f6f2c031374afa610825606e31909b7761f2012443744fca7112196cb"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-swapped/fixture.json",
+        "sha256": "58336659b2f166848fc823ab3a22669480e8e7dc6754c3c6e9ba669426495fd0"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-swapped/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.dll",
+        "sha256": "4c3fac0de7085040ea200e5d7514e9d64d02c7ecb92d60a8cf33b88d953029f5"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-swapped/Verify-behavior.json",
+        "sha256": "52d54cb3e9c8887e2fe943ddda04300c7a05ff729fd7c53ad6062d834d259e81"
+      },
+      "callerCases": 13
+    },
+    {
+      "id": "net10.0-nested",
+      "capture": {
+        "Id": "net10.0-nested",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelHierarchyProbe\\.NestedBox.*::Exchange"
+        ],
+        "EncryptedMethods": 1,
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "c605a3362c102cffc20ab65de4b66762d3612db542d4b825bd2934cd80d614aa",
+        "ProtectedSha256": "cd3dd52d8d258e98d86bc6869e11aedf272b22ce9015b971a91e4ffc37c8f558"
+      },
+      "fixtureEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-nested/fixture.json",
+        "sha256": "7d5473c382c9a15995ca97d5c79a0a89880dde34cf80833de95c20db3669568e"
+      },
+      "cleaned": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-nested/cleaned_hierarchy_complete/BabelHierarchyProbe.cleaned.dll",
+        "sha256": "2142a584eb03e887e0b2af793f72f62b821b0172a86b6c86199153af222486e4"
+      },
+      "runtimeEvidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/net10.0-nested/Verify-behavior.json",
+        "sha256": "e349560a26f0e67ac8a7367ce859392b1c509d16a1537b615fb634529849f37f"
+      },
+      "callerCases": 13
+    }
+  ],
+  "validation": {
+    "supportedCaptures": 9,
+    "restoredBodies": 9,
+    "remainingStubs": 0,
+    "surplusResources": 0,
+    "oracleResourceParity": true,
+    "sourceProtectedCleanedProgramMatches": 9,
+    "sourceProtectedCleanedCallerCases": 156,
+    "callerTypes": 13,
+    "deepReceiverShapes": 2,
+    "exchangesPerCallerCase": 4,
+    "behaviorEvidence": {
+      "path": "C:/cilantro-verify/babel/hierarchy/Verify-behavior.json",
+      "sha256": "1df346ba77257618271d786ae9d3f3e04d3fb3f864d7843d087c952f7b0e1733"
+    },
+    "focusedTests": {
+      "passed": 111,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/hierarchy-corpus-tests.log",
+        "sha256": "d0a6189798d71844212cb5cb5fbd24b76a0bc143717d29313a71413fe42b1b82"
+      }
+    },
+    "net48DifferentialIlVerifyFixtures": 3,
+    "applicationBodiesExecutedByRecovery": 0,
+    "runtimeChecks": [
+      "inherited instance field exchange",
+      "arbitrary inherited static counter seeds",
+      "per-closed-type static storage",
+      "multiple receiver instances",
+      "reference identity",
+      "derived receivers",
+      "reordered generic arguments",
+      "nested List<T> base arguments"
+    ],
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3519,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3556,
+      "duration": "5m50s",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/hierarchy/hierarchy-full.log",
+        "sha256": "81a21a39de960902d6a5a0129513b3b7faf6757c7d1ffc934ae0c8df2ab4cfb0"
+      }
+    }
+  },
+  "recovery": {
+    "hierarchy": "At most 16 local reference-type layers ending at the scoped framework System.Object. Type parameters remain scoped through reordered/nested base expressions. All inherited fields are opaque; every local base initializer and static storage remains opaque and unchanged.",
+    "genericConstruction": "Reconstruct only exact valid generic expressions already present in the receiver hierarchy; do not infer traits or constraints for other constructions.",
+    "listMembers": "Metadata only for reviewed framework List<T> zero-argument constructor, Add(T) and get_Item(int). Preserve input assembly scopes and unknown argument identity.",
+    "binder": "Run the local custom Binder.SelectMethod CIL with the original inputs and one exact reviewed candidate under normal interpreter bounds. Preserve its side effects and refuse selections outside the candidate set.",
+    "limits": [
+      "external base classes",
+      "unreviewed collection members or reflection signatures",
+      "type-dependent unknown argument traits or comparisons",
+      "construction that reads or changes application instance/static state"
+    ]
+  },
+  "methodFactoryRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/retirement-audit/factory-runtime-evidence.json",
+      "sha256": "f44fb061215927152c3e0ad73d16c966b484de71d5a744a5572d0e82ebd2fb73"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodConstructionRuntime.cs",
+        "sha256": "f39251db7acc2b30a316c4515b8b388d90bbe01daa6f525c3cd923eb8ce3094d"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "4d9c89ef201a07860e08fb38943bb85085bbc0a04c0732e5085610363409f544"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "00ae5e4dbd1579ac88a3cbe1a5c16443b413da74b0f3880415ef5c42fcbaa67c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodRuntimeCleanupTests.cs",
+        "sha256": "024b4a710a5d9d9e8e482c69bebd5064fc4cbc1ebb05740429e294d40c372850"
+      }
+    ],
+    "captures": 51,
+    "factoriesRetired": 45,
+    "zeroImageControlsRetained": 6,
+    "behaviorGatesPassed": 51,
+    "focusedTestsPassed": 15,
+    "fullSuite": {
+      "passed": 3566,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3603,
+      "duration": "6m1s",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/retirement-audit/full-tests.log",
+        "sha256": "acca8c275bc9bca7d89634cac8bf019c322addf956fc87698892649ade13f195"
+      }
+    }
+  },
+  "methodRuntimeLeafRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/leaf-runtime-evidence.json",
+      "sha256": "74e9230c7c878fb1c4a35d4cb9cc257a6692130abf5c67312d1bc54f8a0a335e"
+    },
+    "originalSchemaAudit": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/all-originals.json",
+      "sha256": "b7b07cc2ac947398f80cd0ed471bbe6e8b613ff723d822cb52741ffc43c2b2cd"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelDormantMethodRuntime.cs",
+        "sha256": "c79efec3c96c034a6a46938ef663e6a9b620aea67162d4c7ad47d75c25a591f1"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodLeafRuntime.cs",
+        "sha256": "bb18a5878fed2d4c27a04d014e0a0124e09cb02635a8c570f5efec8c0ce77757"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "beaa551ac07c6b66c1c4b8a7ffdf274de07e6810c9e0d2c81e80bf479894b6a7"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "680fd0113f91fa9178bcb9258f675dd9196be15d5acd03398a2e2ccebea8a29c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodLeafRuntimeTests.cs",
+        "sha256": "840fcf4a56658078770af84b43b8fa34c6882ef83aa60ccd191f8111462c800d"
+      }
+    ],
+    "captures": 9,
+    "additionalTypesRetired": 81.0,
+    "allGroupsValidated": 51,
+    "allGroupsAdditionalTypesRetired": 399,
+    "focusedTestsPassed": 26,
+    "recoveryDirectory": "cleaned_runtime_leaves",
+    "proof": "All detected method images recovered with agreeing owned image reads. Reviewed original declaration schemas anchor six enums, two layouts and the integer buffer. Current metadata and complete buffer CIL are rechecked; normal reachability and surviving-reference gates remain active.",
+    "limits": "The three code-only baseline captures explicitly verify complete 54-type method-runtime retirement. Live shared consumers in combined protection remain, including the Framework 4.8 buffer/layout. Other generated metadata still requires attribution.",
+    "fullSuite": {
+      "passed": 3644,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3681,
+      "duration": "7 m 46 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/method-runtime-audit/full-tests.log",
+        "sha256": "3460c3f82d5db58d41b8acbb7f0146470a513ed65dc6cb31845fd3bd54207b34"
+      }
+    }
+  }
+}

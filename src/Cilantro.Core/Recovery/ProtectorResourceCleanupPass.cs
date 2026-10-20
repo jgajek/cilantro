@@ -21,9 +21,11 @@ public sealed class ProtectorResourceCleanupPass : DeobfuscationPass
         context.TryGetFact<IReadOnlyList<RestoredResourceBundle>>("resources.validatedBundles", out var bundles);
         context.TryGetFact<IReadOnlyList<RecoveredResourceOrigin>>(DependencyInputCompletionPass.RetiredResourcesFact, out var dependencies);
         context.TryGetFact<IReadOnlyList<RetiredIntegrityResource>>(RetiredIntegrityResource.Fact, out var retiredIntegrity);
+        context.TryGetFact<IReadOnlyList<RetiredBabelHashResource>>(RetiredBabelHashResource.Fact, out var retiredHash);
         var removedOwnerOrigins = LoaderDataOrigins(context).Concat(NecroBitResourceOwnership.RemovedOrigins(context))
             .Concat(IntegrityResourceOwnership.RemovedOrigins(context)).Concat(NumericResourceOwnership.RemovedOrigins(context))
             .Concat(DecodedResourceOwnership.RemovedOrigins(context))
+            .Concat((retiredHash ?? []).GroupBy(proof => proof.Source).Where(group => group.All(proof => proof.IsPreserved(context.Module))).Select(group => group.Key))
             .Concat((retiredIntegrity ?? []).Where(p => p.IsPreserved(context.Module)).Select(p => p.Source)).Distinct().ToArray();
         var origins = (strings ?? []).Concat(proxy is null ? [] : new[] { proxy })
             .Concat((bundles ?? []).Where(bundle => bundle.IsPreserved(context.Module)).Select(bundle => bundle.Source))

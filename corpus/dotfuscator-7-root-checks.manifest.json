@@ -1,0 +1,77 @@
+{
+  "manifestVersion": 1,
+  "profile": "dotfuscator-7-root-checks",
+  "description": "Licensed Android-referenced .NET 10 Root Check captures. Static family review and desktop clean-verdict behavior only; no Android device execution.",
+  "samples": [
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f",
+      "localName": "dotfuscator-7-root-checks/net10.0-root-none/oracle/RootCheckProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-root-none",
+      "tier": "profiled",
+      "sha256": "8b84049a0d9fdcaef499d81f47f2427a735654187705a704c9dad499563a76a4",
+      "localName": "dotfuscator-7-root-checks/net10.0-root-none/protected/RootCheckProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f",
+      "minimumNeutralizedCheckSites": 1
+    },
+    {
+      "id": "net10.0-root-method",
+      "tier": "profiled",
+      "sha256": "996bed813a3eb6e20ecfd058b8b7edc0e11e58a11ba94753aa4e4333361df59a",
+      "localName": "dotfuscator-7-root-checks/net10.0-root-method/protected/RootCheckProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f",
+      "minimumNeutralizedCheckSites": 1
+    },
+    {
+      "id": "net10.0-root-exit",
+      "tier": "profiled",
+      "sha256": "4e5a6792e04465718f53ff03cfd0424fc6a4278990304781e984c341ecbd47bb",
+      "localName": "dotfuscator-7-root-checks/net10.0-root-exit/protected/RootCheckProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f",
+      "minimumNeutralizedCheckSites": 1
+    },
+    {
+      "id": "net10.0-root-hang",
+      "tier": "profiled",
+      "sha256": "74651ee6d3b91c3c41b155cf262b91c856545eb7a0f17785bc2fce5da948a9c6",
+      "localName": "dotfuscator-7-root-checks/net10.0-root-hang/protected/RootCheckProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f",
+      "minimumNeutralizedCheckSites": 1
+    },
+    {
+      "id": "net10.0-root-flow",
+      "tier": "profiled",
+      "sha256": "1853b8b6088fe2e850d11137816374ee8babb782310fe0c0b3841bde7afde92c",
+      "localName": "dotfuscator-7-root-checks/net10.0-root-flow/protected/RootCheckProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f",
+      "minimumNeutralizedCheckSites": 1,
+      "minimumRecoveredStringSites": 1
+    },
+    {
+      "id": "net10.0-root-native",
+      "tier": "profiled",
+      "sha256": "5306ec2c09cfecc5fb83b9a5b0b39e8a118d2ae7104dce98e20f25c7358189a8",
+      "localName": "dotfuscator-7-root-checks/net10.0-root-native/protected/RootCheckProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f",
+      "minimumNeutralizedCheckSites": 1,
+      "minimumRecoveredStringSites": 1
+    }
+  ]
+}

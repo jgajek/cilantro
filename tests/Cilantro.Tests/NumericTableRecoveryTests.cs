@@ -11,6 +11,12 @@ namespace Cilantro.Tests;
 public sealed class NumericTableRecoveryTests
 {
     [Theory]
+    [InlineData(0, false, true)]
+    [InlineData(3, false, false)]
+    [InlineData(0, true, false)]
+    public void ResourceBackedNumericConstructionIsAttributedOnlyAfterRecovery(int index, bool mutable, bool expected) =>
+        FoldsOnlyClosedInitializedTables(mutable, false, index, expected, false, resourceInput: true);
+    [Theory]
     [InlineData("i8", long.MinValue, false, false)]
     [InlineData("i8", long.MaxValue, true, false)]
     [InlineData("r4", 0x80000000L, false, false)]
@@ -156,7 +162,7 @@ public sealed class NumericTableRecoveryTests
     [InlineData(false, false, 0, true, false, false, false, false, false, false, true)]
     [InlineData(false, false, 0, false, false, false, false, false, false, false, true, true)]
     [InlineData(false, false, 0, true, false, false, false, false, false, false, false, false, true)]
-    public void FoldsOnlyClosedInitializedTables(bool mutation, bool outsideWrite, int index, bool expected, bool alias, bool ambient = false, bool mutableInput = false, bool incidentalRead = false, bool beforeFieldInit = false, bool threaded = false, bool literalDependency = false, bool dependencyEscapes = false, bool nops = false, bool objectTable = false, bool wrongCast = false, bool castEscape = false, bool siblingGetter = false, bool omitCast = false, bool delegateFactory = false, bool mutableDelegateTarget = false, bool sharedGraphDependency = false, bool mutableGraph = false, bool privateHolder = false)
+    public void FoldsOnlyClosedInitializedTables(bool mutation, bool outsideWrite, int index, bool expected, bool alias, bool ambient = false, bool mutableInput = false, bool incidentalRead = false, bool beforeFieldInit = false, bool threaded = false, bool literalDependency = false, bool dependencyEscapes = false, bool nops = false, bool objectTable = false, bool wrongCast = false, bool castEscape = false, bool siblingGetter = false, bool omitCast = false, bool delegateFactory = false, bool mutableDelegateTarget = false, bool sharedGraphDependency = false, bool mutableGraph = false, bool privateHolder = false, bool resourceInput = false)
     {
         using var context = SyntheticContext.Build(module =>
         {
@@ -176,6 +182,21 @@ public sealed class NumericTableRecoveryTests
             { Attributes = MethodAttributes.Private | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, Body = new CilBody() };
             Add(ctor, OpCodes.Ldarg_0.ToInstruction(), OpCodes.Ldc_I4_1.ToInstruction(), OpCodes.Newarr.ToInstruction(module.CorLibTypes.Int32.TypeDefOrRef),
                 OpCodes.Stfld.ToInstruction(array), OpCodes.Ldarg_0.ToInstruction(), OpCodes.Ldfld.ToInstruction(array), OpCodes.Ldc_I4_0.ToInstruction(), Instruction.CreateLdcI4(123), OpCodes.Stelem_I4.ToInstruction(), OpCodes.Ret.ToInstruction());
+            if (resourceInput)
+            {
+                module.Resources.Add(new EmbeddedResource("numbers.bin", [123, 0, 0, 0], ManifestResourceAttributes.Private));
+                var assembly = new TypeRefUser(module, "System.Reflection", "Assembly", module.CorLibTypes.AssemblyRef);
+                var stream = new TypeRefUser(module, "System.IO", "Stream", module.CorLibTypes.AssemblyRef);
+                var reader = new TypeRefUser(module, "System.IO", "BinaryReader", module.CorLibTypes.AssemblyRef);
+                var at = ctor.Body.Instructions.IndexOf(ctor.Body.Instructions.Single(instruction => instruction.IsLdcI4() && instruction.GetLdcI4Value() == 123));
+                ctor.Body.Instructions.RemoveAt(at);
+                Instruction[] input = [OpCodes.Call.ToInstruction(new MemberRefUser(module, "GetExecutingAssembly", MethodSig.CreateStatic(new ClassSig(assembly)), assembly)),
+                    OpCodes.Ldstr.ToInstruction("numbers.bin"),
+                    OpCodes.Callvirt.ToInstruction(new MemberRefUser(module, "GetManifestResourceStream", MethodSig.CreateInstance(new ClassSig(stream), module.CorLibTypes.String), assembly)),
+                    OpCodes.Newobj.ToInstruction(new MemberRefUser(module, ".ctor", MethodSig.CreateInstance(module.CorLibTypes.Void, new ClassSig(stream)), reader)),
+                    OpCodes.Callvirt.ToInstruction(new MemberRefUser(module, "ReadInt32", MethodSig.CreateInstance(module.CorLibTypes.Int32), reader))];
+                foreach (var instruction in input) ctor.Body.Instructions.Insert(at++, instruction);
+            }
             if (ambient)
             {
                 var clock = new MemberRefUser(module, "get_TickCount", MethodSig.CreateStatic(module.CorLibTypes.Int32),
@@ -390,6 +411,17 @@ public sealed class NumericTableRecoveryTests
                 Assert.Equal(1, machine.State.ReadStaticField(context.Module.GetTypes().SelectMany(t => t.Fields).Single(f => f.Name == "Other")).AsInt32());
             if (delegateFactory)
                 Assert.Equal(1, machine.State.ReadStaticField(context.Module.GetTypes().SelectMany(t => t.Fields).Single(f => f.Name == "MutableInput")).AsInt32());
+        }
+        if (resourceInput)
+        {
+            context.TryGetFact<IReadOnlyList<DecodedResourceOwnership>>(DecodedResourceOwnership.Fact, out var ownership);
+            if (!expected) { Assert.Empty(ownership ?? []); return; }
+            var source = Assert.Single(ownership!);
+            Assert.Equal("numbers.bin", source.Resource.Name);
+            Assert.Equal(".ctor", Assert.Single(source.Readers).Name.String);
+            Assert.Empty(DecodedResourceOwnership.RemovedOrigins(context));
+            context.Module.Types.Remove(context.Module.Types.Single(type => type.Name == "Table"));
+            Assert.Single(DecodedResourceOwnership.RemovedOrigins(context));
         }
     }
 

@@ -62,6 +62,7 @@ public class RuntimeCleanupPass : DeobfuscationPass
         // earlier initialization and dispatcher proofs have finished. Deleting
         // their declarations must not change those proofs' input graph midway.
         RebuiltMethods.EnableResolverCleanup(context);
+        BabelMethodImageResourceOwnership.Publish(context);
         ReactorRuntimeForwarders.CaptureReaderAdapters(context);
         // Reactor also emits a token-based delegate builder in some string-only builds,
         // even when there are no proxies to rewrite. Attribute its exact shape here, late
@@ -130,7 +131,18 @@ public class RuntimeCleanupPass : DeobfuscationPass
         // anchor before whole-type cleanup; deadness and surviving references still
         // decide whether the complete nest or only an individual helper can go.
         RecoveryOrphans.Declare(context, ReactorDummyArrayHelpers.Find(context));
+        BabelMethodConstructionRuntime.Publish(context);
+        BabelMethodLeafRuntime.Publish(context);
+        BabelDormantMethodRuntime.Publish(context);
         var orphans = RecoveryOrphans.Of(context);
+        var ownedTypes = RecoveryOrphans.TypesOf(context);
+        // Verify the complete bridge before this pass removes any of its proved
+        // constant predicates. The final reference check runs after method cleanup.
+        var retiredNative = RetiredDotfuscatorNativeRuntime.Unused(context).ToHashSet();
+        var retiredResources = RetiredDotfuscatorResourceRuntime.Unused(context).ToHashSet();
+        var retiredRoot = RetiredDotfuscatorRootRuntime.Unused(context).ToHashSet();
+        var retiredRootHelpers = RetiredDotfuscatorRootRuntime.UnusedHelpers(context).ToHashSet();
+        var retiredResponses = RetiredDotfuscatorResponseRuntime.Unused(context).ToHashSet();
         var refused = reachability.InstanceRefusal is { } why
             ? $"Every virtual method whose shape a call here matches was kept, because this " +
                 $"module can get behind the question of which types can have instances: {why}."
@@ -139,7 +151,8 @@ public class RuntimeCleanupPass : DeobfuscationPass
             .Where(type => type != context.Module.GlobalType)
             .ToArray();
         var deadTypes = considered
-            .Where(type => islands.Contains(type) || IsProvenDead(type, reachability) && IsAttributable(type, orphans))
+            .Where(type => islands.Contains(type) || IsProvenDead(type, reachability) &&
+                (IsAttributable(type, orphans) || ownedTypes.Contains(type.MDToken.Raw)))
             .ToHashSet();
         var retained = RetentionSummary(considered, deadTypes, reachability);
         var removableTypes = deadTypes.Count == 0
@@ -156,7 +169,8 @@ public class RuntimeCleanupPass : DeobfuscationPass
         var guardPairs = ReactorGuardHelpers.Find(context);
         var removedMethodCount = RemoveDeadMethods(
             context, reachability, removedMethodTokens, removedPublicApi,
-            guardPairs.SelectMany(p => new[] { p.Getter, p.Test }).Concat(ReactorGuardHelpers.FindConstantMethods(context)).ToHashSet(), out var unattributed);
+            guardPairs.SelectMany(p => new[] { p.Getter, p.Test }).Concat(ReactorGuardHelpers.FindConstantMethods(context))
+                .Concat(RetiredDotfuscatorResponseRuntime.Methods(context)).ToHashSet(), out var unattributed);
         foreach (var pair in guardPairs)
         {
             var owner = pair.Field.DeclaringType;
@@ -169,12 +183,42 @@ public class RuntimeCleanupPass : DeobfuscationPass
             context.AddChange(new ChangeRecord(Name, "remove-unused-reactor-guard-field", fieldName,
                 "Removed the unwritten singleton-guard field after both attributed guard accessors were physically removed; application methods and initialization remain unchanged."));
         }
+        foreach (var field in RetiredBabelHashResource.UnusedNameDelegates(context).Distinct().ToArray())
+        {
+            var fieldName = field.FullName;
+            field.DeclaringType.Fields.Remove(field); removedFieldCount++;
+            context.AddChange(new(Name, "remove-retired-babel-name-delegate", fieldName,
+                "Removed the private name-decoder delegate field after verified cache materialization eliminated its initialization and every field reference."));
+        }
+        var retiredArrays = RetiredBabelArrayData.Unused(context, reachability).ToArray();
+        foreach (var proof in retiredArrays)
+        {
+            var name = proof.Source.FullName;
+            proof.Source.DeclaringType.Fields.Remove(proof.Source); removedFieldCount++;
+            context.AddChange(new(Name, "remove-retired-babel-array-data", name,
+                "Removed the exact encrypted RVA input after verified fresh-array replacement; replacement bodies/data remain intact and no surviving instruction references the field."));
+        }
+        var arrayStorage = retiredArrays.Where(proof => proof.EmptyStorage(reachability)).Select(proof => proof.Storage).ToHashSet();
+        if (arrayStorage.Count != 0) RemoveTypes(ComputeUnreferenced(context.Module, arrayStorage));
         // Removing an orphaned method can release types previously pinned only by its
         // signature or body. Reuse the original deadness proof, but recheck references
         // against the declarations that actually survived method cleanup.
         var remainingDead = context.Module.GetTypes().Where(deadTypes.Contains).ToHashSet();
         if (remainingDead.Count != 0 && removedMethodCount != 0)
             RemoveTypes(ComputeUnreferenced(context.Module, remainingDead));
+        // The reviewed injected bridge exposes a public API of its own. Its complete
+        // type proof permits retirement after private decoder consumers disappear;
+        // all surviving signatures, handles, attributes and code still veto deletion.
+        if (retiredNative.Count != 0) RemoveTypes(ComputeUnreferenced(context.Module, retiredNative),
+            "Removed the reviewed Dotfuscator native bridge after complete v2 recovery, intact whole-type verification and absence of surviving consumers; its injected public API was retired.");
+        if (retiredResources.Count != 0) RemoveTypes(ComputeUnreferenced(context.Module, retiredResources),
+            "Removed the reviewed Dotfuscator resource family after resource restoration, direct framework rebinding, intact whole-family verification and absence of surviving consumers.");
+        if (retiredRoot.Count != 0) RemoveTypes(ComputeUnreferenced(context.Module, retiredRoot),
+            "Removed reviewed public Root Check helpers after clean-verdict recovery, intact normalized declaration/body verification and absence of surviving consumers.");
+        if (retiredRootHelpers.Count != 0) RemoveTypes(ComputeUnreferenced(context.Module, retiredRootHelpers),
+            "Removed reviewed detached Root Check template helpers after clean-verdict recovery, intact normalized declaration/body verification and absence of surviving consumers.");
+        if (retiredResponses.Count != 0) RemoveTypes(ComputeUnreferenced(context.Module, retiredResponses),
+            "Removed the reviewed Dotfuscator response exception after check-derived clean-response selection, intact response/type verification and absence of surviving consumers; its injected public API was retired.");
         var survivingTypes = context.Module.GetTypes().ToHashSet();
         if (vmTypes.Length != 0)
         {
@@ -206,7 +250,7 @@ public class RuntimeCleanupPass : DeobfuscationPass
             ? "Every eligible dead method was either protector-attributed or an unused private helper."
             : $"Left {unattributed} dead method(s) of surviving types in place, because neither protector attribution " +
                 "nor the private-helper removal policy applies.";
-        if (removedTypeCount == 0 && removedMethodCount == 0)
+        if (removedTypeCount == 0 && removedMethodCount == 0 && removedFieldCount == 0)
         {
             return (PassStatus.Success, guardCallChanges,
             [
@@ -238,7 +282,7 @@ public class RuntimeCleanupPass : DeobfuscationPass
             $"from surviving types, none of them referenced by a surviving declaration.",
             null,
             1.0));
-        return (PassStatus.Success, guardCallChanges + removedTypeCount + removedMethodCount,
+        return (PassStatus.Success, guardCallChanges + removedTypeCount + removedMethodCount + removedFieldCount,
         [
             $"Removed {removedTypeCount} unreachable type(s) ({removedMethodTokens.Count + removedAddedMethodCount} methods " +
             $"in total, of which {removedMethodCount} were dead methods of surviving types).",
@@ -247,7 +291,7 @@ public class RuntimeCleanupPass : DeobfuscationPass
             .. refused is null ? Array.Empty<string>() : [refused]
         ]);
 
-        void RemoveTypes(HashSet<TypeDef> typesToRemove)
+        void RemoveTypes(HashSet<TypeDef> typesToRemove, string? reason = null)
         {
             // Only the outermost of a doomed nest is detached; the rest go with it.
             foreach (var type in typesToRemove
@@ -273,7 +317,7 @@ public class RuntimeCleanupPass : DeobfuscationPass
                     Name,
                     "remove-runtime-type",
                     $"{type.MDToken} {type.FullName}",
-                    "Removed a type proven unreachable and unreferenced after recovery."));
+                    reason ?? "Removed a type proven unreachable and unreferenced after recovery."));
             }
         }
 

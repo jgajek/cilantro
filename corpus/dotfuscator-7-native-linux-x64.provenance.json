@@ -1,0 +1,686 @@
+{
+  "capturedAt": "2026-10-20",
+  "compiler": "Dotfuscator Professional 7.9.0+2381db6511",
+  "description": "Linux x64 native-key v2 captures of source-built benign Probe: strings, high control flow and renaming on net8.0 and net10.0.",
+  "sources": [
+    {
+      "path": "corpus/probes/Probe/Probe.csproj",
+      "sha256": "d028e30e4a068ae4648a4647f051439325832d37f10530a01672266f72c7d2cd"
+    },
+    {
+      "path": "corpus/probes/Probe/Program.cs",
+      "sha256": "48d98a98a7670a4ce963c811cd02394c1af17f22d263bacf404d6ccb2ffcca15"
+    },
+    {
+      "path": "corpus/probes/dotfuscator.ps1",
+      "sha256": "4276edbc29ce38fb2012a341ac73e3e447fc922ce028a1512f8f62a80e738a73"
+    },
+    {
+      "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+      "sha256": "11d366921814789ae67fb51b8db2a1219d07f4cec2b9982cb936d9f230735a66"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+      "sha256": "54ffc99b8d1614bdcfc66e39eaa0723dcf7bdef39c9c8e70f683da057f28ed68"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorV2StringPass.cs",
+      "sha256": "e9b9f2283eeb162da1fe1e018f6df47828cf8e0ebaaa4b74da09edc2895125e1"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorV2Shape.cs",
+      "sha256": "f9495c200962c87db734af24efd05bdea20b868f293289bbd71132d996594621"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorNativeRuntime.cs",
+      "sha256": "1d05c9b7d6ecfc088104d4bb8bf4d52668fe973967d9aa660b30f1034cdba6fd"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorLinuxCorpusTests.cs",
+      "sha256": "7d17a29e13e98d75c6a5b73df75026f22a8efd117bf1d9be985c6f2a8cd67343"
+    }
+  ],
+  "nativeReview": {
+    "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4",
+    "entry": "__eck at 0x1225c0",
+    "framing": "0x11e440",
+    "runtimeVerdict": "0x11e240",
+    "outputMask": "0x11ead0",
+    "environment": "0x11fe80",
+    "signatureVerification": "0x11fbe0",
+    "evidence": {
+      "path": "C:/cilantro-verify/dotfuscator/native-linux-review/key-routines.txt",
+      "sha256": "ec0c6837a9c41db4c222d4294d97910b99af8430c0fa7d525c1d7f29cb037f1b"
+    },
+    "result": "Static IDA review confirms the same 12-byte DFSE2 key domain, seven clean verdict bytes, zero separators, big-endian length framing, SHA-256 and xorshift stream as the reviewed Windows implementations. The 91-byte SPKI reconstructed from native constants matches the existing ECDSA-P256 verifier key. Environment framing, signed length 18432, P1363 r/s fields and signed seed binding at 0x4000 match the managed validator.",
+    "decompilation": "The verdict helper required disassembly fallback; saved evidence includes the complete routine. Other reviewed routines include pseudocode where available.",
+    "applicationOrNativeCodeExecutedByRecovery": false
+  },
+  "fixtures": [
+    {
+      "id": "net10.0-combined",
+      "capture": {
+        "Framework": "net10.0",
+        "Config": "combined",
+        "Architecture": "x64",
+        "Platform": "Linux",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "5d05e18f31ac63a41720b4cb034f88f0b3ea8bb25847837c53e2eea5b17be0b1",
+        "ProtectedSha256": "7cbb86265e3263be9f40a51cf82f86d7ba38564ab09f5109ca481d291dab3347"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/fixture.json",
+        "sha256": "33d5bd8ca6f4f26f7ecc01626913a82cebcbf7be6b02b46ecb81c0466cf233a1"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/config.xml",
+        "sha256": "964b36ce21eddf8f13cf627f8966afc547849920df1b23c852b4e419da0455aa"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined\\protected\\environment0f617e02.bin",
+        "sha256": "5b51132eee1ea77ce877695d288faa363b5c53f7776be30392d348d1b8a1c354"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+        "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined\\cleaned\\Probe.cleaned.dll",
+        "sha256": "3365d6d869e96dd504fbacbb155f1378d4a6f081fd1ac5163fe37b4013b390df"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/recovery.json",
+        "sha256": "cb0a9b33e52e02a31097f5e497baea285acb668ad2d026c1b67d0a925bf31055"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/oracle.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/oracle.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/protected.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/protected.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/cleaned.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-combined/cleaned.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        }
+      ],
+      "linuxAnalyzer": {
+        "cleaned": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-combined/linux-cleaned/Probe.cleaned.dll",
+        "sha256": "3365d6d869e96dd504fbacbb155f1378d4a6f081fd1ac5163fe37b4013b390df",
+        "recovery": {
+          "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-combined/linux-recovery.json",
+          "sha256": "6ad985c84983c0ea4224bdf34ac7677beb96bb948c939a46663369c717c1574a"
+        },
+        "execution": [
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-combined/linux-cleaned.default.execution.json",
+            "sha256": "d194fd6a5b6254ba35d853f84f4bb7896f4c8817b1374b4b032bc68fd5b0dd59"
+          },
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-combined/linux-cleaned.self-test.execution.json",
+            "sha256": "7bb807207122fc831cbbc46a5ec7c31adc9974c575188e90e3bebdaf5b984aa7"
+          }
+        ]
+      }
+    },
+    {
+      "id": "net10.0-renamed",
+      "capture": {
+        "Framework": "net10.0",
+        "Config": "renamed",
+        "Architecture": "x64",
+        "Platform": "Linux",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "5d05e18f31ac63a41720b4cb034f88f0b3ea8bb25847837c53e2eea5b17be0b1",
+        "ProtectedSha256": "1db64a5580735e88c13b75545220dee4e2290998bd1db19f2f43df3db2fdf71f"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/fixture.json",
+        "sha256": "57a651a2d9312771542674adbdc17d5eb16550466264d5114451fab07f77ef62"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/config.xml",
+        "sha256": "54cd2ee639748113a7f96cec0b580d6678549f10de6bfe0b93f1edf86c4a64a7"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed\\protected\\environment0f617e02.bin",
+        "sha256": "0ec554b6a96e6c86395f9f5714bb8586efca9a6aee634dfc33c9a7ac08adc4a0"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+        "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed\\cleaned\\Probe.cleaned.dll",
+        "sha256": "f1a661145d0233b38d8f58ea590e053f3471955b806a4aaf4a8eb07c77c47e1d"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/recovery.json",
+        "sha256": "9c02ad38340b6a6adeac5b4f09739e32deb9b95990b676c8a76f4ce58400332e"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/oracle.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/oracle.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/protected.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/protected.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/cleaned.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-renamed/cleaned.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        }
+      ],
+      "linuxAnalyzer": {
+        "cleaned": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-renamed/linux-cleaned/Probe.cleaned.dll",
+        "sha256": "f1a661145d0233b38d8f58ea590e053f3471955b806a4aaf4a8eb07c77c47e1d",
+        "recovery": {
+          "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-renamed/linux-recovery.json",
+          "sha256": "731cc9de38ca37be0f6ba1f1add657cefe9fda9578807764bc35f954ab9ed1f8"
+        },
+        "execution": [
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-renamed/linux-cleaned.default.execution.json",
+            "sha256": "d194fd6a5b6254ba35d853f84f4bb7896f4c8817b1374b4b032bc68fd5b0dd59"
+          },
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-renamed/linux-cleaned.self-test.execution.json",
+            "sha256": "7bb807207122fc831cbbc46a5ec7c31adc9974c575188e90e3bebdaf5b984aa7"
+          }
+        ]
+      }
+    },
+    {
+      "id": "net10.0-strings",
+      "capture": {
+        "Framework": "net10.0",
+        "Config": "strings",
+        "Architecture": "x64",
+        "Platform": "Linux",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "5d05e18f31ac63a41720b4cb034f88f0b3ea8bb25847837c53e2eea5b17be0b1",
+        "ProtectedSha256": "22bee73c17c8cc4e59d1358c20d59156979a48f605b1c3377c86d6fcbf88cf39"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/fixture.json",
+        "sha256": "0958e7e6f42f575cdfbaff7fc9eea15c875ea13c6b511a439028e8be3705e2fb"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/config.xml",
+        "sha256": "2133d6663c2735f4d7a920b610a200d3860892a396d6fd23d3f627c741642ef4"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings\\protected\\environment0f617e02.bin",
+        "sha256": "60f20128fc79a30af375defe2745ba5412d3421b891069a239b73d4d4412090a"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+        "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings\\cleaned\\Probe.cleaned.dll",
+        "sha256": "ad716f48bd564d463536c58dd74f4774a04a67e6075ca731e2806222e0eb5ab2"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/recovery.json",
+        "sha256": "b8fc46682f15d1e24d3b76f8ddb16fbad8a7699946eba8d50e8fdf87fa95851f"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/oracle.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/oracle.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/protected.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/protected.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/cleaned.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net10.0-strings/cleaned.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        }
+      ],
+      "linuxAnalyzer": {
+        "cleaned": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-strings/linux-cleaned/Probe.cleaned.dll",
+        "sha256": "ad716f48bd564d463536c58dd74f4774a04a67e6075ca731e2806222e0eb5ab2",
+        "recovery": {
+          "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-strings/linux-recovery.json",
+          "sha256": "b6c324ee9ef0a1dfce0bdd5b833c406a0f7b185407daeec7e4acef2d8dd929a1"
+        },
+        "execution": [
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-strings/linux-cleaned.default.execution.json",
+            "sha256": "d194fd6a5b6254ba35d853f84f4bb7896f4c8817b1374b4b032bc68fd5b0dd59"
+          },
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net10.0-strings/linux-cleaned.self-test.execution.json",
+            "sha256": "7bb807207122fc831cbbc46a5ec7c31adc9974c575188e90e3bebdaf5b984aa7"
+          }
+        ]
+      }
+    },
+    {
+      "id": "net8.0-combined",
+      "capture": {
+        "Framework": "net8.0",
+        "Config": "combined",
+        "Architecture": "x64",
+        "Platform": "Linux",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "b6c992f5fd468820c9863f968d59154e7b5204b1c63c1ca527718ef68f528cf6",
+        "ProtectedSha256": "87a2d75274883a34b6defb76b6dc973c446e5bcc01002316c0ffd8af1ce15b19"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/fixture.json",
+        "sha256": "0f959db4537e207fad37fd3092d6234e48620672067c8627b4a4eece43d58a20"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/config.xml",
+        "sha256": "3d1b9faf6c2c75a8055df28f2e0f467fef49c036db431b67412c29c837107bf7"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined\\protected\\environment0f617e02.bin",
+        "sha256": "e3326017d44685924627a6ac7ff703e65b8a0ddabcb7e97e6ca058d27409c5e2"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+        "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined\\cleaned\\Probe.cleaned.dll",
+        "sha256": "d2122c87f3405d9729f8c846e1aa5d368485b6df3e5865fd37cada625945a59c"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/recovery.json",
+        "sha256": "2bd06cc88e95c75203393dfb95d923ef924c5e9bdc7e1f05137b6c2ff9dd0c59"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/oracle.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/oracle.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/protected.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/protected.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/cleaned.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-combined/cleaned.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        }
+      ],
+      "linuxAnalyzer": {
+        "cleaned": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-combined/linux-cleaned/Probe.cleaned.dll",
+        "sha256": "d2122c87f3405d9729f8c846e1aa5d368485b6df3e5865fd37cada625945a59c",
+        "recovery": {
+          "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-combined/linux-recovery.json",
+          "sha256": "df4be6530350d6ab9e139151dd9540f37e1b6e7758f251993d4767f8b70bb114"
+        },
+        "execution": [
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-combined/linux-cleaned.default.execution.json",
+            "sha256": "d194fd6a5b6254ba35d853f84f4bb7896f4c8817b1374b4b032bc68fd5b0dd59"
+          },
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-combined/linux-cleaned.self-test.execution.json",
+            "sha256": "7bb807207122fc831cbbc46a5ec7c31adc9974c575188e90e3bebdaf5b984aa7"
+          }
+        ]
+      }
+    },
+    {
+      "id": "net8.0-renamed",
+      "capture": {
+        "Framework": "net8.0",
+        "Config": "renamed",
+        "Architecture": "x64",
+        "Platform": "Linux",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "b6c992f5fd468820c9863f968d59154e7b5204b1c63c1ca527718ef68f528cf6",
+        "ProtectedSha256": "2d2ee3af536cfd69239793ac53aabcfcb8199572c59c3262891295912a170c7e"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/fixture.json",
+        "sha256": "51a549b42fe6280ec23f90e800e32f6a3fcf907f0f7311d21823798c3a2abc2f"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/config.xml",
+        "sha256": "f7cbe637e474512d27b732093100ed1a9f4324c29a9e39db21e31cdca8458feb"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed\\protected\\environment0f617e02.bin",
+        "sha256": "b20b8595e950aaaf9c7102e727861e640715c0157cdfb670a76f1021a74b329a"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+        "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed\\cleaned\\Probe.cleaned.dll",
+        "sha256": "fa8e0aed348283443c099a80ef0a477818655b55e114a599d0689b6dcab3a644"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/recovery.json",
+        "sha256": "e86be415c65dbe79226b27646a5d4d3e500827ed25a5715e50ef763716b673f6"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/oracle.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/oracle.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/protected.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/protected.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/cleaned.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-renamed/cleaned.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        }
+      ],
+      "linuxAnalyzer": {
+        "cleaned": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-renamed/linux-cleaned/Probe.cleaned.dll",
+        "sha256": "fa8e0aed348283443c099a80ef0a477818655b55e114a599d0689b6dcab3a644",
+        "recovery": {
+          "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-renamed/linux-recovery.json",
+          "sha256": "ab6123821c5635c402ff8ae5aca8ce795e4f8173b63d3e59465ff8f63504c9eb"
+        },
+        "execution": [
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-renamed/linux-cleaned.default.execution.json",
+            "sha256": "d194fd6a5b6254ba35d853f84f4bb7896f4c8817b1374b4b032bc68fd5b0dd59"
+          },
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-renamed/linux-cleaned.self-test.execution.json",
+            "sha256": "7bb807207122fc831cbbc46a5ec7c31adc9974c575188e90e3bebdaf5b984aa7"
+          }
+        ]
+      }
+    },
+    {
+      "id": "net8.0-strings",
+      "capture": {
+        "Framework": "net8.0",
+        "Config": "strings",
+        "Architecture": "x64",
+        "Platform": "Linux",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "b6c992f5fd468820c9863f968d59154e7b5204b1c63c1ca527718ef68f528cf6",
+        "ProtectedSha256": "1b9d99e9680e20cc4b1ffc76cb3cf615884c86d38c78b182678711ecf972bb37"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/fixture.json",
+        "sha256": "54f3fdb0f73137979379d9cfec30b3d94a1a627a80f58f981e19b3cdf3bc0d86"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/config.xml",
+        "sha256": "b0cbb6021e4b482c3324bd69457c3c9cf5073ed50fc5992d8210263e0d014c7a"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings\\protected\\environment0f617e02.bin",
+        "sha256": "24f2648147ca470b47e9b31c4c0f011a803cd2cc019d4739d962410ebd52a901"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/protected/runtimes/linux-x64/native/Runtime.Extensions.so",
+        "sha256": "e2ed9c4a49a80293bc5341b7a4e6fe30eb6dcdb52eb8b7d2c548d3490ca5edd4"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings\\cleaned\\Probe.cleaned.dll",
+        "sha256": "8463ba31d21bab92b0108420c18e2f15296bb555a18b54f5da1deca552044116"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/recovery.json",
+        "sha256": "c23f252b9838911b88d0b3e8f509aa449e53bb40ee8c756b11a32e002749f860"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/oracle.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/oracle.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/protected.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/protected.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/cleaned.default.execution.json",
+          "sha256": "7047ca6042e76473ca6dd31034afd55dece0fa52f70d36b0b9c8201ca1742884"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-linux-corpus\\net8.0-strings/cleaned.self-test.execution.json",
+          "sha256": "954f560f801fc41e4bf2120578c2495f040e892f5610d9d1b15d845a8b921e6a"
+        }
+      ],
+      "linuxAnalyzer": {
+        "cleaned": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-strings/linux-cleaned/Probe.cleaned.dll",
+        "sha256": "8463ba31d21bab92b0108420c18e2f15296bb555a18b54f5da1deca552044116",
+        "recovery": {
+          "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-strings/linux-recovery.json",
+          "sha256": "222f16eed35e26e15f25340aedee3f7e3a3fde5e5bbecab34b7c99fd84afd44e"
+        },
+        "execution": [
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-strings/linux-cleaned.default.execution.json",
+            "sha256": "d194fd6a5b6254ba35d853f84f4bb7896f4c8817b1374b4b032bc68fd5b0dd59"
+          },
+          {
+            "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/net8.0-strings/linux-cleaned.self-test.execution.json",
+            "sha256": "7bb807207122fc831cbbc46a5ec7c31adc9974c575188e90e3bebdaf5b984aa7"
+          }
+        ]
+      }
+    }
+  ],
+  "runtimeEnvironment": {
+    "distribution": "Ubuntu-24.04",
+    "host": "/mnt/c/cilantro-verify/dotnet-linux-x64/dotnet",
+    "versions": [
+      "8.0.32",
+      "10.0.13"
+    ],
+    "downloads": {
+      "path": "C:/cilantro-verify/dotfuscator/native-linux-review/runtime-downloads.json",
+      "sha256": "1c4b3c29c1e1909c0b88de8f23b63baea03e5b9e3456f58ce577d11ce3aa3785"
+    },
+    "archiveValidation": "Official builds.dotnet.microsoft.com release metadata supplies the runtime URLs and SHA-512 hashes; both archives verified before extraction under C:/cilantro-verify.",
+    "execution": "All oracle, protected and cleaned comparisons execute in Ubuntu through the same explicit Linux host. The protected source-built applications invoke their legitimate native runtime; the recovery process never does."
+  },
+  "validation": {
+    "captures": 6,
+    "oracles": 2,
+    "recoveredStringSites": 102,
+    "remainingDispatchers": 0,
+    "remainingUnreachableInstructions": 0,
+    "resourceParity": true,
+    "nativeBridgesRetired": 6,
+    "architectureFlagsPreserved": true,
+    "linuxOnlyPackagedCompanions": true,
+    "windowsHostedRecovery": true,
+    "threeWayLinuxRuntimeComparisons": 12,
+    "runtime": {
+      "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/ground-truth.outcomes.json",
+      "sha256": "6db64892404abe42112d931dd1e38e3abc838b11c8dd7ff96f5214398050f0e6"
+    },
+    "focusedTests": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-linux-review/focused-tests.log",
+        "sha256": "31a69e50a75e438f0a618ac25010ccc3ee4d3706ecd2a6878053c30ce7c4cb7c"
+      }
+    },
+    "refusalCases": [
+      "missing Linux companion",
+      "Windows DLL in Linux path",
+      "tampered Linux companion",
+      "different signed environment",
+      "valid Windows DLL cannot hide tampered Linux companion",
+      "required-x86 input with only Linux x64",
+      "unsupported machine"
+    ],
+    "linuxHostedRecovery": {
+      "captures": 6,
+      "byteIdenticalToWindows": 6,
+      "additionalSourceCleanedRuntimeMatches": 12,
+      "outcomes": {
+        "path": "C:/cilantro-verify/dotfuscator/native-linux-corpus/linux-analyzer.outcomes.json",
+        "sha256": "cc1773313148ea0969123a27ce83bfd08fa1ae181b624627a041d1104e543747"
+      },
+      "harness": {
+        "path": "C:/cilantro-verify/dotfuscator/native-linux-review/recover-on-linux.ps1",
+        "sha256": "d4a5cdc4bc5872e9e8ce3b36168229b3af9fd8174e65305d520fccc89dd897f4"
+      }
+    },
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3538,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3575,
+      "duration": "7m58s",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-linux-review/full-tests.log",
+        "sha256": "dccebcd90087cb3555b9783de294782d8b82ba04c883ae1708bf6ae896506fbf"
+      }
+    }
+  },
+  "architectureSelection": "I386 AnyCPU and AMD64 inputs can authenticate the reviewed Linux x64 implementation. Required-x86 inputs still require win-x86. Every supplied companion in the eligible reviewed Windows/Linux paths must validate, independently of the analyzer operating system.",
+  "limitations": [
+    "Only the exact reviewed Windows x86, Windows x64 and Linux x64 native identities are supported.",
+    "ARM64, macOS and mobile native implementations remain unvalidated.",
+    "The 17-site source selection retains the existing array-return producer control outside this validation matrix."
+  ],
+  "latestNativeValidation": {
+    "provenance": "corpus/dotfuscator-7-native-linux-arm64.provenance.json",
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3551,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3588,
+      "duration": "5m32s",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-arm64-review/full-tests.log",
+        "sha256": "8da2fad1ccb5a2beca1c27e7cbcbde088ce9933592ecc672441bb695a326c479"
+      }
+    },
+    "currentProofSources": [
+      {
+        "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+        "sha256": "f506965ac8eddfb7eccab2866deee8aa48fdeda267858fa1069f0c9c224d23d0"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+        "sha256": "83f8ab5009f3a05586ae4a417b26c28dabaf4de5c56ca15fc7e7ca160d223e4d"
+      },
+      {
+        "path": "corpus/probes/dotfuscator.ps1",
+        "sha256": "932d84a8e55e994d0723afc47d55565ff88121c773841d0bbdb20e03f4221b16"
+      }
+    ]
+  }
+}

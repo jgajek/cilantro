@@ -1,0 +1,400 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": "Babel Obfuscator 12.1 Enterprise floating trial",
+  "scope": "Historical availability and behavior inventory beyond the original core corpora. Initial RC2 recovery failed; the cipher extension subsequently recovers all seven advertised choices on all three frameworks. The loadtomemory=off capture records the requested option, not proof that a particular file-loading branch executed.",
+  "implementation": "corpus/babel-12-external.provenance.json",
+  "documentation": "https://docs.babelfor.net/obfuscator/command-line/reference",
+  "invalidOpcodes": {
+    "platform": "net48 x86",
+    "captures": 2,
+    "producerSays": "Emit invalid opcodes: on",
+    "behavior": [
+      {
+        "Id": "net48-combined",
+        "RecoveryExit": 0,
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      {
+        "Id": "net48-flow",
+        "RecoveryExit": 0,
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    ],
+    "recovery": "Both control-flow and combined string/resource/proxy/method-image cases recover and match source/protected/cleaned execution"
+  },
+  "additionalOptions": [
+    {
+      "Profile": "file-loading",
+      "ProducerMatch": true,
+      "RecoveryExit": 0,
+      "Bodies": 0,
+      "Stubs": 0,
+      "Payloads": 2,
+      "Passes": [
+        {
+          "Pass": "babel-method-images",
+          "Status": "success",
+          "Changes": 0,
+          "Diagnostics": [
+            "No Babel method-image dispatch stubs found."
+          ],
+          "Duration": "00:00:00.0047887"
+        },
+        {
+          "Pass": "embedded-dependency-recovery",
+          "Status": "success",
+          "Changes": 2,
+          "Diagnostics": [
+            "Recovered 2 embedded dependency assembly(s) from assembly references and observed lookup tables; used 6178930 interpreted steps.",
+            "System.Reflection.Assembly 1::(System.String): discovered 2 name(s) in agreeing cold lookup-table snapshots.",
+            "System.Void 1::(System.IO.Stream): proved fixed-resource construction of 2 bundle index entry(s). Every direct index call receives the exact fresh resource stream; later table/record mutation is a separate obligation. Index consumers only read the table and construction-owned integer fields; resolver assembly/path caches remain writable.",
+            "Other possible resolver states are not covered by these requests. Resolver replacement and resource retirement require separate proofs."
+          ],
+          "Duration": "00:00:03.0639325"
+        },
+        {
+          "Pass": "babel-dependency-deployment",
+          "Status": "success",
+          "Changes": 1,
+          "Diagnostics": [
+            "Replaced 1 complete Babel bundle loader(s) with 2 ordinary dependency file(s)."
+          ],
+          "Duration": "00:00:03.7478152"
+        }
+      ],
+      "Runs": [
+        {
+          "ExitCode": 0,
+          "TimedOut": false,
+          "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+          "Stderr": ""
+        },
+        {
+          "ExitCode": 0,
+          "TimedOut": false,
+          "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+          "Stderr": ""
+        }
+      ]
+    },
+    {
+      "Profile": "rc2-method",
+      "ProducerMatch": true,
+      "RecoveryExit": 1,
+      "Bodies": 0,
+      "Stubs": 1,
+      "Payloads": 0,
+      "Passes": [
+        {
+          "Pass": "babel-method-images",
+          "Status": "unsupported",
+          "Changes": 0,
+          "Diagnostics": [
+            "Babel method image 06000003: System.Int32 BabelProbe.Program::Encrypted(System.Int32) IL_0018 -> System.Object 1::(System.Int32,System.Reflection.MethodBase,System.Object,System.Object[]) args=[Int32:4784603,Null:0,Null:0,HeapReference:1] -> MethodCall requires System.Void 1::.cctor(): System.Void 1::.cctor() IL_0000 -> System.Void 1::.ctor() args=[HeapReference:3] -> System.Void 1::.ctor() IL_0059 -> System.Void ::.ctor() args=[HeapReference:10] -> System.Void ::.ctor() IL_0007 ->  ::() args=[] ->  ::() IL_0069 -> System.IO.Stream /::(System.IO.Stream) args=[HeapReference:19] -> System.IO.Stream /::(System.IO.Stream) IL_0064 -> System.IO.Stream //::Invoke(System.IO.Stream) args=[HeapReference:140,HeapReference:19] -> System.IO.Stream <emitted>.Method::00000001-0000-0000-0000-000000000000(System.IO.Stream) IL_0072 -> System.IO.Stream 1::(System.IO.Stream) args=[HeapReference:19] -> System.IO.Stream 1::(System.IO.Stream) IL_0017 -> System.IO.Stream ::(System.IO.Stream) args=[HeapReference:19] -> System.IO.Stream ::(System.IO.Stream) IL_016B -> System.Security.Cryptography.SymmetricAlgorithm ::(System.Byte) args=[Int32:5] -> System.Security.Cryptography.SymmetricAlgorithm ::(System.Byte) IL_0001 -> System.Security.Cryptography.SymmetricAlgorithm ::(System.Byte) args=[Int32:5] -> IL_003E: external call System.Security.Cryptography.RC2 System.Security.Cryptography.RC2::Create() is not allowlisted."
+          ],
+          "Duration": "00:00:00.1996046"
+        },
+        {
+          "Pass": "embedded-dependency-recovery",
+          "Status": "success",
+          "Changes": 0,
+          "Diagnostics": [
+            "No resource-backed dependency resolver was found."
+          ],
+          "Duration": "00:00:00.0041032"
+        },
+        {
+          "Pass": "babel-dependency-deployment",
+          "Status": "success",
+          "Changes": 0,
+          "Diagnostics": [
+            "No complete Babel dependency deployment is available."
+          ],
+          "Duration": "00:00:00.0026153"
+        }
+      ],
+      "Runs": [
+        {
+          "ExitCode": 0,
+          "TimedOut": false,
+          "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+          "Stderr": ""
+        },
+        {
+          "ExitCode": 0,
+          "TimedOut": false,
+          "Stdout": "-4:-65:1311768467294868061:Babel string other Ω\r\n-1:-7:1311768467294891784:Babel string other Ω\r\n0:3:1311768467294899698:Babel string zero 🥬\r\n1:90:1311768467294907631:Babel string other Ω\r\n2:21928:1311768467294915624:Babel string other Ω\r\n3:-7:1311768467294923707:Babel string other Ω\r\n8:139:1311768467294963050:Babel string other Ω\r\n17:5:1311768467295034335:Babel string other Ω\r\ncalls=8\r\nBabel resource ground truth: Unicode 🥬, repeated text, and a trailing newline.\r\n",
+          "Stderr": ""
+        }
+      ]
+    }
+  ],
+  "loadToMemoryOffCleaned": {
+    "Match": true,
+    "Run": {
+      "ExitCode": 0,
+      "TimedOut": false,
+      "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+      "Stderr": ""
+    }
+  },
+  "cases": [
+    {
+      "id": "net48-combined",
+      "kind": "invalid-opcodes",
+      "fixture": {
+        "Mode": "combined",
+        "Framework": "net48",
+        "Platform": "x86",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "9876",
+          "--use",
+          "tagassembly=on",
+          "--controlflow",
+          "switch=on",
+          "--invalidopcodes",
+          "--stringencryption",
+          "xor",
+          "--resourceencryption",
+          "--proxy",
+          "all",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted"
+        ],
+        "ProtectionExit": 0
+      },
+      "files": [
+        {
+          "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-combined\\oracle\\BabelProbe.exe",
+          "sha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646"
+        },
+        {
+          "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-combined\\protected\\BabelProbe.exe",
+          "sha256": "50b5b3153ab8c7ddb92d9e688273947fa59accf97b820c7022cd7ed966b9fad0"
+        }
+      ],
+      "protectionLog": {
+        "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-combined/protection.json",
+        "sha256": "1d9ce9129dfa44e1dd14365143f5f579bd459f2878a1e4f3a9fb4d60a38b7b48"
+      },
+      "recoveryLog": {
+        "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-combined/recovery.json",
+        "sha256": "836163db78d257c700796d44295872b4a288665fd2a1ca0c5d3886b68be1fc5b"
+      }
+    },
+    {
+      "id": "net48-flow",
+      "kind": "invalid-opcodes",
+      "fixture": {
+        "Mode": "flow",
+        "Framework": "net48",
+        "Platform": "x86",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "9876",
+          "--use",
+          "tagassembly=on",
+          "--controlflow",
+          "switch=on",
+          "--invalidopcodes"
+        ],
+        "ProtectionExit": 0
+      },
+      "files": [
+        {
+          "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-flow\\oracle\\BabelProbe.exe",
+          "sha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646"
+        },
+        {
+          "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-flow\\protected\\BabelProbe.exe",
+          "sha256": "55aefd1e111c7efc1e7fc5d41930424e960007ee49bb0cb86c09723b90060375"
+        }
+      ],
+      "protectionLog": {
+        "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-flow/protection.json",
+        "sha256": "88f039012c979b8205bec2a643b9e0d082d9a14b3db20af72211355b82e05f27"
+      },
+      "recoveryLog": {
+        "path": "C:\\cilantro-verify\\babel\\invalid-opcodes\\net48-flow/recovery.json",
+        "sha256": "c862c9bb0cab18a672417c3eabffb8c9a64f7dab34bd0955c54c63f326dd80b7"
+      }
+    },
+    {
+      "id": "file-loading",
+      "kind": "option-availability",
+      "fixture": {
+        "Profile": "file-loading",
+        "Name": "BabelEmbedProbe.dll",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:/cilantro-verify/babel/option-audit/file-loading/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:/cilantro-verify/babel/option-audit/file-loading/oracle/BabelEmbedLeaf.dll",
+          "--use",
+          "loadtomemory=off"
+        ],
+        "ProtectionExit": 0
+      },
+      "files": [
+        {
+          "path": "C:\\cilantro-verify\\babel\\option-audit\\file-loading\\oracle\\BabelEmbedLeaf.dll",
+          "sha256": "c89fa2d44c80fdead45ff1d5575309ef92110f2121031a9add4c749d417c3191"
+        },
+        {
+          "path": "C:\\cilantro-verify\\babel\\option-audit\\file-loading\\oracle\\BabelEmbedLibrary.dll",
+          "sha256": "7db7c6e9003f3b3208248857331225937a2d5a0a82e6632ded8613f4aaf5beb8"
+        },
+        {
+          "path": "C:\\cilantro-verify\\babel\\option-audit\\file-loading\\oracle\\BabelEmbedProbe.dll",
+          "sha256": "d26c032c1ebf1f85d43f4aca445a3d7a5f7033d86f0a3503a2c5022fcf176f42"
+        },
+        {
+          "path": "C:\\cilantro-verify\\babel\\option-audit\\file-loading\\oracle\\BabelEmbedProbe.exe",
+          "sha256": "e128d0026f7714437356a6cf7a169bc68e1461a1e04fb1e2fd8f42476dedb4f7"
+        },
+        {
+          "path": "C:\\cilantro-verify\\babel\\option-audit\\file-loading\\protected\\BabelEmbedProbe.dll",
+          "sha256": "1bf2a042a7eb893f852b82e59957d814b32c0e18f8a019ce131527efc160e2e1"
+        }
+      ],
+      "protectionLog": {
+        "path": "C:\\cilantro-verify\\babel\\option-audit\\file-loading/protection.json",
+        "sha256": "4d3252aa868c7086da4994b2006436772f0c2819bf22be85e591316f501b66d5"
+      },
+      "recoveryLog": {
+        "path": "C:\\cilantro-verify\\babel\\option-audit\\file-loading/recovery.json",
+        "sha256": "c21b3fcc96034ae4fc7f0ff7bd9aaaa9e213a67ea53f7294179af1d4c2c0ebea"
+      }
+    },
+    {
+      "id": "rc2-method",
+      "kind": "option-availability",
+      "fixture": {
+        "Profile": "rc2-method",
+        "Name": "BabelProbe.exe",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=RC2"
+        ],
+        "ProtectionExit": 0
+      },
+      "files": [
+        {
+          "path": "C:\\cilantro-verify\\babel\\option-audit\\rc2-method\\oracle\\BabelProbe.exe",
+          "sha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646"
+        },
+        {
+          "path": "C:\\cilantro-verify\\babel\\option-audit\\rc2-method\\protected\\BabelProbe.exe",
+          "sha256": "9bec0485d6774354b82579005858c4f41c462fcaf04611935ac2048856cfbe8b"
+        }
+      ],
+      "protectionLog": {
+        "path": "C:\\cilantro-verify\\babel\\option-audit\\rc2-method/protection.json",
+        "sha256": "8ccf1c0dbb3dced0eb4c852285dff3e70373f585fb27905cb50f09a566f16250"
+      },
+      "recoveryLog": {
+        "path": "C:\\cilantro-verify\\babel\\option-audit\\rc2-method/recovery.json",
+        "sha256": "bf7c01b358021beb7230a9177f0977acd9c0ca8816f539be98975b10ebee5c8e"
+      }
+    }
+  ],
+  "initialPending": {
+    "feature": "RC2 method encryption",
+    "trialAvailable": true,
+    "producerBehaviorMatches": true,
+    "restoredBodies": 0,
+    "remainingStubs": 1,
+    "reason": "RC2.Create is not allowlisted; the alternative cipher requires implementation and independent validation."
+  },
+  "cipherRecovery": {
+    "manifest": "corpus/babel-12-ciphers.manifest.json",
+    "cases": 21,
+    "restoredBodies": 21,
+    "status": "recovered",
+    "remainingStubs": 0,
+    "evidence": "corpus/babel-12-ciphers.provenance.json"
+  }
+}

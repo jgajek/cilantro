@@ -1,0 +1,75 @@
+{
+  "manifestVersion": 1,
+  "profile": "dotfuscator-7-native-osx-arm64",
+  "description": "Four osx-arm64-only native companion packages from existing source-built AnyCPU CoreCLR captures. Static recovery comparisons only; macOS runtime execution is unvalidated.",
+  "samples": [
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+      "localName": "dotfuscator-v2-macos/net8.0-oracle/DotfuscatorSignatures.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-osx-arm64-all-signatures",
+      "tier": "profiled",
+      "sha256": "762d5b9871f5c016286d653ce6a4f464d1330c6dffe34feb16df95899c341e5f",
+      "localName": "dotfuscator-v2-macos/net8.0-osx-arm64-all-signatures/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+      "minimumRecoveredStringSites": 20,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net8.0-osx-arm64-renamed-reviewed",
+      "tier": "profiled",
+      "sha256": "dc0bd274fee63ac219dabde5bcf34ff2b5f834509e856788e313cf63c9d039e4",
+      "localName": "dotfuscator-v2-macos/net8.0-osx-arm64-renamed-reviewed/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+      "minimumRecoveredStringSites": 17,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+      "localName": "dotfuscator-v2-macos/net10.0-oracle/DotfuscatorSignatures.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-osx-arm64-all-signatures",
+      "tier": "profiled",
+      "sha256": "14fb8e4784339738c8e4e9f3ae316e53e226b69318acf1155116d942c43cb116",
+      "localName": "dotfuscator-v2-macos/net10.0-osx-arm64-all-signatures/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+      "minimumRecoveredStringSites": 20,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net10.0-osx-arm64-renamed-reviewed",
+      "tier": "profiled",
+      "sha256": "6acb1a38012bb867962ab84eb1d90db1f35892430f9e24c17f8a84f041ea456c",
+      "localName": "dotfuscator-v2-macos/net10.0-osx-arm64-renamed-reviewed/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+      "minimumRecoveredStringSites": 17,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    }
+  ]
+}

@@ -1,0 +1,860 @@
+{
+  "capturedAt": "2026-10-19",
+  "compiler": "Babel Obfuscator 12.1.0.0 Enterprise floating trial",
+  "description": "Source-built method-shape corpus. License keys are excluded from fixture options, logs and provenance.",
+  "sources": [
+    {
+      "sha256": "d4b89f306583982bc02b83f4c97e12ee9614f0790b2d77cd714d7f755d060c81",
+      "path": "corpus/probes/BabelMethodProbe/BabelMethodProbe.csproj"
+    },
+    {
+      "sha256": "181cc108c708d52d1bf814376c90cb260561efd8fcc0ffb806f182789ca5ce79",
+      "path": "corpus/probes/BabelMethodProbe/Program.cs"
+    },
+    {
+      "sha256": "63002ef1e6987055a1659e813206c124370f01aa58131f55e259a492b2dffb95",
+      "path": "corpus/probes/babel-methods.ps1"
+    },
+    {
+      "path": "corpus/probes/BabelMethodCaller/BabelMethodCaller.csproj",
+      "sha256": "4a78c7d8f65831a569cae93211d3c39f2e7fb46b26392a64651c9e384ffb0154"
+    },
+    {
+      "path": "corpus/probes/BabelMethodCaller/Program.cs",
+      "sha256": "0a8c4b9cf1baa51c98424bad60b1ba6c2a4e08e34924d06a1175d572b31033a0"
+    }
+  ],
+  "fixtures": [
+    {
+      "Id": "net10.0-all",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.(Receiver::Instance|Counter::Step|Box.*::Exchange|Program::(Identity|Ref(Value|Reference|Throw)))"
+      ],
+      "EncryptedMethods": 5,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2a3a123572838fb85829416b972d205b6b846e5e37cf808231f6fe83c236f296",
+      "ProtectedSha256": "3d7e38db20a3d16bef91581f7a0be2ada7c24b49324496040f35276a8aafa0d2"
+    },
+    {
+      "Id": "net10.0-byref",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Program::Ref(Value|Reference|Throw)"
+      ],
+      "EncryptedMethods": 3,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2a3a123572838fb85829416b972d205b6b846e5e37cf808231f6fe83c236f296",
+      "ProtectedSha256": "82a18e5e445bbfb268bfe6715f5e632640ff8c5343e842bfc318a19fdf637d7f"
+    },
+    {
+      "Id": "net10.0-generic-method",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Program::Identity"
+      ],
+      "EncryptedMethods": 0,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2a3a123572838fb85829416b972d205b6b846e5e37cf808231f6fe83c236f296",
+      "ProtectedSha256": "eb8243afcdea9f0ac6088f0355097e3dc4dbf31fd9694a243602ebd53f02f767"
+    },
+    {
+      "Id": "net10.0-generic-owner",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Box.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2a3a123572838fb85829416b972d205b6b846e5e37cf808231f6fe83c236f296",
+      "ProtectedSha256": "6e0c760da4292450f0f884e31b517e403efd87e2a872607da739a7d9ffdc06d9"
+    },
+    {
+      "Id": "net10.0-instance",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Receiver::Instance"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2a3a123572838fb85829416b972d205b6b846e5e37cf808231f6fe83c236f296",
+      "ProtectedSha256": "1091bd3b642885f45759120f3a318ca4caf2288ade526a3e977f84bf5437dbd5"
+    },
+    {
+      "Id": "net10.0-struct",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Counter::Step"
+      ],
+      "EncryptedMethods": 0,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2a3a123572838fb85829416b972d205b6b846e5e37cf808231f6fe83c236f296",
+      "ProtectedSha256": "00e7d8d9b55030e2058d53542112d52f6e75b66bc664bea61b665ce02c9bf5eb"
+    },
+    {
+      "Id": "net48-all",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.(Receiver::Instance|Counter::Step|Box.*::Exchange|Program::(Identity|Ref(Value|Reference|Throw)))"
+      ],
+      "EncryptedMethods": 5,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9acf65874671562800f82d56f30236edfe3cb723f1729ec454e2a4a71cc9e179",
+      "ProtectedSha256": "1f8adea3125ce1213f21ab1c294fdc7a3de22f5560eaf133c6ba97a7b5783c93"
+    },
+    {
+      "Id": "net48-byref",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Program::Ref(Value|Reference|Throw)"
+      ],
+      "EncryptedMethods": 3,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9acf65874671562800f82d56f30236edfe3cb723f1729ec454e2a4a71cc9e179",
+      "ProtectedSha256": "bcc9e13039ead8195952d4e193f2d37f582ead421e4aa158c7fa550f6564bcb7"
+    },
+    {
+      "Id": "net48-generic-method",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Program::Identity"
+      ],
+      "EncryptedMethods": 0,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9acf65874671562800f82d56f30236edfe3cb723f1729ec454e2a4a71cc9e179",
+      "ProtectedSha256": "3a642719bfdb01897c46a825bf9b96c5b32b94628783d787b9df6690bdd9536c"
+    },
+    {
+      "Id": "net48-generic-owner",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Box.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9acf65874671562800f82d56f30236edfe3cb723f1729ec454e2a4a71cc9e179",
+      "ProtectedSha256": "2fadd4aa18b7538396c780e5c839da32303484e75ac6aebb814dc844acd46001"
+    },
+    {
+      "Id": "net48-instance",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Receiver::Instance"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9acf65874671562800f82d56f30236edfe3cb723f1729ec454e2a4a71cc9e179",
+      "ProtectedSha256": "6fe8c8ed0c0858ea77e3ecdf6369a45d3bb51844278cfbcca7ee4cea103245e6"
+    },
+    {
+      "Id": "net48-struct",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Counter::Step"
+      ],
+      "EncryptedMethods": 0,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9acf65874671562800f82d56f30236edfe3cb723f1729ec454e2a4a71cc9e179",
+      "ProtectedSha256": "a8f9b0bc9d4fa7b62ec7a39b2dc3c2baf182abd8425e7338968b5ce115a301b5"
+    },
+    {
+      "Id": "net8.0-all",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.(Receiver::Instance|Counter::Step|Box.*::Exchange|Program::(Identity|Ref(Value|Reference|Throw)))"
+      ],
+      "EncryptedMethods": 5,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "fec3aa1df691ed15a430ba86ec8fb9aa5a3bc0dc9b59588eae6b6458517b089a",
+      "ProtectedSha256": "c6ecbc0c1665b5d754791fc6fa1a357b110e94bf9dac207055b7b75ec201e2db"
+    },
+    {
+      "Id": "net8.0-byref",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Program::Ref(Value|Reference|Throw)"
+      ],
+      "EncryptedMethods": 3,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "fec3aa1df691ed15a430ba86ec8fb9aa5a3bc0dc9b59588eae6b6458517b089a",
+      "ProtectedSha256": "a1c483fa66f4033e9736ebca689135a1580ac5b808c95dbbf1feea6be71b4425"
+    },
+    {
+      "Id": "net8.0-generic-method",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Program::Identity"
+      ],
+      "EncryptedMethods": 0,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "fec3aa1df691ed15a430ba86ec8fb9aa5a3bc0dc9b59588eae6b6458517b089a",
+      "ProtectedSha256": "edb1ddfad4bc62769e2ffc92a1a2282676cc71551f0c51cd54add78c883439ab"
+    },
+    {
+      "Id": "net8.0-generic-owner",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Box.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "fec3aa1df691ed15a430ba86ec8fb9aa5a3bc0dc9b59588eae6b6458517b089a",
+      "ProtectedSha256": "1fd4bcaeb20bc93f5741c6a4bae38447b48439e8317aad02f533c5904f0c0842"
+    },
+    {
+      "Id": "net8.0-instance",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Receiver::Instance"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "fec3aa1df691ed15a430ba86ec8fb9aa5a3bc0dc9b59588eae6b6458517b089a",
+      "ProtectedSha256": "7471883f69a4a986848eadbb9d261fd1185ccb535ddba34aa3de64b6f203d76a"
+    },
+    {
+      "Id": "net8.0-struct",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelMethodProbe\\.Counter::Step"
+      ],
+      "EncryptedMethods": 0,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "fec3aa1df691ed15a430ba86ec8fb9aa5a3bc0dc9b59588eae6b6458517b089a",
+      "ProtectedSha256": "d47486b9fcac9f2c83578ccfec41f5997f6bb1bd8de4d1e5faea8ca2309edacf"
+    }
+  ],
+  "producerBehavior": {
+    "comparisons": 18,
+    "oracleMatches": 12,
+    "knownByrefThrowDifferences": 6,
+    "unexplainedDifferences": 0,
+    "exceptionWriteback": "For protected RefThrow, throw:11 replaces oracle throw:12; all other stdout and exit codes agree. Match remains false and KnownByrefThrowDifference records this exact baseline.",
+    "controls": "Struct receivers and generic-method selections have zero encrypted bodies. The compiler emits warning EM0003 for generic methods. Generic-owner methods do have encrypted bodies."
+  },
+  "recovery": {
+    "scope": "Reference-type instance methods, canonical sealed generic reference owners and primitive/reference byref parameters. Independent bounded construction trials agree on signatures, argument provenance and CIL. Application CIL is captured before invocation and never interpreted by recovery.",
+    "instanceBodies": 3,
+    "profiledSamples": 18,
+    "oracles": 3,
+    "limitations": [
+      "Generic owners require the canonical by-value stub, sealed System.Object base, unconstrained parameters, no static fields or static constructor. Other layouts retain unsupported gates.",
+      "Clear struct/generic-method producer controls do not establish encrypted-image recovery.",
+      "By-reference returns, custom value-type byrefs, uninitialized local contracts, tail/jmp bodies and unreviewed stub shapes remain unsupported.",
+      "Compiler-injected dormant helpers can remain with names preserved, including zero-image producer controls; full scaffolding retirement remains incomplete."
+    ],
+    "exploratoryUnsupportedSamples": 0,
+    "byrefBodies": 9,
+    "byrefProof": {
+      "retains": "Original stub prelude, argument boxing, early out initialization, return conversion, copyback order and post-invocation CIL.",
+      "inlines": "Captured application CIL, locals and exception regions. Byref arguments use distinct typed value cells and pointer locals. Normal returns update the packed argument array; throwing paths do not.",
+      "proof": "Unknown input values must trace through an exact managed read of the original argument cell. Both captured signatures and bodies agree. The original call must have exactly four stack entries, a constant image index, a null generic context and the expected receiver/argument-array inputs.",
+      "refusals": "Changed input provenance, ambient stack values, generic adaptation, uninitialized locals, byref return/custom value types, tail/jmp instructions and unreviewed layouts.",
+      "metadataDeclarationsAdded": 0,
+      "focusedTests": 85
+    },
+    "genericReflection": {
+      "scope": "Interpreted GetCurrentMethod and type-context method/field handle round trips preserve constructed owners and generic method arguments. Unrelated or missing type contexts are refused.",
+      "focusedTestsPassed": 20,
+      "focusedTestLog": "generic-handles-focused-final.log",
+      "constructionAudit": "generic-owner-reflection-audit.log",
+      "remaining": "Original source-stub integration now preserves unknown closed generic contexts and captures the six generic-bearing fixtures.",
+      "concreteWitnessAudit": "generic-owner-int-witness.log"
+    },
+    "genericTypeConstruction": {
+      "scope": "Known unconstrained generic definitions are constructed as metadata without host loading. Open and closed signatures, constructed TypeSpec queries, and identity construction with a definition's own parameters match CLR reflection. Invalid arguments and unproved constraints are refused.",
+      "focusedTestsPassed": 43,
+      "focusedTestLog": "generic-types-focused.log",
+      "closedCaptures": "Production recovery captures generic-owner and mixed methods on all three frameworks. Fifteen runtime caller types per fixture verify source/cleaned behavior.",
+      "openDiagnostic": "Earlier diagnostic FullName substitution was investigation only. Production recovery uses the reviewed private-name abstraction and scoped runtime types.",
+      "nameContractEvidence": "generic-types-name-evidence.json",
+      "nameContractScope": "Formatter, cache caller and delegate builder match per-framework contracts across all six generic-bearing fixtures. Production requires fresh default-comparer cache and unused module builder, canonical source-stub transport and unchanged arbitrary receiver state.",
+      "remaining": "Unreviewed owner constraints, static state, inheritance and stub adaptations remain unsupported."
+    },
+    "genericDelegateNames": {
+      "scope": "Source-body contract for the formatter, sole cache caller and delegate builder, with exact per-framework assembly identities. Proof copies are normalized; original CIL is retained.",
+      "sourceImageAgreement": "Formatter/caller/builder bodies, bound field metadata, every formatter reference and every name-field reference agree between the in-memory module and the proof image. All name-field reads belong to the reviewed cache caller.",
+      "dynamicPreconditions": "Registry observes construction from the start. Actual caller/formatter frames, typed signature, observed default cache constructor, empty cache, null descriptor name and unused module builder are required.",
+      "focusedTestsPassed": 93,
+      "componentTestsPassed": 31,
+      "focusedTestLog": "generic-name-focused-final.log",
+      "decoderOnlyTrials": 12,
+      "frameworks": [
+        "net48",
+        "net8.0",
+        "net10.0"
+      ],
+      "decoderTrialScope": "Two distinct symbolic names per framework; original decoder preserves an open Box<T>, T return/parameter and T field operands. Dispatch arguments are supplied directly. Application CIL is captured before entry and never executed.",
+      "summaryEvidence": "Completed summaries are recorded as ProvedMethodSummary. Type initialization, argument validation, recursion limits and frame unwinding remain active.",
+      "emissionEnabled": true,
+      "remaining": "Integrated with the canonical source stub and receiver-effect proof. Symbolic type names, cache observations and reflected private-name/cache fields cannot escape their reviewed consumers.",
+      "operationTrace": [
+        "parametric-type-trace-opaque.log",
+        "parametric-type-trace-int.log",
+        "parametric-type-trace-string.log"
+      ],
+      "typeIdentityFinding": "The default CLR model correctly collapses Box<T> instantiated with its own formal parameters back to the definition. A parametric runtime type requires a separate identity/domain so that an unknown closed runtime T is not confused with the open metadata parameter."
+    },
+    "parametricRuntimeTypes": {
+      "scope": "Scoped metadata domain for runtime-unknown closed generic arguments, kept separate from open metadata variables and the name-based type cache. Constructed owners, return/parameter types, fields and type/member handles retain the runtime variable.",
+      "focusedTestsPassed": 93,
+      "componentTestsPassed": 26,
+      "focusedTestLog": "parametric-types-focused-final.log",
+      "decoderTrials": 12,
+      "captureFamilies": 6,
+      "appBodiesExecuted": 0,
+      "sharedConstruction": "The normal CLR model still canonicalizes instantiation with its own formal parameters to the definition. The scoped model uses the same constraint/argument validator while preserving the runtime-unknown instantiation.",
+      "identity": "Unknown equality/order in CIL comparisons and conditional branches is withheld. APIs that observe names, hashes, traits or ambiguous type identity refuse. Generic method handles include unknown method-instantiation arguments.",
+      "caches": "Default constructor/capacity dictionaries only. An unknown type key can be inserted into a fresh empty type-keyed dictionary. Scalar-key maps can transport unknown type values. Key/value comparisons that need unknown type equality refuse.",
+      "remaining": "Integrated in production generic-owner capture. Unknown type-dependent branches, metadata observations and unproved cache comparisons refuse.",
+      "stubShapeEvidence": "generic-stub-shape.json",
+      "stubShape": "Twenty instructions; sealed reference Box<T>, no static constructor, one private instance T field, initialized object[] local, one box T and one dispatch. Hidden-this parameter is already a GenericInstSig.",
+      "receiverStorageFinding": "Resolved instance FieldDef identity normalizes constructed MemberRef aliases, including managed field references. A snapshot seeds every receiver field with distinct arbitrary provenance and rejects changed values/provenance, extra fields or model state."
+    },
+    "genericOwnerBodies": 3,
+    "mixedBodies": 15,
+    "totalRestoredBodies": 30,
+    "genericStubTransport": {
+      "scope": "Exact canonical object[] packing, box operands/sites, reflection method/type context, receiver forwarding, dispatch and return conversion. Initialized locals and unconstrained sealed owners without static state are mandatory.",
+      "receiverProof": "All instance fields begin as arbitrary unknown values. Resolved aliases share one storage slot. Receiver type, field set, values, provenance and model state must remain unchanged until captured invocation.",
+      "unknownBoxing": "Unknown input transport is enabled only at certified original stub box instructions. DynamicInvoke inverse transport must match the captured signature and original provenance. Unknown castclass/isinst decisions refuse.",
+      "symbolicNames": "Two independent fresh labels must yield identical CIL. Name/FullName/AssemblyQualifiedName on emitted symbolic types refuse. Private name/cache reflection and observations outside the certified cache use refuse.",
+      "applicationBodiesExecuted": 0,
+      "frameworks": [
+        "net48",
+        "net8.0",
+        "net10.0"
+      ]
+    }
+  },
+  "proofSources": [
+    {
+      "sha256": "79a38bfb5a10ce84e535bbd1c662dcf03b75c9a2c383ffac798a6b667a23f002",
+      "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs"
+    },
+    {
+      "sha256": "1b2418bb6b4a68b816bc60b45776e980af1cadd667ca8ce7c296993a371d1505",
+      "path": "src/Cilantro.Core/Interpretation/RawDynamicMethodIntrinsic.cs"
+    },
+    {
+      "sha256": "9e4cb737a5da84ddf9124c7097af3b5a2306be2c10e0416dcba2eaf10dce89e9",
+      "path": "src/Cilantro.Core/Interpretation/StaticMachine.cs"
+    },
+    {
+      "sha256": "c2b63357c6840d7d154885e480468ccdb88df87760785a83eaf0c22e92df3979",
+      "path": "src/Cilantro.Core/Interpretation/Intrinsics.cs"
+    },
+    {
+      "sha256": "b97873db06963184e7cdb96537fe288856fc0dedd635880d4331fb9e436b49c2",
+      "path": "tests/Cilantro.Tests/BabelMethodCorpusTests.cs"
+    },
+    {
+      "sha256": "4784c7256d56b667fdb161497a31bbfae5aa67ec2c77b6bb310eae90098890ab",
+      "path": "tests/Cilantro.Tests/BabelInstanceBridgeTests.cs"
+    },
+    {
+      "sha256": "c6194d35df45bc410374b293eb69048dcedc0ce74a3c8778db0a74538c0c586e",
+      "path": "tests/Cilantro.Tests/CorpusTests.cs"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelByRefAdapter.cs",
+      "sha256": "926caf5258267b357d389b8c708946f6d16e2df2f7c8dccee0405aa590929f29"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelByRefAdapterTests.cs",
+      "sha256": "a79665732369a4c2e18e94ec9f37e91e7b86bfddb439337c40500e287476b5aa"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelByRefLiteralTests.cs",
+      "sha256": "2014f2387fe8f7dd634eadc3c7dcdb174f601b69af7b5ccb1ed925df13eb9be7"
+    },
+    {
+      "path": "tests/Cilantro.Tests/GenericMethodHandleTests.cs",
+      "sha256": "7c51a4bede6e02c9871a6dd2debd2d1f0bc8038a02be3014536b230f288a397b"
+    },
+    {
+      "path": "tests/Cilantro.Tests/GenericTypeConstructionTests.cs",
+      "sha256": "a94af056ca1866378dfe2422eb965abd020a15666c3e1a3e591793506e8076a3"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/BabelDelegateNameContract.cs",
+      "sha256": "2113978a9f552ea4b48fb4b5e1a75b5103bb5d44f53bb6d148d821a8e27cd183"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/BabelDelegateNameIntrinsic.cs",
+      "sha256": "6bc8cf1e3b94c2eafa8903500f8da214232e22ff95b38d73e1b1683eec4e2da2"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/LoaderEvidence.cs",
+      "sha256": "60aa205f324d9539e9a4aa2e35b7249d455b7bf08813ffe3097ba009eaa10ec7"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelDelegateNameTests.cs",
+      "sha256": "1a32520169d6f4824b5563738eca5d397ee782c5425f0305e19d2c0dd165c6fb"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/ParametricTypeIntrinsic.cs",
+      "sha256": "ebd89f38ed8e0150852bb8db26c71e8ef7192e004997aaa51d8c5c81162b62fc"
+    },
+    {
+      "path": "tests/Cilantro.Tests/ParametricTypeTests.cs",
+      "sha256": "a6d3a13598d6df49c0f35f3c359c0495ecfe641663657ea06eea3f91bd48c698"
+    },
+    {
+      "sha256": "9214a57678c3251d58f7be55ec38da8f5869d4cbcae9823006e3686de4150303",
+      "path": "src/Cilantro.Core/Recovery/BabelGenericStub.cs"
+    },
+    {
+      "sha256": "726f8ddbc8b25c90bd014c75cfb5cb4d436237c34f31fb445142fdf5ddc24f86",
+      "path": "src/Cilantro.Core/Interpretation/StaticHeap.cs"
+    }
+  ],
+  "validation": {
+    "scope": "All four Babel corpora and every Dotfuscator corpus enabled. CLR execution is limited to repository-built benign probes.",
+    "focusedTestsPassed": 94,
+    "focusedTestLog": "generic-recovery-focused-verified.log",
+    "methodRuntimeComparisonsPassed": 18,
+    "baselineRuntimeComparisonsPassed": 27,
+    "differentialNet48MethodComparisons": 6,
+    "recoveryDirectory": "cleaned_adapter_indexed_final",
+    "remaining": "Unreviewed generic/byref layouts and dormant injected helpers remain. Known producer mismatches are explicitly recorded; net48 private external enum/struct generic cases restore source behavior as requested.",
+    "passedTests": 3438,
+    "skippedTests": 37,
+    "failedTests": 0,
+    "testLog": "generic-static-state-full-verified.log",
+    "runtimeComparisonsPassed": 54,
+    "callerProtectedComparisonsPassed": 3,
+    "runtimeEvidence": "adapter-inlining-indexed-runtime-evidence.json",
+    "runtimeEvidenceTestLog": "adapter-inlining-indexed-full-verified.log",
+    "genericCallerComparisonsPassed": 6,
+    "genericCallerTypeCases": 90,
+    "genericCallerSourceMatches": 6,
+    "genericCallerThreeWayMatches": 4,
+    "genericCallerKnownProducerFailureFixtures": 2,
+    "genericCallerKnownProducerFailureCases": 4,
+    "genericProducerFailure": "The net48 generic-owner and mixed protected captures throw MethodAccessException for private external enum and struct arguments. Oracle and cleaned succeed. GenericCallerMatches remains false, GenericCallerSourceMatch and KnownPrivateTypeProducerFailure true. User explicitly requested restoring original behavior and recording the producer failure.",
+    "fullSuiteEvidence": {
+      "path": "C:/cilantro-verify/babel/generic-static-state-full-verified.log",
+      "sha256": "e1a19eda673d0c8da81371bf6ae659b3aa7cd9ac2e0f7ddc2438bb77a4d1dd7b"
+    },
+    "genericOwnerExtension": {
+      "manifest": "corpus/babel-12-generics.manifest.json",
+      "provenance": "corpus/babel-12-generics.provenance.json",
+      "protectedCaptures": 18,
+      "supportedCaptures": 18,
+      "supportedRuntimeComparisons": 18,
+      "priorGenericRegressionFixtures": 6,
+      "structCallerTypeComparisons": 27,
+      "constructorCallerTypeComparisons": 27,
+      "staticCallerTypeComparisons": 36,
+      "inheritedCallerTypeReceiverComparisons": 108,
+      "staticStateCallerTypeComparisons": 36,
+      "staticStateLifecycleChecks": 6
+    }
+  },
+  "hierarchyExtension": {
+    "manifest": "corpus/babel-12-hierarchy.manifest.json",
+    "provenance": "corpus/babel-12-hierarchy.provenance.json",
+    "supportedCaptures": 9,
+    "callerCases": 156
+  },
+  "methodFactoryRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/retirement-audit/factory-runtime-evidence.json",
+      "sha256": "f44fb061215927152c3e0ad73d16c966b484de71d5a744a5572d0e82ebd2fb73"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodConstructionRuntime.cs",
+        "sha256": "f39251db7acc2b30a316c4515b8b388d90bbe01daa6f525c3cd923eb8ce3094d"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "4d9c89ef201a07860e08fb38943bb85085bbc0a04c0732e5085610363409f544"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "00ae5e4dbd1579ac88a3cbe1a5c16443b413da74b0f3880415ef5c42fcbaa67c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodRuntimeCleanupTests.cs",
+        "sha256": "024b4a710a5d9d9e8e482c69bebd5064fc4cbc1ebb05740429e294d40c372850"
+      }
+    ],
+    "captures": 51,
+    "factoriesRetired": 45,
+    "zeroImageControlsRetained": 6,
+    "behaviorGatesPassed": 51,
+    "focusedTestsPassed": 15,
+    "fullSuite": {
+      "passed": 3566,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3603,
+      "duration": "6m1s",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/retirement-audit/full-tests.log",
+        "sha256": "acca8c275bc9bca7d89634cac8bf019c322addf956fc87698892649ade13f195"
+      }
+    }
+  },
+  "emptyMethodRuntimeRetirement": {
+    "validatedAt": "2026-10-20",
+    "supersedes": "The six retained zero-image controls in methodFactoryRetirement; that historical evidence remains intact.",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/zero-image-audit/empty-runtime-evidence.json",
+      "sha256": "973d13b8438861f1f50dc3381e09a57dc0edec78ca6da0b8c1896da063a88bf0"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeShape.cs",
+        "sha256": "dc49e5ff6327fbdd000794479f8e22e2546e80ffad492f2990b9e31e9dc35011"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodConstructionRuntime.cs",
+        "sha256": "f17395a18c83edc99f01a8723e9f6eb4531aef2f1ff9f25e69326d9912edc593"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelDormantMethodRuntime.cs",
+        "sha256": "ef30eff1f54c7370d60e1155e0618c6e3e9993c3e399f507933c76f4f948d3a6"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "e8b7f4cde5209cf6c143d528fbdf1969822b989e23866770caaf3b9ea22ca015"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "6efd18a656506ee745195123599f23e7777ec12c766bcb9a85187cbef25d24d8"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelDormantRuntimeCleanupTests.cs",
+        "sha256": "be82d08e8f24d1c69868616bcb7d42829a969099c5d7554466f7e63530a9b95d"
+      }
+    ],
+    "captures": 6,
+    "injectedTypesPerCapture": 54,
+    "totalInjectedTypesRetired": 324,
+    "sourceProtectedCleanedComparisonsPassed": 6,
+    "differentialNet48IlVerificationComparisons": 2,
+    "focusedTestsPassed": 24,
+    "recoveryDirectory": "cleaned_dormant_runtime",
+    "proof": "Complete original graph plus reviewed unchanged/simplified current graph and unchanged metadata; no resources. Whole-family calls, handles, type-name literals and surviving metadata references veto ownership. Ordinary cleanup deadness/reference gates remain active.",
+    "remaining": "This proof covers only the reviewed empty-image runtimes. Other generated metadata and modern protection configurations still need attribution or validation.",
+    "fullSuite": {
+      "passed": 3590,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3627,
+      "duration": "5 m 38 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/zero-image-audit/full-tests.log",
+        "sha256": "4a27d9fa3df89701817b091aceb7ed49403c58ef303b63ea70fd8dd9d928b49b"
+      }
+    }
+  },
+  "methodRuntimeLeafRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/leaf-runtime-evidence.json",
+      "sha256": "74e9230c7c878fb1c4a35d4cb9cc257a6692130abf5c67312d1bc54f8a0a335e"
+    },
+    "originalSchemaAudit": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/all-originals.json",
+      "sha256": "b7b07cc2ac947398f80cd0ed471bbe6e8b613ff723d822cb52741ffc43c2b2cd"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelDormantMethodRuntime.cs",
+        "sha256": "c79efec3c96c034a6a46938ef663e6a9b620aea67162d4c7ad47d75c25a591f1"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodLeafRuntime.cs",
+        "sha256": "bb18a5878fed2d4c27a04d014e0a0124e09cb02635a8c570f5efec8c0ce77757"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "beaa551ac07c6b66c1c4b8a7ffdf274de07e6810c9e0d2c81e80bf479894b6a7"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "680fd0113f91fa9178bcb9258f675dd9196be15d5acd03398a2e2ccebea8a29c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodLeafRuntimeTests.cs",
+        "sha256": "840fcf4a56658078770af84b43b8fa34c6882ef83aa60ccd191f8111462c800d"
+      }
+    ],
+    "captures": 18,
+    "additionalTypesRetired": 108.0,
+    "allGroupsValidated": 51,
+    "allGroupsAdditionalTypesRetired": 399,
+    "focusedTestsPassed": 26,
+    "recoveryDirectory": "cleaned_runtime_leaves",
+    "proof": "All detected method images recovered with agreeing owned image reads. Reviewed original declaration schemas anchor six enums, two layouts and the integer buffer. Current metadata and complete buffer CIL are rechecked; normal reachability and surviving-reference gates remain active.",
+    "limits": "The three code-only baseline captures explicitly verify complete 54-type method-runtime retirement. Live shared consumers in combined protection remain, including the Framework 4.8 buffer/layout. Other generated metadata still requires attribution.",
+    "fullSuite": {
+      "passed": 3644,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3681,
+      "duration": "7 m 46 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/method-runtime-audit/full-tests.log",
+        "sha256": "3460c3f82d5db58d41b8acbb7f0146470a513ed65dc6cb31845fd3bd54207b34"
+      }
+    }
+  }
+}

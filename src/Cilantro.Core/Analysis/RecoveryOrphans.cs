@@ -21,6 +21,22 @@ namespace Cilantro.Core.Analysis;
 public static class RecoveryOrphans
 {
     private const string FactKey = "cleanup.orphanedMethods";
+    private const string TypesFactKey = "cleanup.orphanedTypes";
+
+    /// <summary>Records complete reviewed runtime types, including methodless layout helpers.</summary>
+    internal static void DeclareTypes(ArtifactContext context, IEnumerable<TypeDef> types)
+    {
+        if (!context.TryGetFact<HashSet<uint>>(TypesFactKey, out var held) || held is null)
+        {
+            held = [];
+            context.SetFact(TypesFactKey, held);
+        }
+        foreach (var type in types.Where(type => type.Module == context.Module && type.Rid != 0 && !type.IsGlobalModuleType))
+            held.Add(type.MDToken.Raw);
+    }
+
+    internal static IReadOnlySet<uint> TypesOf(ArtifactContext context) =>
+        context.TryGetFact<HashSet<uint>>(TypesFactKey, out var held) && held is not null ? held : new HashSet<uint>();
 
     /// <summary>
     /// Records that <paramref name="methods"/> exist only to serve uses recovery has removed.

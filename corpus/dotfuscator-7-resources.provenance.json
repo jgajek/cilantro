@@ -1,0 +1,120 @@
+{
+  "capturedAt": "2026-10-19",
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0+2381db6511",
+  "description": "Source-built benign strongly typed resources; strings, Unicode, empty/long values, byte arrays, raw resource and cache reload. No application objects are deserialized by recovery.",
+  "runtimeComparisons": 3,
+  "runtimeComparisonsPassed": 3,
+  "decodedEntries": 15,
+  "restoredResourceSha256": "b6716778f29f5c2881e06288bb01e8c9a8f49a06ca8a26f6ebb7a848a85ca3fa",
+  "unchangedRawResourceSha256": "7581ee572bdd69c6144f1c7f4a3563f3a4330eae9a72d9bbbf3f09d963f65fb0",
+  "runtimeGraphFingerprints": [
+    "dedd235058b4b45fb57e67c9443040dc655799793adda94e8ab83a65a2cd3301",
+    "d0c484d537134ca9af85e0e07ff515c8fb722b63240adaedd223e95ddb8a4e44",
+    "4801a6599f3651b42bbae772f6acb25169705342782d2ad23f310da5c3b38051"
+  ],
+  "sources": [
+    {
+      "path": "corpus/probes/DotfuscatorResources/DotfuscatorResources.csproj",
+      "sha256": "ea6f805744c3d73ed04b910dbee394c6c01cc25c8e1ec1aef603b82e54535804"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResources/Program.cs",
+      "sha256": "011dc4e03991710a4e9b359666faa688741381e6f889a705de260dd51b96c538"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResources/Secrets.resx",
+      "sha256": "4aad14f8188c9975f0a5b9b7613dddfc82dd8136fcd746c84fb5fd014d646576"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResources/Raw.txt",
+      "sha256": "7581ee572bdd69c6144f1c7f4a3563f3a4330eae9a72d9bbbf3f09d963f65fb0"
+    },
+    {
+      "path": "corpus/probes/dotfuscator-resources.ps1",
+      "sha256": "5e603fd74b5194f9d073ee59b96a48be185c2fa7bd48beb0190b8fc7e5bdb88e"
+    }
+  ],
+  "fixtures": [
+    {
+      "Framework": "net48",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "f08f4da6961b9fe2064537cbcb4b809d81cbcf3b95031bb0df3c52adea5e7395",
+      "OracleSha256": "7133c0a2149dda70409d877475e5e4214fe14f9b006461ccb36b411a110c320b",
+      "ProtectedSha256": "8a6700f3e824d53d23f81e1887d63f3cfa58f3271dc2a0d9a9720a69691992a5"
+    },
+    {
+      "Framework": "net8.0",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "df68b9909ebd04f5733a31e0754e58d7e3b15b0cc3bf0e5070e80a16502bf8a5",
+      "OracleSha256": "6fe092725a312048a6b1b533c7d22954aaa3714793cf64f2b37c90c92e839c80",
+      "ProtectedSha256": "90b7c4a40710cd1f792adda0b32bcb503c3bf58fad61034216bef6c383251968"
+    },
+    {
+      "Framework": "net10.0",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "40e933fcf9006827b858fc18d2dfc9915535dc73d162c4abd570e65f0cc1ea5c",
+      "OracleSha256": "9f139fa5e4df2e75edab68f6cc8c9ff59490b4ddeccae5aa85f24692bd999016",
+      "ProtectedSha256": "532b557c11b11a77a37187c45297a87c162f1abd54c1f42c52212c961e681038"
+    }
+  ],
+  "runtimeRetirement": {
+    "capturedAt": "2026-10-19",
+    "captures": 9,
+    "removedTypes": 18,
+    "runtimeComparisonsPassed": 9,
+    "recoveryDirectory": "cleaned_retirement_complete",
+    "runtimeEvidence": "C:/cilantro-verify/dotfuscator/resource-retirement-runtime-evidence.json",
+    "runtimeEvidenceSha256": "2bed83eea763b1ef291acb4ef6dd7befb76fb5e18fe2561b6837dbe71e24cf6a",
+    "focusedTestsPassed": 63,
+    "focusedTestLog": "C:/cilantro-verify/dotfuscator/resource-retirement-focused.log",
+    "fullTestLog": "C:/cilantro-verify/dotfuscator/resource-retirement-full.log",
+    "fullTestStatus": "passed",
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorResourceRuntime.cs",
+        "sha256": "2c562a3db36b7f29be098829601da6adaf3aeb04c5b76917215e9c3b1b807b18"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeMetadata.cs",
+        "sha256": "425ea3e24814bb5b0e0d66c294c17fb57dbba9dc433748c6fe04256a93508632"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorNativeRuntime.cs",
+        "sha256": "1d05c9b7d6ecfc088104d4bb8bf4d52668fe973967d9aa660b30f1034cdba6fd"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorResourcePass.cs",
+        "sha256": "f2890c51b90aa9f508315cdc86c56f570732c6d0b54d8568365e5d160391fa88"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "1dc0ffc095253c48f5ede2c8958010202db67dfb3951f3f30ecb7256bfde17f0"
+      },
+      {
+        "path": "tests/Cilantro.Tests/DotfuscatorResourceRetirementTests.cs",
+        "sha256": "bffa3681a6c47b3a12c7225c89b8c296436dcbf554c463ba2d9194febd38f90a"
+      },
+      {
+        "path": "corpus/probes/dotfuscator-resources.ps1",
+        "sha256": "5e603fd74b5194f9d073ee59b96a48be185c2fa7bd48beb0190b8fc7e5bdb88e"
+      },
+      {
+        "path": "corpus/probes/dotfuscator-resource-types.ps1",
+        "sha256": "20965461a016767f468a38f2e7e17d2c083adf239a37d123780a7cc865403b1b"
+      },
+      {
+        "path": "corpus/probes/dotfuscator-satellite-resources.ps1",
+        "sha256": "ea43461501d88fffa6ea68af46e907c477e48c2fbe7e176530f3b8ac723ebf39"
+      }
+    ],
+    "limits": "Only the reviewed 7.9 families qualify. Surviving type references, literal type-name reflection and changed family metadata/code veto retirement.",
+    "fullTestsPassed": 3464,
+    "fullTestsSkipped": 37,
+    "fullTestsFailed": 0,
+    "fullTestsTotal": 3501,
+    "combinationValidation": "corpus/dotfuscator-7-resource-interactions.provenance.json"
+  }
+}

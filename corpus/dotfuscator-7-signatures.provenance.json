@@ -1,0 +1,299 @@
+{
+  "capturedAt": "2026-10-20",
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "manifest": "corpus/dotfuscator-7-signatures.manifest.json",
+  "description": "Native-key v2 context formatting validated on generic methods/returns/owners, constructed and nested types, vectors, jagged and multidimensional arrays, byrefs, pointers, Unicode method names and constructors. CoreCLR function-pointer parameters now recover using the empty Type.Name supplied by the reviewed runtime.",
+  "sources": [
+    {
+      "path": "corpus/probes/DotfuscatorSignatures/DotfuscatorSignatures.csproj",
+      "sha256": "e20e616305dbf96a4d3a4333c3d7016b44d19a577d11a2d5c5f060f4fdfe9ae4"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSignatures/Program.cs",
+      "sha256": "a473bcb7083e46936c9aefa5b67fad5f902abb7d41cc56a6dc4865cacaa76360"
+    },
+    {
+      "path": "corpus/probes/dotfuscator-signatures.ps1",
+      "sha256": "5b62a57358d8bf5d9881bd1daa590dd3a58e57060d34be0bac6e03b09f5b51ea"
+    },
+    {
+      "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+      "sha256": "d093dfea891ea60a595d2193fef4dbe867068d657479150e4f402b66478cdb4c"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorV2Tests.cs",
+      "sha256": "afc642f6b92d6b7854decec540650debc27426f6501370d6b20dd5361bbfb164"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorSignatureCorpusTests.cs",
+      "sha256": "c0c793812694604b64fad2621a37bbf520f4f3c62b6d4ddfa292a82be96af67e"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "net48-all-signatures",
+      "capture": {
+        "Id": "net48-all-signatures",
+        "Framework": "net48",
+        "Profile": "all-signatures",
+        "ExpectedSites": 19,
+        "CompilerVersion": "7.9.0.0",
+        "CompilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "9785f33efb1bcdf2d2c600e687b713b1c2984f8d2c358f695695815f390202ac",
+        "OracleSha256": "60ee745d216cbd7a0d66b63a8ce12473903f80edbe1aa4fa23cbe7b5ec78fefd",
+        "ProtectedSha256": "ab671f15b8ffc015eaf93fae2f01087e274955e9106fef04e5c98ac20560eb9d"
+      },
+      "recoveredSites": 19,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "protectedCleanedMatch": true,
+      "sourceCleanedMatch": false,
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net48-all-signatures\\protected\\environment0f617e02.bin",
+        "sha256": "8c6f0038567ba0bf37e6196eb42869f86e0b9ecae68fd96fb5eaaff976dfbedd"
+      },
+      "native": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net48-all-signatures/protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+        "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+      },
+      "recovery": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net48-all-signatures/cleaned-recovery.json",
+        "sha256": "4e437dd8a73d6477b51de38799c2f16de65309b9606bf2c1a51ab7bc827f5c25"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net48-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.exe",
+        "sha256": "12568bb9ced809d67e0108d1e1c191169a9bc860632b9b8a15f11cce9a023ee6"
+      }
+    },
+    {
+      "id": "net48-renamed-reviewed",
+      "capture": {
+        "Id": "net48-renamed-reviewed",
+        "Framework": "net48",
+        "Profile": "renamed-reviewed",
+        "ExpectedSites": 17,
+        "CompilerVersion": "7.9.0.0",
+        "CompilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "7537810ba30e406f69af72af038a1022ac8ceb6bf161b10679e78bf3b78e2aeb",
+        "OracleSha256": "60ee745d216cbd7a0d66b63a8ce12473903f80edbe1aa4fa23cbe7b5ec78fefd",
+        "ProtectedSha256": "8a45e81845edc5bf9a6976957f1daabb339d141ccd4f023b2fdcad65a31bc0f7"
+      },
+      "recoveredSites": 17,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "protectedCleanedMatch": true,
+      "sourceCleanedMatch": true,
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net48-renamed-reviewed\\protected\\environment0f617e02.bin",
+        "sha256": "bff6dd0deffb3798278e5edd3613c706d61ff61cdb3677e0343ecb36dccbff09"
+      },
+      "native": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net48-renamed-reviewed/protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+        "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+      },
+      "recovery": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net48-renamed-reviewed/cleaned-recovery.json",
+        "sha256": "06bb5ca2735d7d55b07e0ebe049dd1f42251c02aabf995499b5bb997c7ce6ed6"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net48-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.exe",
+        "sha256": "2535f39201c19cf42e44c2cd81562f50395d4795ca8b5f52bd06668023b4e7cb"
+      }
+    },
+    {
+      "id": "net8.0-all-signatures",
+      "capture": {
+        "Id": "net8.0-all-signatures",
+        "Framework": "net8.0",
+        "Profile": "all-signatures",
+        "ExpectedSites": 20,
+        "CompilerVersion": "7.9.0.0",
+        "CompilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "510ca412df190384e9550ee74687746324e8711c8e3d612d156f7a8109a0a360",
+        "OracleSha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+        "ProtectedSha256": "762d5b9871f5c016286d653ce6a4f464d1330c6dffe34feb16df95899c341e5f"
+      },
+      "recoveredSites": 20,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "protectedCleanedMatch": true,
+      "sourceCleanedMatch": false,
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-all-signatures\\protected\\environment0f617e02.bin",
+        "sha256": "826e199cf9278bc99b701f4e98a27d60b51ed077f5ac1b9be5dcfcad73de7cb6"
+      },
+      "native": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net8.0-all-signatures/protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+        "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+      },
+      "recovery": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net8.0-all-signatures/cleaned-recovery.json",
+        "sha256": "dd37f9fdd14cab94b446442f4ca02f77dfe8e9ff107332ca463d72e0fbd8e184"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "a9423ef1cceb0099ba7d037128b3843d61dd33eea503a55ed486d9233cd38460"
+      }
+    },
+    {
+      "id": "net8.0-renamed-reviewed",
+      "capture": {
+        "Id": "net8.0-renamed-reviewed",
+        "Framework": "net8.0",
+        "Profile": "renamed-reviewed",
+        "ExpectedSites": 17,
+        "CompilerVersion": "7.9.0.0",
+        "CompilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "2bdc7cd60de091bb91664d8c8e379636617483fad07ec455d0334af37a2b1d5f",
+        "OracleSha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+        "ProtectedSha256": "dc0bd274fee63ac219dabde5bcf34ff2b5f834509e856788e313cf63c9d039e4"
+      },
+      "recoveredSites": 17,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "protectedCleanedMatch": true,
+      "sourceCleanedMatch": true,
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-renamed-reviewed\\protected\\environment0f617e02.bin",
+        "sha256": "74fb1477dcfe7b1b37c0336d393a4bedc50beabc66eef2401b9d454e48f18bb5"
+      },
+      "native": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net8.0-renamed-reviewed/protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+        "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+      },
+      "recovery": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net8.0-renamed-reviewed/cleaned-recovery.json",
+        "sha256": "05e9b3675b185b0f92f12f60f50e1ef1eb4465c09eb7bb0070576881bc9c8e6a"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net8.0-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "6a44a343b17ebce4a27b0b9e0a344e3c51f623d895702bc9a2e0a16d71c312ae"
+      }
+    },
+    {
+      "id": "net10.0-all-signatures",
+      "capture": {
+        "Id": "net10.0-all-signatures",
+        "Framework": "net10.0",
+        "Profile": "all-signatures",
+        "ExpectedSites": 20,
+        "CompilerVersion": "7.9.0.0",
+        "CompilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "0c1695f50daefee55ff18f3c2f1a056fc19b7065ab55582f9262cd3676d7c576",
+        "OracleSha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+        "ProtectedSha256": "14fb8e4784339738c8e4e9f3ae316e53e226b69318acf1155116d942c43cb116"
+      },
+      "recoveredSites": 20,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "protectedCleanedMatch": true,
+      "sourceCleanedMatch": false,
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-all-signatures\\protected\\environment0f617e02.bin",
+        "sha256": "6afbf56fd8e961e47c5996bebbe043a982a0d5d39c9268ab8b5ec952f1e1f460"
+      },
+      "native": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net10.0-all-signatures/protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+        "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+      },
+      "recovery": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net10.0-all-signatures/cleaned-recovery.json",
+        "sha256": "51dd309f80f7423eeac54a045ed081cffa98ddc5754b359b2cedc9c71809dc70"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-all-signatures\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5752ad21c6de1a45fc253b1af870be4f1652a7cb0736b4f601c1f06169d8b55e"
+      }
+    },
+    {
+      "id": "net10.0-renamed-reviewed",
+      "capture": {
+        "Id": "net10.0-renamed-reviewed",
+        "Framework": "net10.0",
+        "Profile": "renamed-reviewed",
+        "ExpectedSites": 17,
+        "CompilerVersion": "7.9.0.0",
+        "CompilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "ConfigSha256": "18277f08f5efd8d717a496dd3a2fea7cc8d544cc7a6a190fc643d04df3712e22",
+        "OracleSha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+        "ProtectedSha256": "6acb1a38012bb867962ab84eb1d90db1f35892430f9e24c17f8a84f041ea456c"
+      },
+      "recoveredSites": 17,
+      "remainingSwitchDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "runtimeTypesRemoved": 1,
+      "protectedCleanedMatch": true,
+      "sourceCleanedMatch": true,
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-renamed-reviewed\\protected\\environment0f617e02.bin",
+        "sha256": "bc03d6dfad545e3444801848bf245a142ec2df933e3d296a885abe9c8e03d26d"
+      },
+      "native": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net10.0-renamed-reviewed/protected/runtimes/win-x64/native/Runtime.Extensions.dll",
+        "sha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2"
+      },
+      "recovery": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-corpus/net10.0-renamed-reviewed/cleaned-recovery.json",
+        "sha256": "276be00d3e21cb38e7796ecc9d3391235f35a11707be65011292a75bd68cd212"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\signature-corpus\\net10.0-renamed-reviewed\\cleaned\\DotfuscatorSignatures.cleaned.dll",
+        "sha256": "5b7da3c1e7565a2d096b71e9005ef343ad10ceb0cfa80385991735d2c618a55b"
+      }
+    }
+  ],
+  "validation": {
+    "captures": 6,
+    "recoveredSites": 110.0,
+    "protectedCleanedComparisons": 6,
+    "sourceProtectedCleanedComparisons": 3,
+    "differentialNet48IlVerificationComparisons": 2,
+    "behavior": {
+      "path": "C:/cilantro-verify/dotfuscator/signature-corpus/cleaned-behavior.json",
+      "sha256": "1b89036c86fbdeedcbd12b9a2a19f263c24116e8332ed323adb24bbbafe19e06"
+    },
+    "focusedTests": {
+      "path": "C:/cilantro-verify/dotfuscator/signature-exploration/corpus-tests.log",
+      "sha256": "8d0230c6484beccd58912dc2dbab3a79a984813cf5e213b734d38addf9747a1a"
+    },
+    "focusedPassed": 9,
+    "reflectionTypeName": {
+      "path": "C:/cilantro-verify/dotfuscator/signature-exploration/reflection-name-evidence.jsonl",
+      "sha256": "1d06453a61e82b28f49bd511b3181ebe161332e7238c85ab77fba545c8d42f0e"
+    },
+    "fullSuite": {
+      "passed": 3596,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3633,
+      "duration": "6 m 58 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/signature-exploration/full-tests.log",
+        "sha256": "9a1126e0bbc185b8fa6c3ea7a422ca30d488a03eb48a69eff9a51c76aeea4871"
+      }
+    }
+  },
+  "producerControls": {
+    "description": "All-signature controls preserve exact protected output, including producer-corrupted ciphertext. Reviewed renamed profiles leave those methods unencrypted, giving complete three-way source equivalence.",
+    "net48CorruptedMethods": [
+      "Matrix",
+      "Pointer"
+    ],
+    "coreClrCorruptedMethods": [
+      "Matrix",
+      "Pointer",
+      "FunctionPointer"
+    ],
+    "policy": "Producer failures are corpus observations. No original plaintext or source types are guessed by recovery."
+  },
+  "limitations": [
+    "Function-pointer formatting is attributed only to reviewed System.Runtime 8/10 scopes. Legacy function-pointer naming remains unproved.",
+    "The v2 native bridge and supplied signed environment must still pass their existing authentication gates.",
+    "Other native builds and unreviewed metadata layouts remain outside these captures."
+  ]
+}

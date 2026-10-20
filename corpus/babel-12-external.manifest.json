@@ -1,0 +1,103 @@
+{
+  "manifestVersion": 1,
+  "profile": "babel-12-external",
+  "description": "Three licensed Babel 12.1 external method-code captures with source-built oracles and hash-pinned .eil companions. Explicit data-only snapshots feed bounded interpretation; restored bodies, zero encrypted stubs, resource parity and runtime behavior are verified.",
+  "samples": [
+    {
+      "id": "net48-oracle",
+      "tier": "oracle",
+      "sha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "localName": "babel-12-external/net48-external/oracle/BabelCodeSources.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-external",
+      "tier": "profiled",
+      "sha256": "804d518ccdb06b6b7ddde1f3e7374dbe59e2e4ef869df0e099a0466f66b52b77",
+      "localName": "babel-12-external/net48-external/protected/BabelCodeSources.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "Pkkin"
+      ],
+      "babelCodeSources": [
+        {
+          "localName": "babel-12-external/net48-external/protected/probe-code.eil",
+          "sha256": "e84a859b96d34e3345b4a1630bb6fbc5b6468fce333191fb972fa31b5c100dfc"
+        }
+      ]
+    },
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "localName": "babel-12-external/net8.0-external/oracle/BabelCodeSources.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-external",
+      "tier": "profiled",
+      "sha256": "e009bdd07087c1100e9623664f136d76f5be6cde0e6fd833120ec889b7bff2e8",
+      "localName": "babel-12-external/net8.0-external/protected/BabelCodeSources.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "NIYt"
+      ],
+      "babelCodeSources": [
+        {
+          "localName": "babel-12-external/net8.0-external/protected/probe-code.eil",
+          "sha256": "41e9e71a8c5d0f1ac71dea7728e6405e0d071e2e90b787204f10013ced5d25cd"
+        }
+      ]
+    },
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "localName": "babel-12-external/net10.0-external/oracle/BabelCodeSources.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-external",
+      "tier": "profiled",
+      "sha256": "3200dbb3ba850104b7180ebe7268a682ad23d35bc4e39fd510cf7a2b12a1dba6",
+      "localName": "babel-12-external/net10.0-external/protected/BabelCodeSources.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "NIYt"
+      ],
+      "babelCodeSources": [
+        {
+          "localName": "babel-12-external/net10.0-external/protected/probe-code.eil",
+          "sha256": "b3aff4e9a5cb25e5237c07d989f0ea846257119649845346f79d8ade2761cd6a"
+        }
+      ]
+    }
+  ]
+}

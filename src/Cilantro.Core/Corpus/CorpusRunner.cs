@@ -61,7 +61,16 @@ public sealed record CorpusSample(
     IReadOnlyList<string>? ExpectedDecodedResourceSha256 = null,
     bool Devirtualize = false,
     int? MinimumProxyCallsRestored = null,
-    IReadOnlyList<string>? ExpectedMissingResourceNames = null);
+    IReadOnlyList<string>? ExpectedMissingResourceNames = null,
+    int? MinimumNeutralizedCheckSites = null,
+    int? MinimumMaterializedHashStrings = null,
+    IReadOnlyList<string>? ExpectedRetiredResourceNames = null,
+    int? MinimumRetiredProxyInitializers = null,
+    int? MinimumLateProxyCallSites = null,
+    int? MinimumRecoveredNumericArrays = null,
+    IReadOnlyList<CorpusDataFile>? BabelCodeSources = null);
+
+public sealed record CorpusDataFile(string LocalName, string Sha256);
 
 public sealed record CorpusSampleOutcome(
     string Id,
@@ -156,6 +165,16 @@ public static class CorpusRunner
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
             throw new InvalidDataException($"Duplicate corpus id '{duplicate.Key}'.");
+        foreach (var sample in manifest.Samples)
+        {
+            if (sample.BabelCodeSources is not { } files) continue;
+            if (files.Count > 16 || files.Any(file => file is null || string.IsNullOrEmpty(file.LocalName) || Path.IsPathRooted(file.LocalName) ||
+                file.LocalName.Split(['/', '\\']).Any(part => part is "" or "." or "..") ||
+                !StaticMachineState.ValidCompanionName(Path.GetFileName(file.LocalName)) ||
+                file.Sha256 is not { Length: 64 } || file.Sha256.Any(c => !char.IsAsciiHexDigit(c))) ||
+                files.Select(file => Path.GetFileName(file.LocalName)).Distinct(StringComparer.OrdinalIgnoreCase).Count() != files.Count)
+                throw new InvalidDataException($"Invalid Babel code-source catalog in sample '{sample.Id}'.");
+        }
         return manifest;
     }
 
@@ -247,6 +266,19 @@ public static class CorpusRunner
         var hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
         if (!hash.Equals(sample.Sha256, StringComparison.OrdinalIgnoreCase))
             return FailedHash(sample, hash);
+        var codeSources = new List<string>();
+        foreach (var file in sample.BabelCodeSources ?? [])
+        {
+            var companion = Path.GetFullPath(Path.Combine(sampleDirectory, file.LocalName));
+            if (!File.Exists(companion)) return CodeSourceFailure(sample, hash, "missing", $"Missing Babel code source: {file.LocalName}");
+            if ((File.GetAttributes(companion) & System.IO.FileAttributes.ReparsePoint) != 0)
+                return CodeSourceFailure(sample, hash, "failed", $"Babel code source is a link: {file.LocalName}");
+            using var stream = File.OpenRead(companion);
+            if (stream.Length is <= 0 or > 16 * 1024 * 1024 ||
+                !Convert.ToHexStringLower(SHA256.HashData(stream)).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
+                return CodeSourceFailure(sample, hash, "failed", $"Babel code-source SHA-256 or size mismatch: {file.LocalName}");
+            codeSources.Add(companion);
+        }
 
         var analysisOnly = sample.Tier is "negative" or "exploratory";
         var sampleOutputDirectory = Path.Combine(outputDirectory, sample.Id);
@@ -271,7 +303,7 @@ public static class CorpusRunner
                 .ToArray(),
             DeclarationsPath: Beside(manifestDirectory, sample.Declarations),
             AllowDeclaredCalls: sample.AllowDeclaredCalls,
-            Strict: strict));
+            Strict: strict) { BabelCodeSourceFiles = codeSources });
         var capabilities = result.Report.Evidence
             .Where(evidence => evidence.Category == "capability")
             .Select(evidence => evidence.Message)
@@ -282,6 +314,13 @@ public static class CorpusRunner
         // which was true while there was one protector and silently wrong once there were two.
         var detected = result.Report.Protector;
         var diagnostics = new List<string>();
+        foreach (var file in sample.BabelCodeSources ?? [])
+        {
+            if (!result.Report.Evidence.Any(e => e.Category == "babel-code-source" &&
+                e.Message.StartsWith($"Explicit data-only companion {Path.GetFileName(file.LocalName)}:", StringComparison.Ordinal) &&
+                e.Message.Contains("SHA-256 " + file.Sha256.ToLowerInvariant() + ";", StringComparison.Ordinal)))
+                diagnostics.Add($"The analyzed Babel code-source snapshot did not match its pinned hash: {file.LocalName}");
+        }
         if (detected != sample.ExpectedDetection)
             diagnostics.Add($"Expected detection {sample.ExpectedDetection}, observed {detected}.");
         var missingCapabilities = sample.ExpectedCapabilities
@@ -319,6 +358,31 @@ public static class CorpusRunner
         }
         if (sample.MinimumProxyCallsRestored is int proxyMinimum && result.Report.Recovery.ProxyCallsRestored < proxyMinimum)
             diagnostics.Add($"Recovered proxy calls {result.Report.Recovery.ProxyCallsRestored} is below {proxyMinimum}.");
+        if (sample.MinimumNeutralizedCheckSites is int checkMinimum)
+        {
+            var checks = result.Report.Passes.Where(pass => pass.Pass is "dotfuscator-checks" or "babel-checks" && pass.Status == PassStatus.Success).Sum(pass => pass.Changes);
+            if (checks < checkMinimum) diagnostics.Add($"Neutralized check sites {checks} is below {checkMinimum}.");
+        }
+        if (sample.MinimumMaterializedHashStrings is int hashMinimum)
+        {
+            var strings = result.Report.Passes.Where(pass => pass.Pass == "babel-hash-strings" && pass.Status == PassStatus.Success).Sum(pass => pass.Changes);
+            if (strings < hashMinimum) diagnostics.Add($"Materialized hash strings {strings} is below {hashMinimum}.");
+        }
+        if (sample.MinimumRetiredProxyInitializers is int initializerMinimum)
+        {
+            var retired = result.Report.Passes.Where(pass => pass.Pass == "babel-proxy-initialization" && pass.Status == PassStatus.Success).Sum(pass => pass.Changes);
+            if (retired < initializerMinimum) diagnostics.Add($"Retired proxy initializers {retired} is below {initializerMinimum}.");
+        }
+        if (sample.MinimumLateProxyCallSites is int lateMinimum)
+        {
+            var completed = result.Report.Passes.Where(pass => pass.Pass == "babel-proxy-inlining" && pass.Status == PassStatus.Success).Sum(pass => pass.Changes);
+            if (completed < lateMinimum) diagnostics.Add($"Completed proxy call sites {completed} is below {lateMinimum}.");
+        }
+        if (sample.MinimumRecoveredNumericArrays is int arrayMinimum)
+        {
+            var arrays = result.Report.Passes.Where(pass => pass.Pass == "babel-numeric-arrays" && pass.Status == PassStatus.Success).Sum(pass => pass.Changes);
+            if (arrays < arrayMinimum) diagnostics.Add($"Recovered numeric arrays {arrays} is below {arrayMinimum}.");
+        }
         if (sample.ExpectedMissingResourceNames is { Count: > 0 } missingResourceNames)
         {
             using var original = ModuleDefMD.Load(path);
@@ -326,6 +390,13 @@ public static class CorpusRunner
                 if (original.Resources.Any(resource => resource.Name == missingName) || !result.Report.Passes.Any(pass =>
                         pass.Diagnostics.Any(note => note.Contains($"Resource '{missingName}' is not registered", StringComparison.Ordinal))))
                     diagnostics.Add($"Expected absent input resource {missingName} was not identified as unavailable by recovery.");
+        }
+        if (sample.ExpectedRetiredResourceNames is { Count: > 0 } retiredNames && result.OutputPath is { } cleaned)
+        {
+            using var output = ModuleDefMD.Load(cleaned);
+            foreach (var name in retiredNames)
+                if (output.Resources.Any(resource => resource.Name == name))
+                    diagnostics.Add($"Retired protector resource {name} remains in the emitted assembly.");
         }
 
         OracleComparison? oracle = null;
@@ -803,4 +874,8 @@ public static class CorpusRunner
         new(sample.Id, sample.Tier, "failed", actual, false, "unknown", [], [],
             new RecoveryReportMetrics(0, 0, 0, 0, 0), null, null,
             [$"SHA-256 mismatch; expected {sample.Sha256}."]);
+
+    private static CorpusSampleOutcome CodeSourceFailure(CorpusSample sample, string hash, string status, string diagnostic) =>
+        new(sample.Id, sample.Tier, status, hash, true, "unknown", [], [],
+            new RecoveryReportMetrics(0, 0, 0, 0, 0), null, null, [diagnostic]);
 }

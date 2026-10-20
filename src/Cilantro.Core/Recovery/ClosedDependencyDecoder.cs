@@ -205,7 +205,7 @@ internal static class ClosedDependencyDecoder
 
     private static bool Framework(IMethod method, ModuleDef module)
     {
-        if (method.DeclaringType is not TypeRef type || type.DefinitionAssembly?.FullName != module.CorLibTypes.AssemblyRef.FullName) return false;
+        if (method.DeclaringType is not TypeRef type || !DependencyFrameworkScope.Matches(type, module)) return false;
         return method.FullName is
             "System.Void System.Object::.ctor()" or "System.Void System.InvalidOperationException::.ctor()" or
             "System.Void System.IDisposable::Dispose()" or

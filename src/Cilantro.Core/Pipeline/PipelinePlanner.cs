@@ -29,7 +29,20 @@ public static class PipelinePlanner
         "constant-predicates",
         "constant-strings",
         "babel-literal-strings",
+        "dotfuscator-literal-strings",
+        "dotfuscator-native-strings",
+        "dotfuscator-resources",
+        "dotfuscator-checks",
+        "dotfuscator-control-flow",
         "babel-proxies",
+        "babel-checks",
+        "babel-method-images",
+        "babel-resource-restoration",
+        "babel-hash-strings",
+        "babel-proxy-initialization",
+        "babel-proxy-inlining",
+        "babel-numeric-arrays",
+        "babel-numeric-array-cleanup",
         "global-predicate-folding",
         "global-predicate-recheck",
         "dispatcher-deobfuscation",
@@ -82,6 +95,7 @@ public static class PipelinePlanner
         "reactor-detection" or
         "confuserex-detection" or
         "babel-detection" or
+        "dotfuscator-detection" or
         "protector-identity" or
         "method-protection" or
         "field-rva-recovery" or
@@ -98,7 +112,20 @@ public static class PipelinePlanner
         "constant-predicates" or
         "constant-strings" or
         "babel-literal-strings" or
+        "dotfuscator-literal-strings" or
+        "dotfuscator-native-strings" or
+        "dotfuscator-resources" or
+        "dotfuscator-checks" or
+        "dotfuscator-control-flow" or
         "babel-proxies" or
+        "babel-checks" or
+        "babel-method-images" or
+        "babel-resource-restoration" or
+        "babel-hash-strings" or
+        "babel-proxy-initialization" or
+        "babel-proxy-inlining" or
+        "babel-numeric-arrays" or
+        "babel-numeric-array-cleanup" or
         "confuserex-constants" or
         "global-predicate-folding" or
         "dispatcher-deobfuscation" or

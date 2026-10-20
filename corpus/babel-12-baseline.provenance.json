@@ -1,0 +1,1558 @@
+{
+  "capturedAt": "2026-10-19",
+  "compiler": "Babel Obfuscator 12.1.0.0 Enterprise floating trial",
+  "description": "Benign source-built UTF-8 probes: XOR/hash strings, inline values, embedded resources, dynamic proxies, control flow, encrypted methods, debugging/tamper checks and combined protection. License keys are excluded from fixtures and logs.",
+  "runtimeComparisons": 27,
+  "runtimeComparisonsPassed": 27,
+  "differentialNet48IlVerifyComparisons": 9,
+  "sources": [
+    {
+      "path": "corpus/probes/BabelProbe/BabelProbe.csproj",
+      "sha256": "78c3bce757347b068c49b1a1401436b4565e295979c89f94bfc9642fe0bf0003"
+    },
+    {
+      "path": "corpus/probes/BabelProbe/Program.cs",
+      "sha256": "ec4d66190cdcf2c59edc5f6b002c523131c1bfff6a1c2c8c4658677ba2c766d9"
+    },
+    {
+      "path": "corpus/probes/BabelProbe/Secret.txt",
+      "sha256": "55b9b921378bd858ab954ee0e81f05165ca23ebdac6a134674ab76312da231dd"
+    },
+    {
+      "path": "corpus/probes/babel.ps1",
+      "sha256": "1c4baaeee886dd96af7f8b2974f01f5a8d04491d162376af57ec6c3e2acbc627"
+    }
+  ],
+  "fixtures": [
+    {
+      "Id": "net10.0-checks",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--antidebugging",
+        "--tamperingdetection"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "f5dc4b9d50fd705ee5fd3a0765439e55605b49bf20f170fa1e1e4a2594961a68"
+    },
+    {
+      "Id": "net10.0-code",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelProbe\\.Program::Encrypted"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "36cca5d0a58a83bf624d6ee1a0be1aee6766f708b5fedf7fe42077770d5776d2"
+    },
+    {
+      "Id": "net10.0-combined",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "hash",
+        "--valueencryption",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on",
+        "--msilencryption",
+        "BabelProbe\\.Program::Encrypted",
+        "--antidebugging",
+        "--tamperingdetection"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "84a6e77c649153e97aac57fd93a4482e7f5ea1d2ce1b6781022c61e199a4f833"
+    },
+    {
+      "Id": "net10.0-flow",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--controlflow",
+        "switch=on",
+        "--controlflow",
+        "case=on"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "3a4c0b34d0a837e9b32a841263c840c755decff2ecb3cde17926665f70495371"
+    },
+    {
+      "Id": "net10.0-proxies",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--proxy",
+        "all"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "2764c249549c45ea5907ef1fb399ae954f8cf2ba2e729b785736937cf306eb59"
+    },
+    {
+      "Id": "net10.0-resources",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--resourceencryption"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "a8b4fb6c1d435c9d3882249e46852ef9a19e46da161d08a76afdedd0e0244a3f"
+    },
+    {
+      "Id": "net10.0-strings-hash",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "hash"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "795f08f26132c72831e0bbff0946940e22b9f00aa2eeb06e0d1f34f1772ee35e"
+    },
+    {
+      "Id": "net10.0-strings-xor",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "xor"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "3bf01836740c31367217c84a567291922a43763393055fabf57990e6204c6860"
+    },
+    {
+      "Id": "net10.0-values",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--valueencryption"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "ProtectedSha256": "2e9ca3b9214678bd4ae91d71fcebaa308c853927caaf1cfc5c2de6cfdc85bf7c"
+    },
+    {
+      "Id": "net48-checks",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--antidebugging",
+        "--tamperingdetection"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "48c4e15446f2939edc972d70a60862becf5df8ef4be9149dff9cb4ba9fb1247b"
+    },
+    {
+      "Id": "net48-code",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelProbe\\.Program::Encrypted"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "d6afb60322dda535753c694bdbd605a35230b69fe9d63160c698484306888665"
+    },
+    {
+      "Id": "net48-combined",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "hash",
+        "--valueencryption",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on",
+        "--msilencryption",
+        "BabelProbe\\.Program::Encrypted",
+        "--antidebugging",
+        "--tamperingdetection"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "cee36c6888ce5ff4e3d2b24141d344a6ab3426475d9b47183d90fd2e42ca8e10"
+    },
+    {
+      "Id": "net48-flow",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--controlflow",
+        "switch=on",
+        "--controlflow",
+        "case=on"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "851f02e2d18f4da92f23c86491d24ffaf90c075744651f403f123ccc73d4e2f8"
+    },
+    {
+      "Id": "net48-proxies",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--proxy",
+        "all"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "a03716a29189ca9328c880d7e978111f1755348580cc0ab0ddf8957b0302d17e"
+    },
+    {
+      "Id": "net48-resources",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--resourceencryption"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "0f4b737a3f7e21c75797fd204a70b105d26127dbfa50021ce6d51bc2f3d522df"
+    },
+    {
+      "Id": "net48-strings-hash",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "hash"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "2b1ac121a94bbcabefb4f995ae5cf51510c797552d9a002889a0bf36e88acf4b"
+    },
+    {
+      "Id": "net48-strings-xor",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "xor"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "f7775cbf1d4402576a175ae7d1b5233a8a81933497ba05cfce7b8dde22f7579e"
+    },
+    {
+      "Id": "net48-values",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--valueencryption"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "ProtectedSha256": "35162f1f4cc30e73079b504aca64b861f3abd1242db3af09b4d0ba9636416986"
+    },
+    {
+      "Id": "net8.0-checks",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--antidebugging",
+        "--tamperingdetection"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "2a0d187dbd5173b5c0097c6a94a5f32fb31e872e78e379e9ce4cd2bf808ba714"
+    },
+    {
+      "Id": "net8.0-code",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelProbe\\.Program::Encrypted"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "01a9bda225f0ac859887b2051ae6ecf3bdfea069beacfd0028adbd777600f214"
+    },
+    {
+      "Id": "net8.0-combined",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "hash",
+        "--valueencryption",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on",
+        "--msilencryption",
+        "BabelProbe\\.Program::Encrypted",
+        "--antidebugging",
+        "--tamperingdetection"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "b0b431b1badb009e29bea94ef663690a4e42b88016044c21de7098fa96272576"
+    },
+    {
+      "Id": "net8.0-flow",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--controlflow",
+        "switch=on",
+        "--controlflow",
+        "case=on"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "baa75b68bb91995a29264fcfc275cd8003d2e619ab96225f64273cdd69a6725c"
+    },
+    {
+      "Id": "net8.0-proxies",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--proxy",
+        "all"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "c767ca5022fa5f7b92a78567e06f5999c36467448961eca6cd3e8eba2115462c"
+    },
+    {
+      "Id": "net8.0-resources",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--resourceencryption"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "f9ad1a4fe904a02011027dc3c179f81cceff0944fa48030648c5651a3843cbc8"
+    },
+    {
+      "Id": "net8.0-strings-hash",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "hash"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "2cb149f4d64e24dcef7d899a743a4531ed9e9c00835b5255d826f133551bc3db"
+    },
+    {
+      "Id": "net8.0-strings-xor",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "xor"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "60243e70b60633fca20f27397c9dea813ca8ce95cfd028015b76c9f7bdf2efd4"
+    },
+    {
+      "Id": "net8.0-values",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--valueencryption"
+      ],
+      "BabelVersion": "12.1.0.0",
+      "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "ProtectedSha256": "4c5432ea2d2dd64ac8e6662d8dcddb202c7c6dd3243e2199a1337849dce630a9"
+    }
+  ],
+  "unavailable": [
+    {
+      "Id": "net10.0-strings-stream",
+      "Available": false,
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "stream"
+      ],
+      "Reason": "Protection component unavailable in the supplied license",
+      "BabelVersion": "12.1.0.0"
+    },
+    {
+      "Id": "net48-strings-stream",
+      "Available": false,
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "stream"
+      ],
+      "Reason": "Protection component unavailable in the supplied license",
+      "BabelVersion": "12.1.0.0"
+    },
+    {
+      "Id": "net8.0-strings-stream",
+      "Available": false,
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--stringencryption",
+        "stream"
+      ],
+      "Reason": "Protection component unavailable in the supplied license",
+      "BabelVersion": "12.1.0.0"
+    }
+  ],
+  "limitations": [
+    "This manifest is a measured partial-recovery baseline, not full unprotection. Matching execution may retain and execute generated protection.",
+    "Unreviewed generic-owner layouts, argument/body shapes, code-bearing/unreviewed resource choosers and complete runtime/data retirement remain incomplete. Reference-type instance, canonical sealed generic-owner and primitive/reference byref recovery is covered by the method-shape corpus.",
+    "Reviewed resource-only satellite choosers, closed proxy initializers, numeric runtimes/tables and attributed encrypted array RVA inputs/layouts retire where proven. All six baseline method-image tables retire. Canonical generic-owner images are separately pinned by the method-shape corpus. Dormant generated helpers and unreviewed configurations remain incomplete.",
+    "The trial license excludes stream string encryption. No unavailable option was bypassed."
+  ],
+  "validation": {
+    "scope": "All four Babel corpora and every Dotfuscator corpus enabled. CLR execution is limited to repository-built benign probes.",
+    "skippedTests": 37,
+    "testLog": "generic-static-state-full-verified.log",
+    "passedTests": 3438,
+    "runtimeComparisonsPassed": 27,
+    "failedTests": 0,
+    "recoveryDirectory": "cleaned_adapter_indexed_final",
+    "resourceGuardAndCorpusTestsPassed": 15,
+    "differentialNet48IlVerifyComparisons": 9,
+    "hashStringTestsPassed": 22,
+    "retirementAndAllowanceFocusedTestsPassed": 26,
+    "proxyInitializationAndRecoveryTestsPassed": 23,
+    "forwarderNumericOwnershipAndCorpusFocusedTestsPassed": 91,
+    "numericArrayAndCorpusFocusedTestsPassed": 27,
+    "arrayDataAndCleanupFocusedTestsPassed": 88,
+    "methodImageOwnershipAndCorpusFocusedTestsPassed": 52,
+    "runtimeEvidenceTestLog": "adapter-inlining-indexed-full-verified.log",
+    "runtimeEvidence": "adapter-inlining-indexed-runtime-evidence.json",
+    "fullSuiteEvidence": {
+      "path": "C:/cilantro-verify/babel/generic-static-state-full-verified.log",
+      "sha256": "e1a19eda673d0c8da81371bf6ae659b3aa7cd9ac2e0f7ddc2438bb77a4d1dd7b"
+    },
+    "genericOwnerExtension": {
+      "manifest": "corpus/babel-12-generics.manifest.json",
+      "provenance": "corpus/babel-12-generics.provenance.json",
+      "protectedCaptures": 18,
+      "supportedCaptures": 18,
+      "supportedRuntimeComparisons": 18,
+      "priorGenericRegressionFixtures": 6,
+      "structCallerTypeComparisons": 27,
+      "constructorCallerTypeComparisons": 27,
+      "staticCallerTypeComparisons": 36,
+      "inheritedCallerTypeReceiverComparisons": 108,
+      "staticStateCallerTypeComparisons": 36,
+      "staticStateLifecycleChecks": 6
+    }
+  },
+  "methodImageRecovery": {
+    "remainingStubs": 0,
+    "scope": "Static nongeneric baseline methods with by-value arguments; CIL, local signatures, token bindings and catch/finally handlers captured at the actual generated invocation without executing application CIL. Reference-type instance recovery is separately pinned in babel-12-methods.manifest.json.",
+    "restoredBodies": 6,
+    "constructionTrialsPerBody": 2,
+    "resourceRetirement": {
+      "tables": 6,
+      "focusedTestsPassed": 52,
+      "proof": "Both complete body-construction trials must agree on the full exact resource/dependency-reader set. Local zero-argument descriptor readers establish input ownership; satellite resolvers, startup-only reads and foreign reader-token ambiguity do not. Deferred resource-only satellite entries must exactly match name/hash/length after restoration. All direct readers must be physically absent before table retirement.",
+      "corpusGate": "Every code/combined capture requires explicit method-image-table absence, zero surplus resources and exact oracle resource coverage.",
+      "proofSources": [
+        {
+          "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+          "sha256": "79a38bfb5a10ce84e535bbd1c662dcf03b75c9a2c383ffac798a6b667a23f002"
+        },
+        {
+          "path": "src/Cilantro.Core/Recovery/BabelMethodImageResourceOwnership.cs",
+          "sha256": "758028cbdc1742182a442db36c2a167128306191327d73b5ef22a6e7c24ad03a"
+        },
+        {
+          "path": "src/Cilantro.Core/Recovery/DecodedResourceOwnership.cs",
+          "sha256": "fb833c1c3675492472c30a4ed176eb2a01b64680c90585082ecef2d8cf981766"
+        },
+        {
+          "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+          "sha256": "9f3ea9738e09f2c865cf30fbb13be166a0f5d80cd906a2ac5c4bad036d790192"
+        },
+        {
+          "path": "src/Cilantro.Core/Recovery/ReactorIntegrityHelpers.cs",
+          "sha256": "c4f3275aa936e1323408cf235180449a4e35f745fb52decfa4abbb99a030897a"
+        },
+        {
+          "path": "tests/Cilantro.Tests/BabelMethodImageTests.cs",
+          "sha256": "f5e4148df1c91871d629414f2866655729d889bfd741fbdcf8dfe9e8c698ed4a"
+        },
+        {
+          "path": "tests/Cilantro.Tests/BabelMethodImageResourceTests.cs",
+          "sha256": "88ffecb76e977b7fe656d4979cb90b1d2c26c41af7ef834bacd3962729a5bc46"
+        },
+        {
+          "path": "tests/Cilantro.Tests/ReactorIntegrityHelpersTests.cs",
+          "sha256": "300c90a94dc883f45a9a7bb45781513a4539c3bbf0869371d4c6bb5816c09d3e"
+        },
+        {
+          "path": "tests/Cilantro.Tests/Babel12CorpusTests.cs",
+          "sha256": "91341b89d613ed57a72d62e9cbd0cd95283cfe8fb04cf0e8b9e1c652819db94b"
+        }
+      ],
+      "emittedEvidence": "image-table-emitted-evidence.json",
+      "recoveryDirectory": "cleaned_image_tables_verified",
+      "runtimeComparisonsPassed": 27
+    }
+  },
+  "checkRecovery": {
+    "neutralizedCallSites": 18,
+    "proof": "Complete debugger type-family graphs include native imports and layouts. Integer-normalized, read-only integrity graphs additionally require successful interpretation against the original mapped image and reject image/state writes.",
+    "integerNormalizedIntegrityGraphSha256": [
+      "e254fc116d2cb1bdb109b6395d8ed3987b6bbd7d3baf49d883e0b2591685f187",
+      "0e41b949d682871ed46faf789d593137a254615e99ad38fcca43a5e8f762a3d0",
+      "ee18306f63f6ad7b3c55fbd0025c99190937cf6cf230c81a1f2aabf99c2df522"
+    ],
+    "debuggingGraphSha256": [
+      "3d22dc35d9a48fd8d2250b9ecce83d46244ce7393ef8393359da33dd04562ff5",
+      "86ff0392bb9f0e5ee5c14da433721a3af816bbc7d6bd55abadcce0f97101030c",
+      "94ca816fcb675a3cd84034a9018440920bef090d94ead3f9e79f0a6d79682cc1"
+    ],
+    "reviewedRoots": 12
+  },
+  "legacyCheckReview": {
+    "neutralizedCallSites": 3,
+    "review": "Static review of both complete type families: profiler checks, managed and native debugger probes, watchdog threads and FailFast-only detected responses. The read-only legacy PE integrity loop additionally passed original-image interpretation. No sample code was loaded into the host CLR or executed natively.",
+    "manifest": "corpus/babel-static.manifest.json",
+    "debuggingGraphSha256": [
+      "dee914ee812a9e6212d99f7d71ac8a1dfb92619ed35a7856c39bcabde3666b84",
+      "745bd26530cd6f51d3242dd28c351fb51def98216c7b5ad574f09cc0b20b3242"
+    ],
+    "integerNormalizedIntegrityGraphSha256": "49571048868f3c827bb32f2f5c6eb2640e9b2c4590f1569a3057827abc3bfeee"
+  },
+  "resourceRestoration": {
+    "combinedStreams": 12,
+    "retiredResolveInitializers": 6,
+    "chooserFingerprints": [
+      "9642eca21804cae7c5f28d420c90f96cce2cd5f8ef53969ccf29dab018e9e516",
+      "b5b8b62ae58d9d5e1e76b53cb09b59aeafef27f8691b83b5ee05c9a45aa708cd",
+      "5a599a064b9689763a9a81c441c97261181fa77b38880f5e0756daa24bd554ed"
+    ],
+    "resourceOnlyStreams": 3,
+    "limits": {
+      "maximumNames": 1024,
+      "maximumInputResources": 64,
+      "maximumInputResourceBytes": 67108864,
+      "maximumChoosers": 8,
+      "maximumSatelliteBytes": 33554432,
+      "maximumNameCharacters": 4096,
+      "maximumTotalInterpretationSteps": 64000000
+    },
+    "restoredStreams": 15,
+    "probes": [
+      {
+        "id": "net48-resources",
+        "restoredStreams": 1,
+        "resourceBundles": 1,
+        "behaviorMatched": true
+      },
+      {
+        "id": "net48-combined",
+        "restoredStreams": 4,
+        "resourceBundles": 1,
+        "behaviorMatched": true
+      },
+      {
+        "id": "net8.0-resources",
+        "restoredStreams": 1,
+        "resourceBundles": 1,
+        "behaviorMatched": true
+      },
+      {
+        "id": "net8.0-combined",
+        "restoredStreams": 4,
+        "resourceBundles": 1,
+        "behaviorMatched": true
+      },
+      {
+        "id": "net10.0-resources",
+        "restoredStreams": 1,
+        "resourceBundles": 1,
+        "behaviorMatched": true
+      },
+      {
+        "id": "net10.0-combined",
+        "restoredStreams": 4,
+        "resourceBundles": 1,
+        "behaviorMatched": true
+      }
+    ],
+    "proof": "Normalized complete chooser metadata/control flow, binding only the encrypted source name and four wire XOR parameter slots plus the encoded source-name argument. Original unmodified chooser/codec code is interpreted in two isolated trials; each advertised resource and an absent name are checked. Satellite metadata must contain resources only, with an exact name table; foreign writes, additional registrations, host inputs and conflicting names refuse atomically.",
+    "satellites": 6,
+    "portablePointerSizes": [
+      4,
+      8
+    ],
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Analysis/BabelResourceShape.cs",
+        "sha256": "5fe342803909078fe7424d152c23a533c174650c00529bee63adc9e4bbe8d7c6"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelResourceRestorationPass.cs",
+        "sha256": "7adc4d86b53cb9ccebaea0041b823b4da1fd193f2c2acfee8d7312fab23385c8"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeBodyNormalization.cs",
+        "sha256": "e8f041041bf94b45d66d90799858b2e39d6e7791a0def4f7fee4520739d84c41"
+      }
+    ]
+  },
+  "hashStringRecovery": {
+    "scope": "Reviewed CoreCLR eager dictionary caches, with their original getter retained and their constructor replaced by non-interning UTF-16 string construction.",
+    "materializedEntries": 26,
+    "constructionTrialsPerCache": 2,
+    "captures": [
+      {
+        "id": "net8.0-strings-hash",
+        "entries": 7
+      },
+      {
+        "id": "net10.0-strings-hash",
+        "entries": 7
+      },
+      {
+        "id": "net8.0-combined",
+        "entries": 6
+      },
+      {
+        "id": "net10.0-combined",
+        "entries": 6
+      }
+    ],
+    "codecProof": "Complete normalized codec graphs retain metadata, layouts, RVA bytes, imports, external calls, instruction/CFG/EH structure. Integer literals are protocol parameters; actual unmodified code must complete twice with an identical complete key/value/aliasing table and no unbound inputs or foreign effects.",
+    "limits": {
+      "maximumCaches": 8,
+      "maximumUtf16CodeUnitsPerCache": 65536,
+      "maximumEntriesPerCache": 4096,
+      "sharedInterpreterSteps": 64000000
+    },
+    "semantics": [
+      "same-key identity",
+      "duplicate-content aliasing",
+      "no added string interning",
+      "lone UTF-16 surrogate preservation",
+      "CLR dictionary unknown-key exception"
+    ],
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Analysis/BabelHashStringShape.cs",
+        "sha256": "43ef6a0af37589c1c77938c64dc13fdf3606ed184fdbbdc3f7cbf19ab5ff4297"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeShape.cs",
+        "sha256": "8f74c1c588fe8b655e1daabe41c423fe359a39fa9a1bd6335ab8ff77e5b59f2e"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeBodyNormalization.cs",
+        "sha256": "e8f041041bf94b45d66d90799858b2e39d6e7791a0def4f7fee4520739d84c41"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelHashStringPass.cs",
+        "sha256": "42469ac1167ff11efd95ab1055e2e5b4d86b2ab04307bd75c83a5451e66c73e4"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelHashStringTests.cs",
+        "sha256": "fbd244ff05b220f2b42fbf9525b18af7522133bae83f2ac2aea6834989726d0d"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RetiredBabelHashResource.cs",
+        "sha256": "20694285c19840ccd737893d2025854ffc587477919809a93fc8ce0f4afa5b17"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/ProtectorResourceCleanupPass.cs",
+        "sha256": "57536895c6c567c8060e0095a14dac8565f268bfc78fc8c4af8a7e2c4a7e9efa"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "9f3ea9738e09f2c865cf30fbb13be166a0f5d80cd906a2ac5c4bad036d790192"
+      },
+      {
+        "path": "src/Cilantro.Core/Verification/AssemblyVerifier.cs",
+        "sha256": "7ef9085aede9a2e72ee1a11e271ba6b68dd177db96b83323ee3d73161b112234"
+      },
+      {
+        "path": "tests/Cilantro.Tests/RewriteAllowanceTests.cs",
+        "sha256": "ad8cd9bd6a7bddad8b0b8c0d577226f751261da530c97bb6802abe789dcfc5d8"
+      }
+    ],
+    "encryptedTablesRetired": 4,
+    "unusedNameDelegateFieldsAndTypesRemoved": 2,
+    "retirementProof": "Exact directly observed source name/hash/length from the cache constructor, agreement in both original-byte trials, intact materialized constructor/initializer/getter/wrapper and cache field signatures/attributes. Common cleanup preserves application resources and surviving explicit readers. Resource addition/removal accounting permits a restored table to be retired in the same pipeline."
+  },
+  "proxyInitializationRecovery": {
+    "retiredInitializers": 114,
+    "constructionTrialsPerInitializer": 4,
+    "trialScope": "Original bytes and transformed code, each in forward/reverse initializer orders, with independent GUID/pointer-size environments. All trials must match the recovered assembly-scoped binding and complete without foreign durable effects or observations.",
+    "closedState": "Private delegate field and a structurally closed manifest-module-handle cache only. Mutable/indirect application inputs, outside cache writes, foreign effects and live field consumers retain the runtime.",
+    "limits": {
+      "maximumCandidates": 8192,
+      "sharedInterpreterSteps": 64000000
+    },
+    "captures": [
+      {
+        "id": "net48-proxies",
+        "retiredInitializers": 19
+      },
+      {
+        "id": "net48-combined",
+        "retiredInitializers": 19
+      },
+      {
+        "id": "net8.0-proxies",
+        "retiredInitializers": 19
+      },
+      {
+        "id": "net8.0-combined",
+        "retiredInitializers": 19
+      },
+      {
+        "id": "net10.0-proxies",
+        "retiredInitializers": 19
+      },
+      {
+        "id": "net10.0-combined",
+        "retiredInitializers": 19
+      }
+    ],
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Proxy/BabelProxyRecoveryPass.cs",
+        "sha256": "11586afbf1a746636aadc262d56242a1caaf9a8b6b7a7e6f5c4f1b66efb8b912"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelProxyInitializationPass.cs",
+        "sha256": "e76478f651651e1681b23a6685db23125460b0752f612f9caed3bf92e9a62c8d"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeBodyNormalization.cs",
+        "sha256": "e8f041041bf94b45d66d90799858b2e39d6e7791a0def4f7fee4520739d84c41"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelProxyRecoveryTests.cs",
+        "sha256": "016ed7ba8598c0569773afea0058e75eb6181ac642e8fbe571f9130e31333226"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelProxyInitializationTests.cs",
+        "sha256": "25e0470a186e6c580e7eafe7ea8aab7da0945cb7a275254ac39bc534396583d0"
+      },
+      {
+        "path": "src/Cilantro.Core/CilantroPipeline.cs",
+        "sha256": "95b143ad5206ec8c22c9d94e2b4d7d9230ec69731bd28f31ee9ff19d904dd845"
+      },
+      {
+        "path": "src/Cilantro.Core/Pipeline/PipelinePlanner.cs",
+        "sha256": "a3a5ca6df172cf0b2ccf2a9efe24e5e321cbcb60d8a6ae43d06f3fc2b58f4215"
+      },
+      {
+        "path": "src/Cilantro.Core/Corpus/CorpusRunner.cs",
+        "sha256": "83eb17a448cc0ae506924e0c4580769cbeccdbf614dc3926497a11120f0223bc"
+      },
+      {
+        "path": "tests/Cilantro.Tests/Babel12CorpusTests.cs",
+        "sha256": "91341b89d613ed57a72d62e9cbd0cd95283cfe8fb04cf0e8b9e1c652819db94b"
+      }
+    ]
+  },
+  "forwarderAndNumericCleanup": {
+    "lateForwarderSites": 70,
+    "retiredCombinedNumericTables": 3,
+    "captures": [
+      {
+        "id": "net48-proxies",
+        "lateForwarderSites": 13
+      },
+      {
+        "id": "net48-combined",
+        "lateForwarderSites": 13
+      },
+      {
+        "id": "net8.0-proxies",
+        "lateForwarderSites": 11
+      },
+      {
+        "id": "net8.0-combined",
+        "lateForwarderSites": 11
+      },
+      {
+        "id": "net10.0-proxies",
+        "lateForwarderSites": 11
+      },
+      {
+        "id": "net10.0-combined",
+        "lateForwarderSites": 11
+      }
+    ],
+    "numericProof": "Both closed construction trials agree on exact resource name/hash/length and direct reader ownership. Resource retirement requires every observed reader to be physically absent; numeric evidence is excluded from Reactor string/proxy ownership corroboration.",
+    "remaining": "Value-only encrypted array calls, numeric runtimes/tables and attributed input RVA fields/layouts retire. Captured method-image tables now retire too; other generated metadata and configurations remain.",
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelProxyInliningPass.cs",
+        "sha256": "86735477e6641d83cffa0d1f97783b2b54f6ce84a38eaff64c6be3fa0cfa61dc"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/MethodInliningPass.cs",
+        "sha256": "9c2b137373b67610b16b0a77cd88dd7475b02321fe57ec03723fa06de9609021"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/NumericTableRecoveryPass.cs",
+        "sha256": "1023e8b3edf58f04d94646e6ba22e79e7fab4f9d0452bbd44d131901ff1bb949"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DecodedResourceOwnership.cs",
+        "sha256": "fb833c1c3675492472c30a4ed176eb2a01b64680c90585082ecef2d8cf981766"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/ReactorIntegrityHelpers.cs",
+        "sha256": "c4f3275aa936e1323408cf235180449a4e35f745fb52decfa4abbb99a030897a"
+      },
+      {
+        "path": "tests/Cilantro.Tests/NumericTableRecoveryTests.cs",
+        "sha256": "446fd0944a7453892df67f9c1c0c0be705fc1587b71168cb526f866adbcaf605"
+      },
+      {
+        "path": "tests/Cilantro.Tests/ReactorIntegrityHelpersTests.cs",
+        "sha256": "300c90a94dc883f45a9a7bb45781513a4539c3bbf0869371d4c6bb5816c09d3e"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelProxyInitializationTests.cs",
+        "sha256": "25e0470a186e6c580e7eafe7ea8aab7da0945cb7a275254ac39bc534396583d0"
+      }
+    ]
+  },
+  "numericArrayRecovery": {
+    "recoveredSites": 3,
+    "decodedElements": 24,
+    "scope": "Reviewed eager numeric-family and stream-codec graphs; exact fresh byte-array/RVA inputs; built-in primitive outputs only.",
+    "constructionExecutionsPerSite": 4,
+    "proof": "Two isolated GUID/pointer environments, each with an initial and repeated execution. Matching primitive type/bits, fresh result identity, unchanged input, no foreign dependencies/effects/host observations, and unchanged initialized runtime state with stable heap/model identities are required.",
+    "numericFamilies": [
+      "c816a85a20f4a958792aa54f3266200a07bc385109e7abe6f607be472596844a",
+      "375388d04e72144632d1419eabc36b79ee96064d662aaa7e7d324f0e399a712a",
+      "0ae060e050eb2e517d58dd4c95ffd126d659c241b67d8fd61375b0bc86198aee"
+    ],
+    "limits": {
+      "maximumTotalResourceBytes": 134217728,
+      "maximumElements": 1048576,
+      "sharedInterpreterSteps": 64000000,
+      "maximumResourceInputs": 4096,
+      "maximumDecodedBytes": 4194304,
+      "maximumInputBytes": 4194304,
+      "sitesPerFamily": 256
+    },
+    "remaining": "Attributed encrypted input RVA fields and captured method-image tables now retire where proven. Other configurations and remaining generated metadata still require recovery/retirement work.",
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Analysis/BabelNumericArrayShape.cs",
+        "sha256": "3b0b8d32d7fa3542ebe4da286a9124766fec2a7a0b1f1627d0c03847e4910398"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/BabelHashStringShape.cs",
+        "sha256": "43ef6a0af37589c1c77938c64dc13fdf3606ed184fdbbdc3f7cbf19ab5ff4297"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelNumericArrayPass.cs",
+        "sha256": "d6032fac0f2eb45f18b705e112103e7958a7b462cb6823fb51940fdb9d55cca1"
+      },
+      {
+        "path": "src/Cilantro.Core/Interpretation/StaticHeap.cs",
+        "sha256": "726f8ddbc8b25c90bd014c75cfb5cb4d436237c34f31fb445142fdf5ddc24f86"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RebuiltMethodTrial.cs",
+        "sha256": "01317d799f0341df00ee4a5047998b77a75bb8498dd36f3ad298068c837e0867"
+      },
+      {
+        "path": "src/Cilantro.Core/CilantroPipeline.cs",
+        "sha256": "95b143ad5206ec8c22c9d94e2b4d7d9230ec69731bd28f31ee9ff19d904dd845"
+      },
+      {
+        "path": "src/Cilantro.Core/Pipeline/PipelinePlanner.cs",
+        "sha256": "a3a5ca6df172cf0b2ccf2a9efe24e5e321cbcb60d8a6ae43d06f3fc2b58f4215"
+      },
+      {
+        "path": "src/Cilantro.Core/Corpus/CorpusRunner.cs",
+        "sha256": "83eb17a448cc0ae506924e0c4580769cbeccdbf614dc3926497a11120f0223bc"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelNumericArrayTests.cs",
+        "sha256": "72a3cc0d5c0302bbbf0fe35268cf58041d0c2f2ae587d69b3e2e84dc00a098f1"
+      },
+      {
+        "path": "tests/Cilantro.Tests/Babel12CorpusTests.cs",
+        "sha256": "91341b89d613ed57a72d62e9cbd0cd95283cfe8fb04cf0e8b9e1c652819db94b"
+      },
+      {
+        "sha256": "61ed152a45987e2d80577ce59ebce8e14f1ad2586403766e2a9388029ade58f1",
+        "path": "src/Cilantro.Core/Recovery/RetiredBabelArrayData.cs"
+      },
+      {
+        "sha256": "9f3ea9738e09f2c865cf30fbb13be166a0f5d80cd906a2ac5c4bad036d790192",
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs"
+      }
+    ],
+    "rvaRetirement": {
+      "encryptedInputsRemoved": 3,
+      "unusedLayoutsRemoved": 3,
+      "proof": "Exact source bytes/flags/signature/layout and replacement bodies/method flags/decoded RVA data/layout must remain intact. Every surviving field reference, reflected owner and unresolved numeric-token consumer prevents deletion. Shared layouts and unattributed application data are retained. Field-only cleanup publishes identity allowance counts.",
+      "focusedTestsPassed": 88,
+      "emittedEvidence": "array-data-emitted-evidence.json",
+      "recoveryDirectory": "cleaned_array_data_verified"
+    }
+  },
+  "codecFamilyRetirement": {
+    "scope": "Complete reviewed original Babel codec graph; successful numeric-array or eager hash-cache recovery. Existing deadness, visibility, reflection and surviving-reference gates apply.",
+    "additionalTypesRemoved": 10.0,
+    "fixtures": [
+      {
+        "id": "net48-values",
+        "additionalTypes": 2,
+        "types": [
+          "0200000D ",
+          "0200000E "
+        ]
+      },
+      {
+        "id": "net8.0-strings-hash",
+        "additionalTypes": 1,
+        "types": [
+          "0200000C "
+        ]
+      },
+      {
+        "id": "net8.0-values",
+        "additionalTypes": 2,
+        "types": [
+          "0200000B ",
+          "0200000C "
+        ]
+      },
+      {
+        "id": "net8.0-combined",
+        "additionalTypes": 1,
+        "types": [
+          "02000044 "
+        ]
+      },
+      {
+        "id": "net10.0-strings-hash",
+        "additionalTypes": 1,
+        "types": [
+          "0200000C "
+        ]
+      },
+      {
+        "id": "net10.0-values",
+        "additionalTypes": 2,
+        "types": [
+          "0200000B ",
+          "0200000C "
+        ]
+      },
+      {
+        "id": "net10.0-combined",
+        "additionalTypes": 1,
+        "types": [
+          "02000044 "
+        ]
+      }
+    ],
+    "focusedTestsPassed": 67,
+    "focusedTestLog": "codec-family-focused-complete.log",
+    "recoveryDirectory": "cleaned_codec_family_complete",
+    "evidence": "codec-family-retirement-evidence.json",
+    "applicationBodiesExecutedByRecovery": 0,
+    "guards": "The complete original codec family must match a reviewed fingerprint and its consumer recovery must commit successfully. Existing deadness, visibility, reflection, numeric-token and all surviving metadata-reference checks still govern removal. Unrelated application layouts remain; live constructor and type-handle uses veto deletion; changed source layouts refuse attribution.",
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Analysis/RecoveryOrphans.cs",
+        "sha256": "e0bca59b3e47a081a8abb52fc3d6a7d036ac275e2d8ab138cfb3fbd1ca66ef1a"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "9f3ea9738e09f2c865cf30fbb13be166a0f5d80cd906a2ac5c4bad036d790192"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelNumericArrayPass.cs",
+        "sha256": "d6032fac0f2eb45f18b705e112103e7958a7b462cb6823fb51940fdb9d55cca1"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelHashStringPass.cs",
+        "sha256": "42469ac1167ff11efd95ab1055e2e5b4d86b2ab04307bd75c83a5451e66c73e4"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelNumericArrayTests.cs",
+        "sha256": "72a3cc0d5c0302bbbf0fe35268cf58041d0c2f2ae587d69b3e2e84dc00a098f1"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelHashStringTests.cs",
+        "sha256": "fbd244ff05b220f2b42fbf9525b18af7522133bae83f2ac2aea6834989726d0d"
+      }
+    ]
+  },
+  "adapterExpansion": {
+    "scope": "Retired Babel delegate adapters with one target call, argument loads/addresses, casts, boxing/unboxing and assigned temporary locals. The initialization proof publishes the exact eligible wrapper set.",
+    "transport": "Arguments are stored in reverse stack order after original evaluation. Copied adapter instructions use fresh argument/temporary locals; values below call arguments remain intact. Original call instructions remain entry anchors for branches and exception boundaries.",
+    "chains": "Acyclic chains expand in dependency order. Cycles and adapters feeding cycles remain untouched. Every expanded body is rechecked, and all mutations roll back together unless module and evaluation-stack checks pass.",
+    "refusals": "Live or changed type initialization, effects beyond the single target call, branches/handlers in adapters, prefixes, open generics, unassigned locals, uninitialized caller-local contracts, byref/pointer returns, access violations and frame-sensitive APIs retain their adapters.",
+    "limits": {
+      "maximumArguments": 32,
+      "maximumAdapterLocals": 32,
+      "maximumCallerLocals": 4096,
+      "maximumAdapterInstructions": 256,
+      "maximumSites": 8192,
+      "callerInstructionThresholdBeforeExpansion": 65536
+    },
+    "contextSensitive": "Direct forwarders of GetCurrentMethod, GetCallingAssembly, Environment.StackTrace and StackFrame/StackTrace constructors are not inlined. A benign CLR test confirms GetCurrentMethod still identifies the forwarder.",
+    "expandedCalls": 62,
+    "additionalProxyTypesRemoved": 44,
+    "runtimeComparisonsPassed": 54,
+    "runtimeEvidence": "adapter-inlining-indexed-runtime-evidence.json",
+    "focusedTestsPassed": 34,
+    "focusedTestLog": "adapter-inlining-indexed-focused.log",
+    "recoveryDirectory": "cleaned_adapter_indexed_final",
+    "proofSources": [
+      {
+        "sha256": "6209e4c966221a3db3992535cdc077ba99dc85d87820775488bfb37899d8f5dd",
+        "path": "src/Cilantro.Core/Recovery/BabelAdapterInlining.cs"
+      },
+      {
+        "sha256": "86735477e6641d83cffa0d1f97783b2b54f6ce84a38eaff64c6be3fa0cfa61dc",
+        "path": "src/Cilantro.Core/Recovery/BabelProxyInliningPass.cs"
+      },
+      {
+        "sha256": "e76478f651651e1681b23a6685db23125460b0752f612f9caed3bf92e9a62c8d",
+        "path": "src/Cilantro.Core/Recovery/BabelProxyInitializationPass.cs"
+      },
+      {
+        "sha256": "11586afbf1a746636aadc262d56242a1caaf9a8b6b7a7e6f5c4f1b66efb8b912",
+        "path": "src/Cilantro.Core/Proxy/BabelProxyRecoveryPass.cs"
+      },
+      {
+        "sha256": "9c2b137373b67610b16b0a77cd88dd7475b02321fe57ec03723fa06de9609021",
+        "path": "src/Cilantro.Core/Recovery/MethodInliningPass.cs"
+      },
+      {
+        "sha256": "8536a8c07618d95b76e3ef92bc5141c94a67d72e6e769aaef7b50e19f729b122",
+        "path": "tests/Cilantro.Tests/BabelAdapterInliningTests.cs"
+      },
+      {
+        "sha256": "880a2b04aa47873c2623a30d809d4da8a3263d268f6866f1559220b7489febc6",
+        "path": "tests/Cilantro.Tests/MethodInliningPassTests.cs"
+      }
+    ],
+    "callSiteIndex": "Call sites are indexed once per module. A queue orders single-call adapter dependencies from leaves outward; cycles and their dependants are excluded without recursive traversal.",
+    "testLog": "adapter-inlining-indexed-full-verified.log",
+    "passedTests": 3363,
+    "skippedTests": 37,
+    "failedTests": 0
+  },
+  "methodFactoryRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/retirement-audit/factory-runtime-evidence.json",
+      "sha256": "f44fb061215927152c3e0ad73d16c966b484de71d5a744a5572d0e82ebd2fb73"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodConstructionRuntime.cs",
+        "sha256": "f39251db7acc2b30a316c4515b8b388d90bbe01daa6f525c3cd923eb8ce3094d"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "4d9c89ef201a07860e08fb38943bb85085bbc0a04c0732e5085610363409f544"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "00ae5e4dbd1579ac88a3cbe1a5c16443b413da74b0f3880415ef5c42fcbaa67c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodRuntimeCleanupTests.cs",
+        "sha256": "024b4a710a5d9d9e8e482c69bebd5064fc4cbc1ebb05740429e294d40c372850"
+      }
+    ],
+    "captures": 51,
+    "factoriesRetired": 45,
+    "zeroImageControlsRetained": 6,
+    "behaviorGatesPassed": 51,
+    "focusedTestsPassed": 15,
+    "fullSuite": {
+      "passed": 3566,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3603,
+      "duration": "6m1s",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/retirement-audit/full-tests.log",
+        "sha256": "acca8c275bc9bca7d89634cac8bf019c322addf956fc87698892649ade13f195"
+      }
+    }
+  },
+  "methodRuntimeLeafRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/leaf-runtime-evidence.json",
+      "sha256": "74e9230c7c878fb1c4a35d4cb9cc257a6692130abf5c67312d1bc54f8a0a335e"
+    },
+    "originalSchemaAudit": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/all-originals.json",
+      "sha256": "b7b07cc2ac947398f80cd0ed471bbe6e8b613ff723d822cb52741ffc43c2b2cd"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelDormantMethodRuntime.cs",
+        "sha256": "c79efec3c96c034a6a46938ef663e6a9b620aea67162d4c7ad47d75c25a591f1"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodLeafRuntime.cs",
+        "sha256": "bb18a5878fed2d4c27a04d014e0a0124e09cb02635a8c570f5efec8c0ce77757"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "beaa551ac07c6b66c1c4b8a7ffdf274de07e6810c9e0d2c81e80bf479894b6a7"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "680fd0113f91fa9178bcb9258f675dd9196be15d5acd03398a2e2ccebea8a29c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodLeafRuntimeTests.cs",
+        "sha256": "840fcf4a56658078770af84b43b8fa34c6882ef83aa60ccd191f8111462c800d"
+      }
+    ],
+    "captures": 6,
+    "additionalTypesRetired": 48.0,
+    "allGroupsValidated": 51,
+    "allGroupsAdditionalTypesRetired": 399,
+    "focusedTestsPassed": 26,
+    "recoveryDirectory": "cleaned_runtime_leaves",
+    "proof": "All detected method images recovered with agreeing owned image reads. Reviewed original declaration schemas anchor six enums, two layouts and the integer buffer. Current metadata and complete buffer CIL are rechecked; normal reachability and surviving-reference gates remain active.",
+    "limits": "The three code-only baseline captures explicitly verify complete 54-type method-runtime retirement. Live shared consumers in combined protection remain, including the Framework 4.8 buffer/layout. Other generated metadata still requires attribution.",
+    "fullSuite": {
+      "passed": 3644,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3681,
+      "duration": "7 m 46 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/method-runtime-audit/full-tests.log",
+        "sha256": "3460c3f82d5db58d41b8acbb7f0146470a513ed65dc6cb31845fd3bd54207b34"
+      }
+    }
+  },
+  "sharedInitializationRetirement": {
+    "validatedAt": "2026-10-20",
+    "proof": "String recovery records only the shared initializers it preserves after independent startup agreement. Late retirement requires no other metadata/CIL consumer, no reflective exposure or named consumer, and either a literal empty body or independently completed closed construction with no external effects or resource reads. Normal runtime cleanup remains responsible for declaration deletion.",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/codec-initializer-audit/shared-initialization-evidence.json",
+      "sha256": "82fea6d650277592c68d8cec889fb616619e6d9c9eb8152de5c54db33c48953a"
+    },
+    "baselineComparisons": 27,
+    "additionalTypesRetired": 8,
+    "additionalMethodsRetired": 26,
+    "initializationCallsRetired": 14,
+    "recoveryDirectory": "cleaned_shared_initializers",
+    "testedSources": [
+      {
+        "path": "src/Cilantro.Core/Recovery/StringLookupCompletionPass.cs",
+        "sha256": "eff14809622d15f55f5cc48b1231d60c9886e410fc25f89563dc02de95f9a28e"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/SharedInitializationCompletionPass.cs",
+        "sha256": "5f25854030a6756bdc3180088a5f53a2b459084e03607c40e2f557a4de5d58db"
+      },
+      {
+        "path": "tests/Cilantro.Tests/SharedInitializationCompletionTests.cs",
+        "sha256": "853641b4f66f9bdd9bb38bccfc96cbd77fdd38b500f185cb343e5a40463bd23a"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodLeafRuntimeTests.cs",
+        "sha256": "7ec8b068822ea1d76f66070bdcf8152ab1f65a8af171e2dbf4225f50ab22677a"
+      }
+    ],
+    "fullSuite": {
+      "passed": 3651,
+      "skipped": 37,
+      "total": 3688,
+      "failed": 0,
+      "duration": "8 m 8 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/codec-initializer-audit/full-tests.log",
+        "sha256": "0eae59d58e3a942e3e6e5186a4fb4242cfdbb9544652a236d28cba4867e96583"
+      }
+    }
+  }
+}

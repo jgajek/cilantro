@@ -21,13 +21,13 @@
           "expectedCapabilities"
         ],
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" },
           "tier": {
             "enum": ["profiled", "detected", "negative", "exploratory", "oracle"]
           },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "localName": { "type": "string", "minLength": 1 },
-          "expectedDetection": { "enum": ["reactor", "reactor-bootstrap", "confuserex", "babel", "none"] },
+          "expectedDetection": { "enum": ["reactor", "reactor-bootstrap", "confuserex", "babel", "dotfuscator", "none"] },
           "expectedCapabilities": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
@@ -71,6 +71,12 @@
           "minimumRecoveredStringSites": { "type": ["integer", "null"], "minimum": 0 },
           "minimumNumericTableSites": { "type": ["integer", "null"], "minimum": 0 },
           "minimumProxyCallsRestored": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumNeutralizedCheckSites": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumMaterializedHashStrings": { "type": ["integer", "null"], "minimum": 0 },
+          "expectedRetiredResourceNames": { "type": ["array", "null"], "items": { "type": "string" }, "uniqueItems": true },
+          "minimumRetiredProxyInitializers": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumLateProxyCallSites": { "type": ["integer", "null"], "minimum": 0 },
+          "minimumRecoveredNumericArrays": { "type": ["integer", "null"], "minimum": 0 },
           "devirtualize": { "type": "boolean" },
           "expectedMissingResourceNames": {
             "type": ["array", "null"],
@@ -102,6 +108,17 @@
             "uniqueItems": true
           },
           "declarations": { "type": ["string", "null"], "minLength": 1 },
+          "babelCodeSources": {
+            "type": ["array", "null"], "maxItems": 16,
+            "items": {
+              "type": "object", "required": ["localName", "sha256"],
+              "properties": {
+                "localName": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+              },
+              "additionalProperties": false
+            }
+          },
           "allowDeclaredCalls": { "type": "boolean" }
         },
         "additionalProperties": false

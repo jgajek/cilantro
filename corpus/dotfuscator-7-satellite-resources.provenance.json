@@ -1,0 +1,266 @@
+{
+  "capturedAt": "2026-10-19",
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "description": "Source-built neutral/fr/fr-CA resources with metadata-only restoration of resource-only culture companions; main assembly runtime forwarding preserves standard ResourceManager fallback and cache reload.",
+  "documentation": "https://support.preemptive.com/hc/en-us/articles/31819733141905-Resource-Encryption",
+  "evidenceRoot": "C:/cilantro-verify/dotfuscator/satellite-resource-corpus",
+  "sources": [
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/DotfuscatorSatelliteResources.csproj",
+      "sha256": "fc43fcfb22d783775e1ce8cd517edde11ac620a975c83b9dcf6fb6b925740834"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Program.cs",
+      "sha256": "3e41c83f7cfe8f0c0ec44ec95b284ec6ab863255d05f93999532a72336b5c06f"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Secrets.resx",
+      "sha256": "516fd4b33b0c679b544682894e9a895fc494f85633866da31aaa69a7ba60ab04"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Secrets.fr.resx",
+      "sha256": "847b3a4e652d3c80658612c28f679f926694821da2cc8cbea1d294562ea073cf"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorSatelliteResources/Secrets.fr-CA.resx",
+      "sha256": "e5a88df3127acebe9e9e553f6adc68fd8b61ef2f79463fe49099efc8a0f4c826"
+    },
+    {
+      "path": "corpus/probes/dotfuscator-satellite-resources.ps1",
+      "sha256": "ea43461501d88fffa6ea68af46e907c477e48c2fbe7e176530f3b8ac723ebf39"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorResourcePass.cs",
+      "sha256": "f2890c51b90aa9f508315cdc86c56f570732c6d0b54d8568365e5d160391fa88"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorResourceSatellites.cs",
+      "sha256": "b74d9506e8d7848c6adb3557b6e5b6366331635a2d475ff9ceff37cfa1119aaf"
+    },
+    {
+      "path": "src/Cilantro.Core/Pipeline/ResourceSatelliteEmission.cs",
+      "sha256": "4294d0d1d4e01f79e80df4d26284821c34ee1ad31ccb58af6a858770b912a389"
+    },
+    {
+      "path": "src/Cilantro.Core/CilantroPipeline.cs",
+      "sha256": "46b685222e2c4b90dffe370cf8a9b8c79abbb691f9666aaace925e20ddd32d26"
+    },
+    {
+      "path": "src/Cilantro.Core/Pipeline/PipelineOptions.cs",
+      "sha256": "0a3c182fc6c50af587e291b162257d590ec573acfb3f13cacf1498039a5a0efe"
+    },
+    {
+      "path": "src/Cilantro.Core/RunManifest.cs",
+      "sha256": "18ef854c3d0b5c8ed6d3fe010767770374c8d20edaadf968ef17b8a26398f302"
+    },
+    {
+      "path": "src/Cilantro.Core/Reporting/AnalystReport.cs",
+      "sha256": "0896c2f108b9997ad4c555baebdd6fd1f7f3045bb27d7a68da71e40abf760ac4"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorSatelliteResourceTests.cs",
+      "sha256": "3c4029fe946041283e5fd63f22e5f807d98589f2248f82f569c1ba69e3cb9c45"
+    },
+    {
+      "path": "schema/run.schema.json",
+      "sha256": "5095b7a475afbcf4158b7959aa8867b475d6e3863ce6b910cccd3df7c138562f"
+    },
+    {
+      "path": "tests/Cilantro.Tests/CorpusTests.cs",
+      "sha256": "c6194d35df45bc410374b293eb69048dcedc0ce74a3c8778db0a74538c0c586e"
+    }
+  ],
+  "fixtures": [
+    {
+      "Framework": "net48",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "9cad979df0ec235646f42964dc3d953cbdf189d1cdbb12ea12e997b634e0c23b",
+      "OracleSha256": "5e15986a5bae45452f778c40dc386918a718f109f1efe6c9af9c79792faeb96d",
+      "ProtectedSha256": "ff815c6d15eb8320c8e08ac36de1a353fdfa0f24086ae72ed04df6c224312e17",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8795179ac9bc39cfab86509f237ceec047f335ba6c597e95c2cafe5e9815971a"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "f8ef706603c83a42b364f34205489769664390b992fa72ba19c95eaefec1bc74"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "15518bf4c9c2f1a08ae999c2bf529067024ed63b75b08c8e392cbdaeb53e6729"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "9a704436613d1f4ba0664b135b47245073352bb573bc4f9525b202f732b80753"
+        }
+      ]
+    },
+    {
+      "Framework": "net8.0",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "4b674fd5da0771c6d6c5cd9493ab92640d778682f56377a2816b07b3e9ba1fb5",
+      "OracleSha256": "f8f4f58c70bc0dab4a2894c79ec39ac3e319f4ca412c8525e61319d79a89cdc8",
+      "ProtectedSha256": "581a2eaf37ec0b1792669623e1416fecf2aff4d5881fe0b69c3b9e5ee2a7eb84",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "8a6b12baaecfb126d50448c035b2be1a3c2cb4e61bbe5e30655502ec8562c57b"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "a6872f7373f57055fecb84c810a56a70f219c3c19c7a6354652072db9a3830f8"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "7b1003ffc47ef25c549494ff8aa562afad9202f358eae31560e8f7208d93a17c"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "3171dbe2a46b2a6e9c6757b3d494a4fdbccfa7b39ccb5c5bf3db8a6e26a98257"
+        }
+      ]
+    },
+    {
+      "Framework": "net10.0",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "34b72add56a26617a51dd82f9a31e8f4882352f4d37dd0e3723c0b79179fef98",
+      "OracleSha256": "76ef9bfd7387ef70e49871c552e26d666515b869e89c3cd040099860472734a4",
+      "ProtectedSha256": "fc240186b897daa4a15b5d96f7ad74804650ca73553e4b1669356c5981cdd422",
+      "Companions": [
+        {
+          "path": "oracle/fr/SatelliteProbe.resources.dll",
+          "sha256": "aebda5c83f2f4316a9cf23e6eee834672bb44cb5495132328bc32e3616588264"
+        },
+        {
+          "path": "oracle/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "37f89727a773ebccfc4d2eddc5b74d8f79abee0e051f49a040037b55b664be7d"
+        },
+        {
+          "path": "protected/fr/SatelliteProbe.resources.dll",
+          "sha256": "5acf5064fa419a353b1348b84d7dcb9ae4f4e19169c7928103102c439cbc46e8"
+        },
+        {
+          "path": "protected/fr-CA/SatelliteProbe.resources.dll",
+          "sha256": "993d23931d65eaba42b998c37a2c0ca1ea806827186986917a3f835584538ae7"
+        }
+      ]
+    }
+  ],
+  "runtime": [
+    {
+      "framework": "net48",
+      "path": "net48/behavior.json",
+      "sha256": "c6684b0d3503f6dd6311d410533e127bf762e5d4829012ce76167c1ddee62778",
+      "match": true,
+      "recoveryDirectory": "cleaned_verified",
+      "entries": 15
+    },
+    {
+      "framework": "net8.0",
+      "path": "net8.0/behavior.json",
+      "sha256": "b36723b8330963e557dcfe2094c51e31f1d3630660650a8d2e3958d9226a0e3b",
+      "match": true,
+      "recoveryDirectory": "cleaned_verified",
+      "entries": 15
+    },
+    {
+      "framework": "net10.0",
+      "path": "net10.0/behavior.json",
+      "sha256": "dc33291fb93d984c1e28ae038c34937d5e7ed94aac810170a24def7258871332",
+      "match": true,
+      "recoveryDirectory": "cleaned_verified",
+      "entries": 15
+    }
+  ],
+  "validation": {
+    "runtimeComparisons": 3,
+    "runtimeComparisonsPassed": 3,
+    "cultureReadsPerRun": 6,
+    "decodedEntries": 45,
+    "localContainers": 3,
+    "satelliteContainers": 6,
+    "fullTestLog": "C:/cilantro-verify/dotfuscator/satellite-resources-full-verified.log",
+    "fullTestStatus": "completed-with-one-unrelated-status-polling-failure",
+    "ilVerificationLog": "C:/cilantro-verify/dotfuscator/satellite-resources-ilverify.log",
+    "focusedTestsPassed": 78,
+    "focusedTestLog": "C:/cilantro-verify/dotfuscator/satellite-resources-focused-final.log",
+    "ilVerification": "Zero findings before and after; zero unreadable methods, newly broken methods or worsened methods on net48.",
+    "runtimeArtifactEvidence": "C:/cilantro-verify/dotfuscator/satellite-resource-runtime-evidence.json",
+    "fullTestsPassed": 3452,
+    "fullTestsFailed": 1,
+    "fullTestsSkipped": 37,
+    "fullTestsTotal": 3490,
+    "rerunTestsPassed": 85,
+    "rerunTestsFailed": 0,
+    "rerunLog": "C:/cilantro-verify/dotfuscator/satellite-resources-status-rerun.log",
+    "fullTestFailure": "RunStatusTests.ConcurrentPollingDoesNotPreventTerminalStatusReplacement: reader observed null during concurrent file replacement; isolated status/resource/manifest/schema rerun passed. This timing issue was not modified.",
+    "runtimeArtifactEvidenceSha256": "3c1168f34103413091143577d278c98efd30fe93d2e2201e6e4ac2a34a7869ca"
+  },
+  "limits": [
+    "Captures use unsigned matching-version resource-only satellites.",
+    "Satellite-only layouts, alternate contract versions, serialized object resources and obfuscated resource runtime variants remain unvalidated.",
+    "Unknown or invalid companions withhold output; existing differing satellite destinations are never replaced."
+  ],
+  "runtimeRetirement": {
+    "capturedAt": "2026-10-19",
+    "captures": 9,
+    "removedTypes": 18,
+    "runtimeComparisonsPassed": 9,
+    "recoveryDirectory": "cleaned_retirement_complete",
+    "runtimeEvidence": "C:/cilantro-verify/dotfuscator/resource-retirement-runtime-evidence.json",
+    "runtimeEvidenceSha256": "2bed83eea763b1ef291acb4ef6dd7befb76fb5e18fe2561b6837dbe71e24cf6a",
+    "focusedTestsPassed": 63,
+    "focusedTestLog": "C:/cilantro-verify/dotfuscator/resource-retirement-focused.log",
+    "fullTestLog": "C:/cilantro-verify/dotfuscator/resource-retirement-full.log",
+    "fullTestStatus": "passed",
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorResourceRuntime.cs",
+        "sha256": "2c562a3db36b7f29be098829601da6adaf3aeb04c5b76917215e9c3b1b807b18"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeMetadata.cs",
+        "sha256": "425ea3e24814bb5b0e0d66c294c17fb57dbba9dc433748c6fe04256a93508632"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorNativeRuntime.cs",
+        "sha256": "1d05c9b7d6ecfc088104d4bb8bf4d52668fe973967d9aa660b30f1034cdba6fd"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorResourcePass.cs",
+        "sha256": "f2890c51b90aa9f508315cdc86c56f570732c6d0b54d8568365e5d160391fa88"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "1dc0ffc095253c48f5ede2c8958010202db67dfb3951f3f30ecb7256bfde17f0"
+      },
+      {
+        "path": "tests/Cilantro.Tests/DotfuscatorResourceRetirementTests.cs",
+        "sha256": "bffa3681a6c47b3a12c7225c89b8c296436dcbf554c463ba2d9194febd38f90a"
+      },
+      {
+        "path": "corpus/probes/dotfuscator-resources.ps1",
+        "sha256": "5e603fd74b5194f9d073ee59b96a48be185c2fa7bd48beb0190b8fc7e5bdb88e"
+      },
+      {
+        "path": "corpus/probes/dotfuscator-resource-types.ps1",
+        "sha256": "20965461a016767f468a38f2e7e17d2c083adf239a37d123780a7cc865403b1b"
+      },
+      {
+        "path": "corpus/probes/dotfuscator-satellite-resources.ps1",
+        "sha256": "ea43461501d88fffa6ea68af46e907c477e48c2fbe7e176530f3b8ac723ebf39"
+      }
+    ],
+    "limits": "Only the reviewed 7.9 families qualify. Surviving type references, literal type-name reflection and changed family metadata/code veto retirement.",
+    "fullTestsPassed": 3464,
+    "fullTestsSkipped": 37,
+    "fullTestsFailed": 0,
+    "fullTestsTotal": 3501,
+    "combinationValidation": "corpus/dotfuscator-7-resource-interactions.provenance.json"
+  },
+  "contractValidation": "corpus/dotfuscator-7-resource-contracts.provenance.json"
+}

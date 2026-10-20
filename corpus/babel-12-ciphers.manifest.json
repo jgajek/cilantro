@@ -1,0 +1,409 @@
+{
+  "manifestVersion": 1,
+  "profile": "babel-12-ciphers",
+  "description": "Licensed Babel 12.1 cipher-selection probes: AES, managed AES, DES, TripleDES, Rijndael, RC2 and XOR across net48/net8/net10. Restored method bodies, retired method-image inputs, oracle resource parity and runtime comparisons are independently verified.",
+  "samples": [
+    {
+      "id": "net48-oracle",
+      "tier": "oracle",
+      "sha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "localName": "babel-12-ciphers/net48-aes/oracle/BabelProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-aes",
+      "tier": "profiled",
+      "sha256": "8a893a9a39927d9a231ab384f23eb1e7e567d77f93396e04155d21fe075e13c5",
+      "localName": "babel-12-ciphers/net48-aes/protected/BabelProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "sEOy"
+      ]
+    },
+    {
+      "id": "net48-aesmanaged",
+      "tier": "profiled",
+      "sha256": "9eeb163d7508c22517fbc494b52435b228f63539f78fd3c36b31580915c7eee9",
+      "localName": "babel-12-ciphers/net48-aesmanaged/protected/BabelProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "sEOy"
+      ]
+    },
+    {
+      "id": "net48-des",
+      "tier": "profiled",
+      "sha256": "d4a40e668aeb2af38527c260886d92cb5853e22f5d99a4c24bcbd19766fe22a8",
+      "localName": "babel-12-ciphers/net48-des/protected/BabelProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "sEOy"
+      ]
+    },
+    {
+      "id": "net48-tripledes",
+      "tier": "profiled",
+      "sha256": "a6fe1662f774e4cedeaa3508ec1cf37d097916be567da2b8354af9a5ecf05223",
+      "localName": "babel-12-ciphers/net48-tripledes/protected/BabelProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "sEOy"
+      ]
+    },
+    {
+      "id": "net48-rijndael",
+      "tier": "profiled",
+      "sha256": "07cc6fe037df90a6f9c88222220e4eb7fb54083ad504015c2d415fb700975714",
+      "localName": "babel-12-ciphers/net48-rijndael/protected/BabelProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "sEOy"
+      ]
+    },
+    {
+      "id": "net48-rc2",
+      "tier": "profiled",
+      "sha256": "99f1bbe2184181666444e9a0fe0348da479221f7bd6d26cc834a201ffe4ea68f",
+      "localName": "babel-12-ciphers/net48-rc2/protected/BabelProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "sEOy"
+      ]
+    },
+    {
+      "id": "net48-xor",
+      "tier": "profiled",
+      "sha256": "f5607d7d4e439b59eb1495cc472ba2edfda79ce045eebe4aa942fd9949a8279b",
+      "localName": "babel-12-ciphers/net48-xor/protected/BabelProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "sEOy"
+      ]
+    },
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "localName": "babel-12-ciphers/net8.0-aes/oracle/BabelProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-aes",
+      "tier": "profiled",
+      "sha256": "4654c92e5feb561dc24960053e3c96c953901c8e423affec853c0d8945469551",
+      "localName": "babel-12-ciphers/net8.0-aes/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net8.0-aesmanaged",
+      "tier": "profiled",
+      "sha256": "63728ca23863a7fa1dae981b46cafee4ea715b90e6e14b3967115b0f14583545",
+      "localName": "babel-12-ciphers/net8.0-aesmanaged/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net8.0-des",
+      "tier": "profiled",
+      "sha256": "908837284e3a891f28e5059235b11e13fc9517c98be3d8497756cedc9f9d4a35",
+      "localName": "babel-12-ciphers/net8.0-des/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net8.0-tripledes",
+      "tier": "profiled",
+      "sha256": "2dfe891609df77f85a85b47c5b0141ea95204e4852d343ba69f56e4fc6244081",
+      "localName": "babel-12-ciphers/net8.0-tripledes/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net8.0-rijndael",
+      "tier": "profiled",
+      "sha256": "9affcfdb1317258fb23089dfb0d70f9043a1f09524e3b341d24c4d955a3f5e22",
+      "localName": "babel-12-ciphers/net8.0-rijndael/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net8.0-rc2",
+      "tier": "profiled",
+      "sha256": "b88f0a4b9b86357911c6f5877702795f73847da9e0f611ee681788009e0d7a9a",
+      "localName": "babel-12-ciphers/net8.0-rc2/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net8.0-xor",
+      "tier": "profiled",
+      "sha256": "1b3112ad005c92df0ee5b478b3b20ad9013efa8650f5415ed702befe2743afc7",
+      "localName": "babel-12-ciphers/net8.0-xor/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "localName": "babel-12-ciphers/net10.0-aes/oracle/BabelProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-aes",
+      "tier": "profiled",
+      "sha256": "cfb94633c813b8486f4d1d5f344c5eaa1dab936424a08f5a66c878a5f6c06b2f",
+      "localName": "babel-12-ciphers/net10.0-aes/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net10.0-aesmanaged",
+      "tier": "profiled",
+      "sha256": "aded3b6afbc5153c850e9c8aad95136c7384f9f33c57737b4763ff36b318a3ef",
+      "localName": "babel-12-ciphers/net10.0-aesmanaged/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net10.0-des",
+      "tier": "profiled",
+      "sha256": "8ef2622fa2bc698936841e110e83b17be841793e31da3cd1bd2dfd132b9ba0f2",
+      "localName": "babel-12-ciphers/net10.0-des/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net10.0-tripledes",
+      "tier": "profiled",
+      "sha256": "9c731fc9d013884c3b6f50a48185dd55f2f39112dbee77630e7416ece39619b2",
+      "localName": "babel-12-ciphers/net10.0-tripledes/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net10.0-rijndael",
+      "tier": "profiled",
+      "sha256": "c38cd23f5b45a5717b0b63d39f08f3d014bc69af235f77dc2e7b8f03fd732bd5",
+      "localName": "babel-12-ciphers/net10.0-rijndael/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net10.0-rc2",
+      "tier": "profiled",
+      "sha256": "42297983d87897ee0f62e5a4c556115ed9e7aa08a4b906143d45652b887bb3d1",
+      "localName": "babel-12-ciphers/net10.0-rc2/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    },
+    {
+      "id": "net10.0-xor",
+      "tier": "profiled",
+      "sha256": "bcfff4a2f71ab5382c01277b5abbfc6fdd6c9b9197dee4e92017b7601f3407a3",
+      "localName": "babel-12-ciphers/net10.0-xor/protected/BabelProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true,
+      "expectedRetiredResourceNames": [
+        "hgqQK"
+      ]
+    }
+  ]
+}

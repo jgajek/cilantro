@@ -1,0 +1,514 @@
+{
+  "capturedAt": "2026-10-20",
+  "compiler": "Babel Obfuscator 12.1.0.0 Enterprise floating trial",
+  "description": "Nine independent captures: generic Exception and List<T> bases plus nongeneric Exception controls across Framework 4.8, .NET 8 and .NET 10. No license key is recorded.",
+  "manifest": {
+    "path": "C:/Users/jgaje/Documents/Codex/CILantro/corpus/babel-12-external-bases.manifest.json",
+    "sha256": "890b66fb8893cf6ed681ad00f9c1e854270430316691d228203aeaf79dd3e9eb"
+  },
+  "sources": [
+    {
+      "path": "corpus/probes/BabelExternalBaseProbe/BabelExternalBaseProbe.csproj",
+      "sha256": "19595c6051a8e7474679f505766e21377914038151f999eb0e59d72a77afca0f"
+    },
+    {
+      "path": "corpus/probes/BabelExternalBaseProbe/Program.cs",
+      "sha256": "f8418a5709bdef0cd535bc6c56c28c854d55b79b7b4de92dd67584d8689d9622"
+    },
+    {
+      "path": "corpus/probes/BabelExternalBaseCaller/BabelExternalBaseCaller.csproj",
+      "sha256": "352536d0c669be1355c8df1eb9b04ec59845656b251c14c4e22abc267da3e261"
+    },
+    {
+      "path": "corpus/probes/BabelExternalBaseCaller/Program.cs",
+      "sha256": "eb48c8348e175309fe92e1315caa6c336bd02a6e200a841ced06f1348e9e3c4f"
+    },
+    {
+      "path": "corpus/probes/babel-external-bases.ps1",
+      "sha256": "e3a4b1db3729e40bbe7448225581a762cd5222e327642c2826745f2d13b17bad"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/GenericOwnerHierarchy.cs",
+      "sha256": "ebc48bfd674b5e9e717fed02690f65056270afaffb0610ac8515accb6658dfb8"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/StaticHeap.cs",
+      "sha256": "6f035642cf53443799b9fc2f8319fa16f33d6c2ef57d15391650adfb3576c7e2"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/ParametricTypeIntrinsic.cs",
+      "sha256": "22eceec8689ee42eca26a6d009a7030fd40a17dfddfaa78b242750b2e222d7f2"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/ParametricListMembers.cs",
+      "sha256": "458783ac2d7b57414fb2b8cf43e7db21595c652edf0caee7fe246c88f479c75c"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelGenericStub.cs",
+      "sha256": "3b8da21b8890a69441db385b9bf61dbdd14619626606be047a5a064981e70c59"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelHierarchyTests.cs",
+      "sha256": "34c3a14a669acb3ada54ac489aadb3c5cc826b995b41313e5247aa76ab9bc0ee"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelExternalBaseCorpusTests.cs",
+      "sha256": "450094a6eff93c2620db1af69ed73be7f5a7e919df447492ef750b62071e59da"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelMethodCorpusTests.cs",
+      "sha256": "6d756487e16c37c2748d3c219f659969c7299d03662cfdc6e8ed4b2c7b6d3bb2"
+    }
+  ],
+  "proof": "The existing closed receiver supplies its exact external base expression. Local state remains opaque; external layouts, constructors, ancestry and generic constraints are never inferred. Foreign static reads, writes, addresses and initializer entry refuse, including unresolved ancestors. Exact sealed receiver fields have no invented defaults. Only the existing expression can establish an otherwise unknown generic construction. List setter binding reconstructs its reviewed void(Int32,!0) metadata in the input assembly scope; it does not execute the collection.",
+  "validation": {
+    "captures": 9,
+    "restoredMethods": 9,
+    "programComparisons": 9,
+    "callerCases": 159,
+    "injectedMethodRuntimeTypesRetired": 486,
+    "runtimeCounts": {
+      "path": "C:/cilantro-verify/babel/external-base-cleaned-counts.json",
+      "sha256": "62563803df24c346f347adf951604857e39fe48367384326d8508cf2857b8fb4"
+    },
+    "frameworkDifferentialIlVerifyComparisons": 3,
+    "focusedTestsPassed": 46,
+    "focusedTests": {
+      "path": "C:/cilantro-verify/babel/external-base-focused-final.log",
+      "sha256": "039506f9b73fefff1826c49fcc8eccd989ad5c74a42b72dc2efad43053f5ed7e"
+    },
+    "behavior": {
+      "path": "C:/cilantro-verify/babel/external-bases/Verify-behavior.json",
+      "sha256": "35eb2347117af5a8bc1c8df2910124f310aeeab0b8697fe4bbb58216a8631a0e"
+    },
+    "fullSuite": {
+      "passed": 3671,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3708,
+      "duration": "7 m 53 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/external-base-full-tests.log",
+        "sha256": "5b28235b28f8e8de11048079f0368ea2ab48e18be662ed24596e60602dd2b7c2"
+      }
+    }
+  },
+  "guards": [
+    "Unbounded or malformed base expressions and same-assembly aliases refuse.",
+    "Unknown external instance storage cannot be read or addressed; any new write breaks unchanged-receiver proof.",
+    "Foreign state and initialization remain unavailable during construction.",
+    "Missing/changed signatures and unreviewed method binding retain the original refusal."
+  ],
+  "limits": [
+    "These runtime captures cover Exception and List<T>; arbitrary third-party external base behavior is not runtime-validated.",
+    "Application bodies and constructors are captured or preserved, never executed by recovery.",
+    "Complete protector metadata removal remains unproved."
+  ],
+  "captures": [
+    {
+      "id": "net48-error",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.ErrorBox.*::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 26,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-error/oracle/BabelExternalBaseProbe.exe",
+        "sha256": "05e31944d2c2bbf9986bb00c67ef41a9805c70efc05781a57cfd6a9f9becf249"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-error/protected/BabelExternalBaseProbe.exe",
+        "sha256": "99854d815303af4fbea56ef139e2595b1deab77fa1e54dade047cf5d0e0e1260"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-error/cleaned_external_bases/BabelExternalBaseProbe.cleaned.exe",
+        "sha256": "28054e2172bcd313fa4d03ece20af54d734af97e5f23d55e5cb1b92971fed3e9"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-error/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "08d60ee80d3a4830d2ec7eaeb86ff1ae58b9689e7ec3f4d2fcc1bcb4435e90ce"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-error/Verify-behavior.json",
+        "sha256": "4c65b1d46a979b1a32fb97657fa7c86c5963e1373fe431956bad56481d596fed"
+      }
+    },
+    {
+      "id": "net48-list",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.ListBox.*::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 26,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-list/oracle/BabelExternalBaseProbe.exe",
+        "sha256": "05e31944d2c2bbf9986bb00c67ef41a9805c70efc05781a57cfd6a9f9becf249"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-list/protected/BabelExternalBaseProbe.exe",
+        "sha256": "ea7a1b9cd95ca3b129baabd2b5cf97b636030bf759575c2191a2422baf4dc8e6"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-list/cleaned_external_bases/BabelExternalBaseProbe.cleaned.exe",
+        "sha256": "4bc2455b88c1361fc87e08a2b8523e0d3b2da5d3d7302e797cc42e1686d460dc"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-list/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "d1b74dedd8d9d063864d1c8a51a1bb368d878b000ed31fb89884803da1960c7a"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-list/Verify-behavior.json",
+        "sha256": "719bf893b9c5266660b1eb355959964ab72e8959b4b607fed23bb33cbe67d308"
+      }
+    },
+    {
+      "id": "net48-plain",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.PlainError::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 1,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-plain/oracle/BabelExternalBaseProbe.exe",
+        "sha256": "05e31944d2c2bbf9986bb00c67ef41a9805c70efc05781a57cfd6a9f9becf249"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-plain/protected/BabelExternalBaseProbe.exe",
+        "sha256": "e878f15a97f2393f73ba27305c6ac7e099d4a79ca7e2d2e15987fa3a94137e4e"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-plain/cleaned_external_bases/BabelExternalBaseProbe.cleaned.exe",
+        "sha256": "957708899d038ec4c142bd8e07c10caab644734f02546cf113c3a36dbb463bae"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-plain/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "b348f0b8e57eb06d2f6fc5690c8b7173fe2e9c144fd505149737c4f1177772c9"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net48-plain/Verify-behavior.json",
+        "sha256": "dfdbc78bcdcfcb8e3c4d7f23420a8f014dc364d0680c4f23a6f5ba428667cdb8"
+      }
+    },
+    {
+      "id": "net8.0-error",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.ErrorBox.*::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 26,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-error/oracle/BabelExternalBaseProbe.dll",
+        "sha256": "c6faa461ec1be28f30d29ae7d183645c28273118abddbd201b2a9d00ce4d7eaa"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-error/protected/BabelExternalBaseProbe.dll",
+        "sha256": "dd0dff66375b17926cf0d6763bf09aeab1e0e3263920a93361006a0c06442f75"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-error/cleaned_external_bases/BabelExternalBaseProbe.cleaned.dll",
+        "sha256": "f5ea01fa27521990877d394a776ea806da8b66752c0c3a5cb1026c07bf1cc1fb"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-error/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "84b9f3a95e2fe477d539cbb2b2f896f22c1d383a582257508cd5983500e02675"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-error/Verify-behavior.json",
+        "sha256": "edb562e5dc7270970c57db8cec249af9f2e780bedc6976c1f2ad2e7e39084bfd"
+      }
+    },
+    {
+      "id": "net8.0-list",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.ListBox.*::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 26,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-list/oracle/BabelExternalBaseProbe.dll",
+        "sha256": "c6faa461ec1be28f30d29ae7d183645c28273118abddbd201b2a9d00ce4d7eaa"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-list/protected/BabelExternalBaseProbe.dll",
+        "sha256": "98b23edf36b304d486aac09642d10ca375450967c17a9eb05a8cd4ad4b164604"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-list/cleaned_external_bases/BabelExternalBaseProbe.cleaned.dll",
+        "sha256": "2c7478255712358cc7c08b23f38bc472d8b1ef3733ddc56cd4f5fc1548dabcea"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-list/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "05a791fb51461587561e86e5996d2ec0c3f1ca2c4a7a86ea4d2803e0b0e33f6c"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-list/Verify-behavior.json",
+        "sha256": "48aeba10fdb53327ea230aead66cf06e16acef80209b1ff4db763e72253ae59e"
+      }
+    },
+    {
+      "id": "net8.0-plain",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.PlainError::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 1,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-plain/oracle/BabelExternalBaseProbe.dll",
+        "sha256": "c6faa461ec1be28f30d29ae7d183645c28273118abddbd201b2a9d00ce4d7eaa"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-plain/protected/BabelExternalBaseProbe.dll",
+        "sha256": "1275e75e47924368682019ef24f8b9b279b55ef8b162ad95b2babaf21a2549e9"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-plain/cleaned_external_bases/BabelExternalBaseProbe.cleaned.dll",
+        "sha256": "59d5e68c71422259c310c394d5a4a8daf234ceacb386a89dd01073c6cc087e9d"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-plain/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "cde0bb984817f124c2e6996394d2267449028af4dc0ae0db075f8456884cc36b"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net8.0-plain/Verify-behavior.json",
+        "sha256": "65dca3aaadd4dc4d15e413c536527176ae2d4471d2f082ebaa64c3785da1aed6"
+      }
+    },
+    {
+      "id": "net10.0-error",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.ErrorBox.*::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 26,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-error/oracle/BabelExternalBaseProbe.dll",
+        "sha256": "4447172ad47ce2e14d7088b91145b9a05686d7027aa24090042b94d4e7b6114a"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-error/protected/BabelExternalBaseProbe.dll",
+        "sha256": "b35f7a36d818f7822e11289782f6388727f36800dc553e644f17219f09c9e768"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-error/cleaned_external_bases/BabelExternalBaseProbe.cleaned.dll",
+        "sha256": "6f0f21c58f2cd82011a6bf4451c90e4cc166f708efb84a7b9b0526e8fce3c578"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-error/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "df020b76a7045057aa072960170694efb8e2acfe54228841966f9b2f9abbb31d"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-error/Verify-behavior.json",
+        "sha256": "9bfa7f4e11d210437fcf6ac12d4f2ab84bcd9de9603a9bdc8ba35a462ace3c9b"
+      }
+    },
+    {
+      "id": "net10.0-list",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.ListBox.*::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 26,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-list/oracle/BabelExternalBaseProbe.dll",
+        "sha256": "4447172ad47ce2e14d7088b91145b9a05686d7027aa24090042b94d4e7b6114a"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-list/protected/BabelExternalBaseProbe.dll",
+        "sha256": "4801b6707cff6b8e465990523b7664af3169962f4beb24ce2fe5b66611b5ca61"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-list/cleaned_external_bases/BabelExternalBaseProbe.cleaned.dll",
+        "sha256": "e39cb431fb0fe342f815f5ab16c240d13615010a18b87591ca1a88c388ba425d"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-list/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "a65259aedb4f80e53b22ef6156d213f5a6f8e28bc8010d8df0826822f82f4923"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-list/Verify-behavior.json",
+        "sha256": "751de5757698fcdda38f39dd3c8f319da73d2097a4931193f8c12a43596a7ccb"
+      }
+    },
+    {
+      "id": "net10.0-plain",
+      "compilerVersion": "12.1.0.0",
+      "compilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelExternalBaseProbe\\.PlainError::Exchange"
+      ],
+      "encryptedMethods": 1,
+      "restoredMethods": 1,
+      "callerCases": 1,
+      "behaviorPassed": true,
+      "oracle": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-plain/oracle/BabelExternalBaseProbe.dll",
+        "sha256": "4447172ad47ce2e14d7088b91145b9a05686d7027aa24090042b94d4e7b6114a"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-plain/protected/BabelExternalBaseProbe.dll",
+        "sha256": "27e3eab925a491d2a9830ef5c0309374c93bcc93e6aa5af89ce0390cb62a6090"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-plain/cleaned_external_bases/BabelExternalBaseProbe.cleaned.dll",
+        "sha256": "37bb13f43ffcdbeea784ca406ed680bb60b6936910bbc46a758cb23bea0e398b"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-plain/cleaned_external_bases/BabelExternalBaseProbe.analysis.json",
+        "sha256": "bf080c9c7dbe188b19783246f4dc7ca7a0bf1be6c80ae4f14efa3c0aca39747d"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/babel/external-bases/net10.0-plain/Verify-behavior.json",
+        "sha256": "184c0dd7011b1b8dea7ba59387c8db6e326a1626c0e5711ecdc94fc6acd86123"
+      }
+    }
+  ]
+}

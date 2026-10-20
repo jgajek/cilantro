@@ -1,0 +1,132 @@
+{
+  "capturedOn": "2026-10-19",
+  "vendor": "PreEmptive Solutions, LLC",
+  "version": "7.9.0+2381db6511",
+  "compilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+  "installerSha256": "c011fc455986319ef2435ef8e3c02e1efb6780136db567a40ad13595aee4c7d7",
+  "installerSignature": "Valid; Preemptive Solutions, LLC",
+  "source": "corpus/probes/Probe",
+  "harness": "corpus/probes/dotfuscator.ps1",
+  "pruning": false,
+  "runtimeChecks": false,
+  "runtimeComparisons": 24,
+  "runtimeComparisonsPassed": 24,
+  "fixtures": [
+    {
+      "id": "net10.0-combined",
+      "framework": "net10.0",
+      "configuration": "combined",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "5d05e18f31ac63a41720b4cb034f88f0b3ea8bb25847837c53e2eea5b17be0b1",
+      "protectedSha256": "0b4d7c889df2dc570a5daae4420cc28af341964162a280ae9fb00d11c2bfbe24",
+      "configurationSha256": "632d90847848234ae10b43d07fa1600e85dd3ca9d0fc7b5e36ef3c043fd24197"
+    },
+    {
+      "id": "net10.0-flow",
+      "framework": "net10.0",
+      "configuration": "flow",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "5d05e18f31ac63a41720b4cb034f88f0b3ea8bb25847837c53e2eea5b17be0b1",
+      "protectedSha256": "f5f2f048aed9cdc27ce74172257c2606c1ed61657d471a6a1dee8f0a181d6faf",
+      "configurationSha256": "464f838e6e70020e9c6a15f1551f7d7271d9f2d7dea23b894a8c0667f16b63d1"
+    },
+    {
+      "id": "net10.0-renamed",
+      "framework": "net10.0",
+      "configuration": "renamed",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "5d05e18f31ac63a41720b4cb034f88f0b3ea8bb25847837c53e2eea5b17be0b1",
+      "protectedSha256": "333df7266534d6b4f0a067b59c4e69baf40a0df801326575779f22404563ff40",
+      "configurationSha256": "5ddb2618e0616cf239fc12423de948e481c48c7b5b4204b8b8b64f51654ef244"
+    },
+    {
+      "id": "net10.0-strings",
+      "framework": "net10.0",
+      "configuration": "strings",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "5d05e18f31ac63a41720b4cb034f88f0b3ea8bb25847837c53e2eea5b17be0b1",
+      "protectedSha256": "c3f901f6f88203e3aa14d4d6c494e71333615f08ed7145eaf9702873cedb8767",
+      "configurationSha256": "c0f1d7d6c1812242050840e420c41f7065a3c6bfbe9c74847e354a2ed752fc84"
+    },
+    {
+      "id": "net48-combined",
+      "framework": "net48",
+      "configuration": "combined",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "50c136bd9b8cdbb945eb7a1b65ba5f1b2226abc74eb278be5166b20ee3920890",
+      "protectedSha256": "dfd67dd9ff4628aea2a428f691174ad6eb97c856a04bd41dcc89cdcfdfd2515f",
+      "configurationSha256": "38a7d36a6b22b470ac4baebfced1d11bce3177cf955652958d5818d104b09666"
+    },
+    {
+      "id": "net48-flow",
+      "framework": "net48",
+      "configuration": "flow",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "50c136bd9b8cdbb945eb7a1b65ba5f1b2226abc74eb278be5166b20ee3920890",
+      "protectedSha256": "5c6df9b35244d41b99c913b2a8d0e408c2fb3c3e687a857fd24495574930d2b4",
+      "configurationSha256": "eb5170e8af70d16e8d9375199b75ad6f31abea4cbcb15900647438907397ca04"
+    },
+    {
+      "id": "net48-renamed",
+      "framework": "net48",
+      "configuration": "renamed",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "50c136bd9b8cdbb945eb7a1b65ba5f1b2226abc74eb278be5166b20ee3920890",
+      "protectedSha256": "7697cc4b53beb6ddf88cf3b0c03a133bcf7cfbb3c4d4ff5bd5f659245a3656d4",
+      "configurationSha256": "00c19fce534fbfba7d37281a04680fa73677e4bf4290b60b6b8a0e2d2818134a"
+    },
+    {
+      "id": "net48-strings",
+      "framework": "net48",
+      "configuration": "strings",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "50c136bd9b8cdbb945eb7a1b65ba5f1b2226abc74eb278be5166b20ee3920890",
+      "protectedSha256": "712bb40bf434f3acac6b17a6248d1e05b24415dcffb7a51194a87223ea5ae07a",
+      "configurationSha256": "7cda95b4f28d3c87e6acb376e634465e3e8cd97729dc50ea971c03fd7527be75"
+    },
+    {
+      "id": "net8.0-combined",
+      "framework": "net8.0",
+      "configuration": "combined",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "b6c992f5fd468820c9863f968d59154e7b5204b1c63c1ca527718ef68f528cf6",
+      "protectedSha256": "3892ce6ce19c9f416d19b717339671fd463e78cc6dd34bd748f10f89353c95f5",
+      "configurationSha256": "178cbd6e660aafbed57506f33bd3acc45e37386517e5791574b3a2c76d99d568"
+    },
+    {
+      "id": "net8.0-flow",
+      "framework": "net8.0",
+      "configuration": "flow",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "b6c992f5fd468820c9863f968d59154e7b5204b1c63c1ca527718ef68f528cf6",
+      "protectedSha256": "2cb4939a0734dd16b7cd7cb0e6bd89fb255de96e186f39974835caf8288889fd",
+      "configurationSha256": "4e48112ab753f35dd2dc2b5117c05648fe96808456f712963cf77ff2f4f164e4"
+    },
+    {
+      "id": "net8.0-renamed",
+      "framework": "net8.0",
+      "configuration": "renamed",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "b6c992f5fd468820c9863f968d59154e7b5204b1c63c1ca527718ef68f528cf6",
+      "protectedSha256": "9e0ad48c14d1761143504369aac9b41c6200dd892ff19dedf1acd51febbccab3",
+      "configurationSha256": "90759b016775e25a1f5e861f3d39bfeaef9bdee2d7e369e6c56c168ec6ac872e"
+    },
+    {
+      "id": "net8.0-strings",
+      "framework": "net8.0",
+      "configuration": "strings",
+      "stringEncryptionVersion": 1,
+      "oracleSha256": "b6c992f5fd468820c9863f968d59154e7b5204b1c63c1ca527718ef68f528cf6",
+      "protectedSha256": "cdefd5b9fbaf9bacc5e91cd8ac21d43b9f6fa9c3a066b0b4a3b73983b4ef733b",
+      "configurationSha256": "e838e82aa6bdcbdc0514f2c4beabea06d5c7fac80f8ebbd1739d888254befaa6"
+    }
+  ],
+  "nativeExploratoryFixture": {
+    "id": "net48-native-original",
+    "stringEncryptionVersion": 2,
+    "oracleSha256": "50c136bd9b8cdbb945eb7a1b65ba5f1b2226abc74eb278be5166b20ee3920890",
+    "protectedSha256": "fb7a431dff97b8efad37916b31e688cd138216e1e427d2ab61da35bf2f8e943a",
+    "configurationSha256": "479751e526e95bd6defa99da9a1e4dd1bd6e827461280a29c31cdd7f83151428",
+    "runtimeComparison": "Originally detection-only; recovery and protected/cleaned runtime validation are recorded in dotfuscator-7-v2.provenance.json."
+  }
+}

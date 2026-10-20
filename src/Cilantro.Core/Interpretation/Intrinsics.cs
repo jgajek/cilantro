@@ -111,7 +111,8 @@ public sealed record IntrinsicContext(
     DelegateInvoker? Invoke = null,
     MethodInvoker? Call = null,
     IReadOnlyList<MethodDef>? Frames = null,
-    Func<ITypeDefOrRef, IntrinsicResult>? InitializeType = null);
+    Func<ITypeDefOrRef, IntrinsicResult>? InitializeType = null,
+    Func<int, bool>? ConsumeWork = null);
 
 public interface IStaticIntrinsic
 {
@@ -759,7 +760,9 @@ public sealed class GenericListIntrinsic : IStaticIntrinsic
     public bool Matches(IMethod method) =>
         method.DeclaringType.FullName.StartsWith(
             "System.Collections.Generic.List`1<",
-            StringComparison.Ordinal);
+            StringComparison.Ordinal) ||
+        method.DeclaringType.FullName.StartsWith("System.Collections.Generic.ICollection`1<", StringComparison.Ordinal) &&
+        method.Name == "Add" && method.MethodSig is { HasThis: true, Params.Count: 1, RetType.ElementType: ElementType.Void };
 
     public IntrinsicResult Invoke(
         IntrinsicContext context,
@@ -768,6 +771,10 @@ public sealed class GenericListIntrinsic : IStaticIntrinsic
     {
         var heap = context.State.Heap;
         var name = method.Name.String;
+        if (method.DeclaringType.FullName.StartsWith("System.Collections.Generic.ICollection`1<", StringComparison.Ordinal) &&
+            (arguments.Count != 2 || !heap.TryGetRuntimeTypeName(arguments[0], out var runtimeType) || runtimeType !=
+                method.DeclaringType.FullName.Replace("System.Collections.Generic.ICollection`1<", "System.Collections.Generic.List`1<", StringComparison.Ordinal)))
+            return IntrinsicResult.Invalid("ICollection<T>.Add requires the matching concrete modeled List<T> receiver.");
         if (name == ".ctor")
         {
             if (!heap.TryAllocateObject(method.DeclaringType.FullName, out var list) ||
@@ -945,6 +952,9 @@ public sealed class AmbientIntrinsic : IStaticIntrinsic
         if (name == "get_Ticks" && arguments.Count == 1 &&
             TryReadTicks(heap, arguments[0], out long reading))
             return IntrinsicResult.Completed(StaticValue.FromInt64(reading));
+        if (name == "get_Millisecond" && arguments.Count == 1 && method.DeclaringType.FullName == "System.DateTime" &&
+            TryReadTicks(heap, arguments[0], out var milliseconds))
+            return IntrinsicResult.Completed(StaticValue.FromInt32(new DateTime(milliseconds).Millisecond));
         if (name is "NewGuid" or "get_Empty" && arguments.Count == 0)
         {
             if (name == "NewGuid")
@@ -2056,6 +2066,8 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     {
         public string Name { get; set; } = "Invoke";
         public bool IsStatic { get; set; } = true;
+        public MethodAttributes Attributes { get; set; } = MethodAttributes.Public | MethodAttributes.Static;
+        public MethodImplAttributes Implementation { get; set; } = MethodImplAttributes.IL;
         public TypeSig? Returns { get; set; }
         public List<TypeSig> Takes { get; set; } = [];
         public List<TypeSig> Locals { get; } = [];
@@ -2075,6 +2087,8 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
             "System.Reflection.Emit.ModuleBuilder" or
             "System.Reflection.Emit.TypeBuilder" or
             "System.Reflection.Emit.MethodBuilder" or
+            "System.Reflection.Emit.ConstructorBuilder" or
+            "System.Reflection.Emit.FieldBuilder" or
             "System.Reflection.Emit.LocalBuilder" or
             // A local builder is a local like any other, and the slot it was given is asked for
             // through the base class as often as through the builder.
@@ -2099,9 +2113,41 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
             case "DefineDynamicAssembly":
                 return Allocate(heap, "System.Reflection.Emit.AssemblyBuilder");
             case "DefineDynamicModule":
-                return Allocate(heap, "System.Reflection.Emit.ModuleBuilder");
+                if (!heap.TryAllocateObject("System.Reflection.Emit.ModuleBuilder", out var moduleBuilder))
+                    return IntrinsicResult.Invalid("Could not allocate a module builder.");
+                heap.TrySetModelValue(moduleBuilder, "Assembly", arguments[0]);
+                return IntrinsicResult.Completed(moduleBuilder);
             case "DefineType":
-                return Open(heap, arguments);
+                return Open(context, arguments);
+            case "DefineField" when arguments.Count == 4:
+            {
+                if (!heap.TryGetModelValue<TypeDef>(arguments[0], "EmittedType", out var owner) || owner is null ||
+                    !heap.TryGetString(arguments[1], out var fieldName) || Signatures(heap, arguments[2], context.State.ModuleMetadata) is not { } fieldType ||
+                    !arguments[3].IsInteger || !heap.TryAllocateObject("System.Reflection.Emit.FieldBuilder", out var fieldBuilder))
+                    return IntrinsicResult.Invalid("The emitted field is not fully described.");
+                var field = new FieldDefUser(fieldName, new FieldSig(fieldType), (FieldAttributes)arguments[3].AsInt32());
+                owner.Fields.Add(field);
+                heap.TrySetModelValue(fieldBuilder, "Metadata", field);
+                return IntrinsicResult.Completed(fieldBuilder);
+            }
+            case "DefineConstructor" when arguments.Count == 4:
+            {
+                if (!arguments[1].IsInteger || !arguments[2].IsInteger || !heap.TryAllocateObject("System.Reflection.Emit.ConstructorBuilder", out var constructor))
+                    return IntrinsicResult.Invalid("The emitted constructor is not fully described.");
+                var attributes = (MethodAttributes)arguments[1].AsInt32() | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName;
+                var program = new Program { Name = ".ctor", IsStatic = (attributes & MethodAttributes.Static) != 0, Attributes = attributes,
+                    Returns = context.State.ModuleMetadata?.CorLibTypes.Void, Takes = Taken(heap, arguments[3]) };
+                heap.TrySetModelValue(constructor, Built, program);
+                if (!heap.TryGetModelValue<List<StaticValue>>(arguments[0], Members, out var constructors) || constructors is null)
+                    return IntrinsicResult.Invalid("The constructor has no declaring type.");
+                constructors.Add(constructor);
+                return IntrinsicResult.Completed(constructor);
+            }
+            case "SetImplementationFlags" when arguments.Count == 2 && arguments[1].IsInteger:
+                if (!TryProgram(heap, arguments[0], out var implemented) || implemented is null)
+                    return IntrinsicResult.Invalid("The implementation flags name no emitted method.");
+                implemented.Implementation = (MethodImplAttributes)arguments[1].AsInt32();
+                return IntrinsicResult.Completed();
             case "DefineMethod":
                 return Declare(heap, arguments, onto: true);
             case ".ctor":
@@ -2218,8 +2264,10 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
     /// <summary>
     /// Opens a type for the program to define methods on.
     /// </summary>
-    private static IntrinsicResult Open(StaticHeap heap, IReadOnlyList<StaticValue> arguments)
+    private static IntrinsicResult Open(IntrinsicContext context, IReadOnlyList<StaticValue> arguments)
     {
+        var heap = context.State.Heap;
+        if (arguments.Count < 2) return IntrinsicResult.Invalid("The emitted type has no name.");
         if (!heap.TryAllocateObject("System.Reflection.Emit.TypeBuilder", out var built))
             return IntrinsicResult.Invalid("Could not allocate a type builder.");
         heap.TrySetModelValue(built, Members, new List<StaticValue>());
@@ -2229,6 +2277,10 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
             arguments.Count > 1 && heap.TryGetString(arguments[1], out var spelled)
                 ? spelled
                 : "Emitted");
+        var owner = Scratch(context, heap.TryGetString(arguments[1], out var name) ? name : "Emitted");
+        if (arguments.Count > 2 && arguments[2].IsInteger) owner.Attributes = (TypeAttributes)arguments[2].AsInt32();
+        if (arguments.Count > 3 && Signatures(heap, arguments[3], context.State.ModuleMetadata) is { } parent) owner.BaseType = parent.ToTypeDefOrRef();
+        heap.TrySetModelValue(built, "EmittedType", (TypeDef)owner);
         return IntrinsicResult.Completed(built);
     }
 
@@ -2253,7 +2305,9 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
         if (arguments.Count > 2 && arguments[2].IsInteger)
         {
             program.IsStatic = (arguments[2].AsInt32() & (int)MethodAttributes.Static) != 0;
+            program.Attributes = (MethodAttributes)arguments[2].AsInt32();
             described = 3;
+            if (arguments.Count > 3 && arguments[3].IsInteger) described = 4;
         }
 
         if (arguments.Count > described)
@@ -2759,7 +2813,8 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
         }
 
         heap.TryGetModelValue(builder, Spelling, out string? spelled);
-        var host = Scratch(context, spelled ?? "Emitted");
+        var host = heap.TryGetModelValue<TypeDef>(builder, "EmittedType", out var opened) && opened is not null
+            ? opened : Scratch(context, spelled ?? "Emitted");
         foreach (var member in members)
         {
             if (!heap.TryGetModelValue<Program>(member, Built, out var program) || program is null)
@@ -2884,11 +2939,15 @@ public sealed class ReflectionEmitIntrinsic : IStaticIntrinsic
             program.IsStatic
                 ? MethodSig.CreateStatic(returns, takes)
                 : MethodSig.CreateInstance(returns, takes),
-            MethodImplAttributes.IL,
-            program.IsStatic
-                ? MethodAttributes.Public | MethodAttributes.Static
-                : MethodAttributes.Public);
+            program.Implementation,
+            program.Attributes);
         host.Methods.Add(method);
+        if ((program.Implementation & MethodImplAttributes.CodeTypeMask) == MethodImplAttributes.Runtime)
+        {
+            if (program.Body.Count != 0) { refusal = "a runtime method also has emitted CIL"; return false; }
+            assembled = method;
+            return true;
+        }
         var body = new CilBody { InitLocals = true };
         method.Body = body;
         method.Parameters.UpdateParameterTypes();
@@ -3473,6 +3532,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         "System.SystemException",
         "System.ApplicationException",
         "System.InvalidOperationException",
+        "System.ArgumentException",
         "System.Reflection.TargetInvocationException",
         "System.Delegate",
         "System.MulticastDelegate",
@@ -3500,11 +3560,18 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         "System.Security.Cryptography.Aes",
         "System.Security.Cryptography.Rijndael",
         "System.Security.Cryptography.TripleDES",
+        "System.Security.Cryptography.RC2",
+        "System.Security.Cryptography.KeySizes",
+        "System.Random",
         "System.Security.Cryptography.DES",
         "System.Security.Cryptography.RijndaelManaged",
         "System.Security.Cryptography.ICryptoTransform",
+        "System.Security.Cryptography.Rfc2898DeriveBytes",
+        "System.Security.Cryptography.DeriveBytes",
         "System.Security.Cryptography.RSACryptoServiceProvider",
         "System.IO.File",
+        "System.IO.Path",
+        "System.AppContext",
         "System.Security.Cryptography.CryptoStream",
         "System.IO.FileStream",
         "System.Math",
@@ -3556,6 +3623,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             "System.Security.Cryptography.TripleDES",
         "System.Security.Cryptography.DESCryptoServiceProvider" =>
             "System.Security.Cryptography.DES",
+        "System.Security.Cryptography.RC2CryptoServiceProvider" =>
+            "System.Security.Cryptography.RC2",
         "System.Security.Cryptography.SymmetricAlgorithm" =>
             "System.Security.Cryptography.Rijndael",
         "System.Security.Cryptography.RSA" =>
@@ -3575,6 +3644,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
         var type = Canonicalize(method.DeclaringType.FullName);
         var name = method.Name.String;
+        var heap = context.State.Heap;
+        if (method.FullName == "System.Reflection.MethodBase System.Reflection.MethodBase::GetCurrentMethod()" && arguments.Count == 0)
+        {
+            if (context.Frames is not { Count: > 0 } frames)
+                return IntrinsicResult.Unknown("Current method is unavailable outside an interpreted frame.");
+            var current = frames[^1];
+            return Describing(context.State.Heap, current.IsConstructor
+                ? "System.Reflection.ConstructorInfo" : "System.Reflection.MethodInfo", current);
+        }
         // Two base constructors that do nothing an interpretation can see. An attribute's own
         // constructor chains to the second on its first instruction, so every attribute a program
         // reads about itself arrives here.
@@ -3637,8 +3715,12 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         // one succeeds and asking for its message gives back what it was built with. Obfuscator
         // runtimes throw and catch as ordinary control flow, and refusing the constructor would
         // stop interpretation on a path the program takes deliberately.
+        if (type == "System.ArgumentException" && name == ".ctor" &&
+            (method.MethodSig is not { Params.Count: 1 } argumentSignature || argumentSignature.Params[0].ElementType != ElementType.String ||
+             arguments.Count != 2 || !context.State.Heap.TryGetString(arguments[1], out var argumentMessage) || argumentMessage is null))
+            return IntrinsicResult.Invalid("Only an explicit ArgumentException message is modeled; parameter and localized messages are unsupported.");
         if (type is "System.Exception" or "System.SystemException" or
-            "System.ApplicationException" or "System.InvalidOperationException")
+            "System.ApplicationException" or "System.InvalidOperationException" or "System.ArgumentException")
         {
             var heapState = context.State.Heap;
             if (name == ".ctor" && arguments.Count >= 1)
@@ -3780,10 +3862,49 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (type is "System.Security.Cryptography.SHA1" or
             "System.Security.Cryptography.SHA256" or "System.Security.Cryptography.MD5")
             return InvokeHash(context, type, name, arguments);
+        if (type == "System.Security.Cryptography.KeySizes")
+        {
+            if (name == ".ctor" && arguments.Count == 4 && arguments.Skip(1).All(a => a.IsInteger))
+            {
+                heap.TrySetModelValue(arguments[0], "MinSize", arguments[1].AsInt32());
+                heap.TrySetModelValue(arguments[0], "MaxSize", arguments[2].AsInt32());
+                heap.TrySetModelValue(arguments[0], "SkipSize", arguments[3].AsInt32());
+                return IntrinsicResult.Completed();
+            }
+            if (arguments.Count == 1 && name is "get_MinSize" or "get_MaxSize" or "get_SkipSize" &&
+                heap.TryGetModelValue(arguments[0], name[4..], out int size)) return IntrinsicResult.Completed(StaticValue.FromInt32(size));
+            return IntrinsicResult.Invalid("Unsupported KeySizes operation.");
+        }
+        if (type == "System.Random")
+        {
+            if (name == ".ctor" && arguments.Count == 2 && arguments[1].IsInteger)
+            {
+                heap.TrySetModelValue(arguments[0], "RandomSeed", arguments[1].AsInt32());
+                heap.TrySetModelValue(arguments[0], "RandomBytes", 0); heap.TrySetModelValue(arguments[0], "RandomWork", 0L);
+                return IntrinsicResult.Completed();
+            }
+            if (name == "NextBytes" && arguments.Count == 2 && heap.TryGetModelValue(arguments[0], "RandomSeed", out int seed) &&
+                heap.TryGetModelValue(arguments[0], "RandomBytes", out int position) && heap.TryGetModelValue(arguments[0], "RandomWork", out long work) &&
+                heap.TryGetLength(arguments[1], out var length) && heap.TryGetArrayElementType(arguments[1], out var element) && element == "System.Byte" &&
+                length <= heap.MaximumObjectLength && position >= 0 && length <= 65536 - position && work <= 4000000 - position - length)
+            {
+                var total = position + length;
+                if (context.ConsumeWork is { } charge && !charge(total))
+                    return new IntrinsicResult(StaticExecutionStatus.StepLimitExceeded, StaticValue.Unknown, "Seeded byte generation exhausted its work budget.");
+                var bytes = new byte[total]; new Random(seed).NextBytes(bytes);
+                if (!heap.TryWriteBytes(arguments[1], 0, bytes.AsSpan(position))) return IntrinsicResult.Invalid("Random byte destination is unavailable.");
+                heap.TrySetModelValue(arguments[0], "RandomBytes", total); heap.TrySetModelValue(arguments[0], "RandomWork", work + total);
+                return IntrinsicResult.Completed();
+            }
+            return IntrinsicResult.Invalid("Only explicitly seeded Random construction and byte generation are modeled.");
+        }
+        if (type is "System.Security.Cryptography.Rfc2898DeriveBytes" or "System.Security.Cryptography.DeriveBytes")
+            return InvokePasswordDerivation(context, name, arguments);
         if (type is "System.Security.Cryptography.Aes" or
             "System.Security.Cryptography.Rijndael" or
             "System.Security.Cryptography.RijndaelManaged" or
             "System.Security.Cryptography.TripleDES" or
+            "System.Security.Cryptography.RC2" or
             "System.Security.Cryptography.DES" or
             "System.Security.Cryptography.ICryptoTransform")
             return InvokeCrypto(context, type, name, arguments);
@@ -3799,6 +3920,24 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return InvokeCertificate(context, name, arguments);
         if (type == "System.IO.File")
             return InvokeFile(context, name, arguments);
+        if (type == "System.IO.Path" && name == "Combine" && method.MethodSig is { HasThis: false, Params.Count: 2 } pathSignature &&
+            pathSignature.Params.All(p => p.ElementType == ElementType.String) && arguments.Count == 2 &&
+            context.State.Heap.TryGetString(arguments[0], out var firstPath) && firstPath is not null &&
+            context.State.Heap.TryGetString(arguments[1], out var secondPath) && secondPath is not null &&
+            context.State.CompanionBaseDirectory is { } baseDirectory &&
+            (firstPath == baseDirectory || firstPath == Path.TrimEndingDirectorySeparator(baseDirectory)) &&
+            StaticMachineState.ValidCompanionName(secondPath))
+            return context.State.Heap.TryAllocateString(Path.Combine(firstPath, secondPath), out var combinedPath)
+                ? IntrinsicResult.Completed(combinedPath) : AllocationFailure("companion file path");
+        if (type == "System.IO.Path" && name == "GetDirectoryName" && arguments.Count == 1 &&
+            context.State.CompanionBaseDirectory is { } parentDirectory &&
+            context.State.Heap.TryGetString(arguments[0], out var modulePath) && modulePath == context.State.ModulePath)
+            return context.State.Heap.TryAllocateString(Path.TrimEndingDirectorySeparator(parentDirectory), out var parentValue)
+                ? IntrinsicResult.Completed(parentValue) : AllocationFailure("companion parent directory");
+        if (type == "System.AppContext" && name == "get_BaseDirectory" && arguments.Count == 0 &&
+            context.State.CompanionBaseDirectory is { } appDirectory)
+            return context.State.Heap.TryAllocateString(appDirectory, out var appDirectoryValue)
+                ? IntrinsicResult.Completed(appDirectoryValue) : AllocationFailure("companion app directory");
         if (type == "System.Reflection.Assembly")
             return InvokeAssembly(context, method, arguments);
         if (type == "System.Reflection.AssemblyName")
@@ -3868,12 +4007,17 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     {
         var heap = context.State.Heap;
         var receiver = arguments[0];
+        if (receiver.Kind == StaticValueKind.ManagedReference && !heap.TryReadManaged(receiver, out receiver))
+            return IntrinsicResult.Invalid("The object text receiver is unavailable.");
         if (heap.TryGetString(receiver, out _))
             return IntrinsicResult.Completed(receiver);
         if (!heap.TryGetRuntimeTypeName(receiver, out var runtime))
             return IntrinsicResult.Invalid("The object asked for its text has no known type.");
         if (runtime == "System.Text.StringBuilder")
             return Builders.Invoke(context, method, arguments);
+        if (runtime == "System.Guid" && heap.TryGetModelValue<byte[]>(receiver, "Bytes", out var guid) && guid is { Length: 16 })
+            return heap.TryAllocateString(new Guid(guid).ToString(), out var guidText)
+                ? IntrinsicResult.Completed(guidText) : AllocationFailure("identifier text");
         if (heap.TryUnbox(receiver, out var boxed) &&
             BoxedText.TryRender(runtime, boxed, out var rendered))
         {
@@ -3901,6 +4045,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     {
         if (name == "GetAssemblies" && arguments.Count == 1)
             return AppDomainAssemblyInventory.Read(context.State, arguments[0]);
+        if (name == "get_BaseDirectory" && arguments.Count == 1 &&
+            context.State.CompanionBaseDirectory is { } directory &&
+            context.State.Heap.TryGetRuntimeTypeName(arguments[0], out var domainType) && domainType == "System.AppDomain")
+            return context.State.Heap.TryAllocateString(directory, out var directoryValue)
+                ? IntrinsicResult.Completed(directoryValue) : AllocationFailure("companion base directory");
         if (name == "get_CurrentDomain" && arguments.Count == 0)
         {
             return context.State.TryGetOrAllocateRuntimeSingleton(
@@ -4288,9 +4437,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         if (type == "System.Type" && name == "GetGenericArguments" && arguments.Count == 1 &&
             heap.TryGetModelValue<object>(arguments[0], "Metadata", out var parameterized))
         {
-            var supplied = parameterized is GenericInstSig constructed
-                ? constructed.GenericArguments
-                : [];
+            var supplied = parameterized switch
+            {
+                GenericInstSig constructed => constructed.GenericArguments,
+                TypeSpec { TypeSig: GenericInstSig constructed } => constructed.GenericArguments,
+                TypeDef definition => definition.GenericParameters.Select(parameter => (TypeSig)new GenericVar(parameter.Number, definition)).ToArray(),
+                ClassOrValueTypeSig named when named.TypeDefOrRef.ResolveTypeDef() is { } definition =>
+                    definition.GenericParameters.Select(parameter => (TypeSig)new GenericVar(parameter.Number, definition)).ToArray(),
+                _ => (IList<TypeSig>)[]
+            };
             if (!heap.TryAllocateArray(null, supplied.Count, out var argumentTypes))
                 return AllocationFailure("generic argument array");
             for (var index = 0; index < supplied.Count; index++)
@@ -4583,6 +4738,22 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             name = "get_DeclaringType";
         }
 
+        if (type == "System.Type" && name == "MakeGenericType" && arguments.Count == 2)
+        {
+            var templateSignature = ReflectionEmitIntrinsic.Signatures(heap, arguments[0], context.State.ModuleMetadata);
+            if (!heap.TryGetLength(arguments[1], out var count) || count > 256)
+                return IntrinsicResult.Invalid("Generic type argument array is unavailable or exceeds its bound.");
+            var supplied = new List<TypeSig>();
+            for (var index = 0; index < count; index++)
+            {
+                if (!heap.TryReadArray(arguments[1], index, out var item) ||
+                    ReflectionEmitIntrinsic.Signatures(heap, item, context.State.ModuleMetadata) is not { } argument)
+                    return IntrinsicResult.Invalid("Generic type argument is unavailable or unsupported.");
+                supplied.Add(argument);
+            }
+            return TryConstructGenericType(templateSignature, supplied, true, out var constructed, out var why)
+                ? Describing(heap, "System.Type", constructed!) : IntrinsicResult.Invalid(why);
+        }
         if (type == "System.Type" && arguments.Count == 1 && name is "MakeByRefType" or "MakePointerType" or "MakeArrayType" &&
             ReflectionEmitIntrinsic.Signatures(heap, arguments[0], context.State.ModuleMetadata) is { } elementSignature)
         {
@@ -4596,6 +4767,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         }
 
         if (name is "GetParameters" or "get_ReturnType" or "get_ParameterType" or "get_DeclaringType"
+                or "get_IsGenericMethod" or "get_IsGenericMethodDefinition"
                 or "get_Name" or "get_IsStatic" or "get_IsAbstract" or "get_IsVirtual"
                 or "get_IsPublic" or "get_IsAssembly" or "get_IsValueType" or "get_FieldType" or "get_MetadataToken"
                 or "get_IsByRef" or "get_IsPointer" or "get_IsArray" or "get_IsEnum"
@@ -4670,6 +4842,41 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 : AllocationFailure("runtime type");
         }
 
+        if (type is "System.Reflection.MethodBase" or "System.Reflection.FieldInfo" && arguments.Count == 2)
+        {
+            if (type == "System.Reflection.MethodBase" && metadata is not IMethod ||
+                type == "System.Reflection.FieldInfo" && metadata is not IField)
+                return IntrinsicResult.Invalid("Member handle kind differs from the requested reflection operation.");
+            if (!heap.TryGetMetadataHandle(arguments[1], out var ownerHandle))
+                return IntrinsicResult.Invalid("Member handle type context is unavailable.");
+            var owner = ownerHandle switch
+            {
+                TypeSig signature => signature.ToTypeDefOrRef(),
+                ITypeDefOrRef reference => reference,
+                _ => null
+            };
+            var declaration = metadata switch
+            {
+                IMethod declarationMethod => declarationMethod.DeclaringType,
+                IField field => field.DeclaringType,
+                _ => null
+            };
+            static ITypeDefOrRef? Definition(ITypeDefOrRef? reference) => reference is TypeSpec { TypeSig: GenericInstSig made }
+                ? made.GenericType.TypeDefOrRef : reference;
+            if (owner is null || declaration is null || !new SigComparer().Equals(Definition(owner), Definition(declaration)))
+                return IntrinsicResult.Invalid("Member handle does not belong to the supplied type context.");
+            metadata = metadata switch
+            {
+                MethodSpec { Method: { MethodSig: { } signature } generic } specification =>
+                    new MethodSpecUser(new MemberRefUser(owner.Module, generic.Name, signature, owner), specification.GenericInstMethodSig),
+                IMethod { MethodSig: { } signature } contextMethod => new MemberRefUser(owner.Module, contextMethod.Name, signature, owner),
+                IField { FieldSig: { } signature } field => new MemberRefUser(owner.Module, field.Name, signature, owner),
+                _ => metadata
+            };
+        }
+        else if (type == "System.Reflection.MethodBase" && metadata is IMethod singleHandle &&
+            (singleHandle.DeclaringType is TypeSpec { TypeSig: GenericInstSig } || singleHandle.DeclaringType.ResolveTypeDef()?.HasGenericParameters == true))
+            return IntrinsicResult.Invalid("A method on a generic declaring type requires a type-context handle.");
         var runtimeMemberType = type == "System.Reflection.MethodBase" && metadata is IMethod handledMethod
             ? handledMethod.Name.String is ".ctor" or ".cctor" ? "System.Reflection.ConstructorInfo" : "System.Reflection.MethodInfo"
             : type;
@@ -5337,8 +5544,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
     private static IntrinsicResult DescribeMember(StaticHeap heap, string name, object described)
     {
+        if (described is IMethod { MethodSig: { } genericSignature } genericMethod && name is "get_IsGenericMethod" or "get_IsGenericMethodDefinition")
+            return Truth((genericMethod is MethodSpec || genericSignature.GenParamCount != 0) &&
+                (name == "get_IsGenericMethod" || genericMethod is not MethodSpec));
+        if (described is TypeSpec specification) described = specification.TypeSig;
         if (name == "get_DeclaringType" && described is IMemberRef { DeclaringType: { } constructedOwner })
             return Describing(heap, "System.Type", constructedOwner);
+        if (name == "get_FieldType" && described is IField { FieldSig: { } fieldSignature,
+                DeclaringType: TypeSpec { TypeSig: GenericInstSig fieldOwner } })
+            return Describing(heap, "System.Type", new GenericScope(fieldOwner.GenericArguments, null).Bind(fieldSignature.Type)!);
         // Resolve signature questions in the call site's generic scope before resolving the
         // definition: the definition alone loses both method and declaring-type arguments.
         // A MethodSpec can also name a framework MemberRef with no local definition at all.
@@ -5416,7 +5630,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             case "get_IsArray":
                 return Truth(described is ArraySigBase);
             case "get_IsGenericType":
-                return Truth(described is GenericInstSig);
+                return Truth(described is GenericInstSig || GenericDefinition(described));
             // A type parameter is a placeholder rather than a type, and a program that asks this is
             // deciding whether it is looking at one. A frame that knows what its parameters stand
             // for has already replaced them, so what arrives here is a real type and the answer is
@@ -5432,12 +5646,16 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             // that constructed it.
             case "GetGenericTypeDefinition" when described is GenericInstSig made:
                 return Describing(heap, "System.Type", made.GenericType);
+            case "GetGenericTypeDefinition" when GenericDefinition(described):
+                return Describing(heap, "System.Type", described);
+            case "get_ContainsGenericParameters" when GenericDefinition(described):
+                return Truth(true);
             case "get_ContainsGenericParameters" when described is TypeSig parameterized:
                 return Truth(parameterized.ContainsGenericParameter);
             case "get_ContainsGenericParameters" when Defined(described) is { } generic:
                 return Truth(generic.HasGenericParameters);
             case "get_IsGenericTypeDefinition" when Defined(described) is { } definition:
-                return Truth(definition.HasGenericParameters && described is not GenericInstSig);
+                return Truth(GenericDefinition(described));
             // A type with no base is not a type whose base is unknown: only System.Object and the
             // interfaces have none, and saying so is what lets a walk up the chain terminate.
             case "get_BaseType" when Defined(described) is { } derived:
@@ -6236,6 +6454,10 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                         return Named(heap, member.DeclaringType);
                     case "get_IsSpecialName" when member is MethodBase special:
                         return Truth(special.IsSpecialName);
+                    case "get_IsGenericMethod" when member is MethodBase generic:
+                        return Truth(generic.IsGenericMethod);
+                    case "get_IsGenericMethodDefinition" when member is MethodBase generic:
+                        return Truth(generic.IsGenericMethodDefinition);
                     case "get_MetadataToken":
                         return IntrinsicResult.Completed(
                             StaticValue.FromInt32(member.MetadataToken));
@@ -6317,6 +6539,47 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// <summary>The method a property's visibility is decided by.</summary>
     private static MethodDef? Behind(PropertyDef property) =>
         property.GetMethod ?? property.SetMethod;
+
+    internal static bool TryConstructGenericType(TypeSig? templateSignature, IList<TypeSig> arguments, bool canonicalIdentity,
+        out TypeSig? constructed, out string why)
+    {
+        constructed = null;
+        if (templateSignature is GenericInstSig existing && IdentityInstantiation(existing)) templateSignature = existing.GenericType;
+        if (templateSignature is not ClassOrValueTypeSig template ||
+            template.TypeDefOrRef.ResolveTypeDef() is not { HasGenericParameters: true } definition ||
+            arguments.Count != definition.GenericParameters.Count || arguments.Count > 256)
+        { why = "Generic type construction requires a known definition and matching argument count."; return false; }
+        if (definition.GenericParameters.Any(parameter => parameter.HasGenericParamConstraints ||
+            (parameter.Flags & GenericParamAttributes.SpecialConstraintMask) != 0))
+        { why = "Generic type constraints have not been proved."; return false; }
+        if (arguments.Any(argument => !GenericArgument(argument, 0)))
+        { why = "Generic type argument is unavailable or unsupported."; return false; }
+        var instance = new GenericInstSig(template, arguments);
+        constructed = canonicalIdentity && IdentityInstantiation(instance) ? (TypeSig)template : instance;
+        why = "Constructed from a proved unconstrained definition.";
+        return true;
+    }
+
+    private static bool GenericDefinition(object described) =>
+        described is GenericInstSig constructed ? IdentityInstantiation(constructed) :
+            described is TypeDef or TypeRef or ClassOrValueTypeSig && Defined(described)?.HasGenericParameters == true;
+
+    private static bool IdentityInstantiation(GenericInstSig constructed) =>
+        constructed.GenericType.TypeDefOrRef.ResolveTypeDef() is { HasGenericParameters: true } definition &&
+        constructed.GenericArguments.Count == definition.GenericParameters.Count &&
+        constructed.GenericArguments.Select((argument, index) => argument is GenericVar variable && variable.Number == index &&
+            variable.OwnerType == definition).All(identity => identity);
+
+    internal static bool GenericArgument(TypeSig argument, int depth)
+    {
+        if (depth > 32 || argument.ElementType is ElementType.Void or ElementType.ByRef or ElementType.Ptr or ElementType.FnPtr or
+            ElementType.TypedByRef or ElementType.Pinned or ElementType.CModReqd or ElementType.CModOpt or ElementType.Sentinel)
+            return false;
+        if (argument is ArraySigBase array) return GenericArgument(array.Next, depth + 1);
+        if (argument is GenericInstSig instance && instance.GenericArguments.Any(item => !GenericArgument(item, depth + 1))) return false;
+        return argument.ToTypeDefOrRef()?.ResolveTypeDef()?.CustomAttributes.Any(attribute =>
+            attribute.TypeFullName == "System.Runtime.CompilerServices.IsByRefLikeAttribute") != true;
+    }
 
     private static TypeDef? Defined(object described) => described switch
     {
@@ -6798,7 +7061,28 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return FormatString(context, method, arguments);
         if (name == "Split" && arguments.Count == 2 &&
             context.State.Heap.TryGetString(arguments[0], out text))
-            return SplitString(context, text, arguments[1]);
+            return SplitString(context, text, arguments[1], source: arguments[0]);
+        if (name == "Split" && arguments.Count == 3 && method.MethodSig is { HasThis: true, GenParamCount: 0, Params.Count: 2 } split &&
+            split.RetType is SZArraySig { Next.ElementType: ElementType.String } &&
+            split.Params[1] is ValueTypeSig { TypeDefOrRef.FullName: "System.StringSplitOptions" } splitOptions &&
+            splitOptions.TypeDefOrRef.DefinitionAssembly?.FullName == method.DeclaringType.DefinitionAssembly?.FullName &&
+            context.State.Heap.TryGetString(arguments[0], out text))
+        {
+            var scope = method.DeclaringType.DefinitionAssembly;
+            var token = scope?.PublicKeyOrToken?.Token?.ToString();
+            var modern = scope?.Version?.Major is 8 or 10 &&
+                (scope.Name == "System.Runtime" && token == "b03f5f7f11d50a3a" || scope.Name == "System.Private.CoreLib" && token == "7cec85d7bea7798e");
+            var legacy = scope?.Name == "mscorlib" && scope.Version == new Version(4, 0, 0, 0) && token == "b77a5c561934e089";
+            var character = split.Params[0].ElementType == ElementType.Char;
+            var array = split.Params[0] is SZArraySig { Next.ElementType: ElementType.Char };
+            if ((!modern && !legacy) || !(character && modern || array) ||
+                !arguments[2].IsKnown || !arguments[2].IsInteger || character && (!arguments[1].IsKnown || !arguments[1].IsInteger))
+                return IntrinsicResult.Invalid("String.Split requires a reviewed character/options signature and concrete arguments.");
+            var flags = arguments[2].AsInt32();
+            if ((flags & ~(modern ? 3 : 1)) != 0)
+                return IntrinsicResult.Invalid("String.Split options are invalid for the input framework.");
+            return SplitString(context, text, arguments[1], (StringSplitOptions)flags, arguments[0]);
+        }
         if (name == ".ctor")
             return MakeString(context.State.Heap, arguments);
         // Null is a string the machine knows the whole of, so these two are answerable for it and
@@ -7054,13 +7338,15 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     /// A runtime that carries a list of names in a single string splits it before it can use any of
     /// them, so this stands between the machine reading such a list and the machine reading anything
     /// the list names. Only the overloads whose separators can be read for certain are answered: the
-    /// others differ in whether their last argument counts the parts or says what to do with the
-    /// empty ones, and the two cannot be told apart from the value alone.
+    /// options overloads are recognized from their exact parameter types above. A count parameter
+    /// is not interchangeable with the identically represented options enum.
     /// </remarks>
     private static IntrinsicResult SplitString(
         IntrinsicContext context,
         string text,
-        StaticValue separator)
+        StaticValue separator,
+        StringSplitOptions options = StringSplitOptions.None,
+        StaticValue? source = null)
     {
         var heap = context.State.Heap;
         var separators = new List<string>();
@@ -7093,8 +7379,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
         // No separators at all means whitespace, which is what the framework makes of an empty set.
         var parts = separators.Count == 0
-            ? text.Split((char[]?)null)
-            : text.Split([.. separators], StringSplitOptions.None);
+            ? text.Split((char[]?)null, options)
+            : text.Split([.. separators], options);
         if (!heap.TryAllocateArray(
                 context.State.ModuleMetadata?.CorLibTypes.String,
                 parts.Length,
@@ -7105,8 +7391,10 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
 
         for (var index = 0; index < parts.Length; index++)
         {
-            if (!heap.TryAllocateString(parts[index], out var part) ||
-                !heap.TryWriteArray(array, index, part))
+            StaticValue part;
+            if (source is { } original && ReferenceEquals(parts[index], text)) part = original;
+            else if (!heap.TryAllocateString(parts[index], out part)) return AllocationFailure("String.Split");
+            if (!heap.TryWriteArray(array, index, part))
                 return AllocationFailure("String.Split");
         }
 
@@ -7806,6 +8094,24 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             return IntrinsicResult.Invalid($"Unsupported file operation {name}.");
         var isModule = state.ModulePath.Length != 0 &&
             string.Equals(path, state.ModulePath, StringComparison.OrdinalIgnoreCase);
+        if (name is "Exists" or "ReadAllBytes" or "OpenRead" && path is not null &&
+            state.TryReadCompanionFile(path, name, out var companion))
+        {
+            if (name == "Exists") return IntrinsicResult.Completed(StaticValue.FromInt32(1));
+            if (!state.Heap.TryAllocateByteArray(companion, out var buffer)) return AllocationFailure("companion file bytes");
+            if (name == "ReadAllBytes") return IntrinsicResult.Completed(buffer);
+            if (!state.Heap.TryAllocateObject("System.IO.FileStream", out var stream)) return AllocationFailure("companion file stream");
+            state.Heap.TrySetModelValue(stream, "Buffer", buffer);
+            state.Heap.TrySetModelValue(stream, "Position", 0L);
+            state.Heap.TrySetModelValue(stream, "Origin", 0);
+            state.Heap.TrySetModelValue(stream, "Length", companion.Length);
+            state.Heap.TrySetModelValue(stream, "Capacity", companion.Length);
+            state.Heap.TrySetModelValue(stream, "Writable", false);
+            state.Heap.TrySetModelValue(stream, "Expandable", false);
+            state.Heap.TrySetModelValue(stream, "PubliclyVisible", false);
+            state.Heap.TrySetModelValue(stream, "Open", true);
+            return IntrinsicResult.Completed(stream);
+        }
         if (name == "Exists")
         {
             if (isModule)
@@ -8181,6 +8487,64 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         return true;
     }
 
+    private sealed record PasswordDerivation(byte[] Password, byte[] Salt, int Iterations, int Position = 0, long Work = 0);
+
+    private static IntrinsicResult InvokePasswordDerivation(IntrinsicContext context, string name, IReadOnlyList<StaticValue> arguments)
+    {
+        var heap = context.State.Heap;
+        if (arguments.Count == 0 || !heap.TryGetRuntimeTypeName(arguments[0], out var actualType) ||
+            actualType != "System.Security.Cryptography.Rfc2898DeriveBytes")
+            return IntrinsicResult.Invalid("Password derivation requires a known RFC2898 receiver.");
+        if (name == ".ctor" && arguments.Count == 4)
+        {
+            byte[] password;
+            if (heap.TryGetString(arguments[1], out var text) && text is not null)
+            {
+                if (text.Length > 65536) return IntrinsicResult.Invalid("Password derivation input exceeds its bound.");
+                password = Encoding.UTF8.GetBytes(text);
+            }
+            else if (!TryReadByteArray(heap, arguments[1], out password))
+                return IntrinsicResult.Invalid("Password derivation password is unavailable.");
+            if (!TryReadByteArray(heap, arguments[2], out var salt) || salt.Length is < 8 or > 65536 ||
+                password.Length > 65536 || !arguments[3].IsInteger || arguments[3].AsInt32() is <= 0 or > 100000)
+                return IntrinsicResult.Invalid("Password derivation parameters are invalid or exceed their bounds.");
+            heap.TrySetModelValue(arguments[0], "PasswordDerivation", new PasswordDerivation(password, salt, arguments[3].AsInt32()));
+            return IntrinsicResult.Completed();
+        }
+        if (!heap.TryGetModelValue(arguments[0], "PasswordDerivation", out PasswordDerivation? state) || state is null)
+            return IntrinsicResult.Invalid("Password derivation has no live configured state.");
+        if (name is "Dispose" or "Clear" && arguments.Count == 1)
+        {
+            heap.TrySetModelValue(arguments[0], "PasswordDerivation", null);
+            return IntrinsicResult.Completed();
+        }
+        if (name == "Reset" && arguments.Count == 1)
+        {
+            heap.TrySetModelValue(arguments[0], "PasswordDerivation", state with { Position = 0 });
+            return IntrinsicResult.Completed();
+        }
+        if (name == "GetBytes" && arguments.Count == 2 && arguments[1].IsInteger)
+        {
+            var count = arguments[1].AsInt32();
+            if (count <= 0 || count > 65536 - state.Position || count > heap.MaximumObjectLength)
+                return IntrinsicResult.Invalid("Password derivation output exceeds its bound.");
+            var length = state.Position + count;
+            var work = state.Work + (long)state.Iterations * ((length + 19) / 20);
+            if (work > 4000000) return IntrinsicResult.Invalid("Password derivation work exceeds its bound.");
+            if (context.ConsumeWork is { } charge && !charge((int)(work - state.Work)))
+                return new IntrinsicResult(StaticExecutionStatus.StepLimitExceeded, StaticValue.Unknown, "Password derivation exhausted the interpreter work budget.");
+            // The legacy three-parameter constructor specifies PBKDF2-HMAC-SHA1.
+#pragma warning disable CA5350
+            var bytes = Rfc2898DeriveBytes.Pbkdf2(state.Password, state.Salt, state.Iterations, HashAlgorithmName.SHA1, length);
+#pragma warning restore CA5350
+            if (!heap.TryAllocateByteArray(bytes.AsSpan(state.Position).ToArray(), out var result))
+                return AllocationFailure("password derivation output");
+            heap.TrySetModelValue(arguments[0], "PasswordDerivation", state with { Position = length, Work = work });
+            return IntrinsicResult.Completed(result);
+        }
+        return IntrinsicResult.Invalid($"Unsupported password derivation operation {name}.");
+    }
+
     private static IntrinsicResult InvokeCrypto(
         IntrinsicContext context,
         string type,
@@ -8188,6 +8552,8 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         IReadOnlyList<StaticValue> arguments)
     {
         var heap = context.State.Heap;
+        if (arguments.Count != 0 && CustomSymmetricType(context, arguments[0]) is { } custom)
+            return InvokeCustomSymmetric(context, custom, name, arguments);
         if (name is "Create" or ".ctor")
         {
             if (name == ".ctor")
@@ -8200,6 +8566,21 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         {
             heap.TrySetModelValue(arguments[0], name[4..], arguments[1]);
             return IntrinsicResult.Completed();
+        }
+        if (name is "get_KeySize" or "get_BlockSize" && arguments.Count == 1)
+        {
+            if (!heap.TryGetRuntimeTypeName(arguments[0], out var actualType))
+                return IntrinsicResult.Invalid("Cipher size requires a known algorithm receiver.");
+            using var cipher = Cipher(Canonicalize(actualType));
+            if (cipher is null)
+                return IntrinsicResult.Invalid($"Cipher {actualType} is not modeled.");
+            if (name == "get_KeySize" && heap.TryGetModelValue(arguments[0], "Key", out StaticValue key))
+            {
+                if (!TryReadByteArray(heap, key, out var bytes) || !cipher.ValidKeySize(bytes.Length * 8))
+                    return IntrinsicResult.Invalid("Cipher key size is unavailable or invalid.");
+                return IntrinsicResult.Completed(StaticValue.FromInt32(bytes.Length * 8));
+            }
+            return IntrinsicResult.Completed(StaticValue.FromInt32(name == "get_KeySize" ? cipher.KeySize : cipher.BlockSize));
         }
         if (name is "set_Mode" or "set_Padding" && arguments.Count == 2)
         {
@@ -8227,6 +8608,105 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         return IntrinsicResult.Invalid($"Unsupported cryptography operation {name}.");
     }
 
+    private static TypeDef? CustomSymmetricType(IntrinsicContext context, StaticValue receiver)
+    {
+        if (context.State.ModuleMetadata is not { } module || !context.State.Heap.TryGetRuntimeTypeName(receiver, out var actual)) return null;
+        return module.GetTypes().FirstOrDefault(t => t.FullName == actual && !t.HasGenericParameters && !t.IsValueType &&
+            t.BaseType is { FullName: "System.Security.Cryptography.SymmetricAlgorithm" } parent && DependencyFrameworkScope.Matches(parent, module));
+    }
+
+    private static MemberRefUser SymmetricField(TypeDef type, string name)
+    {
+        var module = type.Module; var parent = (TypeRef)type.BaseType!;
+        TypeSig value = name switch
+        {
+            "KeyValue" or "IVValue" => new SZArraySig(module.CorLibTypes.Byte),
+            "ModeValue" => new ValueTypeSig(new TypeRefUser(module, "System.Security.Cryptography", "CipherMode", parent.ResolutionScope)),
+            "PaddingValue" => new ValueTypeSig(new TypeRefUser(module, "System.Security.Cryptography", "PaddingMode", parent.ResolutionScope)),
+            "LegalKeySizesValue" or "LegalBlockSizesValue" => new SZArraySig(new ClassSig(new TypeRefUser(module, "System.Security.Cryptography", "KeySizes", parent.ResolutionScope))),
+            _ => module.CorLibTypes.Int32
+        };
+        return new MemberRefUser(module, name, new FieldSig(value), parent);
+    }
+
+    private static IntrinsicResult InvokeCustomSymmetric(IntrinsicContext context, TypeDef type, string name, IReadOnlyList<StaticValue> arguments)
+    {
+        var heap = context.State.Heap; var receiver = arguments[0];
+        StaticValue Read(string field) => heap.TryReadField(receiver, SymmetricField(type, field), out var value) ? value : StaticValue.Unknown;
+        bool Write(string field, StaticValue value) => heap.TryWriteField(receiver, SymmetricField(type, field), value);
+        bool Legal(string field, int size)
+        {
+            var values = Read(field);
+            if (size <= 0 || !heap.TryGetLength(values, out var count) || count is < 1 or > 64) return false;
+            for (var i = 0; i < count; i++)
+            {
+                if (!heap.TryReadArray(values, i, out var range) || !heap.TryGetModelValue(range, "MinSize", out int min) ||
+                    !heap.TryGetModelValue(range, "MaxSize", out int max) || !heap.TryGetModelValue(range, "SkipSize", out int skip) ||
+                    min <= 0 || max < min || skip < 0) return false;
+                if (size >= min && size <= max && (skip == 0 ? size == min : (size - min) % skip == 0)) return true;
+            }
+            return false;
+        }
+        IntrinsicResult Call(string method, params StaticValue[] args)
+        {
+            var target = type.Methods.SingleOrDefault(m => m.Name == method && m.HasBody && !m.IsStatic && !m.HasGenericParameters &&
+                m.MethodSig.Params.Count == args.Length);
+            return target is not null && context.Call is not null ? context.Call(target, new[] { receiver }.Concat(args).ToArray()) :
+                IntrinsicResult.Invalid("The input cipher has no closed " + method + " override.");
+        }
+        if (name == ".ctor" && arguments.Count == 1)
+        {
+            Write("ModeValue", StaticValue.FromInt32((int)CipherMode.CBC)); Write("PaddingValue", StaticValue.FromInt32((int)PaddingMode.PKCS7));
+            return IntrinsicResult.Completed();
+        }
+        if (name is "get_KeySize" or "get_BlockSize" or "get_Mode" or "get_Padding" or "get_FeedbackSize" && arguments.Count == 1)
+        {
+            var value = Read(name[4..] + "Value");
+            return value.IsInteger ? IntrinsicResult.Completed(value) : IntrinsicResult.Invalid("Input cipher property is unavailable.");
+        }
+        if (name is "set_KeySize" or "set_BlockSize" && arguments.Count == 2 && arguments[1].IsInteger)
+        {
+            var size = arguments[1].AsInt32(); var key = name == "set_KeySize";
+            if (!Legal(key ? "LegalKeySizesValue" : "LegalBlockSizesValue", size)) return IntrinsicResult.Invalid("Input cipher size is not legal.");
+            Write(key ? "KeySizeValue" : "BlockSizeValue", arguments[1]);
+            Write(key ? "KeyValue" : "IVValue", StaticValue.Null);
+            return IntrinsicResult.Completed();
+        }
+        if (name is "set_Mode" or "set_Padding" && arguments.Count == 2 && arguments[1].IsInteger && arguments[1].AsInt32() is >= 1 and <= 5)
+        { Write(name[4..] + "Value", arguments[1]); return IntrinsicResult.Completed(); }
+        if (name is "set_Key" or "set_IV" && arguments.Count == 2 && TryReadByteArray(heap, arguments[1], out var supplied))
+        {
+            var key = name == "set_Key";
+            if (key ? !Legal("LegalKeySizesValue", supplied.Length * 8) : Read("BlockSizeValue").AsInt32() != supplied.Length * 8)
+                return IntrinsicResult.Invalid("Input cipher key or IV length is not legal.");
+            if (!heap.TryAllocateByteArray(supplied, out var copy)) return AllocationFailure("input cipher key or IV");
+            Write(key ? "KeyValue" : "IVValue", copy);
+            if (key) Write("KeySizeValue", StaticValue.FromInt32(supplied.Length * 8));
+            return IntrinsicResult.Completed();
+        }
+        if (name is "get_Key" or "get_IV" && arguments.Count == 1)
+        {
+            var field = name[4..] + "Value"; var value = Read(field);
+            if (value.Kind == StaticValueKind.Null)
+            {
+                var generated = Call(name == "get_Key" ? "GenerateKey" : "GenerateIV");
+                if (generated.Status != StaticExecutionStatus.Completed) return generated;
+                value = Read(field);
+            }
+            return TryReadByteArray(heap, value, out var bytes) && heap.TryAllocateByteArray(bytes, out var copy)
+                ? IntrinsicResult.Completed(copy) : IntrinsicResult.Invalid("Input cipher key or IV is unavailable.");
+        }
+        if (name is "CreateDecryptor" or "CreateEncryptor" && arguments.Count == 1)
+        {
+            var key = InvokeCustomSymmetric(context, type, "get_Key", [receiver]);
+            if (key.Status != StaticExecutionStatus.Completed) return key;
+            var iv = InvokeCustomSymmetric(context, type, "get_IV", [receiver]);
+            return iv.Status == StaticExecutionStatus.Completed ? Call(name, key.Value, iv.Value) : iv;
+        }
+        if (name is "Dispose" or "Clear") return IntrinsicResult.Completed();
+        return IntrinsicResult.Invalid("Unsupported input cipher operation " + name + ".");
+    }
+
     private static IntrinsicResult TransformFinalBlock(
         IntrinsicContext context,
         IReadOnlyList<StaticValue> arguments)
@@ -8250,6 +8730,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
     {
         "System.Security.Cryptography.TripleDES" => TripleDES.Create(),
         "System.Security.Cryptography.DES" => DES.Create(),
+        "System.Security.Cryptography.RC2" => RC2.Create(),
         "System.Security.Cryptography.Aes" or
         "System.Security.Cryptography.Rijndael" or
         "System.Security.Cryptography.RijndaelManaged" or
@@ -8289,7 +8770,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             // Which cipher runs has to follow the object the program built. Reading the key and
             // then decrypting with the wrong algorithm would produce bytes rather than an error,
             // and bytes that are wrong are worse than a refusal.
-            using var cipher = Cipher(named);
+            using var cipher = Cipher(named is null ? null : Canonicalize(named));
             if (cipher is null)
             {
                 error = $"Cipher {named} is not modeled.";
@@ -8372,6 +8853,24 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         var heap = state.Heap;
         if (arguments.Count < 2 || !heap.TryGetString(arguments[1], out var path))
             return IntrinsicResult.Invalid("FileStream path is not concrete.");
+        if (path is not null && state.CompanionBaseDirectory is not null &&
+            arguments.Count == 4 && arguments[2].IsInteger && arguments[2].AsInt32() == (int)FileMode.Open &&
+            arguments[3].IsInteger && arguments[3].AsInt32() == (int)FileAccess.Read &&
+            state.TryReadCompanionFile(path, "FileStream.Open.Read", out var companion))
+        {
+            if (!heap.TryAllocateByteArray(companion, out var companionBuffer)) return AllocationFailure("companion file stream");
+            var receiver = arguments[0];
+            heap.TrySetModelValue(receiver, "Buffer", companionBuffer);
+            heap.TrySetModelValue(receiver, "Position", 0L);
+            heap.TrySetModelValue(receiver, "Origin", 0);
+            heap.TrySetModelValue(receiver, "Length", companion.Length);
+            heap.TrySetModelValue(receiver, "Capacity", companion.Length);
+            heap.TrySetModelValue(receiver, "Writable", false);
+            heap.TrySetModelValue(receiver, "Expandable", false);
+            heap.TrySetModelValue(receiver, "PubliclyVisible", false);
+            heap.TrySetModelValue(receiver, "Open", true);
+            return IntrinsicResult.Completed();
+        }
         if (state.ModulePath.Length == 0 ||
             !string.Equals(path, state.ModulePath, StringComparison.OrdinalIgnoreCase))
             return IntrinsicResult.Invalid($"File '{path}' is outside the analysed image.");
@@ -8692,7 +9191,10 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                     !heap.TrySetModelValue(identity, "Flags", (int)captured.Flags) ||
                     !heap.TrySetModelValue(identity, "NullVersion", version is null) ||
                     !heap.TrySetModelValue(identity, "VersionComponents", version is null ? Array.Empty<int>() : [version.Major, version.Minor, version.Build, version.Revision]) ||
-                    !heap.TrySetModelValue(identity, "PublicKeyToken", captured.GetPublicKeyToken() ?? []))
+                    !heap.TrySetModelValue(identity, "PublicKeyToken", captured.GetPublicKeyToken() ?? []) ||
+                    !heap.TrySetModelValue(identity, "PublicKeyKnown", true) ||
+                    !heap.TrySetModelValue(identity, "PublicKeyIsNull", captured.GetPublicKey() is null) ||
+                    !heap.TrySetModelValue(identity, "PublicKey", captured.GetPublicKey()?.ToArray() ?? []))
                     return AllocationFailure("referenced assembly identity data");
                 if (!heap.TryWriteArray(references, index, identity)) return AllocationFailure("referenced assembly array");
             }
@@ -8727,15 +9229,34 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             if (!heap.TryAllocateObject("System.Reflection.AssemblyName", out var assemblyName))
                 return AllocationFailure("assembly name model");
             var identity = context.State.ModuleMetadata?.Assembly?.FullName;
+            byte[] publicKey = [];
+            var assemblyFlags = context.State.ModuleMetadata?.Assembly is { } definition
+                ? (int)new System.Reflection.AssemblyName { Flags = (System.Reflection.AssemblyNameFlags)definition.Attributes }.Flags : 0;
+            var publicKeyKnown = heap.TryGetModelValue<bool>(arguments[0], HomeModuleMark, out var homeIdentity) && homeIdentity &&
+                context.State.ModuleMetadata?.Assembly is not null;
+            if (publicKeyKnown) publicKey = context.State.ModuleMetadata!.Assembly!.PublicKey?.Data?.ToArray() ?? [];
             if (heap.TryGetModelValue(arguments[0], LoadedImage, out byte[]? bytes) && bytes is not null)
             {
-                try { using var loadedModule = ModuleDefMD.Load(bytes); identity = loadedModule.Assembly?.FullName; }
+                try
+                {
+                    using var loadedModule = ModuleDefMD.Load(bytes); identity = loadedModule.Assembly?.FullName;
+                    publicKey = loadedModule.Assembly?.PublicKey?.Data?.ToArray() ?? []; publicKeyKnown = loadedModule.Assembly is not null;
+                    assemblyFlags = loadedModule.Assembly is { } capturedDefinition
+                        ? (int)new System.Reflection.AssemblyName { Flags = (System.Reflection.AssemblyNameFlags)capturedDefinition.Attributes }.Flags : 0;
+                }
                 catch (Exception exception) when (exception is BadImageFormatException or IOException or ArgumentException)
                 { return IntrinsicResult.Invalid("Loaded assembly identity cannot be read from its captured metadata."); }
                 if (identity is null) return IntrinsicResult.Invalid("The captured image does not define an assembly identity.");
             }
             if (identity is not null && !SetAssemblyIdentity(heap, assemblyName, identity, out _))
                 return IntrinsicResult.Invalid("Assembly identity could not be modeled.");
+            heap.TrySetModelValue(assemblyName, "PublicKeyKnown", publicKeyKnown);
+            if (publicKeyKnown)
+            {
+                heap.TrySetModelValue(assemblyName, "PublicKey", publicKey);
+                heap.TrySetModelValue(assemblyName, "PublicKeyIsNull", false);
+                heap.TrySetModelValue(assemblyName, "Flags", assemblyFlags);
+            }
             return IntrinsicResult.Completed(assemblyName);
         }
         if (name == "GetModules" && arguments.Count is 1 or 2)
@@ -8871,6 +9392,32 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? IntrinsicResult.Completed(value)
                 : AllocationFailure("assembly name");
         }
+        if (name == "set_Version" && arguments.Count == 2 && heap.TryGetModelValue<string>(arguments[0], "FullName", out var identity) && identity is not null)
+        {
+            Version? version = null;
+            if (arguments[1].Kind != StaticValueKind.Null)
+            {
+                if (!heap.TryGetModelValue<int[]>(arguments[1], "Components", out var parts) || parts is not { Length: 4 })
+                    return IntrinsicResult.Unknown("AssemblyName version is not concrete.");
+                version = parts[2] < 0 ? new Version(parts[0], parts[1]) : parts[3] < 0
+                    ? new Version(parts[0], parts[1], parts[2]) : new Version(parts[0], parts[1], parts[2], parts[3]);
+            }
+            var changed = new System.Reflection.AssemblyName(identity) { Version = version };
+            var keyKnown = heap.TryGetModelValue<bool>(arguments[0], "PublicKeyKnown", out var knownKey) && knownKey;
+            var keyNull = heap.TryGetModelValue<bool>(arguments[0], "PublicKeyIsNull", out var nullKey) && nullKey;
+            heap.TryGetModelValue<byte[]>(arguments[0], "PublicKey", out var keyBytes);
+            var keyRead = heap.TryGetModelValue<bool>(arguments[0], "PublicKeyReferenceInitialized", out var initializedKey) && initializedKey;
+            heap.TryGetModelValue<StaticValue>(arguments[0], "PublicKeyReference", out var keyReference);
+            var hasFlags = heap.TryGetModelValue<int>(arguments[0], "Flags", out var retainedFlags);
+            if (!SetAssemblyIdentity(heap, arguments[0], changed.FullName, out _)) return AllocationFailure("assembly identity");
+            heap.TrySetModelValue(arguments[0], "PublicKeyKnown", keyKnown);
+            heap.TrySetModelValue(arguments[0], "PublicKeyIsNull", keyNull);
+            heap.TrySetModelValue(arguments[0], "PublicKey", keyBytes ?? []);
+            heap.TrySetModelValue(arguments[0], "PublicKeyReferenceInitialized", keyRead);
+            if (keyRead) heap.TrySetModelValue(arguments[0], "PublicKeyReference", keyReference);
+            if (hasFlags) heap.TrySetModelValue(arguments[0], "Flags", retainedFlags);
+            return IntrinsicResult.Completed();
+        }
         if (arguments.Count != 1)
             return IntrinsicResult.Invalid($"AssemblyName operation {name} is denied.");
         if (name == "get_Flags" && heap.TryGetModelValue(arguments[0], "Flags", out int flags))
@@ -8897,6 +9444,22 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 out var token)
                 ? IntrinsicResult.Completed(token)
                 : AllocationFailure("public key token");
+        }
+        if (name == "GetPublicKey")
+        {
+            if (!heap.TryGetModelValue<bool>(arguments[0], "PublicKeyKnown", out var known) || !known)
+                return IntrinsicResult.Unknown("AssemblyName public key requires captured metadata or a parsed identity.");
+            if (heap.TryGetModelValue<bool>(arguments[0], "PublicKeyIsNull", out var absent) && absent)
+                return IntrinsicResult.Completed(StaticValue.Null);
+            if (!heap.TryGetModelValue<byte[]>(arguments[0], "PublicKey", out var key) || key is null)
+                return IntrinsicResult.Unknown("AssemblyName public key bytes are not concrete.");
+            context.State.Observe(LoaderObservationKind.StrongNameProbe, $"AssemblyName.GetPublicKey of {key.Length} byte(s)");
+            if (heap.TryGetModelValue<bool>(arguments[0], "PublicKeyReferenceInitialized", out var initialized) && initialized &&
+                heap.TryGetModelValue<StaticValue>(arguments[0], "PublicKeyReference", out var existingKey)) return IntrinsicResult.Completed(existingKey);
+            if (!heap.TryAllocateByteArray(key, out var value)) return AllocationFailure("public key");
+            heap.TrySetModelValue(arguments[0], "PublicKeyReference", value);
+            heap.TrySetModelValue(arguments[0], "PublicKeyReferenceInitialized", true);
+            return IntrinsicResult.Completed(value);
         }
         if (name == "get_Name")
             return context.State.Heap.TryAllocateString(context.State.AssemblyName, out var value)
@@ -8937,7 +9500,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 heap.TrySetModelValue(receiver, "Flags", (int)parsed.Flags) &&
                 heap.TrySetModelValue(receiver, "NullVersion", version is null) &&
                 heap.TrySetModelValue(receiver, "VersionComponents", version ?? []) &&
-                heap.TrySetModelValue(receiver, "PublicKeyToken", parsed.GetPublicKeyToken() ?? []);
+                heap.TrySetModelValue(receiver, "PublicKeyToken", parsed.GetPublicKeyToken() ?? []) &&
+                heap.TrySetModelValue(receiver, "PublicKeyKnown", true) &&
+                heap.TrySetModelValue(receiver, "PublicKeyIsNull", parsed.GetPublicKey() is null) &&
+                heap.TrySetModelValue(receiver, "PublicKey", parsed.GetPublicKey()?.ToArray() ?? []) &&
+                heap.TrySetModelValue(receiver, "PublicKeyReferenceInitialized", false);
         }
         catch (Exception exception) when (exception is ArgumentException or System.IO.FileLoadException)
         { error = exception; return false; }
@@ -9094,6 +9661,9 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? IntrinsicResult.Completed(read)
                 : AllocationFailure("resolved string");
         }
+        if (arguments.Count == 1 && name == "get_Assembly" &&
+            context.State.Heap.TryGetModelValue<StaticValue>(arguments[0], "Assembly", out var assembly))
+            return IntrinsicResult.Completed(assembly);
         if (arguments.Count == 1 && name == "get_ModuleHandle")
             return IntrinsicResult.Completed(arguments[0]);
         if (arguments.Count == 1 && name is "get_Name" or "get_FullyQualifiedName")

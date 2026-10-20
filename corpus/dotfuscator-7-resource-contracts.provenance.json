@@ -1,0 +1,243 @@
+{
+  "capturedAt": "2026-10-19",
+  "fixtures": [
+    {
+      "Framework": "net48",
+      "Layout": "contract",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "4c01f4a5f1514e24c2c687b794d9fe27ade5394a2b6d6e0cf907e7e8ab20f61f",
+      "OracleSha256": "0b430739061aeb84283d9a194bfeab0e091fc770c14e7c5ee134b5243a74975b",
+      "ProtectedSha256": "9a577acd3d5fd19877888154aba762f7e63f3f6a75696c5ef0dd315b7cc7b901",
+      "Companions": [
+        {
+          "path": "oracle/fr/ContractProbe.resources.dll",
+          "sha256": "0d0563f3a98eceeefb08d48f899517ab3b484547f1fd11330fe0697b3486dce9"
+        },
+        {
+          "path": "oracle/fr-CA/ContractProbe.resources.dll",
+          "sha256": "2884630f7445bbe584aa4bb24632041f39ab592f66ec425ce20d5f8034d50452"
+        },
+        {
+          "path": "protected/fr/ContractProbe.resources.dll",
+          "sha256": "f769d7f2fb81359fbbbd4d1ef2f1bace0abae3847b4d3d893fce1fa03b6dcd14"
+        },
+        {
+          "path": "protected/fr-CA/ContractProbe.resources.dll",
+          "sha256": "72702295bf4e3a6cd9a62988d6629c338039d63940d956283525bf3589dcff47"
+        }
+      ]
+    },
+    {
+      "Framework": "net48",
+      "Layout": "satellite-only",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "1a3c0a9a7dcae5aec7c34b30c4b541ebbd217f4733f2ec704951d70440a2a3da",
+      "OracleSha256": "b48eebd99be06f6ac554de9b66a0a9cf9346b8e0105f8f204904cdc54fac2991",
+      "ProtectedSha256": "a95465f26570d16b752bafcb3e250b3ea49ded4583612684be9cf3531c9ec545",
+      "Companions": [
+        {
+          "path": "oracle/fr/ContractProbe.resources.dll",
+          "sha256": "0d0563f3a98eceeefb08d48f899517ab3b484547f1fd11330fe0697b3486dce9"
+        },
+        {
+          "path": "oracle/fr-CA/ContractProbe.resources.dll",
+          "sha256": "2884630f7445bbe584aa4bb24632041f39ab592f66ec425ce20d5f8034d50452"
+        },
+        {
+          "path": "protected/fr/ContractProbe.resources.dll",
+          "sha256": "ba34b56d2b0885ddb6fc084682095d61c02caa945f34177a558ddff4d7155886"
+        },
+        {
+          "path": "protected/fr-CA/ContractProbe.resources.dll",
+          "sha256": "3f4b50451de26c94779956285df941a0666676834152c2d6836888b36b5fe8e5"
+        }
+      ]
+    },
+    {
+      "Framework": "net8.0",
+      "Layout": "contract",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "01d6caa7cc793d2c40390fed839de9d1d82ca0d7670305f48f2774e64bf862b6",
+      "OracleSha256": "b4a6667537bc065e2739d7807b1efefffa9a7f779076e703f78f6c5d8c75debd",
+      "ProtectedSha256": "6717a10009dbeb0a3a048fab9c99aceace9d3a7499be4d4cc603a28b484973b9",
+      "Companions": [
+        {
+          "path": "oracle/fr/ContractProbe.resources.dll",
+          "sha256": "e7c4efedf2e795b9451b347fcde14bb136d6125c32b65f1f34541cd0776df89f"
+        },
+        {
+          "path": "oracle/fr-CA/ContractProbe.resources.dll",
+          "sha256": "d5f9466ead3ec26c295d23d17b065d6e8615178815c03314b0ea75b525e39162"
+        },
+        {
+          "path": "protected/fr/ContractProbe.resources.dll",
+          "sha256": "962dd05f645b465a5f54dffe63f17ee7d40a158f16084b4536f6e687297c52e8"
+        },
+        {
+          "path": "protected/fr-CA/ContractProbe.resources.dll",
+          "sha256": "4bb67ec61d81d32466316c197a8e4151a87da4ce4f1d848f9d23316a54e4767a"
+        }
+      ]
+    },
+    {
+      "Framework": "net8.0",
+      "Layout": "satellite-only",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "e9fa43e51d1b8c5af5eae4628a6dbbada24b449ccbfd18751248e883daeddaa6",
+      "OracleSha256": "b05f572e7c8d63262cfce4811fd0bb0fbdff0375387345482ebf6f1d28a8dbaa",
+      "ProtectedSha256": "90c8c9e65ca5948dfd1271848e20b139de08bdfa9c1071fc3778fb0bb3b75d80",
+      "Companions": [
+        {
+          "path": "oracle/fr/ContractProbe.resources.dll",
+          "sha256": "e7c4efedf2e795b9451b347fcde14bb136d6125c32b65f1f34541cd0776df89f"
+        },
+        {
+          "path": "oracle/fr-CA/ContractProbe.resources.dll",
+          "sha256": "d5f9466ead3ec26c295d23d17b065d6e8615178815c03314b0ea75b525e39162"
+        },
+        {
+          "path": "protected/fr/ContractProbe.resources.dll",
+          "sha256": "1d05406b39c01a3a694557efa7be73873f21df5ae29d13221a17b5633e5d6c61"
+        },
+        {
+          "path": "protected/fr-CA/ContractProbe.resources.dll",
+          "sha256": "9544b75bddcddd3aef8e11fe8f179b95bd62bcaa751c3741d8ff060f64ec089a"
+        }
+      ]
+    },
+    {
+      "Framework": "net10.0",
+      "Layout": "contract",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "9e68d40f356c1200414c03f81dea5c233de84c5ce334408c75ba0eedea08f8bc",
+      "OracleSha256": "33bd0d722b27efddb6393a110b259a63684cda81a7057458018c1a4dbccf49ab",
+      "ProtectedSha256": "55c1c60186e277e108f4db4b51e54a39a1556c5ec5b1ca8e684f3918bc3dd434",
+      "Companions": [
+        {
+          "path": "oracle/fr/ContractProbe.resources.dll",
+          "sha256": "10b3973bdc3c26cb9062e1104ad35cd7c87a2c72be85d58f1acf37871da6bda6"
+        },
+        {
+          "path": "oracle/fr-CA/ContractProbe.resources.dll",
+          "sha256": "3bc86fdda371ee46a233ee234f7e1979a4a91efcecaa614baddf7d325ebe69c0"
+        },
+        {
+          "path": "protected/fr/ContractProbe.resources.dll",
+          "sha256": "52797877850979d3b0f7418309fc2b706c9938440e6f9d293684c48ef5236e54"
+        },
+        {
+          "path": "protected/fr-CA/ContractProbe.resources.dll",
+          "sha256": "dcbe68aad92224d389935b66560324d5e9eeae6d6b151e73c6a88c0d1a64db8a"
+        }
+      ]
+    },
+    {
+      "Framework": "net10.0",
+      "Layout": "satellite-only",
+      "DotfuscatorVersion": "7.9.0.0",
+      "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "ConfigSha256": "5a1c95af45d5244ac37f328ae0e0fbcd7685e4021f2155e56a50ff33977bd111",
+      "OracleSha256": "8ac98d8ac867724c70498289dfa08c392c279dc1e845c0a682048f9ddb2f0458",
+      "ProtectedSha256": "fac31ea1758b6ac0590246245218fd7e50932d1b549f0e70f839a4370ccbda5c",
+      "Companions": [
+        {
+          "path": "oracle/fr/ContractProbe.resources.dll",
+          "sha256": "10b3973bdc3c26cb9062e1104ad35cd7c87a2c72be85d58f1acf37871da6bda6"
+        },
+        {
+          "path": "oracle/fr-CA/ContractProbe.resources.dll",
+          "sha256": "3bc86fdda371ee46a233ee234f7e1979a4a91efcecaa614baddf7d325ebe69c0"
+        },
+        {
+          "path": "protected/fr/ContractProbe.resources.dll",
+          "sha256": "40ae763d322922fe9fdc7f7c828443b1898930e5634777b4407d94f5e463c4bc"
+        },
+        {
+          "path": "protected/fr-CA/ContractProbe.resources.dll",
+          "sha256": "54dcf8dfb4a6f6dc0060355ecfb0318719175c4e0b9ac89ed7960d81e9aa3f92"
+        }
+      ]
+    }
+  ],
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "description": "Benign version-2 resource owners with explicit version-1 satellite contracts; local/default and satellite-only named-neutral fallback across three frameworks.",
+  "semanticsReference": "https://learn.microsoft.com/en-us/dotnet/api/system.resources.satellitecontractversionattribute",
+  "evidenceRoot": "C:/cilantro-verify/dotfuscator/resource-contracts",
+  "sources": [
+    {
+      "path": "corpus/probes/DotfuscatorResourceContracts/DotfuscatorResourceContracts.csproj",
+      "sha256": "bc88c7926ef72459a1d945b6a71063f7ea03f4a015364665a80d375ff5c31691"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResourceContracts/Program.cs",
+      "sha256": "5dd0383f530be0ee15e4de4e1b08cbc2bd3fa47b878b85d4f687d685c94a77d1"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResourceContracts/ResourceContract.cs",
+      "sha256": "9ef3ff79f56632e63aa73547efd1ab578c135caa42c8daf0f2f2d99147ece712"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResourceContracts/Secrets.resx",
+      "sha256": "516fd4b33b0c679b544682894e9a895fc494f85633866da31aaa69a7ba60ab04"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResourceContracts/Secrets.fr.resx",
+      "sha256": "847b3a4e652d3c80658612c28f679f926694821da2cc8cbea1d294562ea073cf"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorResourceContracts/Secrets.fr-CA.resx",
+      "sha256": "e5a88df3127acebe9e9e553f6adc68fd8b61ef2f79463fe49099efc8a0f4c826"
+    },
+    {
+      "path": "corpus/probes/dotfuscator-resource-contracts.ps1",
+      "sha256": "ebdb4d24109197ddffd5e5632d5de6b1f45e1b6a13a2dba9189ae809d5eff151"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorResourceSatellites.cs",
+      "sha256": "b74d9506e8d7848c6adb3557b6e5b6366331635a2d475ff9ceff37cfa1119aaf"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorResourceContractTests.cs",
+      "sha256": "01166a8c2a907a51ab0bd872252d5e9cc7d716b699a29e47500a0f1ec147c5b5"
+    }
+  ],
+  "buildLayouts": [
+    "contract",
+    "satellite-only"
+  ],
+  "buildProperties": "ResourceLayout=LAYOUT; BaseOutputPath=bin/LAYOUT/; BaseIntermediateOutputPath=obj/LAYOUT/",
+  "limits": [
+    "Captures use unsigned version-2 owners and exact version-1 resource-only satellites.",
+    "Publisher-policy binding redirects, invariant-culture satellite fallback, code-bearing satellites and serialized application objects remain unvalidated."
+  ],
+  "validation": {
+    "runtimeComparisonsPassed": 6,
+    "resourceEntries": 75,
+    "resourceContainers": 15,
+    "localContainers": 3,
+    "satelliteContainers": 12,
+    "retiredRuntimeTypes": 12,
+    "cultureReadsPerRun": 6,
+    "requiredNeutralCulture": "fr",
+    "ownerAssemblyVersion": "2.0.0.0",
+    "satelliteAssemblyVersion": "1.0.0.0",
+    "differentialNet48Captures": 2,
+    "differentialNet48BrokenMethods": 0,
+    "differentialNet48WorsenedMethods": 0,
+    "focusedTestsPassed": 64,
+    "focusedTestLog": "C:/cilantro-verify/dotfuscator/resource-contracts-focused.log",
+    "runtimeEvidence": "C:/cilantro-verify/dotfuscator/resource-contracts-runtime-evidence.json",
+    "runtimeEvidenceSha256": "0cb81a362abd72410ab637b3d7fd2bda2c50521ec8be079968580345f755d863",
+    "fullTestLog": "C:/cilantro-verify/dotfuscator/resource-contracts-full.log",
+    "fullTestStatus": "passed",
+    "fullTestsPassed": 3497,
+    "fullTestsSkipped": 37,
+    "fullTestsFailed": 0,
+    "fullTestsTotal": 3534
+  }
+}

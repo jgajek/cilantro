@@ -1,0 +1,946 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": {
+    "name": "Babel Obfuscator Enterprise floating trial",
+    "version": "12.1.0.0",
+    "sha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38"
+  },
+  "scope": "Explicit external method-code snapshots, plus external/password combinations with XOR strings, resources, proxies and control flow. Construction is static and bounded; only repository-built benign probes execute during runtime checks. The fixed probe password is public test data, unrelated to the evaluation license. No target code can open arbitrary host files.",
+  "manifests": [
+    {
+      "path": "corpus/babel-12-external.manifest.json",
+      "sha256": "8209870449b440dfa21fed17c7c4e4301a63e244cd1d36bbd9940f404434924a"
+    },
+    {
+      "path": "corpus/babel-12-external-combined.manifest.json",
+      "sha256": "3417f61536e7697ab859b25398b816cf7018c6d237ccebea5a27784f3aa95e95"
+    },
+    {
+      "path": "corpus/babel-12-password-combined.manifest.json",
+      "sha256": "476dc154712ce699a6312cc78c35e96cd98c50adabd0ac690f99fbb258351089"
+    }
+  ],
+  "sources": [
+    {
+      "path": "src/Cilantro.Core/Pipeline/PipelineOptions.cs",
+      "sha256": "493bb3fc8af89679ccd4439ff2b9afe6433a86b4a5c0d87a6a1dc0b92e723bfd"
+    },
+    {
+      "path": "src/Cilantro.Core/CilantroPipeline.cs",
+      "sha256": "17e19951dc30417ccabf8c274af8a333ea3a6c153a8080579237622666038592"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelCodeSourceInputs.cs",
+      "sha256": "ea91e8a19e4d6baadd3512d94570dc3be4d1aead0df405937dab956f2a4769b5"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+      "sha256": "473633fe0bfe9e6f58982be323184813bacff0a9b7b46168f9d64a518784c051"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/Intrinsics.cs",
+      "sha256": "c5b2d339f5c497b84156964501b5835a77d46fa96696463f0264e2dc96ab68b1"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/StaticHeap.cs",
+      "sha256": "c926b436930e8d3d8d1285d3fa07df8e46cda0ec8142b348b6da4e0282ad4e4e"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/LoaderEvidence.cs",
+      "sha256": "f697815e2a7340a2beb317ca98b0d96d93a03755f14defd9fce843a2c5113d3e"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/LiteralStringDecoderPass.cs",
+      "sha256": "b6cc3268f6455a54dc1fdbaddbc172f59db2be140914f2259fd67dce7d72e7bd"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/NumericInitializationOwnership.cs",
+      "sha256": "3e9b5f5e96f8c4274a28882fce72ea6c2d5fde083dc0ee02845fd4a076d29d58"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/SharedInitializationCompletionPass.cs",
+      "sha256": "9977c4e317ab45720864d39065c74eff4a81423ff4f021c92bc57556b6c70535"
+    },
+    {
+      "path": "src/Cilantro.Core/Corpus/CorpusRunner.cs",
+      "sha256": "da38d99dd4b18597045c541db24acc79a5f37dff834be7269cfd65c83c293160"
+    },
+    {
+      "path": "src/Cilantro.Cli/AnalysisArguments.cs",
+      "sha256": "bf47810d1b97b2648843f43463b0eb1ca0f79a9b2d39d16205b63b814dffe6e3"
+    },
+    {
+      "path": "src/Cilantro.Cli/Program.cs",
+      "sha256": "acc91a4808a910f3c246905d6f1e935cf98660c6ce9de9e62383dc452da5e0de"
+    },
+    {
+      "path": "corpus/schema/manifest.schema.json",
+      "sha256": "bc50a477dbf22be7304c006fdda95070afbffb7748c91c0befc9e298f3e769f2"
+    },
+    {
+      "path": "corpus/probes/babel-code-sources.ps1",
+      "sha256": "aed8a47b799f8427cc64cddc0b51b2f31ce4c98315319ef4cbe5c0787741c401"
+    },
+    {
+      "path": "tests/Cilantro.Tests/CompanionFileTests.cs",
+      "sha256": "997fe755f476963cb3bcae25b9e67744516df387daa08257ba32768967a78333"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelExternalCodeCorpusTests.cs",
+      "sha256": "d6d806feecc76dfb91f1df97416edf764252e56aad4b54146827f2b748d575bb"
+    },
+    {
+      "path": "tests/Cilantro.Tests/AnalysisArgumentsTests.cs",
+      "sha256": "efc1d1303f74da54e5af88a2704f2615b2f808ddd22a112577b6cd3e6e77260b"
+    },
+    {
+      "path": "tests/Cilantro.Tests/SharedInitializationCompletionTests.cs",
+      "sha256": "2fe41fe0fe07d4336f27992450bd68d407b2d372eb4a1ddaa51807a713f6bc56"
+    }
+  ],
+  "totals": {
+    "newCaptures": 9,
+    "newRecoveredBodies": 9,
+    "newMatchingThreeWayComparisons": 9,
+    "revalidatedStandalonePasswordCaptures": 3,
+    "totalFinalBehaviorComparisons": 12,
+    "remainingEncryptedStubs": 0,
+    "remainingEncryptedResources": 0,
+    "combinedStringSites": 24,
+    "combinedProxyBindings": 66,
+    "combinedRetiredInitializationTriggers": 24
+  },
+  "catalog": {
+    "maximumFiles": 16,
+    "maximumFileBytes": 16777216,
+    "maximumTotalBytes": 33554432,
+    "mount": "Safe unique leaf names beside the analyzed module, with an explicit modeled base directory",
+    "readApis": [
+      "File.OpenRead",
+      "File.ReadAllBytes",
+      "FileStream(path, FileMode.Open, FileAccess.Read)"
+    ],
+    "unknownOrWriteAccess": "refused",
+    "hostFileAccessByTarget": false,
+    "registeredBytesCopied": true,
+    "sourceHashesRecorded": true,
+    "corpusSnapshotHashesVerified": true
+  },
+  "initializerRetirement": {
+    "scope": "Only initialization attributed to successful Babel literal recovery; a bounded private region must have no outside metadata/CIL consumer after removing its preserved triggers",
+    "proof": "Independent cold construction for each nonempty initializer, complete agreeing observations, no ambient host/declaration/file inputs, only region static writes and exact resource inputs, closed object lifetimes, and structural verification before commit",
+    "refusals": [
+      "foreign writes",
+      "surviving readers",
+      "surviving handles",
+      "reflected names",
+      "thrown initialization"
+    ],
+    "resources": "Ownership is published only after retirement commits; physical reader removal is required before deleting bytes"
+  },
+  "focusedTests": {
+    "path": "C:/cilantro-verify/babel/code-sources-combined/focused-final.log",
+    "sha256": "77be846ae2e8e12f16f13fc1d8b30b2270f5c5348f8a778c380c04c446aee73c",
+    "passed": 134,
+    "failed": 0,
+    "skipped": 0,
+    "net48DifferentialComparisons": 3,
+    "newOrWorsenedOrUnreadableMethods": 0
+  },
+  "fullSuite": {
+    "path": "C:/cilantro-verify/babel/code-sources-combined/full-suite.log",
+    "sha256": "7b86cb6140e7bb923fabab60c75f873dddc09ba6bfdabf0b971466b841768f79",
+    "passed": 3892,
+    "skipped": 37,
+    "failed": 0,
+    "total": 3929,
+    "duration": "11 m 40 s"
+  },
+  "inputAudit": {
+    "path": "C:/cilantro-verify/babel/code-sources-combined/corpus-input-audit.json",
+    "sha256": "e189d0edcb27261d196ea74e0a870f9d37d8266abb26bcb31d77a25c35388f8d",
+    "manifests": 29,
+    "entries": 338,
+    "companions": 6,
+    "missing": 0,
+    "changed": 0
+  },
+  "captures": [
+    {
+      "id": "net10.0-external",
+      "configuration": "standalone",
+      "framework": "net10.0",
+      "profile": "external",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:/cilantro-verify/babel/code-sources-v3/net10.0-external/rules.xml"
+      ],
+      "oracleSha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "protectedSha256": "3200dbb3ba850104b7180ebe7268a682ad23d35bc4e39fd510cf7a2b12a1dba6",
+      "codeSources": {
+        "name": "probe-code.eil",
+        "sha256": "b3aff4e9a5cb25e5237c07d989f0ea846257119649845346f79d8ade2761cd6a",
+        "length": 323
+      },
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-v3\\net10.0-external/cleaned_verified/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "4c6b6c1f159963dd4af4f7dae9966eaa88e2bfd7d1d30868bba157aeedc21afc",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 0,
+      "proxyBindings": 0,
+      "retiredInitializationTriggers": 0,
+      "behavior": {
+        "Id": "net10.0-external",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net48-external",
+      "configuration": "standalone",
+      "framework": "net48",
+      "profile": "external",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:/cilantro-verify/babel/code-sources-v3/net48-external/rules.xml"
+      ],
+      "oracleSha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "protectedSha256": "804d518ccdb06b6b7ddde1f3e7374dbe59e2e4ef869df0e099a0466f66b52b77",
+      "codeSources": {
+        "name": "probe-code.eil",
+        "sha256": "e84a859b96d34e3345b4a1630bb6fbc5b6468fce333191fb972fa31b5c100dfc",
+        "length": 307
+      },
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-v3\\net48-external/cleaned_verified/BabelCodeSources.cleaned.exe",
+      "cleanedSha256": "08d423252b9c570d446321b3b2a831083202d3f6645843567d67a71e73d87ee9",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 0,
+      "proxyBindings": 0,
+      "retiredInitializationTriggers": 0,
+      "behavior": {
+        "Id": "net48-external",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net8.0-external",
+      "configuration": "standalone",
+      "framework": "net8.0",
+      "profile": "external",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:/cilantro-verify/babel/code-sources-v3/net8.0-external/rules.xml"
+      ],
+      "oracleSha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "protectedSha256": "e009bdd07087c1100e9623664f136d76f5be6cde0e6fd833120ec889b7bff2e8",
+      "codeSources": {
+        "name": "probe-code.eil",
+        "sha256": "41e9e71a8c5d0f1ac71dea7728e6405e0d071e2e90b787204f10013ced5d25cd",
+        "length": 323
+      },
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-v3\\net8.0-external/cleaned_verified/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "346128e2c0db1d5d021f461707d8017fdccc08493ea44f6b8bea468199968bba",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 0,
+      "proxyBindings": 0,
+      "retiredInitializationTriggers": 0,
+      "behavior": {
+        "Id": "net8.0-external",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net10.0-external",
+      "configuration": "combined",
+      "framework": "net10.0",
+      "profile": "external",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:\\cilantro-verify\\babel\\code-sources-combined/net10.0-external/rules.xml",
+        "--stringencryption",
+        "xor",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on"
+      ],
+      "oracleSha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "protectedSha256": "a665fb30660f2108f8e2b04e26fe8bccbec6a02dfa5d5ad61f0a971b420284c6",
+      "codeSources": {
+        "name": "probe-code.eil",
+        "sha256": "c51d233f3b8d9b834f0229776f9e81375f47c7379549b3b1c6ef0440bab9ca44",
+        "length": 307
+      },
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-combined\\net10.0-external/cleaned_complete/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "0b735a9352dae07a608f2dda6332b38cf12d46f23b89b152fe04fcc3fba77506",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 4,
+      "proxyBindings": 11,
+      "retiredInitializationTriggers": 4,
+      "behavior": {
+        "Id": "net10.0-external",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net10.0-password",
+      "configuration": "combined",
+      "framework": "net10.0",
+      "profile": "password",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:\\cilantro-verify\\babel\\code-sources-combined/net10.0-password/rules.xml",
+        "--stringencryption",
+        "xor",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on"
+      ],
+      "oracleSha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "protectedSha256": "4c119904715a4418aacfc23a374ce89716952192b95c7975cad3c07c44aca540",
+      "codeSources": null,
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-combined\\net10.0-password/cleaned_complete/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "70ebd96a9951a41694cd5465dc1aede1ba30156eb5bab4277db99954545d36d6",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 4,
+      "proxyBindings": 11,
+      "retiredInitializationTriggers": 4,
+      "behavior": {
+        "Id": "net10.0-password",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net48-external",
+      "configuration": "combined",
+      "framework": "net48",
+      "profile": "external",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:\\cilantro-verify\\babel\\code-sources-combined/net48-external/rules.xml",
+        "--stringencryption",
+        "xor",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on"
+      ],
+      "oracleSha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "protectedSha256": "7aaa3838f280e359f46939cbcfb69119d30789f1bda5ddf20b64d6f4df68013a",
+      "codeSources": {
+        "name": "probe-code.eil",
+        "sha256": "3ebabdb00ab1ff926354a48cbb95a776149fa0d3075dd0dc3dc6ba8bdafaf4a1",
+        "length": 291
+      },
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-combined\\net48-external/cleaned_complete/BabelCodeSources.cleaned.exe",
+      "cleanedSha256": "d38651ee78f074dd01e919877693f6901232fa608fa650900638d620788ce9ff",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 4,
+      "proxyBindings": 11,
+      "retiredInitializationTriggers": 4,
+      "behavior": {
+        "Id": "net48-external",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net48-password",
+      "configuration": "combined",
+      "framework": "net48",
+      "profile": "password",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:\\cilantro-verify\\babel\\code-sources-combined/net48-password/rules.xml",
+        "--stringencryption",
+        "xor",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on"
+      ],
+      "oracleSha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "protectedSha256": "59d3fe5f93d78549eb2317f5b29519660036f158145f5acd48320dc2f8a8ae06",
+      "codeSources": null,
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-combined\\net48-password/cleaned_complete/BabelCodeSources.cleaned.exe",
+      "cleanedSha256": "dfadcbee640793f3c498d3d81f9b0b2d76e96c406d774adb7f7a50f26ea35eb1",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 4,
+      "proxyBindings": 11,
+      "retiredInitializationTriggers": 4,
+      "behavior": {
+        "Id": "net48-password",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net8.0-external",
+      "configuration": "combined",
+      "framework": "net8.0",
+      "profile": "external",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:\\cilantro-verify\\babel\\code-sources-combined/net8.0-external/rules.xml",
+        "--stringencryption",
+        "xor",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on"
+      ],
+      "oracleSha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "protectedSha256": "9b85b4478f98da07726462b17414dbe2581b91200bf5703d6028ecf3bd04274c",
+      "codeSources": {
+        "name": "probe-code.eil",
+        "sha256": "f6afe48008285576e4d2e5fa84e7ac4f794c026f65969d64a30646636bfadca3",
+        "length": 307
+      },
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-combined\\net8.0-external/cleaned_complete/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "b3a20cf8fbf8d0f1122dea151f212f61b85daa3c8447a47455efcb9bba7e81d9",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 4,
+      "proxyBindings": 11,
+      "retiredInitializationTriggers": 4,
+      "behavior": {
+        "Id": "net8.0-external",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net8.0-password",
+      "configuration": "combined",
+      "framework": "net8.0",
+      "profile": "password",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:\\cilantro-verify\\babel\\code-sources-combined/net8.0-password/rules.xml",
+        "--stringencryption",
+        "xor",
+        "--resourceencryption",
+        "--proxy",
+        "all",
+        "--controlflow",
+        "switch=on"
+      ],
+      "oracleSha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "protectedSha256": "33a435987575ce203032672dc82b3f6f91640ec516b0cd5a0df8f6b1eba97eb2",
+      "codeSources": null,
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-combined\\net8.0-password/cleaned_complete/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "4798ea02dcf591fc0ababef486e53f14222d5955d951b9152d99dddc68989cd8",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 4,
+      "proxyBindings": 11,
+      "retiredInitializationTriggers": 4,
+      "behavior": {
+        "Id": "net8.0-password",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    }
+  ],
+  "standalonePasswordRevalidation": [
+    {
+      "id": "net10.0-password",
+      "configuration": "standalone",
+      "framework": "net10.0",
+      "profile": "password",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:/cilantro-verify/babel/code-sources-v3/net10.0-password/rules.xml"
+      ],
+      "oracleSha256": "0a46ae5b0e0d51aa122e287ef252972ca18cdcc344c39584387cddab485f177f",
+      "protectedSha256": "c86b1c951fca9fcef5e3e2b52f9561ce4b2d3fa0ccace783f894967df686d289",
+      "codeSources": null,
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-v3\\net10.0-password/cleaned_verified/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "2387b111e08e323272b64b94dc24749fddf092d8025203608a25dc8e2a997d08",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 0,
+      "proxyBindings": 0,
+      "retiredInitializationTriggers": 0,
+      "behavior": {
+        "Id": "net10.0-password",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net48-password",
+      "configuration": "standalone",
+      "framework": "net48",
+      "profile": "password",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:/cilantro-verify/babel/code-sources-v3/net48-password/rules.xml"
+      ],
+      "oracleSha256": "c17ce8aa0b2a0f7047f96644c4efdff3f622bb9acc914683a0fafb8410e628ed",
+      "protectedSha256": "20e8d6cd5b57ecc43cb338324d0decf81e1b810b3e897c4dc4f5fc0b3fe1a2d4",
+      "codeSources": null,
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-v3\\net48-password/cleaned_verified/BabelCodeSources.cleaned.exe",
+      "cleanedSha256": "39c4ac0c088da80e20cadbe149f3bb19d11eb0d1e049b6033a39f1cd8805bc41",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 0,
+      "proxyBindings": 0,
+      "retiredInitializationTriggers": 0,
+      "behavior": {
+        "Id": "net48-password",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "net8.0-password",
+      "configuration": "standalone",
+      "framework": "net8.0",
+      "profile": "password",
+      "options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "1973",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelCodeSources\\.Program::Encrypted",
+        "--rules",
+        "C:/cilantro-verify/babel/code-sources-v3/net8.0-password/rules.xml"
+      ],
+      "oracleSha256": "acb4b172413a92886ecb14f4e218538a446dfcbed0d2ef1e09c3a8ab5326761c",
+      "protectedSha256": "b93e036472825f78b3232047223bcaa9083754ba0b46096f8ef603af77458ff7",
+      "codeSources": null,
+      "cleanedPath": "C:\\cilantro-verify\\babel\\code-sources-v3\\net8.0-password/cleaned_verified/BabelCodeSources.cleaned.dll",
+      "cleanedSha256": "41f3d2f0fa23459b814d592893c171a0cf7f1b69ddf914fa26e88da5f6a899e1",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": 0,
+      "recoveredStrings": 0,
+      "proxyBindings": 0,
+      "retiredInitializationTriggers": 0,
+      "behavior": {
+        "Id": "net8.0-password",
+        "Match": true,
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "-7:-19\r\n0:17\r\n1:48\r\n73:2280\r\n1024:31761\r\ncalls=5\r\n",
+            "Stderr": ""
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "1.0.3";
+    public const string Version = "1.0.4";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -59,6 +59,7 @@ public sealed class CilantroPipeline
         new ReactorDetectionPass(),
         new ConfuserExDetectionPass(),
         new BabelDetectionPass(),
+        new DotfuscatorDetectionPass(),
         new ProtectorIdentityPass(),
         new MethodProtectionAnalysisPass(),
         new FieldRvaRecoveryPass(),
@@ -78,6 +79,9 @@ public sealed class CilantroPipeline
         new StringTableRecoveryPass(),
         new BooleanRecoveryPass(),
         new AntiTamperNeutralizationPass(),
+        new DotfuscatorCheckPass(),
+        new BabelCheckPass(),
+        new BabelMethodImagePass(),
         // Bodies are all present by now, which is what makes the search for a field's writers
         // mean anything: a method still holding encrypted bytes could have held the write.
         new UnwrittenFieldFoldingPass(),
@@ -91,6 +95,7 @@ public sealed class CilantroPipeline
         new DispatcherDeobfuscationPass(),
         new CfgDeadCodePass(),
         new ControlFlowCompletionPass(),
+        new DotfuscatorControlFlowPass(),
         new TypeRestorationPass(),
         new BabelProxyRecoveryPass(),
         new DelegateProxyPass(),
@@ -99,6 +104,9 @@ public sealed class CilantroPipeline
         // after the table, because a decoder can read a table entry but never the other way round.
         new ConstantStringPass(),
         new LiteralStringDecoderPass(babelOnly: true),
+        new LiteralStringDecoderPass(dotfuscatorOnly: true),
+        new DotfuscatorV2StringPass(),
+        new DotfuscatorResourcePass(),
         new NumericTableRecoveryPass(),
         new IntegerHelperRecoveryPass(),
         // ConfuserEx keeps its literals in one buffer that its own getters read, which is neither a
@@ -179,6 +187,10 @@ public sealed class CilantroPipeline
         // reachability cleanup so their discarded emitters no longer retain virtual targets.
         new EmittedMethodReconstructionPass(),
         new BabelResourceCompletionPass(),
+        new BabelResourceRestorationPass(),
+        new BabelHashStringPass(),
+        new BabelProxyInitializationPass(),
+        new BabelProxyInliningPass(),
         new BabelUnpackingCompletionPass(),
         new DispatcherPathCompletionPass(),
         new IntegrityVerdictPass(),
@@ -198,9 +210,12 @@ public sealed class CilantroPipeline
         new StringLookupFinalizationPass(),
         new StringRuntimeCleanupPass(),
         new DelegateStringCompletionPass(),
+        new BabelNumericArrayPass(),
+        new BabelNumericArrayCleanupPass(),
         new NumericInitializationCompletionPass(),
         new NumericRuntimeCleanupPass(),
         new EmbeddedDependencyRecoveryPass(),
+        new BabelDependencyDeploymentPass(),
         new DependencyDecoderCompletionPass(),
         new DependencyIndexCompletionPass(),
         new DependencyInputCompletionPass(),
@@ -352,6 +367,7 @@ public sealed class CilantroPipeline
         if (options.ManagedBootstrapReplacement is { } replacement)
             context.AddPassResult(ManagedBootstrapReassembly.Apply(context, replacement));
         context.SetFact("options.removeRuntime", options.RemoveRuntime);
+        BabelCodeSourceInputs.Register(context, options.BabelCodeSourceFiles);
 
         // What the caller did not decide, the mode decides: a triage run does the things that make
         // the result easier to read, and a strict one leaves the assembly as close to what it can
@@ -474,9 +490,12 @@ public sealed class CilantroPipeline
         // tools would refuse by extension alone.
         var outputPath = options.OutputPath is null
             ? Path.Combine(
-                inputDirectory,
+                ResourceSatelliteEmission.HasSatellites(context) || DependencyDeploymentEmission.HasDependencies(context) ? Path.Combine(inputDirectory, stem + ".cleaned") : inputDirectory,
                 $"{stem}.cleaned{Path.GetExtension(context.InputPath)}")
             : Path.GetFullPath(options.OutputPath);
+        IReadOnlyList<string> resourceSatellitePaths = [];
+        IReadOnlyList<string> dependencyPaths = [];
+        StrongNameKey? signingKey = null;
 
         options.Progress?.Invoke(new(inputPath, PipelineStage.Extraction));
         var payloadPaths = WritePayloads(context, reportDirectory, stem);
@@ -500,13 +519,36 @@ public sealed class CilantroPipeline
             removedTypeCount == 0 &&
             removedMethodCount == 0;
 
+        if (canEmit && !StrongNameEmission.TryPrepare(context.Module, options.StrongNameKeyFiles, out signingKey, out var signingReason))
+        {
+            canEmit = false;
+            verification = verification with { Passed = false, Diagnostics = [.. verification.Diagnostics, "Strong-name signing declined: " + signingReason] };
+        }
+        if (canEmit && !ResourceSatelliteEmission.TryWrite(context, outputPath, out _, out var satellitePreflightReason, validateOnly: true))
+        {
+            canEmit = false;
+            verification = verification with
+            {
+                Passed = false,
+                Diagnostics = [.. verification.Diagnostics, "Restored resource satellite emission declined: " + satellitePreflightReason]
+            };
+        }
+        if (canEmit && !DependencyDeploymentEmission.TryWrite(context, outputPath, out _, out var dependencyPreflightReason, validateOnly: true))
+        {
+            canEmit = false;
+            verification = verification with { Passed = false, Diagnostics = [.. verification.Diagnostics, "Dependency deployment declined: " + dependencyPreflightReason] };
+        }
         if (canEmit)
         {
             options.Progress?.Invoke(new(inputPath, PipelineStage.Emission));
             var reformed = BranchForms.Reach(context.Module);
             var expectedShape = ModuleShape.Capture(context.Module);
-            var complaints = WriteModule(context.Module, outputPath, preserveTokens);
+            var complaints = WriteModule(context.Module, outputPath, preserveTokens, signingKey);
             var outputVerification = AssemblyVerifier.VerifyRoundTrip(outputPath, expectedShape);
+            if (signingKey is not null && !StrongNameEmission.Verify(outputPath, signingKey, out var signatureReason))
+                outputVerification = outputVerification with { Passed = false, Diagnostics = [.. outputVerification.Diagnostics, signatureReason] };
+            else if (signingKey is not null)
+                context.AddEvidence(new("strong-name-signing", "Re-signed and verified the cleaned assembly with an explicitly supplied matching private key; assembly identity is preserved."));
 
             // Said whether or not the emission is withheld over it. The writer complains about the
             // max stack of bodies Reactor wrote, which is what Reactor left rather than what the run
@@ -546,6 +588,22 @@ public sealed class CilantroPipeline
                         .. outputVerification.Diagnostics
                     ]
                 };
+            }
+            else if (!ResourceSatelliteEmission.TryWrite(context, outputPath, out resourceSatellitePaths, out var satelliteReason))
+            {
+                File.Delete(outputPath);
+                canEmit = false;
+                outputPath = null;
+                verification = verification with
+                {
+                    Passed = false,
+                    Diagnostics = [.. verification.Diagnostics, "Restored resource satellite emission failed: " + satelliteReason]
+                };
+            }
+            else if (!DependencyDeploymentEmission.TryWrite(context, outputPath, out dependencyPaths, out var dependencyReason))
+            {
+                File.Delete(outputPath); canEmit = false; outputPath = null;
+                verification = verification with { Passed = false, Diagnostics = [.. verification.Diagnostics, "Dependency deployment failed: " + dependencyReason] };
             }
         }
         else
@@ -609,6 +667,8 @@ public sealed class CilantroPipeline
             payloadPaths,
             report)
         {
+            ResourceSatellitePaths = resourceSatellitePaths,
+            DependencyPaths = dependencyPaths,
             VirtualProgramPaths = virtualProgramPaths,
             VirtualizedMethods = virtualProgramPaths
                 .Count(path => path.EndsWith(".vmprogram.txt", StringComparison.Ordinal)) -
@@ -649,12 +709,21 @@ public sealed class CilantroPipeline
         context.TryGetFact<IReadOnlyList<ProtectedMethodStub>>(
             "method-protection.stubs",
             out var protectedStubs);
+        var remainingBodies = Math.Max(0, (protectedStubs?.Count ?? 0) - restoredBodies);
+        context.TryGetFact<int>("babel.methodImages.restored", out var babelBodies);
+        context.TryGetFact<int>("babel.methodImages.detected", out var babelStubs);
+        restoredBodies += babelBodies;
+        remainingBodies += Math.Max(0, babelStubs - babelBodies);
         context.TryGetFact<int>("strings.callSites", out var stringCallSites);
         context.TryGetFact<int>("strings.replacedSites", out var replacedStringSites);
         context.TryGetFact<int>("booleans.replacedSites", out var booleansRecovered);
         context.TryGetFact<int>("tokens.restored", out var tokensRestored);
         context.TryGetFact<int>("proxy.restoredCallSites", out var proxyCallsRestored);
         context.TryGetFact<int>("resources.restoredBundles", out var resourcesRestored);
+        context.TryGetFact<int>(BabelResourceRestorationPass.RestoredFact, out var babelResourcesRestored);
+        resourcesRestored += babelResourcesRestored;
+        context.TryGetFact<int>("dotfuscator.resources.restoredContainers", out var dotfuscatorResourcesRestored);
+        resourcesRestored += dotfuscatorResourcesRestored;
         context.TryGetFact<int>("cfg.unreachableInstructionsRemoved", out var unreachableRemoved);
         context.TryGetFact<int>("cfg.methodsSimplified", out var controlFlowMethodsSimplified);
         context.TryGetFact<int>("cfg.constantBranchesFolded", out var constantBranchesFolded);
@@ -693,7 +762,7 @@ public sealed class CilantroPipeline
             context.PassResults,
             new RecoveryReportMetrics(
                 restoredBodies,
-                Math.Max(0, (protectedStubs?.Count ?? 0) - restoredBodies),
+                remainingBodies,
                 stringCallSites,
                 replacedStringSites,
                 context.Changes.Count,
@@ -993,7 +1062,8 @@ public sealed class CilantroPipeline
     private static IReadOnlyList<string> WriteModule(
         ModuleDef module,
         string outputPath,
-        bool preserveTokens)
+        bool preserveTokens,
+        StrongNameKey? signingKey = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         var complaints = new WriterComplaints();
@@ -1001,6 +1071,7 @@ public sealed class CilantroPipeline
         {
             Logger = complaints
         };
+        if (signingKey is not null) writerOptions.InitializeStrongNameSigning(module, signingKey);
         if (preserveTokens)
         {
             writerOptions.MetadataOptions.Flags |= MetadataFlags.PreserveAll;
@@ -1059,6 +1130,8 @@ public sealed class CilantroPipeline
     {
         context.TryGetFact<IReadOnlySet<string>>("cleanup.removedResources", out var removedResources);
         context.TryGetFact<IReadOnlySet<string>>("resources.addedResources", out var addedResources);
+        context.TryGetFact<IReadOnlySet<string>>(BabelResourceRestorationPass.AddedFact, out var babelAddedResources);
+        addedResources = Union(addedResources, babelAddedResources);
         context.TryGetFact<IReadOnlySet<string>>("cleanup.removedPublicApi", out var cleanupRemovedApi);
         context.TryGetFact<IReadOnlySet<uint>>("cleanup.removedMethodTokens", out var removedMethods);
         context.TryGetFact<int>("cleanup.removedTypeCount", out var removedTypeCount);
@@ -1075,6 +1148,10 @@ public sealed class CilantroPipeline
         context.TryGetFact<int>(DependencyDecoderCompletionPass.AddedMethodsFact, out var dependencyMethods);
         context.TryGetFact<int>(DependencyDecoderCompletionPass.AddedTypesFact, out var dependencyTypes);
         context.TryGetFact<int>(DependencyDecoderCompletionPass.AddedFieldsFact, out var addedFieldCount);
+        context.TryGetFact<int>(BabelNumericArrayPass.AddedTypesFact, out var arrayTypes);
+        context.TryGetFact<int>(BabelNumericArrayPass.AddedFieldsFact, out var arrayFields);
+        addedTypeCount += arrayTypes;
+        addedFieldCount += arrayFields;
         addedMethodCount += dependencyMethods;
         addedTypeCount += dependencyTypes;
         context.TryGetFact<int>("cleanup.removedAddedMethodCount", out var removedAddedMethodCount);

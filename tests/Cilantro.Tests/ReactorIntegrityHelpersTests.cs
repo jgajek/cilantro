@@ -20,6 +20,8 @@ public sealed class ReactorIntegrityHelpersTests
     [InlineData("same-input", false)]
     [InlineData("other-owner", false)]
     [InlineData("bundle", false)]
+    [InlineData("numeric-input", false)]
+    [InlineData("method-image-input", false)]
     [InlineData("human-name", false)]
     [InlineData("incomplete", false)]
     [InlineData("not-reactor", false)]
@@ -67,7 +69,8 @@ public sealed class ReactorIntegrityHelpersTests
         var strings = RecoveredResourceOrigin.Capture((EmbeddedResource)context.Module.Resources[0]);
         var proxies = RecoveredResourceOrigin.Capture((EmbeddedResource)context.Module.Resources[1]);
         if (scenario != "proxy-only") DecodedResourceOwnership.Remember(context, strings,
-            [owner.Methods.Single(m => m.Name == "ReadString")], bundle: scenario == "bundle" ? new(strings, [proxies]) : null);
+            [owner.Methods.Single(m => m.Name == "ReadString")], bundle: scenario == "bundle" ? new(strings, [proxies]) : null,
+            numericConstruction: scenario == "numeric-input", methodImageConstruction: scenario == "method-image-input");
         if (scenario != "string-only") DecodedResourceOwnership.Remember(context, scenario == "same-input" ? strings : proxies,
             [(scenario == "other-owner" ? context.Module.Types.Single(t => t.Name == "Other") : owner).Methods.Single(m => m.Name == "BindProxy")], [owner]);
         if (scenario == "removed-readers")

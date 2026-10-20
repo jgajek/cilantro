@@ -49,8 +49,16 @@ public enum LoaderObservationKind
     SteppedCall,
 
     /// <summary>A successful managed manifest-resource read, with the returned bytes identified.</summary>
-    ManagedResourceRead
+    ManagedResourceRead,
+
+    /// <summary>A scoped summary justified by an independently checked source-body contract.</summary>
+    ProvedMethodSummary,
+
+    /// <summary>A read from an explicitly supplied, immutable data-only companion catalog.</summary>
+    CompanionFileRead
 }
+
+public sealed record CompanionFileRead(string Name, string Sha256, int Length, string Operation);
 
 public sealed record ManagedResourceRead(string Name, string Sha256, int Length);
 

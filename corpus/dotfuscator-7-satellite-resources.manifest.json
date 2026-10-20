@@ -1,0 +1,70 @@
+{
+  "manifestVersion": 1,
+  "profile": "dotfuscator-7-satellite-resources",
+  "description": "Source-built Dotfuscator 7.9 resource-encryption probes across net48/net8.0/net10.0; neutral/fr/fr-CA resources, culture fallback, Unicode, binary values and ResourceManager cache reload. Satellite companion hashes are pinned in provenance.",
+  "samples": [
+    {
+      "id": "net48-resource-oracle",
+      "tier": "oracle",
+      "sha256": "5e15986a5bae45452f778c40dc386918a718f109f1efe6c9af9c79792faeb96d",
+      "localName": "dotfuscator-satellite-resources/net48/oracle/SatelliteProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-resources",
+      "tier": "detected",
+      "sha256": "ff815c6d15eb8320c8e08ac36de1a353fdfa0f24086ae72ed04df6c224312e17",
+      "localName": "dotfuscator-satellite-resources/net48/protected/SatelliteProbe.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "5e15986a5bae45452f778c40dc386918a718f109f1efe6c9af9c79792faeb96d",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 3,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-resource-oracle",
+      "tier": "oracle",
+      "sha256": "f8f4f58c70bc0dab4a2894c79ec39ac3e319f4ca412c8525e61319d79a89cdc8",
+      "localName": "dotfuscator-satellite-resources/net8.0/oracle/SatelliteProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-resources",
+      "tier": "detected",
+      "sha256": "581a2eaf37ec0b1792669623e1416fecf2aff4d5881fe0b69c3b9e5ee2a7eb84",
+      "localName": "dotfuscator-satellite-resources/net8.0/protected/SatelliteProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "f8f4f58c70bc0dab4a2894c79ec39ac3e319f4ca412c8525e61319d79a89cdc8",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 3,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-resource-oracle",
+      "tier": "oracle",
+      "sha256": "76ef9bfd7387ef70e49871c552e26d666515b869e89c3cd040099860472734a4",
+      "localName": "dotfuscator-satellite-resources/net10.0/oracle/SatelliteProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-resources",
+      "tier": "detected",
+      "sha256": "fc240186b897daa4a15b5d96f7ad74804650ca73553e4b1669356c5981cdd422",
+      "localName": "dotfuscator-satellite-resources/net10.0/protected/SatelliteProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "76ef9bfd7387ef70e49871c552e26d666515b869e89c3cd040099860472734a4",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 3,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    }
+  ]
+}

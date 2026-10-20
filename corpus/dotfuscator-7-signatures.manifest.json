@@ -1,0 +1,109 @@
+{
+  "manifestVersion": 1,
+  "profile": "dotfuscator-7-signatures",
+  "description": "Source-built native-key v2 signature matrix: generics, constructed/nested types, arrays, byrefs, pointers and constructors. All-signature producer controls preserve protected behavior; renamed reviewed profiles exclude producer-corrupted sites.",
+  "samples": [
+    {
+      "id": "net48-oracle",
+      "tier": "oracle",
+      "sha256": "60ee745d216cbd7a0d66b63a8ce12473903f80edbe1aa4fa23cbe7b5ec78fefd",
+      "localName": "dotfuscator-signatures/net48-oracle/DotfuscatorSignatures.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-all-signatures",
+      "tier": "profiled",
+      "sha256": "ab671f15b8ffc015eaf93fae2f01087e274955e9106fef04e5c98ac20560eb9d",
+      "localName": "dotfuscator-signatures/net48-all-signatures/protected/DotfuscatorSignatures.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "60ee745d216cbd7a0d66b63a8ce12473903f80edbe1aa4fa23cbe7b5ec78fefd",
+      "minimumRecoveredStringSites": 19,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net48-renamed-reviewed",
+      "tier": "profiled",
+      "sha256": "8a45e81845edc5bf9a6976957f1daabb339d141ccd4f023b2fdcad65a31bc0f7",
+      "localName": "dotfuscator-signatures/net48-renamed-reviewed/protected/DotfuscatorSignatures.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "60ee745d216cbd7a0d66b63a8ce12473903f80edbe1aa4fa23cbe7b5ec78fefd",
+      "minimumRecoveredStringSites": 17,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+      "localName": "dotfuscator-signatures/net8.0-oracle/DotfuscatorSignatures.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-all-signatures",
+      "tier": "profiled",
+      "sha256": "762d5b9871f5c016286d653ce6a4f464d1330c6dffe34feb16df95899c341e5f",
+      "localName": "dotfuscator-signatures/net8.0-all-signatures/protected/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+      "minimumRecoveredStringSites": 20,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net8.0-renamed-reviewed",
+      "tier": "profiled",
+      "sha256": "dc0bd274fee63ac219dabde5bcf34ff2b5f834509e856788e313cf63c9d039e4",
+      "localName": "dotfuscator-signatures/net8.0-renamed-reviewed/protected/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "53bd29d0daf5e14469058b12450989edad2199c0ea6a43f423d6157eb7b6796a",
+      "minimumRecoveredStringSites": 17,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+      "localName": "dotfuscator-signatures/net10.0-oracle/DotfuscatorSignatures.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-all-signatures",
+      "tier": "profiled",
+      "sha256": "14fb8e4784339738c8e4e9f3ae316e53e226b69318acf1155116d942c43cb116",
+      "localName": "dotfuscator-signatures/net10.0-all-signatures/protected/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+      "minimumRecoveredStringSites": 20,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net10.0-renamed-reviewed",
+      "tier": "profiled",
+      "sha256": "6acb1a38012bb867962ab84eb1d90db1f35892430f9e24c17f8a84f041ea456c",
+      "localName": "dotfuscator-signatures/net10.0-renamed-reviewed/protected/DotfuscatorSignatures.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "963312fe2424abd2f9071fd79a2fac2c5c2ec663574188050765589e7883875b",
+      "minimumRecoveredStringSites": 17,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0,
+      "requireOracleResourceParity": true
+    }
+  ]
+}

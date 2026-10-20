@@ -1,0 +1,133 @@
+{
+  "manifestVersion": 1,
+  "profile": "dotfuscator-7-resource-contracts",
+  "description": "Source-built Dotfuscator 7.9 resource-encryption probes across net48/net8.0/net10.0; version-2 owners with version-1 satellites, local/satellite-only resources, explicit neutral fallback, Unicode, binary values and cache reload.",
+  "samples": [
+    {
+      "id": "net48-contract-oracle",
+      "tier": "oracle",
+      "sha256": "0b430739061aeb84283d9a194bfeab0e091fc770c14e7c5ee134b5243a74975b",
+      "localName": "dotfuscator-resource-contracts/net48-contract/oracle/ContractProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-contract",
+      "tier": "detected",
+      "sha256": "9a577acd3d5fd19877888154aba762f7e63f3f6a75696c5ef0dd315b7cc7b901",
+      "localName": "dotfuscator-resource-contracts/net48-contract/protected/ContractProbe.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "0b430739061aeb84283d9a194bfeab0e091fc770c14e7c5ee134b5243a74975b",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 3,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-satellite-only-oracle",
+      "tier": "oracle",
+      "sha256": "b48eebd99be06f6ac554de9b66a0a9cf9346b8e0105f8f204904cdc54fac2991",
+      "localName": "dotfuscator-resource-contracts/net48-satellite-only/oracle/ContractProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-satellite-only",
+      "tier": "detected",
+      "sha256": "a95465f26570d16b752bafcb3e250b3ea49ded4583612684be9cf3531c9ec545",
+      "localName": "dotfuscator-resource-contracts/net48-satellite-only/protected/ContractProbe.exe",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "b48eebd99be06f6ac554de9b66a0a9cf9346b8e0105f8f204904cdc54fac2991",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 2,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-contract-oracle",
+      "tier": "oracle",
+      "sha256": "b4a6667537bc065e2739d7807b1efefffa9a7f779076e703f78f6c5d8c75debd",
+      "localName": "dotfuscator-resource-contracts/net8.0-contract/oracle/ContractProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-contract",
+      "tier": "detected",
+      "sha256": "6717a10009dbeb0a3a048fab9c99aceace9d3a7499be4d4cc603a28b484973b9",
+      "localName": "dotfuscator-resource-contracts/net8.0-contract/protected/ContractProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "b4a6667537bc065e2739d7807b1efefffa9a7f779076e703f78f6c5d8c75debd",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 3,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-satellite-only-oracle",
+      "tier": "oracle",
+      "sha256": "b05f572e7c8d63262cfce4811fd0bb0fbdff0375387345482ebf6f1d28a8dbaa",
+      "localName": "dotfuscator-resource-contracts/net8.0-satellite-only/oracle/ContractProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-satellite-only",
+      "tier": "detected",
+      "sha256": "90c8c9e65ca5948dfd1271848e20b139de08bdfa9c1071fc3778fb0bb3b75d80",
+      "localName": "dotfuscator-resource-contracts/net8.0-satellite-only/protected/ContractProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "b05f572e7c8d63262cfce4811fd0bb0fbdff0375387345482ebf6f1d28a8dbaa",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 2,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-contract-oracle",
+      "tier": "oracle",
+      "sha256": "33bd0d722b27efddb6393a110b259a63684cda81a7057458018c1a4dbccf49ab",
+      "localName": "dotfuscator-resource-contracts/net10.0-contract/oracle/ContractProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-contract",
+      "tier": "detected",
+      "sha256": "55c1c60186e277e108f4db4b51e54a39a1556c5ec5b1ca8e684f3918bc3dd434",
+      "localName": "dotfuscator-resource-contracts/net10.0-contract/protected/ContractProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "33bd0d722b27efddb6393a110b259a63684cda81a7057458018c1a4dbccf49ab",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 3,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-satellite-only-oracle",
+      "tier": "oracle",
+      "sha256": "8ac98d8ac867724c70498289dfa08c392c279dc1e845c0a682048f9ddb2f0458",
+      "localName": "dotfuscator-resource-contracts/net10.0-satellite-only/oracle/ContractProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-satellite-only",
+      "tier": "detected",
+      "sha256": "fac31ea1758b6ac0590246245218fd7e50932d1b549f0e70f839a4370ccbda5c",
+      "localName": "dotfuscator-resource-contracts/net10.0-satellite-only/protected/ContractProbe.dll",
+      "expectedDetection": "dotfuscator",
+      "expectedCapabilities": [],
+      "oracleSha256": "8ac98d8ac867724c70498289dfa08c392c279dc1e845c0a682048f9ddb2f0458",
+      "requireOracleResourceParity": true,
+      "minimumResourcesRestored": 2,
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    }
+  ]
+}

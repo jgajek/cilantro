@@ -1,0 +1,1169 @@
+{
+  "capturedAt": "2026-10-19",
+  "compiler": "Babel Obfuscator 12.1.0.0 Enterprise floating trial",
+  "description": "Independent generic-owner captures. Keys are excluded from options, logs and provenance.",
+  "sources": [
+    {
+      "path": "corpus/probes/BabelGenericProbe/BabelGenericProbe.csproj",
+      "sha256": "548f9b70d20e097a1d5e5c1b2c6076a4a2f42c1f4caff87eae2ed8628861ebeb"
+    },
+    {
+      "path": "corpus/probes/BabelGenericProbe/Program.cs",
+      "sha256": "c220c4635893883902275bde20ecd138f67aef9539b506788bf64ae15065ace2"
+    },
+    {
+      "path": "corpus/probes/babel-generics.ps1",
+      "sha256": "eaef059b3194acb059ee1fa8fff1f8487e56018f364e3766b19100a2aa63d4ae"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelGenericStub.cs",
+      "sha256": "9214a57678c3251d58f7be55ec38da8f5869d4cbcae9823006e3686de4150303"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/ParametricTypeIntrinsic.cs",
+      "sha256": "ebd89f38ed8e0150852bb8db26c71e8ef7192e004997aaa51d8c5c81162b62fc"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelGenericCorpusTests.cs",
+      "sha256": "3e11c8af2b604f5baea287643416d8da79cbb08019f167559d412895f7b0d1cc"
+    },
+    {
+      "path": "tests/Cilantro.Tests/ParametricTypeTests.cs",
+      "sha256": "a6d3a13598d6df49c0f35f3c359c0495ecfe641663657ea06eea3f91bd48c698"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/RawDynamicMethodIntrinsic.cs",
+      "sha256": "1b2418bb6b4a68b816bc60b45776e980af1cadd667ca8ce7c296993a371d1505"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+      "sha256": "79a38bfb5a10ce84e535bbd1c662dcf03b75c9a2c383ffac798a6b667a23f002"
+    },
+    {
+      "path": "tests/Cilantro.Tests/RawLocalSignatureTests.cs",
+      "sha256": "84de16bec66b29905e270ef0a046a65c3f46c54be4761c72840cd0261eadf613"
+    },
+    {
+      "path": "corpus/probes/BabelGenericCaller/BabelGenericCaller.csproj",
+      "sha256": "273885d34250746664532434244edf873145c6b285a42668d4c7f63c7c39abe5"
+    },
+    {
+      "path": "corpus/probes/BabelGenericCaller/Program.cs",
+      "sha256": "d40c4a5610deab6633ed6a1c8a7d78064edc3d68130973b1dc0ed4896a6b2c50"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/Intrinsics.cs",
+      "sha256": "c2b63357c6840d7d154885e480468ccdb88df87760785a83eaf0c22e92df3979"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/StaticMachine.cs",
+      "sha256": "9e4cb737a5da84ddf9124c7097af3b5a2306be2c10e0416dcba2eaf10dce89e9"
+    },
+    {
+      "path": "tests/Cilantro.Tests/GenericMethodHandleTests.cs",
+      "sha256": "7c51a4bede6e02c9871a6dd2debd2d1f0bc8038a02be3014536b230f288a397b"
+    },
+    {
+      "path": "src/Cilantro.Core/Interpretation/StaticHeap.cs",
+      "sha256": "726f8ddbc8b25c90bd014c75cfb5cb4d436237c34f31fb445142fdf5ddc24f86"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelInheritedReceiverTests.cs",
+      "sha256": "ee8084d1b7ffcb9d173322779bb270739cb9859655af9955289623bd650da07c"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelMethodCorpusTests.cs",
+      "sha256": "b97873db06963184e7cdb96537fe288856fc0dedd635880d4331fb9e436b49c2"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelApplicationStaticStateTests.cs",
+      "sha256": "8f8161e30a96f52b22f1eb7ddc11e2a76497392c31bd54d44bc2a471511937ea"
+    }
+  ],
+  "fixtures": [
+    {
+      "Id": "net10.0-class-constraint",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.ClassBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "46ef020c66088e90db6d5d9e97a6cb1ce4e69c669257fb7a137a3169059c007e",
+      "ProtectedSha256": "b675778f2a8c659d3ed06f5ed179091168ba76afd1ddd082bccae0e2f4db269f"
+    },
+    {
+      "Id": "net10.0-new-constraint",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.NewBox.*::Create"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "46ef020c66088e90db6d5d9e97a6cb1ce4e69c669257fb7a137a3169059c007e",
+      "ProtectedSha256": "b84bb6a9cf042ec351b07a4735bf976569b060dff83031a10f77c1c627aa1903"
+    },
+    {
+      "Id": "net10.0-open-owner",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.OpenBox.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "46ef020c66088e90db6d5d9e97a6cb1ce4e69c669257fb7a137a3169059c007e",
+      "ProtectedSha256": "b7574a3f76ce652a8315a5715eec3217f1b7000305a248bf585db3da2bc4f17d"
+    },
+    {
+      "Id": "net10.0-static-method",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StaticBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "46ef020c66088e90db6d5d9e97a6cb1ce4e69c669257fb7a137a3169059c007e",
+      "ProtectedSha256": "8ddea08d84081f46b42811d49b9c99139f554cd862e4ef54182bb5e8bf2e9eac"
+    },
+    {
+      "Id": "net10.0-static-state",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StatefulBox.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "46ef020c66088e90db6d5d9e97a6cb1ce4e69c669257fb7a137a3169059c007e",
+      "ProtectedSha256": "b54497ca7b93ce77b827bda40b0c174289bfbf7252f89a4f0aea5a80cea0666c"
+    },
+    {
+      "Id": "net10.0-struct-constraint",
+      "Framework": "net10.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StructBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "46ef020c66088e90db6d5d9e97a6cb1ce4e69c669257fb7a137a3169059c007e",
+      "ProtectedSha256": "60d386ac74782736e545bed0542228163956c75e972264f0444c85c0d4528718"
+    },
+    {
+      "Id": "net48-class-constraint",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.ClassBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2209d52d45641325494983ddf2071cf3c17b6f48ab2c78c0d02b8c6bf7f9b8f7",
+      "ProtectedSha256": "3d0b46d88b41cc7ecc342a321400293e249d6c310737b297bdb0d8fdbeccc2d3"
+    },
+    {
+      "Id": "net48-new-constraint",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.NewBox.*::Create"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2209d52d45641325494983ddf2071cf3c17b6f48ab2c78c0d02b8c6bf7f9b8f7",
+      "ProtectedSha256": "607d88e7582d73538922cab88b681b9b5484bb0afa63dcaa987f409220ec8aac"
+    },
+    {
+      "Id": "net48-open-owner",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.OpenBox.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2209d52d45641325494983ddf2071cf3c17b6f48ab2c78c0d02b8c6bf7f9b8f7",
+      "ProtectedSha256": "357ea8bdac938fd47002535304be1acbb3eb206be73d65782205726acd429105"
+    },
+    {
+      "Id": "net48-static-method",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StaticBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2209d52d45641325494983ddf2071cf3c17b6f48ab2c78c0d02b8c6bf7f9b8f7",
+      "ProtectedSha256": "2261c84150180147667a9e625548deee821840d1ee09793c08a114c561cab71e"
+    },
+    {
+      "Id": "net48-static-state",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StatefulBox.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2209d52d45641325494983ddf2071cf3c17b6f48ab2c78c0d02b8c6bf7f9b8f7",
+      "ProtectedSha256": "7120e7460bd4793421067a07f487c5df0d5d19e1321bd22ebfc6f38c72dfe0ac"
+    },
+    {
+      "Id": "net48-struct-constraint",
+      "Framework": "net48",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StructBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "2209d52d45641325494983ddf2071cf3c17b6f48ab2c78c0d02b8c6bf7f9b8f7",
+      "ProtectedSha256": "c1c93716a3bcbd534e55fa1d5b82cfb4c07f06268478ac6b8aeca6606f10eaf6"
+    },
+    {
+      "Id": "net8.0-class-constraint",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.ClassBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "34fcc662a600fd9ab4aec62ed5350b204ab49cc1df9e5302f28f04b857ded99c",
+      "ProtectedSha256": "35bc9e683bb2321efabd3122f469b1fd3a2e36ab7e578ef7aee3f20dddb05eb3"
+    },
+    {
+      "Id": "net8.0-new-constraint",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.NewBox.*::Create"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "34fcc662a600fd9ab4aec62ed5350b204ab49cc1df9e5302f28f04b857ded99c",
+      "ProtectedSha256": "f95a4cfba5f8828d18ab9a0899312baed1f1b83d258ef80dafa9f72961d12f9d"
+    },
+    {
+      "Id": "net8.0-open-owner",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.OpenBox.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "34fcc662a600fd9ab4aec62ed5350b204ab49cc1df9e5302f28f04b857ded99c",
+      "ProtectedSha256": "f5c5ec7f90b3cafda660971614339fd998eb9220ac894a5d537f418c1b17ce5e"
+    },
+    {
+      "Id": "net8.0-static-method",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StaticBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "34fcc662a600fd9ab4aec62ed5350b204ab49cc1df9e5302f28f04b857ded99c",
+      "ProtectedSha256": "a8759a79e4fa2274729b8cca7722babfefd3ff308dbf6581459ae4bbba847daf"
+    },
+    {
+      "Id": "net8.0-static-state",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StatefulBox.*::Exchange"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "34fcc662a600fd9ab4aec62ed5350b204ab49cc1df9e5302f28f04b857ded99c",
+      "ProtectedSha256": "73040e6f338a3041ba9530e0e6d68d6cfb0eac03090a635997095145a098363e"
+    },
+    {
+      "Id": "net8.0-struct-constraint",
+      "Framework": "net8.0",
+      "Options": [
+        "--notypes",
+        "--nomethods",
+        "--nofields",
+        "--noproperties",
+        "--noevents",
+        "--nologo",
+        "--quiet",
+        "--strict-exit",
+        "--randomseed",
+        "12345678",
+        "--use",
+        "tagassembly=on",
+        "--msilencryption",
+        "BabelGenericProbe\\.StructBox.*::Choose"
+      ],
+      "EncryptedMethods": 1,
+      "CompilerVersion": "12.1.0.0",
+      "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+      "OracleSha256": "34fcc662a600fd9ab4aec62ed5350b204ab49cc1df9e5302f28f04b857ded99c",
+      "ProtectedSha256": "0017bc16729cbaed477350a1eef2b54c0a41ba606b2dac7d3729305448852446"
+    }
+  ],
+  "measurements": [
+    {
+      "id": "net10.0-class-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000007: recovered 7 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-class-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "27b7b6d616636f8fc88fb65e1b55c222952b0cdb1e0dc2581a2fe2b6a0037993"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-class-constraint/Protect-behavior.json",
+        "sha256": "0664f1eca119247fde8e36b33f17e3d620e89e4e0b132e3f4b55881a812068be"
+      }
+    },
+    {
+      "id": "net10.0-new-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "0600000B: recovered 2 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-new-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "8820cf092afa2c1c1a8b7f7557438b96241e63cc1cd38aec474d78a96424038a"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-new-constraint/Protect-behavior.json",
+        "sha256": "977f4267785519989e29eee9d64e590944df0a81bfd502a0f01dc424b7382446"
+      }
+    },
+    {
+      "id": "net10.0-open-owner",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000002: recovered 6 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-open-owner/cleaned_static_state_complete-recovery.json",
+        "sha256": "a4d37883827b228180c859e1c499758ae8d25a01cd2ea2e28f17aef727f553d4"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-open-owner/Protect-behavior.json",
+        "sha256": "efd92f965a95418e406898c83c5585df3edd6f978001a3eec8a8ca2fdecf5069"
+      }
+    },
+    {
+      "id": "net10.0-static-method",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "0600000D: recovered 2 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-static-method/cleaned_static_state_complete-recovery.json",
+        "sha256": "0dadaf082a4cb60eac4df044abeb37447f4ba673d1d0111db40ecf4d08558098"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-static-method/Protect-behavior.json",
+        "sha256": "6326e9d0d8d3877625063d9dd12ba03f007e623ee1a9bf7f3b14fbfc820b9309"
+      }
+    },
+    {
+      "id": "net10.0-static-state",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000006: recovered 10 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-static-state/cleaned_static_state_complete-recovery.json",
+        "sha256": "25e3c0b7a8ec56ba4672fa2276f7679781aac870dbb0742bd760323df55459e7"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-static-state/Protect-behavior.json",
+        "sha256": "ee30bd2e4221f7689bf259374539b461fc4232aa576262043b893ed65b1b35f6"
+      }
+    },
+    {
+      "id": "net10.0-struct-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000009: recovered 12 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-struct-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "91bb10673545a09a8d95d6ab21e611e4381bd940a52dabe53551f5c2235921b5"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net10.0-struct-constraint/Protect-behavior.json",
+        "sha256": "72cf6f67430cfec9bff962f2983b4980f836a1b1e107b4bd975def7acecbd209"
+      }
+    },
+    {
+      "id": "net48-class-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000009: recovered 7 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-class-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "e8c9d50c5e74829d09f9338abf761cc3c48acbfa469cfc6b1ef21f643e15901c"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-class-constraint/Protect-behavior.json",
+        "sha256": "96383e17d6db547ee6822da8ca192dbbbcda5a64274a3954e9ef447cfe49ad51"
+      }
+    },
+    {
+      "id": "net48-new-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "0600000D: recovered 2 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-new-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "ddcb95416dabb2a2050cabb5f269d7d9fc673f65784c286aaa966b3ffdcd3358"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-new-constraint/Protect-behavior.json",
+        "sha256": "3b305fc9ebfdfb9b04c77abbab8341422a248b3a5ce8a46862add5f7d1ea5c10"
+      }
+    },
+    {
+      "id": "net48-open-owner",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000004: recovered 6 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-open-owner/cleaned_static_state_complete-recovery.json",
+        "sha256": "9f0dd5e718ce6cb897f7a9478cf51a12e861e38ed8fabf020f66061894e5816b"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-open-owner/Protect-behavior.json",
+        "sha256": "9f0a08e1d9a7184abb63b9962e04777128241cacd371cc82d427541a89674e61"
+      }
+    },
+    {
+      "id": "net48-static-method",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "0600000F: recovered 2 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-static-method/cleaned_static_state_complete-recovery.json",
+        "sha256": "89fd5885e09cd772fe4ed396c7b9f218bc3b434838cd6fb8c318bb3b1332b2ba"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-static-method/Protect-behavior.json",
+        "sha256": "dffc89a133e5f643c58a568b110da4951f0077d2b33521f6d01d0912badbb453"
+      }
+    },
+    {
+      "id": "net48-static-state",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000008: recovered 10 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-static-state/cleaned_static_state_complete-recovery.json",
+        "sha256": "01742e74387571bce218ae27f67d9bb06aee484a83d0c4995bd246c50701022f"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-static-state/Protect-behavior.json",
+        "sha256": "d1d02469b72166a9c0a949ab050f5079d64bb1fd985e9d37819554af98a6e3ab"
+      }
+    },
+    {
+      "id": "net48-struct-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "0600000B: recovered 12 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-struct-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "029418b0148d014788289b6cc86219f5158da8768fdf9391f71c6839a6299f6a"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net48-struct-constraint/Protect-behavior.json",
+        "sha256": "cef7f6e32c6f4276c10021eaee3107871ead5cb7074d96314e71b017eda07ca6"
+      }
+    },
+    {
+      "id": "net8.0-class-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000007: recovered 7 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-class-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "e4d7acc032193dc4245a03d049c078091c40f8cfd5970b1f5fbb18c7b0667997"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-class-constraint/Protect-behavior.json",
+        "sha256": "72d6fa6e242a5ec2a9af2b1902532889ad072fc88e522a647541196fa33b446d"
+      }
+    },
+    {
+      "id": "net8.0-new-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "0600000B: recovered 2 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-new-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "0dc5e27b4b1bdd8f5fec4b814440873961a43f00271de88e72d51574dacf9c66"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-new-constraint/Protect-behavior.json",
+        "sha256": "ff8a5ad5bac023fb50d28208af120f8470c494d4dce0f3bc885f421b3c5af482"
+      }
+    },
+    {
+      "id": "net8.0-open-owner",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000002: recovered 6 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-open-owner/cleaned_static_state_complete-recovery.json",
+        "sha256": "8c641fe3254da6412818f44bbec805948c5d56544f9cd78b994fd174565c9cb9"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-open-owner/Protect-behavior.json",
+        "sha256": "f5dd6ec6cb0ed6f2312b406fc30a4eb1dd546626f4662a3ce5f7ebe5d1cccfa7"
+      }
+    },
+    {
+      "id": "net8.0-static-method",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "0600000D: recovered 2 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-static-method/cleaned_static_state_complete-recovery.json",
+        "sha256": "519d5e7832187708017c7efd7b16d633d556083f807148c3f6ee6d9ec54f7d17"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-static-method/Protect-behavior.json",
+        "sha256": "ad085669750ba3e9bd2c75292418966719b130557cb71f0ad86a7a1b1b8d1a5f"
+      }
+    },
+    {
+      "id": "net8.0-static-state",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000006: recovered 10 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-static-state/cleaned_static_state_complete-recovery.json",
+        "sha256": "21331de0f89af90588b3929256ae1dcb17cc09b13435b5e6cfb221c3622f22ff"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-static-state/Protect-behavior.json",
+        "sha256": "59251d6c181abc31dc919a89c5bc09c56916620fb4d396314e35106ae6e527e3"
+      }
+    },
+    {
+      "id": "net8.0-struct-constraint",
+      "producerMatchesOracle": true,
+      "encryptedMethods": 1,
+      "recoveryStatus": "success",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "recoveryDirectory": "cleaned_static_state_complete",
+      "diagnostic": [
+        "06000009: recovered 12 CIL instructions and 0 exception clauses from agreeing construction trials."
+      ],
+      "recoveryEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-struct-constraint/cleaned_static_state_complete-recovery.json",
+        "sha256": "952b3c6241397250a31092b05128903dfec3b3a1af7eb64218dcafe6d9d24764"
+      },
+      "producerEvidence": {
+        "path": "C:\\cilantro-verify\\babel\\generic-shapes-initial\\net8.0-struct-constraint/Protect-behavior.json",
+        "sha256": "4319ca7d173a559d2df67cddfd0ab4fd20a6849756d3757e79c273f817481ae3"
+      }
+    }
+  ],
+  "supportedRuntime": {
+    "comparisons": 18,
+    "allVerified": true,
+    "callerTypesPerConstrainedFixture": 9,
+    "callerTypesPerStaticFixture": 12,
+    "callerTypesPerInheritedFixture": 12,
+    "inheritedReceiverShapes": 3,
+    "callerTypesPerStaticStateFixture": 12,
+    "callerComparisons": 234,
+    "callerFixtures": 15,
+    "staticStateIsolationChecks": 3,
+    "staticInitializerFailureChecks": 3,
+    "constructorExceptionChainsMatch": true,
+    "recoveryDirectory": "cleaned_static_state_complete",
+    "path": "C:/cilantro-verify/babel/generic-shapes-initial/Verify-behavior.json",
+    "sha256": "bfeb7dc51e75aa281d2a7ca1e016e33d6152fb73b7cd7bfdce1818bfe094fe9e"
+  },
+  "proof": [
+    "Constrained arguments remain opaque closed runtime types. Only reconstruction of the same receiver owner with its exact original arguments bypasses constraint revalidation.",
+    "Other generic definitions still require the existing construction validator; unknown names, traits, equality and hashes remain refused.",
+    "The no-argument producer stub is matched independently: it supplies null instead of an allocated object array. Empty parameter-list reflection is structural metadata.",
+    "Application CIL is captured before invocation and never executed by recovery. Two construction trials, receiver snapshots, argument provenance and structural verification remain mandatory."
+  ],
+  "limitations": [
+    "All eighteen original captures meet their measured recovery gates. The separate hierarchy extension validates nine bounded local base-chain captures; arbitrary generic-owner recovery and external base classes remain unvalidated.",
+    "Method-image construction that depends on application static values, addresses or initializer execution refuses. Application initializers and runtime static state remain in the output.",
+    "Unproved subtype observations, virtual dispatch and missing subclass storage refuse.",
+    "Generic method construction refuses unproved base/interface constraints and unsupported external framework method signatures. Special constraints require implication from the original receiver argument.",
+    "Opaque signatures cannot be inspected, hashed or compared, and cannot be transported through unreviewed framework operations. Primitive signature bytes remain observable and must be unchanged at their sink."
+  ],
+  "validation": {
+    "focusedTests": 148,
+    "focusedEvidence": {
+      "path": "C:/cilantro-verify/babel/generic-static-state-corpus-focused.log",
+      "sha256": "ea94d5da658ec058172f9eb932aa08f8b954bf63ecbd0a39b8a6eefb545be1a2"
+    },
+    "fullSuite": {
+      "passed": 3438,
+      "skipped": 37,
+      "failed": 0,
+      "total": 3475,
+      "duration": "6m8s",
+      "scope": "All four Babel corpora and every Dotfuscator corpus enabled, including opaque application static-state boundaries, retained initializer bodies and all eighteen generic-owner recovery gates.",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/generic-static-state-full-verified.log",
+        "sha256": "e1a19eda673d0c8da81371bf6ae659b3aa7cd9ac2e0f7ddc2438bb77a4d1dd7b"
+      }
+    },
+    "genericRegression": {
+      "comparisons": 6,
+      "allVerified": true,
+      "genericCallerTypes": 15,
+      "knownNet48ProducerFailures": 2,
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/method-shapes-final/Verify-behavior.json",
+        "sha256": "b0b408c3c53f1ab1e2b1fed8e573e90caa261886620212900564f685d5d46c6a"
+      },
+      "recoveryDirectory": "cleaned_static_state_regression"
+    }
+  },
+  "genericLocalSignatures": {
+    "certificate": "Only scoped registered runtime types containing the existing receiver generic arguments can introduce opaque local types.",
+    "transport": "Fresh non-inspectable byte-array identities carry an immutable typed local list. Only identities created by the same capture registry can supply SetLocalSignature.",
+    "observations": "No invented bytes or length. Array reads/writes and memory views fail; framework operations and non-null CIL identity branches refuse.",
+    "pinning": "Pinned modifiers and local ordering are copied from the validated typed list.",
+    "frameworks": [
+      "net48",
+      "net8.0",
+      "net10.0"
+    ],
+    "originalStubs": 3,
+    "restoredBodies": 3,
+    "applicationBodiesExecutedByRecovery": 0
+  },
+  "genericMethodBinding": {
+    "flags": "Generic definitions and MethodSpec instances have distinct flags, checked against CLR reflection including generic declaring owners.",
+    "binding": "MethodSpec retains scoped closed runtime argument expressions. Arity, legal generic argument forms and constraints are proved before allocation.",
+    "constraints": "Unconstrained arguments are structural. Special reference/value/default-constructor requirements must follow from the original receiver parameter flags; a non-nullable value type implies the constructor requirement. Other base/interface constraints refuse.",
+    "frameworkScope": "Core-library definitions are imported with signatures and declaring types mapped to the input core library; unresolved external signatures refuse.",
+    "invocation": "DynamicInvoke(null) is the zero-argument form, including closed receiver delegates. Capture still stops before application body entry.",
+    "callerCases": [
+      "Int32",
+      "Int64",
+      "Decimal",
+      "Guid",
+      "external public enum",
+      "external public struct",
+      "nullable value",
+      "fresh class with constructor effects",
+      "throwing constructor with exact exception chain"
+    ],
+    "callerComparisons": 27,
+    "applicationBodiesExecutedByRecovery": 0
+  },
+  "callerBinaries": [
+    {
+      "framework": "net48",
+      "path": "C:/cilantro-verify/dotfuscator-checkout/corpus/probes/BabelGenericCaller/bin/Release/net48/BabelGenericCaller.exe",
+      "sha256": "f1b8526e4dd5eaca80bd1e279b4e9f51ae5212dc125f757067cc6c718b7dab56"
+    },
+    {
+      "framework": "net8.0",
+      "path": "C:/cilantro-verify/dotfuscator-checkout/corpus/probes/BabelGenericCaller/bin/Release/net8.0/BabelGenericCaller.dll",
+      "sha256": "b0b7ad2a277c9fc8f28a48ae3f35db0bec2d15ba347fa7950d54279e384901aa"
+    },
+    {
+      "framework": "net10.0",
+      "path": "C:/cilantro-verify/dotfuscator-checkout/corpus/probes/BabelGenericCaller/bin/Release/net10.0/BabelGenericCaller.dll",
+      "sha256": "cbaef3cc25f76d92a07010530035336ddf3da5fdacfbe1ced19868a56f71a59d"
+    }
+  ],
+  "staticOwnerRecovery": {
+    "typeContext": "The source token must name the original class owner with the original generic variables in order. Open, fixed, out-of-range and value-type owner tokens refuse.",
+    "transport": "Array positions begin at explicit argument zero. The dispatcher receiver must be null; only certified original box instructions transport unknown arguments.",
+    "entry": "Generic member reflection entry uses the same instantiation lookup as direct CIL calls and retains the declaring-type scope. Foreign modules remain outside the execution boundary.",
+    "state": "No receiver is allocated or assumed for static methods. Application static state is opaque during construction; initializer bodies and initialization flags remain in the output.",
+    "trials": "Two independent symbolic-name construction trials must agree, signatures and argument provenance must match, and the restored body must verify.",
+    "staticCallerTypes": [
+      "Int32",
+      "Int64",
+      "Decimal",
+      "Guid",
+      "external public enum",
+      "external public struct",
+      "Nullable<Int32>",
+      "String",
+      "Object",
+      "Int32[]",
+      "List<Int32>",
+      "List<List<String>>"
+    ],
+    "callerComparisons": 36,
+    "originalStubs": 3,
+    "restoredBodies": 3,
+    "applicationBodiesExecutedByRecovery": 0
+  },
+  "inheritedReceiverRecovery": {
+    "receiver": "Heap instances retain a known declaring base but have no exact runtime type. Only explicitly seeded base fields exist; missing field reads and addresses do not invent defaults.",
+    "typeContext": "The exact certified stub alone can turn its receiver into an opaque type and opaque type handle. Only the original stub MethodDef handle can combine with that type handle to produce the declaring base context.",
+    "observations": "Opaque subtype type/handle observations refuse. Framework observations of the receiver refuse except certified delegate transport. CIL casts require a proved base/object relationship; virtual calls, pointers, reflection and callbacks refuse unknown dispatch.",
+    "staticNormalization": "Static source owner tokens are normalized to scoped unknown closed runtime variables, not open metadata parameters.",
+    "state": "The receiver type tag, arbitrary base fields, values, provenance and model state must remain unchanged through capture.",
+    "callerTypes": 12,
+    "receiverShapes": [
+      "declaring base",
+      "ordinary derived",
+      "emitted derived with two reordered parameters, shadow fields and ToString override"
+    ],
+    "callerComparisons": 108,
+    "originalStubs": 3,
+    "restoredBodies": 3,
+    "applicationBodiesExecutedByRecovery": 0
+  },
+  "applicationStaticState": {
+    "construction": "The owner is modeled as already initialized solely for decoder construction; no actual application initialization is simulated. Its static field values and addresses are unavailable.",
+    "access": "All owning-type static field reads, writes and addresses refuse across generic constructions and field aliases. Reflection value access and runtime field-handle storage access also refuse.",
+    "metadata": "Field metadata can flow to token construction and signature queries. It cannot be consumed as runtime storage or initializer input.",
+    "initializers": "Application initializer entry refuses unless it is the actual canonical stub being decoded. The output keeps application initializer bodies and initialization flags.",
+    "instanceState": "Only instance fields seed the arbitrary receiver snapshot. Existing receiver state/provenance checks remain active.",
+    "callerTypes": 12,
+    "callerComparisons": 36,
+    "isolationChecks": 3,
+    "initializerFailureChecks": 3,
+    "runtimeChecks": [
+      "initial value before first call",
+      "arbitrary counter seeds",
+      "three stateful calls",
+      "one-time initialization across receivers",
+      "per-closed-type static isolation",
+      "sticky constructor initialization failure"
+    ],
+    "applicationBodiesExecutedByRecovery": 0
+  },
+  "hierarchyExtension": {
+    "manifest": "corpus/babel-12-hierarchy.manifest.json",
+    "provenance": "corpus/babel-12-hierarchy.provenance.json",
+    "supportedCaptures": 9,
+    "callerCases": 156
+  },
+  "methodFactoryRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/retirement-audit/factory-runtime-evidence.json",
+      "sha256": "f44fb061215927152c3e0ad73d16c966b484de71d5a744a5572d0e82ebd2fb73"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodConstructionRuntime.cs",
+        "sha256": "f39251db7acc2b30a316c4515b8b388d90bbe01daa6f525c3cd923eb8ce3094d"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "4d9c89ef201a07860e08fb38943bb85085bbc0a04c0732e5085610363409f544"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "00ae5e4dbd1579ac88a3cbe1a5c16443b413da74b0f3880415ef5c42fcbaa67c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodRuntimeCleanupTests.cs",
+        "sha256": "024b4a710a5d9d9e8e482c69bebd5064fc4cbc1ebb05740429e294d40c372850"
+      }
+    ],
+    "captures": 51,
+    "factoriesRetired": 45,
+    "zeroImageControlsRetained": 6,
+    "behaviorGatesPassed": 51,
+    "focusedTestsPassed": 15,
+    "fullSuite": {
+      "passed": 3566,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3603,
+      "duration": "6m1s",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/retirement-audit/full-tests.log",
+        "sha256": "acca8c275bc9bca7d89634cac8bf019c322addf956fc87698892649ade13f195"
+      }
+    }
+  },
+  "methodRuntimeLeafRetirement": {
+    "validatedAt": "2026-10-20",
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/leaf-runtime-evidence.json",
+      "sha256": "74e9230c7c878fb1c4a35d4cb9cc257a6692130abf5c67312d1bc54f8a0a335e"
+    },
+    "originalSchemaAudit": {
+      "path": "C:/cilantro-verify/babel/method-runtime-audit/all-originals.json",
+      "sha256": "b7b07cc2ac947398f80cd0ed471bbe6e8b613ff723d822cb52741ffc43c2b2cd"
+    },
+    "testedSource": [
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelDormantMethodRuntime.cs",
+        "sha256": "c79efec3c96c034a6a46938ef663e6a9b620aea67162d4c7ad47d75c25a591f1"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodLeafRuntime.cs",
+        "sha256": "bb18a5878fed2d4c27a04d014e0a0124e09cb02635a8c570f5efec8c0ce77757"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/BabelMethodImagePass.cs",
+        "sha256": "beaa551ac07c6b66c1c4b8a7ffdf274de07e6810c9e0d2c81e80bf479894b6a7"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "680fd0113f91fa9178bcb9258f675dd9196be15d5acd03398a2e2ccebea8a29c"
+      },
+      {
+        "path": "tests/Cilantro.Tests/BabelMethodLeafRuntimeTests.cs",
+        "sha256": "840fcf4a56658078770af84b43b8fa34c6882ef83aa60ccd191f8111462c800d"
+      }
+    ],
+    "captures": 18,
+    "additionalTypesRetired": 162.0,
+    "allGroupsValidated": 51,
+    "allGroupsAdditionalTypesRetired": 399,
+    "focusedTestsPassed": 26,
+    "recoveryDirectory": "cleaned_runtime_leaves",
+    "proof": "All detected method images recovered with agreeing owned image reads. Reviewed original declaration schemas anchor six enums, two layouts and the integer buffer. Current metadata and complete buffer CIL are rechecked; normal reachability and surviving-reference gates remain active.",
+    "limits": "The three code-only baseline captures explicitly verify complete 54-type method-runtime retirement. Live shared consumers in combined protection remain, including the Framework 4.8 buffer/layout. Other generated metadata still requires attribution.",
+    "fullSuite": {
+      "passed": 3644,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3681,
+      "duration": "7 m 46 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/babel/method-runtime-audit/full-tests.log",
+        "sha256": "3460c3f82d5db58d41b8acbb7f0146470a513ed65dc6cb31845fd3bd54207b34"
+      }
+    }
+  }
+}

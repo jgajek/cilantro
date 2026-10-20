@@ -26,6 +26,8 @@ internal sealed class AnalysisArguments
     private string? References { get; set; }
     private bool AllowDeclaredCalls { get; set; }
     private List<string> Libraries { get; } = [];
+    private List<string> SigningKeys { get; } = [];
+    private List<string> BabelCodeSources { get; } = [];
 
     internal static AnalysisArguments Parse(string[] args)
     {
@@ -45,7 +47,7 @@ internal sealed class AnalysisArguments
             var option = equals >= 0 ? argument[..equals] : argument;
             var inline = equals >= 0 ? argument[(equals + 1)..] : null;
             if (inline is not null && option is not ("-o" or "--output" or "--host-profile" or
-                "--library" or "--declarations" or "--reviewed-dependencies"))
+                "--library" or "--declarations" or "--reviewed-dependencies" or "--signing-key" or "--babel-code-source"))
                 throw new ArgumentException($"{option} does not take a value.");
 
             switch (option)
@@ -67,6 +69,8 @@ internal sealed class AnalysisArguments
                 case "--fail-on-partial": parsed.FailOnPartial = true; break;
                 case "--host-profile": parsed.Profile = Value(); break;
                 case "--library": parsed.Libraries.Add(Value()); break;
+                case "--signing-key": parsed.SigningKeys.Add(Value()); break;
+                case "--babel-code-source": parsed.BabelCodeSources.Add(Value()); break;
                 case "--declarations": parsed.Declarations = Value(); break;
                 case "--reviewed-dependencies": parsed.References = Value(); break;
                 case "--allow-declared-calls": parsed.AllowDeclaredCalls = true; break;
@@ -96,6 +100,10 @@ internal sealed class AnalysisArguments
             throw new ArgumentException("--reviewed-dependencies cannot be combined with --no-recursion.");
         if (AllowDeclaredCalls && Declarations is null)
             throw new ArgumentException("--allow-declared-calls requires --declarations FILE.");
+        foreach (var key in SigningKeys)
+            if (!File.Exists(key)) throw new ArgumentException($"No such strong-name key file: {key}");
+        foreach (var file in BabelCodeSources)
+            if (!File.Exists(file)) throw new ArgumentException($"No such Babel code-source file: {file}");
         var input = Path.GetFullPath(Input);
         var stem = Path.GetFileNameWithoutExtension(input);
         var directory = OutputDirectory is null
@@ -121,7 +129,8 @@ internal sealed class AnalysisArguments
             StatusPath: RunStatus.PathFor(input, directory),
             GenericRecovery: Generic,
             RecoverEmbeddedAssemblies: Recurse,
-            ReviewedDependencyManifest: References);
+            ReviewedDependencyManifest: References)
+        { StrongNameKeyFiles = SigningKeys.Select(Path.GetFullPath).ToArray(), BabelCodeSourceFiles = BabelCodeSources.Select(Path.GetFullPath).ToArray() };
     }
 
     private static string NextCaseDirectory(string path)

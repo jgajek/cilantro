@@ -1,0 +1,865 @@
+{
+  "capturedAt": "2026-10-20",
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "description": "Six licensed Android-referenced .NET 10 Root Check captures, with source-only desktop clean-notification replay. Static recovery and desktop clean-verdict validation; no Android checker/device execution.",
+  "manifest": "corpus/dotfuscator-7-root-checks.manifest.json",
+  "sources": [
+    {
+      "path": "corpus/probes/DotfuscatorRootChecks/DotfuscatorRootChecks.csproj",
+      "sha256": "31e6ec5422fc4c178910b063192bbe978917304a781ed1f968af8197605eeb45"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorRootChecks/Program.cs",
+      "sha256": "114ba2dd42f3153237731e922cd0fb4638cfcd61a5ebeff1a2149b4e0a47351d"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorRootChecks/R.txt",
+      "sha256": "b493a4395af914fa06d32da1b558d3e1481cb91eb4fb3707b33837a016bac706"
+    },
+    {
+      "path": "corpus/probes/DotfuscatorRootChecks/Resources/values/probe.xml",
+      "sha256": "28d75ea9f12d6366e155add93289f90cad80512c978e29dbe27f4a38b98c7629"
+    },
+    {
+      "path": "corpus/probes/dotfuscator-root-checks.ps1",
+      "sha256": "2260d6daaab4bc823cf3cc03bf5f1d8bdd3a6cc960e894e303cca8908ebac424"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeShape.cs",
+      "sha256": "20271aaa395dfa70c45e9f36b796f789cb3417f0278a429ac4f6202bb5d1d22f"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeBodyNormalization.cs",
+      "sha256": "e6060d73c08520686e96e6346944c679de10a5cc944bb04f271fe3d750494da0"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorRootCheckShape.cs",
+      "sha256": "7ed088a06fd9915e1eada19927ce84370331a585228032b8f5e6bcf4546f0a8d"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorCheckShape.cs",
+      "sha256": "79e8c60835f695bb412d9604e8e6db1f6d5f3917835f35c44c7743d8be6f7eb4"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorCheckNormalization.cs",
+      "sha256": "821898f5033e1c7f747bd68cbfe48ce195a200f8addc37c45f4ad4b3d4603faf"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/CanonicalRuntimeBody.cs",
+      "sha256": "484ef685e2e9242abea31876569499e10e91b3d91ecc142bcc13135cf35b5853"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeMetadata.cs",
+      "sha256": "425ea3e24814bb5b0e0d66c294c17fb57dbba9dc433748c6fe04256a93508632"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelDormantMethodRuntime.cs",
+      "sha256": "c79efec3c96c034a6a46938ef663e6a9b620aea67162d4c7ad47d75c25a591f1"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorCheckPass.cs",
+      "sha256": "8ea0ec602691d4f3ae29fe64f59cfa1f78247fe380a4dce34c404292171687aa"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorRootRuntime.cs",
+      "sha256": "c235124bd651c66a4ff1fb2bb14f09e6fc142c96a86a1520833768df1622bdab"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+      "sha256": "68b08a8ae5875912d431b4ded061d642f207b060b6093bd86d9e04913858c6c2"
+    },
+    {
+      "path": "src/Cilantro.Core/Passes/DotfuscatorShortLocalFlow.cs",
+      "sha256": "120d975fe420dc1347f06de84d16fb66a74593db25459822b04a52d4699355c1"
+    },
+    {
+      "path": "src/Cilantro.Core/Passes/ControlFlowCompletionPass.cs",
+      "sha256": "bb19f5908b57d8a4a5398b0d2934fe5f7e742e0b41e6e2240fdd8a40cba8801f"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorRootCheckTests.cs",
+      "sha256": "ae3573593f233d18d211b9a6e6853c12f4062dcfb50378666819a04d32712391"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorRootHelperTests.cs",
+      "sha256": "e048379ab7873f496d0453bcda2ae39b3ac56342125e67b68d6f02b590069338"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorShortLocalFlowTests.cs",
+      "sha256": "9574c439e8bb403baaef874cca27306eb418a50ef97c6a2d7ded00ab1ca70a19"
+    }
+  ],
+  "references": [
+    {
+      "path": "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0/Mono.Android.dll",
+      "sha256": "ef807eefeecc64675967dcc0e8728c27f31d47158bc71b33a67ca2e4c93c945a"
+    },
+    {
+      "path": "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0/Java.Interop.dll",
+      "sha256": "e25cab788f8df353ae9acf6d69a52ef98690ece0e09e3b6c86dfa645c1792456"
+    },
+    {
+      "path": "C:/cilantro-verify/packages/microsoft.maui.controls.core/10.0.100/lib/net10.0-android36.0/Microsoft.Maui.Controls.dll",
+      "sha256": "304955797517847b45ce56a927ffb7d9a4e30758fe3334e7c813395c110a03e3"
+    },
+    {
+      "path": "C:/cilantro-verify/packages/microsoft.maui.core/10.0.100/lib/net10.0-android36.0/Microsoft.Maui.dll",
+      "sha256": "ba42a4b5dd8983344e6536d51f5fe6e856c315000442102d7c67f1dda2313006"
+    },
+    {
+      "path": "C:/cilantro-verify/packages/microsoft.maui.essentials/10.0.100/lib/net10.0-android36.0/Microsoft.Maui.Essentials.dll",
+      "sha256": "b9f7e6f2e8203c19fbf59a2f9da389bac890d266b23b70ff27fd167847c523f3"
+    },
+    {
+      "path": "C:/cilantro-verify/packages/microsoft.android.sdk.windows/35.0.105/tools/Xamarin.Android.Build.Tasks.dll",
+      "sha256": "dac8fdbc59feee0efd11b8ba9f7f343945a14976b41685aa548bda29cd8f5b95"
+    },
+    {
+      "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/oracle/_Microsoft.Android.Resource.Designer.dll",
+      "sha256": "fbefeb245f7e25507e36e5fd85aee0669a5e8a37ba32d4aada9fb5f6284ec133"
+    },
+    {
+      "path": "C:/Program Files (x86)/PreEmptive Protection Dotfuscator Professional 7.9.0/Common/LAC/rootcheck/net9.0/4.0.30319__2.1.0.0.dll",
+      "sha256": "092e1da8f33a19f0e67026b509f347d0d31097302e3ddadf4deec5304624255a"
+    }
+  ],
+  "review": {
+    "types": 11,
+    "methods": 56,
+    "normalizedFingerprints": [
+      "c9b07469e63c9fb4281e8b1d5f0c1ce585600a6ebcb963410817f1e27045113a",
+      "ec63229d6f95e08a6edb025f495752558a402f7f7cc5ce4e31a446103d22cb1b",
+      "ac6330502c701035f1227fd64a454d53fb928acef7d3b175c572854bb23c4b45"
+    ],
+    "graphs": {
+      "path": "C:/cilantro-verify/dotfuscator/root-review/encrypted-graphs.json",
+      "sha256": "3f544264d88799b61f848019bf0d893e5b2308962ac20f7abe9db26f9cd81275"
+    },
+    "proof": "Exact complete instruction/edge graphs, declaration metadata, generic flags/names/constraints and framework scopes. Attribute ordering is canonicalized in private proof copies only. Stack-safe stages and must-known nonescaping short storage retain exception/argument effects. Changed families withhold output atomically.",
+    "cleanVerdict": 2105837932,
+    "cleanDeviceModel": "No su binaries or command success; OTA certificates present; expected build tags; non-null application context; no known root packages or suspicious installed packages; no Frida or tracing. Verdict derived from reviewed CIL arithmetic without executing probes.",
+    "verdictAccumulator": "(((-1577367022 & 1467861621 & -759309476 & 2042618716) ^ 759257408 | 709040521) & 1740484479) ^ 1522369077",
+    "callerMask": 1075610132,
+    "callerXor": 1074036740,
+    "defaultReadGenericSupport": "The preexisting nongeneric shape reader still refuses generic types; only the bounded generic-family path is used.",
+    "detachedHelpers": {
+      "proof": "Direct metadata/CIL comparison with the installed 7.9 Root Check template. The independent audit explains framework rebinding and renamed method/parameter names. Production accepts only exact target-scoped capture fingerprints, then revalidates current normalized bodies and metadata before survivor-reference checks.",
+      "bindingFingerprints": [
+        "042f94e5279d9ee24f22aa2cf8c0c8c74de9416167368f51e90ac6ea8aa32b3f",
+        "0fb2b48181c457277441e67fbd79e259aa6323cd5ecf8cf62a67b5c0329e707a"
+      ],
+      "platformFingerprint": "0a29a5ee91c1315e0ab4e51035f4fe94b9aa6d355f7a601561672b08b3c1d5a9",
+      "platformIdentity": "PreEmptive.Protection.Checks.Android.Runtime.Root.PlatformClass1",
+      "platformLimit": "Exact vendor identity is required for the empty platform stub. Two renamed empty stubs remain unattributed; matching an empty constructor alone would also match application code.",
+      "comparison": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/detached-template-comparison.json",
+        "sha256": "8e586312e10de4eaeda0fe14640d83e9518e828c6973e348f09df6d54f375688"
+      },
+      "auditSource": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/audit-detached-helpers.ps1",
+        "sha256": "3d91b4a4fa1e175b84552f3417a6d0afbaf5d69ba2c538c5d012e3425c10d54e"
+      },
+      "comparisonSource": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/compare-detached-template.ps1",
+        "sha256": "a338ed443b6ff020f9f4ad2cf83201ea771b02c75b0a74bedc777c2e2d4dcf78"
+      },
+      "graphs": [
+        {
+          "id": "template",
+          "type": "Microsoft.Maui.Controls.Generated.GeneratedBindingInterceptors",
+          "kind": "binding",
+          "fingerprint": "f2073d6962119427c14104ccdd78be0b95682f5dc6ef6a23a53cb73c9b638359",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/template-detached-binding-canonical.json",
+            "sha256": "ab153527159affd0fa8e8ccced5d234cf5cf901edaba38131d60ed371b65b445"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/template-detached-binding-metadata.json",
+            "sha256": "950fc25db3da83ecd986dbf3ee7238edd23a4cdcf258cc8d453880695e09f71e"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/template-detached-binding-il.txt",
+            "sha256": "45b06120518b17fce629c3a90b7ae3b6cdab9bcda3d7c237afdcb378c104b6b8"
+          }
+        },
+        {
+          "id": "template",
+          "type": "PreEmptive.Protection.Checks.Android.Runtime.Root.PlatformClass1",
+          "kind": "platform",
+          "fingerprint": "8a31b0942d58afc43d1cc0a7f2f209832dfdf08bee5e132413e74ece1f6a101e",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/template-detached-platform-canonical.json",
+            "sha256": "22e988ac749217b4fd2da29d1a53427c92aa1b9baa8ba439f92c2c0e29318294"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/template-detached-platform-metadata.json",
+            "sha256": "8fe674e655dc24cbe1f75ebe979c3c6339f22d0eef9934c39475b213fc25594f"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/template-detached-platform-il.txt",
+            "sha256": "a241c0f66c3cbf0ec16c49f1609f940653c7cdebce9ed06dd44e4634afd977bb"
+          }
+        },
+        {
+          "id": "net10.0-root-exit",
+          "type": "Microsoft.Maui.Controls.Generated.GeneratedBindingInterceptors",
+          "kind": "binding",
+          "fingerprint": "042f94e5279d9ee24f22aa2cf8c0c8c74de9416167368f51e90ac6ea8aa32b3f",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-detached-binding-canonical.json",
+            "sha256": "4f306c1136c198b1b4cb0c1e17f512d1644c28365aa97f37a51a92af00e9cd41"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-detached-binding-metadata.json",
+            "sha256": "0ce3801261a096a70efbc73f3fc9bfaeccbb5cec412ac1c9cbf48ace6ad33256"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-detached-binding-il.txt",
+            "sha256": "45b06120518b17fce629c3a90b7ae3b6cdab9bcda3d7c237afdcb378c104b6b8"
+          }
+        },
+        {
+          "id": "net10.0-root-exit",
+          "type": "PreEmptive.Protection.Checks.Android.Runtime.Root.PlatformClass1",
+          "kind": "platform",
+          "fingerprint": "0a29a5ee91c1315e0ab4e51035f4fe94b9aa6d355f7a601561672b08b3c1d5a9",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-detached-platform-canonical.json",
+            "sha256": "e691361fd0988f91d0d845ccee41d2d38895a5479ebebe51ffc4b1798d4241dc"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-detached-platform-metadata.json",
+            "sha256": "9ce677e9b390161923747799c6bd638dcda5b7742c933377130419a0ae0d37e7"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-detached-platform-il.txt",
+            "sha256": "a241c0f66c3cbf0ec16c49f1609f940653c7cdebce9ed06dd44e4634afd977bb"
+          }
+        },
+        {
+          "id": "net10.0-root-flow",
+          "type": "eval_c",
+          "kind": "binding",
+          "fingerprint": "0fb2b48181c457277441e67fbd79e259aa6323cd5ecf8cf62a67b5c0329e707a",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-detached-binding-canonical.json",
+            "sha256": "4f306c1136c198b1b4cb0c1e17f512d1644c28365aa97f37a51a92af00e9cd41"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-detached-binding-metadata.json",
+            "sha256": "d7620f4e4a9399c2e18cdb5a577e1a3541d45df4ec213ab602ba900a616db6af"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-detached-binding-il.txt",
+            "sha256": "2fa83f86fa31a2d89602299b575a5bb36785dc039999723f2d3c95bc4071ca0d"
+          }
+        },
+        {
+          "id": "net10.0-root-flow",
+          "type": "eval_k",
+          "kind": "platform",
+          "fingerprint": "0a29a5ee91c1315e0ab4e51035f4fe94b9aa6d355f7a601561672b08b3c1d5a9",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-detached-platform-canonical.json",
+            "sha256": "e691361fd0988f91d0d845ccee41d2d38895a5479ebebe51ffc4b1798d4241dc"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-detached-platform-metadata.json",
+            "sha256": "9ce677e9b390161923747799c6bd638dcda5b7742c933377130419a0ae0d37e7"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-detached-platform-il.txt",
+            "sha256": "6786c281b9027f66faecd574e3f454fb769c862acbcc4e6696e9304a9c56f770"
+          }
+        },
+        {
+          "id": "net10.0-root-hang",
+          "type": "Microsoft.Maui.Controls.Generated.GeneratedBindingInterceptors",
+          "kind": "binding",
+          "fingerprint": "042f94e5279d9ee24f22aa2cf8c0c8c74de9416167368f51e90ac6ea8aa32b3f",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-detached-binding-canonical.json",
+            "sha256": "4f306c1136c198b1b4cb0c1e17f512d1644c28365aa97f37a51a92af00e9cd41"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-detached-binding-metadata.json",
+            "sha256": "0ce3801261a096a70efbc73f3fc9bfaeccbb5cec412ac1c9cbf48ace6ad33256"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-detached-binding-il.txt",
+            "sha256": "45b06120518b17fce629c3a90b7ae3b6cdab9bcda3d7c237afdcb378c104b6b8"
+          }
+        },
+        {
+          "id": "net10.0-root-hang",
+          "type": "PreEmptive.Protection.Checks.Android.Runtime.Root.PlatformClass1",
+          "kind": "platform",
+          "fingerprint": "0a29a5ee91c1315e0ab4e51035f4fe94b9aa6d355f7a601561672b08b3c1d5a9",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-detached-platform-canonical.json",
+            "sha256": "e691361fd0988f91d0d845ccee41d2d38895a5479ebebe51ffc4b1798d4241dc"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-detached-platform-metadata.json",
+            "sha256": "9ce677e9b390161923747799c6bd638dcda5b7742c933377130419a0ae0d37e7"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-detached-platform-il.txt",
+            "sha256": "a241c0f66c3cbf0ec16c49f1609f940653c7cdebce9ed06dd44e4634afd977bb"
+          }
+        },
+        {
+          "id": "net10.0-root-method",
+          "type": "Microsoft.Maui.Controls.Generated.GeneratedBindingInterceptors",
+          "kind": "binding",
+          "fingerprint": "042f94e5279d9ee24f22aa2cf8c0c8c74de9416167368f51e90ac6ea8aa32b3f",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-detached-binding-canonical.json",
+            "sha256": "4f306c1136c198b1b4cb0c1e17f512d1644c28365aa97f37a51a92af00e9cd41"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-detached-binding-metadata.json",
+            "sha256": "0ce3801261a096a70efbc73f3fc9bfaeccbb5cec412ac1c9cbf48ace6ad33256"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-detached-binding-il.txt",
+            "sha256": "45b06120518b17fce629c3a90b7ae3b6cdab9bcda3d7c237afdcb378c104b6b8"
+          }
+        },
+        {
+          "id": "net10.0-root-method",
+          "type": "PreEmptive.Protection.Checks.Android.Runtime.Root.PlatformClass1",
+          "kind": "platform",
+          "fingerprint": "0a29a5ee91c1315e0ab4e51035f4fe94b9aa6d355f7a601561672b08b3c1d5a9",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-detached-platform-canonical.json",
+            "sha256": "e691361fd0988f91d0d845ccee41d2d38895a5479ebebe51ffc4b1798d4241dc"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-detached-platform-metadata.json",
+            "sha256": "9ce677e9b390161923747799c6bd638dcda5b7742c933377130419a0ae0d37e7"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-detached-platform-il.txt",
+            "sha256": "a241c0f66c3cbf0ec16c49f1609f940653c7cdebce9ed06dd44e4634afd977bb"
+          }
+        },
+        {
+          "id": "net10.0-root-native",
+          "type": "eval_c",
+          "kind": "binding",
+          "fingerprint": "0fb2b48181c457277441e67fbd79e259aa6323cd5ecf8cf62a67b5c0329e707a",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-detached-binding-canonical.json",
+            "sha256": "4f306c1136c198b1b4cb0c1e17f512d1644c28365aa97f37a51a92af00e9cd41"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-detached-binding-metadata.json",
+            "sha256": "d7620f4e4a9399c2e18cdb5a577e1a3541d45df4ec213ab602ba900a616db6af"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-detached-binding-il.txt",
+            "sha256": "2fa83f86fa31a2d89602299b575a5bb36785dc039999723f2d3c95bc4071ca0d"
+          }
+        },
+        {
+          "id": "net10.0-root-native",
+          "type": "eval_k",
+          "kind": "platform",
+          "fingerprint": "0a29a5ee91c1315e0ab4e51035f4fe94b9aa6d355f7a601561672b08b3c1d5a9",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-detached-platform-canonical.json",
+            "sha256": "e691361fd0988f91d0d845ccee41d2d38895a5479ebebe51ffc4b1798d4241dc"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-detached-platform-metadata.json",
+            "sha256": "9ce677e9b390161923747799c6bd638dcda5b7742c933377130419a0ae0d37e7"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-detached-platform-il.txt",
+            "sha256": "6786c281b9027f66faecd574e3f454fb769c862acbcc4e6696e9304a9c56f770"
+          }
+        },
+        {
+          "id": "net10.0-root-none",
+          "type": "Microsoft.Maui.Controls.Generated.GeneratedBindingInterceptors",
+          "kind": "binding",
+          "fingerprint": "042f94e5279d9ee24f22aa2cf8c0c8c74de9416167368f51e90ac6ea8aa32b3f",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-detached-binding-canonical.json",
+            "sha256": "4f306c1136c198b1b4cb0c1e17f512d1644c28365aa97f37a51a92af00e9cd41"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-detached-binding-metadata.json",
+            "sha256": "0ce3801261a096a70efbc73f3fc9bfaeccbb5cec412ac1c9cbf48ace6ad33256"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-detached-binding-il.txt",
+            "sha256": "45b06120518b17fce629c3a90b7ae3b6cdab9bcda3d7c237afdcb378c104b6b8"
+          }
+        },
+        {
+          "id": "net10.0-root-none",
+          "type": "PreEmptive.Protection.Checks.Android.Runtime.Root.PlatformClass1",
+          "kind": "platform",
+          "fingerprint": "0a29a5ee91c1315e0ab4e51035f4fe94b9aa6d355f7a601561672b08b3c1d5a9",
+          "canonical": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-detached-platform-canonical.json",
+            "sha256": "e691361fd0988f91d0d845ccee41d2d38895a5479ebebe51ffc4b1798d4241dc"
+          },
+          "metadata": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-detached-platform-metadata.json",
+            "sha256": "9ce677e9b390161923747799c6bd638dcda5b7742c933377130419a0ae0d37e7"
+          },
+          "cil": {
+            "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-detached-platform-il.txt",
+            "sha256": "a241c0f66c3cbf0ec16c49f1609f940653c7cdebce9ed06dd44e4634afd977bb"
+          }
+        }
+      ]
+    }
+  },
+  "validation": {
+    "captures": 6,
+    "neutralizedCheckSites": 6,
+    "desktopCleanVerdictComparisons": 6,
+    "focusedTestsPassed": 39,
+    "focusedTestScope": "DotfuscatorRootCheckTests and DotfuscatorRootHelperTests; the full suite also includes nine short-local-flow tests",
+    "focusedTests": {
+      "path": "C:/cilantro-verify/dotfuscator/root-review/detached-focused.log",
+      "sha256": "3284ad033a66480f0badf6573a7f71c65419b32fe6b61bab56d2b19f34f8a6ea"
+    },
+    "behavior": {
+      "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/behavior.json",
+      "sha256": "42b5a3019b7e826599d89ebaf0d4c45b67cebd9e3eb122e98b3839063a2f6545"
+    },
+    "fullSuite": {
+      "passed": 3720,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3757,
+      "duration": "9 m 8 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/detached-full-tests.log",
+        "sha256": "6b43fa5c48628f940d949b84d99483f46fb33f335f3bf6b75a0c7e10678e388f"
+      }
+    },
+    "additionalDetachedTypesRetired": 10,
+    "detachedOutputCounts": {
+      "path": "C:/cilantro-verify/dotfuscator/root-review/detached-output-counts.json",
+      "sha256": "d740521599b33c3a175f05d2b233cfb468115d974d9cb956504534ed223cdebc"
+    }
+  },
+  "limits": [
+    "No protected checker or Android device/emulator execution. Rooted/non-rooted runtime behavior remains unvalidated.",
+    "Desktop source replay validates clean application notifications and selected failure responses, not Android probe fidelity.",
+    "Unconnected generated declarations can remain; both reviewed public Root Check helpers are retired when no surviving consumer or exact type-name reflection string exists.",
+    "Other generated checker implementations and compiler versions require separate review."
+  ],
+  "documentation": [
+    "https://support.preemptive.com/hc/en-us/articles/31820107908881-Root-Check",
+    "https://github.com/dotnet/android/blob/main/Documentation/docs-mobile/building-apps/build-properties.md"
+  ],
+  "captures": [
+    {
+      "id": "net10.0-root-none",
+      "settings": [
+        "None",
+        "None",
+        "off",
+        "off",
+        0
+      ],
+      "compilerVersion": "7.9.0.0",
+      "compilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "referencePaths": [
+        "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0",
+        "C:/cilantro-verify/packages/microsoft.maui.controls.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.essentials/10.0.100/lib/net10.0-android36.0"
+      ],
+      "neutralizedSites": 1,
+      "constantStringSites": 0,
+      "nativeStringSites": 0.0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "normalizedFamily": "c9b07469e63c9fb4281e8b1d5f0c1ce585600a6ebcb963410817f1e27045113a",
+      "source": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-none/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-none/protected/RootCheckProbe.dll",
+        "sha256": "8b84049a0d9fdcaef499d81f47f2427a735654187705a704c9dad499563a76a4"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-none/cleaned_detached_helpers/RootCheckProbe.cleaned.dll",
+        "sha256": "c8b2e3556dc89f0cea07683402eac64e11ec7b6f4607be0eed8226b68a0541a1"
+      },
+      "configuration": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-none/config.xml",
+        "sha256": "8732e4610ef54a3fc55032729a51caba3dca8af864e2b1cd9e72eb0d60295993"
+      },
+      "build": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-none/protection.json",
+        "sha256": "b8e0ea814033de039ced0efa46996e120332b192d79e99f2e65f8081ccc7464a"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-none/cleaned_detached_helpers/RootCheckProbe.analysis.json",
+        "sha256": "eb6e9f5725376496b37ad11c130d6a488c1823b52d244c0d464c1ba6a1634d58"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-none/behavior.json",
+        "sha256": "34335d1292b6f993cbb9dd278f4baa22da816e3b3d52fd7b4c9c88b760ccf3f6"
+      },
+      "canonicalGraph": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-canonical.json",
+        "sha256": "52e0bace204e456bc113d4c0133eb51f008d0f49a68081c61b53fde17d4e0862"
+      },
+      "normalizedMetadata": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-sorted-metadata.json",
+        "sha256": "ef90f0ec62ff17a927bca94e8d77a919a71aa0eb61db3b93c637499704d99251"
+      },
+      "normalizedCil": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-none-normalized-il.txt",
+        "sha256": "2484bfb0cba1a7b715b0651d62c316e4ab75d29422ed868e90314c0a40592d59"
+      },
+      "detachedTemplateTypesRemoved": 2
+    },
+    {
+      "id": "net10.0-root-method",
+      "settings": [
+        "Exception",
+        "Method",
+        "off",
+        "off",
+        0
+      ],
+      "compilerVersion": "7.9.0.0",
+      "compilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "referencePaths": [
+        "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0",
+        "C:/cilantro-verify/packages/microsoft.maui.controls.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.essentials/10.0.100/lib/net10.0-android36.0"
+      ],
+      "neutralizedSites": 1,
+      "constantStringSites": 0,
+      "nativeStringSites": 0.0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "normalizedFamily": "c9b07469e63c9fb4281e8b1d5f0c1ce585600a6ebcb963410817f1e27045113a",
+      "source": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/protected/RootCheckProbe.dll",
+        "sha256": "996bed813a3eb6e20ecfd058b8b7edc0e11e58a11ba94753aa4e4333361df59a"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/cleaned_detached_helpers/RootCheckProbe.cleaned.dll",
+        "sha256": "3c78f2da2fed16f4a0f071d787f77d9ce061e61adbcccd62c441977540f293a0"
+      },
+      "configuration": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/config.xml",
+        "sha256": "e3d440aaca0aa97c4cc2205d009e72770726ea8e27959ff30c04359fc5300284"
+      },
+      "build": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/protection.json",
+        "sha256": "947d88140409b4a85526e7d2dcfff8e5517fe3e6a058a3bc591a560d94ee084e"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/cleaned_detached_helpers/RootCheckProbe.analysis.json",
+        "sha256": "e327d0e8349b338f9dcfba4943f1977f64f0a8f1ef934efbf5126240f064d898"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-method/behavior.json",
+        "sha256": "2f203d24f5f3a7b6b6a736d73c8b0cd65d4af88afcfa1d652e57cb995dc8c08d"
+      },
+      "canonicalGraph": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-canonical.json",
+        "sha256": "52e0bace204e456bc113d4c0133eb51f008d0f49a68081c61b53fde17d4e0862"
+      },
+      "normalizedMetadata": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-sorted-metadata.json",
+        "sha256": "ef90f0ec62ff17a927bca94e8d77a919a71aa0eb61db3b93c637499704d99251"
+      },
+      "normalizedCil": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-method-normalized-il.txt",
+        "sha256": "2484bfb0cba1a7b715b0651d62c316e4ab75d29422ed868e90314c0a40592d59"
+      },
+      "detachedTemplateTypesRemoved": 2
+    },
+    {
+      "id": "net10.0-root-exit",
+      "settings": [
+        "Exit",
+        "Method",
+        "off",
+        "off",
+        0
+      ],
+      "compilerVersion": "7.9.0.0",
+      "compilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "referencePaths": [
+        "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0",
+        "C:/cilantro-verify/packages/microsoft.maui.controls.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.essentials/10.0.100/lib/net10.0-android36.0"
+      ],
+      "neutralizedSites": 1,
+      "constantStringSites": 0,
+      "nativeStringSites": 0.0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "normalizedFamily": "c9b07469e63c9fb4281e8b1d5f0c1ce585600a6ebcb963410817f1e27045113a",
+      "source": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-exit/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-exit/protected/RootCheckProbe.dll",
+        "sha256": "4e5a6792e04465718f53ff03cfd0424fc6a4278990304781e984c341ecbd47bb"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-exit/cleaned_detached_helpers/RootCheckProbe.cleaned.dll",
+        "sha256": "e90cad75ded80b223c3e69cfb183fee80879745225684d6cf83ee7f18abbc24e"
+      },
+      "configuration": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-exit/config.xml",
+        "sha256": "fd937273eb15ed58c61329dca9b45bb067bd41d6e269529bd31adce031a8f6c3"
+      },
+      "build": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-exit/protection.json",
+        "sha256": "5015cd0686847cc751ceb382d54d820bfedd200f62c3e6ae58e3fd829d1fcecf"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-exit/cleaned_detached_helpers/RootCheckProbe.analysis.json",
+        "sha256": "e5952b537db2487021204269f77ff65a1fa489a1d7c5ce808c21b6acfd5164d2"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-exit/behavior.json",
+        "sha256": "03764256f41bcf7cfb7fb228f31303720fd863c11d0bac325ffbc71f09cbead8"
+      },
+      "canonicalGraph": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-canonical.json",
+        "sha256": "52e0bace204e456bc113d4c0133eb51f008d0f49a68081c61b53fde17d4e0862"
+      },
+      "normalizedMetadata": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-sorted-metadata.json",
+        "sha256": "ef90f0ec62ff17a927bca94e8d77a919a71aa0eb61db3b93c637499704d99251"
+      },
+      "normalizedCil": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-exit-normalized-il.txt",
+        "sha256": "2484bfb0cba1a7b715b0651d62c316e4ab75d29422ed868e90314c0a40592d59"
+      },
+      "detachedTemplateTypesRemoved": 2
+    },
+    {
+      "id": "net10.0-root-hang",
+      "settings": [
+        "Hang",
+        "Method",
+        "off",
+        "off",
+        0
+      ],
+      "compilerVersion": "7.9.0.0",
+      "compilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "referencePaths": [
+        "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0",
+        "C:/cilantro-verify/packages/microsoft.maui.controls.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.essentials/10.0.100/lib/net10.0-android36.0"
+      ],
+      "neutralizedSites": 1,
+      "constantStringSites": 0,
+      "nativeStringSites": 0.0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "normalizedFamily": "c9b07469e63c9fb4281e8b1d5f0c1ce585600a6ebcb963410817f1e27045113a",
+      "source": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-hang/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-hang/protected/RootCheckProbe.dll",
+        "sha256": "74651ee6d3b91c3c41b155cf262b91c856545eb7a0f17785bc2fce5da948a9c6"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-hang/cleaned_detached_helpers/RootCheckProbe.cleaned.dll",
+        "sha256": "887518a7bc8581e8b959a679e2986d268efb8c399868d43d5155f116ef87fb18"
+      },
+      "configuration": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-hang/config.xml",
+        "sha256": "9aa547990d959998bed3e7e919bf1377dba116b260af9c6e6c91dc22ef716953"
+      },
+      "build": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-hang/protection.json",
+        "sha256": "1a4f20f1b7b11bb19a4a166b0ae50955d95a529d6110abbb23200d510a4c73ae"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-hang/cleaned_detached_helpers/RootCheckProbe.analysis.json",
+        "sha256": "2b01cf288597ea883b0a63f70f218fce27702d643b1cb9ad9e90bb4064c5aa0f"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-hang/behavior.json",
+        "sha256": "bc0322ceb5a9a33aba7f17150d7d58ab03a120aa9fe0db8db78197f7a0b1af93"
+      },
+      "canonicalGraph": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-canonical.json",
+        "sha256": "52e0bace204e456bc113d4c0133eb51f008d0f49a68081c61b53fde17d4e0862"
+      },
+      "normalizedMetadata": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-sorted-metadata.json",
+        "sha256": "ef90f0ec62ff17a927bca94e8d77a919a71aa0eb61db3b93c637499704d99251"
+      },
+      "normalizedCil": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-hang-normalized-il.txt",
+        "sha256": "2484bfb0cba1a7b715b0651d62c316e4ab75d29422ed868e90314c0a40592d59"
+      },
+      "detachedTemplateTypesRemoved": 2
+    },
+    {
+      "id": "net10.0-root-flow",
+      "settings": [
+        "Exception",
+        "Method",
+        "on",
+        "high",
+        1
+      ],
+      "compilerVersion": "7.9.0.0",
+      "compilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "referencePaths": [
+        "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0",
+        "C:/cilantro-verify/packages/microsoft.maui.controls.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.essentials/10.0.100/lib/net10.0-android36.0"
+      ],
+      "neutralizedSites": 1,
+      "constantStringSites": 5,
+      "nativeStringSites": 0.0,
+      "runtimeTypesRemoved": 12,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "normalizedFamily": "ec63229d6f95e08a6edb025f495752558a402f7f7cc5ce4e31a446103d22cb1b",
+      "source": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-flow/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-flow/protected/RootCheckProbe.dll",
+        "sha256": "1853b8b6088fe2e850d11137816374ee8babb782310fe0c0b3841bde7afde92c"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-flow/cleaned_detached_helpers/RootCheckProbe.cleaned.dll",
+        "sha256": "c54ea4889c453b0ded9062bbd0f9a8d66323738f2c470230088dc4a930ac7419"
+      },
+      "configuration": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-flow/config.xml",
+        "sha256": "d0605a729b2676d27b6ebef2391e62c05d65d59dc55b6b90c065d3eae40cfe1f"
+      },
+      "build": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-flow/protection.json",
+        "sha256": "74a50752c16a13a50e067a56983baaffb392ff06ae59191ff9102e647f08b7b7"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-flow/cleaned_detached_helpers/RootCheckProbe.analysis.json",
+        "sha256": "789ff45ef48ad11ba5dbf92d8e42f4a89d6be5283bf92e452745810d7dfa6038"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-flow/behavior.json",
+        "sha256": "189c3c6da2ef594864cb7c0f86b9ec9e19b2d9cf44dd65d0d9599222c1e0e1db"
+      },
+      "canonicalGraph": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-canonical.json",
+        "sha256": "5ad2d4d06763ac50e5ff77b2dbf079233a4d46373b9fb6884559df69a02b6056"
+      },
+      "normalizedMetadata": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-sorted-metadata.json",
+        "sha256": "83b6a82fd0d57941115d083eee95399b50da15c3c9031f3dd1cdee80591dc845"
+      },
+      "normalizedCil": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-flow-normalized-il.txt",
+        "sha256": "f3309c8f681f7a5daa0618cef65dbc1cd9f1d6ddd0a2e6dbc3338af686d8eb6a"
+      },
+      "detachedTemplateTypesRemoved": 1
+    },
+    {
+      "id": "net10.0-root-native",
+      "settings": [
+        "Exception",
+        "Method",
+        "on",
+        "high",
+        2
+      ],
+      "compilerVersion": "7.9.0.0",
+      "compilerSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+      "referencePaths": [
+        "C:/cilantro-verify/packages/microsoft.android.ref.34/34.0.154/ref/net8.0",
+        "C:/cilantro-verify/packages/microsoft.maui.controls.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.core/10.0.100/lib/net10.0-android36.0",
+        "C:/cilantro-verify/packages/microsoft.maui.essentials/10.0.100/lib/net10.0-android36.0"
+      ],
+      "neutralizedSites": 1,
+      "constantStringSites": 5,
+      "nativeStringSites": 5.0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0,
+      "normalizedFamily": "ac6330502c701035f1227fd64a454d53fb928acef7d3b175c572854bb23c4b45",
+      "source": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-native/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-native/protected/RootCheckProbe.dll",
+        "sha256": "5306ec2c09cfecc5fb83b9a5b0b39e8a118d2ae7104dce98e20f25c7358189a8"
+      },
+      "output": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-native/cleaned_detached_helpers/RootCheckProbe.cleaned.dll",
+        "sha256": "935d2e83891bbbccae8d5df4540023ccbcb4979c4e29028aad3a8d2b3ec72d99"
+      },
+      "configuration": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-native/config.xml",
+        "sha256": "f2b4b1f996e7556acf2f073fbaca749520660d8d37096560096a008df58ec03a"
+      },
+      "build": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-native/protection.json",
+        "sha256": "68f61d53ce469f57fd3c4e27a1bc2266669b8107dceeac3b78f02425fdf0057e"
+      },
+      "analysis": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-native/cleaned_detached_helpers/RootCheckProbe.analysis.json",
+        "sha256": "2bb65744632201deae571042390c7a0998c19750055d86b516a8fd0b10468460"
+      },
+      "behavior": {
+        "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/net10.0-root-native/behavior.json",
+        "sha256": "85fb5d3d3470b4da9c7f1548a7a4ca5250cc7c9030aad2b1ed04a78e016c01c1"
+      },
+      "canonicalGraph": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-canonical.json",
+        "sha256": "d8c3217193efc24e8237803a3cdf1bd47bcf4445c0f1be23e72a4c40c216d6ca"
+      },
+      "normalizedMetadata": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-sorted-metadata.json",
+        "sha256": "6b711db709eb23bc7d5fb1c1fe106f464dd59e949c87d550695069d4116448a2"
+      },
+      "normalizedCil": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/net10.0-root-native-normalized-il.txt",
+        "sha256": "db9c69a67219be73096dc853b25021f4cff4c43808e624091e6b1cb258daf13f"
+      },
+      "detachedTemplateTypesRemoved": 1
+    }
+  ],
+  "responseRetirement": {
+    "path": "corpus/dotfuscator-7-response-retirement.provenance.json",
+    "sha256": "3db99d99cb3e520b9047bc86ceb704addbfeb27aa6eef77486a2c0dbbd8bdec7"
+  }
+}

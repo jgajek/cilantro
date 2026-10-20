@@ -1,0 +1,578 @@
+{
+  "capturedAt": "2026-10-20",
+  "compiler": "Dotfuscator Professional 7.9.0+2381db6511",
+  "description": "Required-x86 native-key v2 captures of benign source-built Probe: strings, high control flow and renaming on net48 and net8.0.",
+  "sources": [
+    {
+      "path": "corpus/probes/Probe/Probe.csproj",
+      "sha256": "d028e30e4a068ae4648a4647f051439325832d37f10530a01672266f72c7d2cd"
+    },
+    {
+      "path": "corpus/probes/Probe/Program.cs",
+      "sha256": "48d98a98a7670a4ce963c811cd02394c1af17f22d263bacf404d6ccb2ffcca15"
+    },
+    {
+      "path": "corpus/probes/dotfuscator.ps1",
+      "sha256": "25aea50a1fd948a9b2b562444f15ef8ea525ff30bdeadae772bf2cd0d9ef327e"
+    },
+    {
+      "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+      "sha256": "92f050060c2582484c9a8b2a52d92961c6cec73be88e3be0314037a47cf3c5fb"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+      "sha256": "ae6f4d447132bd46d0f8e67d5673721bccdd671965a1ceba3d78d081b980efe7"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorV2StringPass.cs",
+      "sha256": "e9b9f2283eeb162da1fe1e018f6df47828cf8e0ebaaa4b74da09edc2895125e1"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorV2Shape.cs",
+      "sha256": "f9495c200962c87db734af24efd05bdea20b868f293289bbd71132d996594621"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorNativeRuntime.cs",
+      "sha256": "1d05c9b7d6ecfc088104d4bb8bf4d52668fe973967d9aa660b30f1034cdba6fd"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorX86CorpusTests.cs",
+      "sha256": "ce3f414ac46805a1cacfbb396920a55a79db056e249377bf80f7ebbe6c45060d"
+    }
+  ],
+  "nativeReview": {
+    "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9",
+    "imageBase": "0x10000000",
+    "entry": "__eck at RVA 0x1050",
+    "framing": "RVA 0x1bd0",
+    "runtimeChecks": "RVA 0x1ef0",
+    "outputMask": "RVA 0x1fe0",
+    "environment": "RVA 0x3060",
+    "signatureVerification": "RVA 0x2c50",
+    "evidence": {
+      "path": "C:/cilantro-verify/dotfuscator/native-x86-review/key-routines.txt",
+      "sha256": "40a74e50514bf308f8db9b0c3889f2ccf134cde7ef8aa8ac5267cbb119e2bea0"
+    },
+    "result": "Static IDA review confirms the same 12-byte DFSE2 key domain, zero verdict separators, big-endian length framing, SHA-256 digest, seven clean verdict bytes and xorshift stream as the x64 implementation. Environment framing, signature region, recovered SPKI and signed seed binding match the managed validator.",
+    "applicationOrNativeCodeExecutedByRecovery": false,
+    "shippedNativeInventory": {
+      "path": "C:/cilantro-verify/dotfuscator/native-x86-review/shipped-native-inventory.json",
+      "sha256": "829c44e1874779e28d8dc662749525ead5b992cc3f20d6c30f0af19533b20c4b"
+    }
+  },
+  "fixtures": [
+    {
+      "id": "net48-combined",
+      "capture": {
+        "Framework": "net48",
+        "Config": "combined",
+        "Architecture": "x86",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "d3c9484f98ed2295266c0a8d30fa35411a676f3ccd7af7a14edcbdb20708393e",
+        "ProtectedSha256": "0e1863670dce7d4c2987da49c28d25b5f175ca6e4216ce7dd02e7d7031a05465"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/fixture.json",
+        "sha256": "82af6df7a787c5269da3753feeab37abb9bae8f070f3d815ef3f1045ad560719"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/config.xml",
+        "sha256": "35991bf1df824c4439bc8aa53d8ecdd7ec9d903fe20598c09f60f1339422eb74"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined\\protected\\environment0f617e02.bin",
+        "sha256": "148dfd8a2aae683a65052c061e2a3fa10c0612da7a68604f2b5ecf68b80a4511"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+        "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined\\cleaned\\Probe.cleaned.exe",
+        "sha256": "01733d9374c1b31ae848622078a4d461267e4108ea2bf18f98d5cd3e8cc90617"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/recovery.json",
+        "sha256": "0da31c46f4ff1426006c547ff9d62229b5f32252576f449b53b86454426239b3"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/oracle.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/oracle.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/protected.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/protected.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/cleaned.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-combined/cleaned.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        }
+      ]
+    },
+    {
+      "id": "net48-renamed",
+      "capture": {
+        "Framework": "net48",
+        "Config": "renamed",
+        "Architecture": "x86",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "d3c9484f98ed2295266c0a8d30fa35411a676f3ccd7af7a14edcbdb20708393e",
+        "ProtectedSha256": "9dc277c87bdbb4b907f3055c4bb6d5191d7059f7a6496a4c5cbb99bcfe0fdadf"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/fixture.json",
+        "sha256": "92f3853c2595a7292d1c5fb40ee1f071a657e66accf63f76a567d03ec1407cdf"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/config.xml",
+        "sha256": "c2fabf22b1582b68e09e3b3217471f33cf656da4b131ccc31e1b45f87a022cb5"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed\\protected\\environment0f617e02.bin",
+        "sha256": "627fbce723417062d5ea09c857f924ecb5781a43774ac1880c0d07fd5b19ec28"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+        "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed\\cleaned\\Probe.cleaned.exe",
+        "sha256": "e9282e2374db86d8bb3d1358940cbf4d024068ccc5b7c9a6bccf8238604fda0f"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/recovery.json",
+        "sha256": "b7b66bedbf9dac4fb795ca36b57a88a0d7f34f007c87222e9225bb1e91226e4d"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/oracle.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/oracle.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/protected.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/protected.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/cleaned.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-renamed/cleaned.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        }
+      ]
+    },
+    {
+      "id": "net48-strings",
+      "capture": {
+        "Framework": "net48",
+        "Config": "strings",
+        "Architecture": "x86",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "d3c9484f98ed2295266c0a8d30fa35411a676f3ccd7af7a14edcbdb20708393e",
+        "ProtectedSha256": "dcefe8e2c49b58befa0760914e138e4b3edb8ec285a9b0be4752994468e9c80c"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/fixture.json",
+        "sha256": "fc0cf8ed51ac528f10a6ba4af976e0eb09c6891b6d9a833805150c7d106f7687"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/config.xml",
+        "sha256": "245a47d2358e3a2d20b784d4b433f747816e8c2b567fee345297d22347c88b3f"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings\\protected\\environment0f617e02.bin",
+        "sha256": "22a302e39f74c4787a1e46680b6d4cecf7f4ca1696362830981942d282b8826b"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+        "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings\\cleaned\\Probe.cleaned.exe",
+        "sha256": "e5cce7bedc151d663f025f810b347c6494e099dc793e028836a1b939949eddf8"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/recovery.json",
+        "sha256": "2422f61a43de0946cee6574e5ba8163035cfe149510938c64f1dc259333ee708"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/oracle.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/oracle.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/protected.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/protected.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/cleaned.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net48-strings/cleaned.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        }
+      ]
+    },
+    {
+      "id": "net8.0-combined",
+      "capture": {
+        "Framework": "net8.0",
+        "Config": "combined",
+        "Architecture": "x86",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "1a7aca73f1f9926ff7b1eb3f46d19ae50001d50d07a900c08f46b72119190665",
+        "ProtectedSha256": "c5a98ea65c4f94507c1c4ca9e62b5d56fa9096e6016211a25a6b74426435a3d6"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/fixture.json",
+        "sha256": "ac7b5d15d5d99c0710244cc1d725aa43a18f22ec4b88ebe2fa739e153b9eac1e"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/config.xml",
+        "sha256": "21f32fd4d9f4a43e30de0f1527c06ea39d02a271a2d4e43166e15b052fc87df7"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined\\protected\\environment0f617e02.bin",
+        "sha256": "c291492a6f306c2585869d05962b083d2b952c967962c0b1781a32538a84d356"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+        "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined\\cleaned\\Probe.cleaned.dll",
+        "sha256": "86d8f69ae49c7fbffca33bc9c66c2daa30ae029bfdf963ba526e28fb7eadb10c"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/recovery.json",
+        "sha256": "3c4cbe607a4459ed4a2f8bc5045cd836ac46612d8e5fbed8d091724c73f94899"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/oracle.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/oracle.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/protected.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/protected.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/cleaned.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-combined/cleaned.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        }
+      ]
+    },
+    {
+      "id": "net8.0-renamed",
+      "capture": {
+        "Framework": "net8.0",
+        "Config": "renamed",
+        "Architecture": "x86",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "1a7aca73f1f9926ff7b1eb3f46d19ae50001d50d07a900c08f46b72119190665",
+        "ProtectedSha256": "53e638db1f6f5f4542c3917f900519c8315b4cafb29a127f14022161fcd19cea"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/fixture.json",
+        "sha256": "450c26d7438d169844647fd16cadaf1f7acd157ac34a01fac0e7d3d64310fc83"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/config.xml",
+        "sha256": "4f54d1e585caff4888897be528f1dfbf7596fb48419f2bdf6056f380be4a96ef"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed\\protected\\environment0f617e02.bin",
+        "sha256": "93c3d5ff7ee2ab39fb65627e74e38cd4b6c7f4a351ae300bf7cf7bdaa2aa693e"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+        "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed\\cleaned\\Probe.cleaned.dll",
+        "sha256": "024978cf7b89144c4ebfcef31dfc8b29b3e23ba5ffd9aab5c54661707aa307a3"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/recovery.json",
+        "sha256": "81ecaa4248cf1483ec1a340714196f53697af5c410ee1a2f3354c5c53e1bf327"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/oracle.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/oracle.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/protected.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/protected.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/cleaned.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-renamed/cleaned.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        }
+      ]
+    },
+    {
+      "id": "net8.0-strings",
+      "capture": {
+        "Framework": "net8.0",
+        "Config": "strings",
+        "Architecture": "x86",
+        "StringEncryptionVersion": 2,
+        "V2ExcludeArrayMethod": true,
+        "Arguments": [
+          "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings\\config.xml"
+        ],
+        "DotfuscatorVersion": "7.9.0.0",
+        "DotfuscatorSha256": "9bce1c273b213ea5aef50d48f64be7598e0d82b20f918f39f77b3b5234bbbd3d",
+        "OracleSha256": "1a7aca73f1f9926ff7b1eb3f46d19ae50001d50d07a900c08f46b72119190665",
+        "ProtectedSha256": "821b9f202c1a4fc9f12918a77d592adda800f97e31ce2844da57fd2047dc9668"
+      },
+      "fixtureEvidence": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/fixture.json",
+        "sha256": "88b24363b50b90dd5650affdc56304afedbeda9eb21f8a5bcf5bb89dcae79f41"
+      },
+      "config": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/config.xml",
+        "sha256": "0b36ea51c60a87dc94725285377d7a1888da9cd3c6abe400afb53a4040d3c1a7"
+      },
+      "environment": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings\\protected\\environment0f617e02.bin",
+        "sha256": "7ddce93c7a0653736ad01ec00082297b5c9a6060ff0456a8dfacb44e4fbc230b"
+      },
+      "native": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/protected/runtimes/win-x86/native/Runtime.Extensions.dll",
+        "sha256": "07e9dd691839f9fd4f49267c72ddc620b76fa37a217c2f9c7b83a13fa3e762c9"
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings\\cleaned\\Probe.cleaned.dll",
+        "sha256": "95db5204cbea1d91da2f89a1bdc56b934efb49b78087d9e51f37aaccccc44f11"
+      },
+      "recovery": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/recovery.json",
+        "sha256": "7fc00b13893181a039649ada4f1dd6dc4da03e086c36dcafc1fdc14d13cab2df"
+      },
+      "execution": [
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/oracle.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/oracle.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/protected.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/protected.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/cleaned.default.execution.json",
+          "sha256": "0106c519116e55846ba78188dd3d3b5d5b178de773083ab82d0e1b86e6b3b5c2"
+        },
+        {
+          "path": "C:\\cilantro-verify\\dotfuscator\\native-x86-required-corpus\\net8.0-strings/cleaned.self-test.execution.json",
+          "sha256": "ee8e478a3163790bc0b48e27ab6090e337677e86e6a256cb084895d2c13b7142"
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "captures": 6,
+    "oracles": 2,
+    "recoveredStringSites": 102,
+    "remainingDispatchers": 0,
+    "remainingUnreachableInstructions": 0,
+    "resourceParity": true,
+    "nativeBridgesRetired": 6,
+    "architectureFlagsPreserved": true,
+    "required32BitInputs": true,
+    "threeWayRuntimeComparisons": 12,
+    "runtime": {
+      "path": "C:/cilantro-verify/dotfuscator/native-x86-required-corpus/ground-truth.outcomes.json",
+      "sha256": "6cffba6a423b69b7d2f34434b332ec8aa2332940b52ce8987313fa17e9a326da"
+    },
+    "focusedTests": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-x86-review/focused-required-tests.log",
+        "sha256": "7bce845a30814efa98cc9eef09742577dd2df646f4d7ec77b152b8be7bcd9e51"
+      }
+    },
+    "net48DifferentialIlVerifyFixtures": 3,
+    "refusalCases": [
+      "required x86 missing despite valid x64",
+      "x64 DLL in x86 path",
+      "tampered x86 DLL",
+      "unreviewed machine type",
+      "required x64 missing despite valid x86",
+      "AnyCPU with a tampered eligible x86 DLL despite valid x64"
+    ],
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3528,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3565,
+      "duration": "6m27s",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-x86-review/full-tests.log",
+        "sha256": "9722ee9deceb6612923a5d89bd963ab81df3a4997aff0401bd022fc7437346a8"
+      }
+    }
+  },
+  "architectureSelection": "Required-x86 inputs require win-x86; AMD64 requires win-x64; AnyCPU accepts at least one reviewed Windows companion and authenticates every eligible supplied Windows companion. Hashes are specific to each RID. The native DLL is parsed only as bytes.",
+  "limitations": [
+    "Only the exact reviewed Windows x86 and x64 DLL identities are supported.",
+    "This x86 matrix executes net48 and net8.0, not net10.0.",
+    "The protecting compiler array-return string quirk remains a corpus selection detail; these captures use the same 17-site exclusion as the x64 validation matrix."
+  ],
+  "discardedAttempt": "The initial bin/x86 output reused stale AnyCPU intermediate binaries. Those exploratory captures remain outside this manifest. A forced rebuild and a PE Requires32Bit check in the harness establish the architecture of all final inputs.",
+  "crossPlatformValidation": {
+    "provenance": "corpus/dotfuscator-7-native-linux-x64.provenance.json",
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3538,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3575,
+      "duration": "7m58s",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-linux-review/full-tests.log",
+        "sha256": "dccebcd90087cb3555b9783de294782d8b82ba04c883ae1708bf6ae896506fbf"
+      }
+    },
+    "currentProofSources": [
+      {
+        "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+        "sha256": "11d366921814789ae67fb51b8db2a1219d07f4cec2b9982cb936d9f230735a66"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+        "sha256": "54ffc99b8d1614bdcfc66e39eaa0723dcf7bdef39c9c8e70f683da057f28ed68"
+      },
+      {
+        "path": "corpus/probes/dotfuscator.ps1",
+        "sha256": "4276edbc29ce38fb2012a341ac73e3e447fc922ce028a1512f8f62a80e738a73"
+      }
+    ]
+  },
+  "latestNativeValidation": {
+    "provenance": "corpus/dotfuscator-7-native-linux-arm64.provenance.json",
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3551,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3588,
+      "duration": "5m32s",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-arm64-review/full-tests.log",
+        "sha256": "8da2fad1ccb5a2beca1c27e7cbcbde088ce9933592ecc672441bb695a326c479"
+      }
+    },
+    "currentProofSources": [
+      {
+        "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+        "sha256": "f506965ac8eddfb7eccab2866deee8aa48fdeda267858fa1069f0c9c224d23d0"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+        "sha256": "83f8ab5009f3a05586ae4a417b26c28dabaf4de5c56ca15fc7e7ca160d223e4d"
+      },
+      {
+        "path": "corpus/probes/dotfuscator.ps1",
+        "sha256": "932d84a8e55e994d0723afc47d55565ff88121c773841d0bbdb20e03f4221b16"
+      }
+    ]
+  }
+}

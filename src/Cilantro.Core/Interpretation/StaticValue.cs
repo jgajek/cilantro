@@ -186,4 +186,12 @@ public sealed class StaticWorkBudget
         ConsumedSteps++;
         return true;
     }
+
+    public bool TryConsumeSteps(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (count > RemainingSteps) return false;
+        ConsumedSteps += count;
+        return true;
+    }
 }

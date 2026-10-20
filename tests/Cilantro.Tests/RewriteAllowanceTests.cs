@@ -40,4 +40,17 @@ public sealed class RewriteAllowanceTests
         Assert.DoesNotContain(result.Diagnostics,
             diagnostic => diagnostic.Contains("resource set", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void AResourceRestoredThenRetiredMustBeAbsentFromTheFinalArtifact(bool retained, bool accepted)
+    {
+        using var context = SyntheticContext.Build(module => SyntheticContext.AddType(module, "Host"));
+        if (retained) context.Module.Resources.Add(new EmbeddedResource("temporary.table", [1, 2], ManifestResourceAttributes.Private));
+        var allowance = new RewriteAllowance(
+            AddedResources: new HashSet<string>(StringComparer.Ordinal) { "temporary.table" },
+            RemovedResources: new HashSet<string>(StringComparer.Ordinal) { "temporary.table" });
+        Assert.Equal(accepted, AssemblyVerifier.Verify(context.Module, context.OriginalIdentity, context.OriginalStructure, allowance).Passed);
+    }
 }

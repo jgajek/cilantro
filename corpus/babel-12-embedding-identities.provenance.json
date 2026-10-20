@@ -1,0 +1,1208 @@
+{
+  "capturedAt": "2026-10-20",
+  "compiler": "Babel Obfuscator 12.1.0.0 Enterprise floating trial",
+  "scope": "Nine renaming-enabled captures, six signed, across net48/net8/net10. Generated loaders are actually renamed; public application API names may be preserved by the producer. Full public-key metadata is modeled without CLR-loading targets. Actual declaration names remain bound to original inputs while graph roles use complete identifiers. Optional explicit matching SNK keys re-sign cleaned hosts and recursively cleaned dependencies. The disposable private signing key and Babel evaluation license are not packaged or recorded.",
+  "manifest": {
+    "path": "corpus/babel-12-embedding-identities.manifest.json",
+    "sha256": "352d90e791ec648f8f4784a3d214189fe5288d7d0e63d0afbbc1cbde5b906aa1"
+  },
+  "sources": [
+    {
+      "path": "src/Cilantro.Core/Interpretation/Intrinsics.cs",
+      "sha256": "fa69a2348e4dd6fa6a47d3e133ace3db79197f396c3de8e3aac9b7ba6398e5a6"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/RuntimeTypeRoles.cs",
+      "sha256": "2a5540cb16d89c664b5e815b52a4c2168e35643adc20e82ddca5e39b72f9f013"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeShape.cs",
+      "sha256": "b6c036944b31ae4b192d5794584ed2c185043a3dbc93c9fcf878571975c353a2"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/BabelEmbeddingShape.cs",
+      "sha256": "4a5852b0cf5b58dbbd3e637a3921907bf61a28283e76c942519ad8656630ebf6"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/BabelResourceShape.cs",
+      "sha256": "67e90db1b06608fe78cd2b895a296e89b5b89f1b0dd126455f2dbbb5a16487aa"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/BabelDormantMethodRuntime.cs",
+      "sha256": "cd05681f39382f041fa46fe5f08c6780a7b3bf06eb36ec2ab1f8b3b6e97ae146"
+    },
+    {
+      "path": "src/Cilantro.Core/Pipeline/StrongNameEmission.cs",
+      "sha256": "33c7e9b5687be0aefe8accc40f3dcd2cee54ebde68ed70633255a68f759eb639"
+    },
+    {
+      "path": "src/Cilantro.Core/Pipeline/PipelineOptions.cs",
+      "sha256": "72c1d5dceb580efd84b94bf66d838654b98558ef4b964088b1a347cef68139f2"
+    },
+    {
+      "path": "src/Cilantro.Core/CilantroPipeline.cs",
+      "sha256": "021d4b7fd92c3a96a8d31da55ad73e1a825ccae592bb3c9cc6eda882706b872b"
+    },
+    {
+      "path": "src/Cilantro.Cli/AnalysisArguments.cs",
+      "sha256": "55976f0ef3abeb87afbebf858a418b5856474d5739d975c470ac5b69e0fcf9de"
+    },
+    {
+      "path": "src/Cilantro.Cli/Program.cs",
+      "sha256": "061232ff038d9973120b5b2ec9e50008c401e2dff469700d306719eb2421afe0"
+    },
+    {
+      "path": "corpus/probes/babel-embedding.ps1",
+      "sha256": "d875ac623c3cb2f9aacd2cc4a26b6ade00d1aae753459b2d97a62f9659d0c34b"
+    },
+    {
+      "path": "corpus/probes/new-embedding-test-key.ps1",
+      "sha256": "80b0f4cef23156bd8c7f800032959bf700218a37cee6dd6b06af6abfd13db735"
+    },
+    {
+      "path": "tests/Cilantro.Tests/AssemblyPublicKeyTests.cs",
+      "sha256": "1b11da93b0a2fe54e00f71abf1e1a686665479656876c23119835e054ac6a57c"
+    },
+    {
+      "path": "tests/Cilantro.Tests/RuntimeTypeRolesTests.cs",
+      "sha256": "b8e89e956cedf0dd972d472fcd91eb87fb478469177877f10caed1ac14f1c0fa"
+    },
+    {
+      "path": "tests/Cilantro.Tests/StrongNameEmissionTests.cs",
+      "sha256": "655cd3364931ad5cf02d048e05fdb1b4f0d8f9d3c40579e7b0f067def0b69be7"
+    },
+    {
+      "path": "tests/Cilantro.Tests/AnalysisArgumentsTests.cs",
+      "sha256": "63bf90e8f4e53f36c38ec5879f10accb544c99c1d348a86a0cd7ac3bdcb64181"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelDependencyDeploymentTests.cs",
+      "sha256": "c964c0015167c01351fc4ec52dab01881de477a27084e60f9be2d9f278f81786"
+    },
+    {
+      "path": "tests/Cilantro.Tests/BabelEmbeddingIdentityCorpusTests.cs",
+      "sha256": "36ffe5f5f3739ed22f723236ca814c83f791e1a5003b516702aee1825309d313"
+    }
+  ],
+  "originalGraphAudit": {
+    "path": "C:/cilantro-verify/babel/embedding-identities/scoped-original-shapes.json",
+    "sha256": "aeba2e5e060c7f27f2a73681b3bc478cb00ac12723f3eee9ffd696d2f25f52dd"
+  },
+  "currentGraphAudit": {
+    "path": "C:/cilantro-verify/babel/embedding-identities/scoped-current-shapes.json",
+    "sha256": "2810b4365e4efae30cdd238b9e8a2f74acdfd2fccdbbb633cf568ae5d48a5ebe"
+  },
+  "metadataModelTests": {
+    "sha256": "4c10c65adb47a9572f31ec0f084e2d41fe86e063b1228d0c5843eff3408e6faa",
+    "path": "C:/cilantro-verify/babel/embedding-identities/key-scoped-focused.log",
+    "passed": 49,
+    "failed": 0
+  },
+  "focusedTests": {
+    "sha256": "8be1e2f63c77fd2e0734dc356bf1b40275ea81bcfc956b103652a01cf44f2535",
+    "path": "C:/cilantro-verify/babel/embedding-identities/focused-final.log",
+    "passed": 69,
+    "failed": 0
+  },
+  "signatureAudit": {
+    "path": "C:/cilantro-verify/babel/embedding-identities/identity-audit.json",
+    "sha256": "b95617724128523eca64841f7f508ad888123449422d6627e0184c4757dce1c5"
+  },
+  "ilVerification": {
+    "sha256": "9336487511f125fd3a3caaf87345e35b5c1ecd5c3869c2c20781e6c22355ed6b",
+    "findings": 0,
+    "images": 9,
+    "unreadable": 0,
+    "path": "C:/cilantro-verify/babel/embedding-identities/ilverify.json",
+    "framework": "net48"
+  },
+  "previousEmbeddingCorpus": {
+    "audit": {
+      "path": "C:/cilantro-verify/babel/embedding-identities/initial-corpus-audit.json",
+      "sha256": "5451e0fd4744ad34e06f18394004151f938f282e914ab4e6d9c19373501d94f0"
+    },
+    "captures": 12,
+    "behavior": {
+      "path": "C:/cilantro-verify/babel/embedding-final/cleaned_identity_review-behavior.json",
+      "sha256": "6bb443a2f7970bc3e38101f2efd1cda5d5e9aa0f027dfc3f6856e08aa6fcc0f6"
+    }
+  },
+  "totals": {
+    "recoveredDependencyImages": 18,
+    "retiredLoadersAndBundles": 9,
+    "validSignedOutputImages": 18,
+    "captures": 9,
+    "threeWayBehaviorComparisons": 9,
+    "signedCaptures": 6
+  },
+  "audit": {
+    "Captures": 9,
+    "RecoveredImages": 18,
+    "RetiredLoaders": 9,
+    "ValidOutputSignatures": 18,
+    "Rows": [
+      {
+        "Id": "net10.0-renamed",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "a",
+        "ProtectedSha256": "b11ca2706b5f87195f77274df3ef4906b529a831a706801f2c95e89c3dbc46af",
+        "CleanedSha256": "9df2730a620bc8ba442d1726a842a410835e52bd119c99c9e03aff8c341ffa8a",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+        "PublicKeySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "SignatureValid": null,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "7e804163454f0a86062fffeae43c75f64ca489cee45e45c43832d0740d06034d",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=null",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": null
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "49901aa2748b33aeb4f2654d39ee61e87637d8ea2d08a08d7359cf66fe19d16e",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=null",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": null
+          }
+        ]
+      },
+      {
+        "Id": "net10.0-signed-combined",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "f",
+        "ProtectedSha256": "b8222c9a92a55ac30413e0513cb57faa9f17f585e49bf8b274bc6e8250020207",
+        "CleanedSha256": "4ee3c52156e3c56b8ca76747f584a39644d5eac785d4cd10f281ab1f73c447f5",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+        "PublicKeySha256": "e7bc90b85876436d44ab50aa03d06d08e66da24ad16d6dfd8f80d838c98a2f5b",
+        "SignatureValid": true,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "4fa52d5c6f37e0f94bc6374745586a2204fc5391f90efc4ba61e6fb01ff0863b",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": true
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "bacc484a1db7d71c193b74ba64e1299c9b012130f3afdafe54130814f560dff9",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": true
+          }
+        ]
+      },
+      {
+        "Id": "net10.0-signed-renamed",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "a",
+        "ProtectedSha256": "195d3618a8567ead4b36c37e9c5a203cb8b14dc46fa8c3e027e7c98880eaf170",
+        "CleanedSha256": "6f342d1ba295f80ae4e34263468fde4a8ef8dd92a31fb9b7305626f6b87f6ce3",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+        "PublicKeySha256": "e7bc90b85876436d44ab50aa03d06d08e66da24ad16d6dfd8f80d838c98a2f5b",
+        "SignatureValid": true,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "4fa52d5c6f37e0f94bc6374745586a2204fc5391f90efc4ba61e6fb01ff0863b",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": true
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "bacc484a1db7d71c193b74ba64e1299c9b012130f3afdafe54130814f560dff9",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": true
+          }
+        ]
+      },
+      {
+        "Id": "net48-renamed",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "a",
+        "ProtectedSha256": "1a20dc6f0ad334afa8fb50c1115405b95bb0768c5152b1e453ca9bcfecef4991",
+        "CleanedSha256": "387cfb95ea6f732bc54b00d4ab0c41f0abfe9020bdc9b4b142483acb525b353d",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+        "PublicKeySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "SignatureValid": null,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "45bc3ffbed3c6b2d9c0eb0eba4ec48451e11aad5868791c6b783cc7256e5c9ff",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=null",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": null
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "20d2409075b19ed1a64e1f6278201107ede5d8512cd96eba3e1bfd675a51b71f",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=null",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": null
+          }
+        ]
+      },
+      {
+        "Id": "net48-signed-combined",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "e",
+        "ProtectedSha256": "80b6ba020b27517eb932ab7a75971e2daa5fb03d8fe3db6ea95c9e65a77b267b",
+        "CleanedSha256": "a2e29161f46da82f3485bc3f584be0e2075a4b79105d63f58b4a16a2e3eac114",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+        "PublicKeySha256": "e7bc90b85876436d44ab50aa03d06d08e66da24ad16d6dfd8f80d838c98a2f5b",
+        "SignatureValid": true,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "81aa5fe1405792f9c1bb1c80ff74594029a6f4a0b5b3d20b5a0bb358acf95e1b",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": true
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "75a06f34c0adc4544ea00ce5174fe936ed057467e9e9d9cef689ed6f290e5216",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": true
+          }
+        ]
+      },
+      {
+        "Id": "net48-signed-renamed",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "a",
+        "ProtectedSha256": "1bae2b8932b6b482ab0853ddba0b8a555f9eebe4fd58fbb0901dfc011b1c5f46",
+        "CleanedSha256": "3f9d02c37cb7a2962543250c576e4e8dca7ed0ee3fbf7ce4351eeebd13ae7921",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+        "PublicKeySha256": "e7bc90b85876436d44ab50aa03d06d08e66da24ad16d6dfd8f80d838c98a2f5b",
+        "SignatureValid": true,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "81aa5fe1405792f9c1bb1c80ff74594029a6f4a0b5b3d20b5a0bb358acf95e1b",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": true
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "75a06f34c0adc4544ea00ce5174fe936ed057467e9e9d9cef689ed6f290e5216",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": true
+          }
+        ]
+      },
+      {
+        "Id": "net8.0-renamed",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "a",
+        "ProtectedSha256": "e41ebae0ff95d165040db93eb56aded422ce391c39223d0577d4b4c4c15aa888",
+        "CleanedSha256": "227df59dd5d2ae53f297f272a70e6b8013b274b0e387a023ba08e6339edd42a3",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
+        "PublicKeySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "SignatureValid": null,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "f404090d5aae13a45faf537dc7984c46fd2b553285b8101f6066316fce7ab8bd",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=null",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": null
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "df0e4beda78fb7ef139875aed349396c4f0e54f1ff314c3a6486d382256fc9ee",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=null",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": null
+          }
+        ]
+      },
+      {
+        "Id": "net8.0-signed-combined",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "f",
+        "ProtectedSha256": "2b091033034e0aaf91e0cb7a570842f74d679e85ae081a2e98cf246ac3314dd3",
+        "CleanedSha256": "1b8db42dd39c29a452fd039872918afdc7ab442addc16f8d533282d34a186953",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+        "PublicKeySha256": "e7bc90b85876436d44ab50aa03d06d08e66da24ad16d6dfd8f80d838c98a2f5b",
+        "SignatureValid": true,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "6e4fa06cb81f1ddfd688b410dae168a919c97ae4a81d99dbec70b35a6dd7f71f",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": true
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "c3c65eea2b20dcc88174d9821e3961632e7747d314a7076fd44545b5935bc9d1",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": true
+          }
+        ]
+      },
+      {
+        "Id": "net8.0-signed-renamed",
+        "RenamedEntryPoint": false,
+        "ProtectedLoader": "a",
+        "ProtectedSha256": "818d3df2f85928bb7831843e421cf4d5dbbd2ffe4109b4d3af85dcade1bcbfea",
+        "CleanedSha256": "a1675f5dbf7f4fbb5f4c7958b14c49da5d1dde3814e6786a439a05b394dfe539",
+        "Assembly": "BabelEmbedProbe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+        "PublicKeySha256": "e7bc90b85876436d44ab50aa03d06d08e66da24ad16d6dfd8f80d838c98a2f5b",
+        "SignatureValid": true,
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "6e4fa06cb81f1ddfd688b410dae168a919c97ae4a81d99dbec70b35a6dd7f71f",
+            "Assembly": "BabelEmbedLeaf, Version=3.2.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Leaf.Payload": "2f71cee3b2a2623268c7955b3c345dd30c044df3eda9d5eed8a902cbe482b434"
+            },
+            "SignatureValid": true
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "c3c65eea2b20dcc88174d9821e3961632e7747d314a7076fd44545b5935bc9d1",
+            "Assembly": "BabelEmbedLibrary, Version=2.1.0.0, Culture=neutral, PublicKeyToken=7aef3d13c3f7238a",
+            "Resources": {
+              "Library.Payload": "64c6e904fd714c9b979d4d3f24a38ba4bb477291064de025b9c8557b076c647b"
+            },
+            "SignatureValid": true
+          }
+        ]
+      }
+    ]
+  },
+  "captures": [
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net10.0-renamed/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "84eb5a2f0ee132372b27e3e310117bd23002f6de223cc2df5b5dd2ee28a54e4b"
+      },
+      "id": "net10.0-renamed",
+      "fixture": {
+        "Id": "net10.0-renamed",
+        "Framework": "net10.0",
+        "Profile": "renamed",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net10.0-renamed/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net10.0-renamed/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events"
+        ],
+        "OracleSha256": "aca815ab7c529bb723161beb0cc8917f2c5e517b029f6fb0ed5b72f6ca4a58db",
+        "ProtectedSha256": "b11ca2706b5f87195f77274df3ef4906b529a831a706801f2c95e89c3dbc46af",
+        "LibrarySha256": "9540a9e7f48a3ac45aaaaa3fd026c817e13b2d7fce0a2f2d9fcc76bf00b57c0f",
+        "LeafSha256": "745bacfdeaae20be8133bb2aec967b1505687c9c8f1a5ce2fb5764ad58a42c30",
+        "EmbeddedLibrarySha256": "9540a9e7f48a3ac45aaaaa3fd026c817e13b2d7fce0a2f2d9fcc76bf00b57c0f"
+      },
+      "behavior": {
+        "Id": "net10.0-renamed",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "7e804163454f0a86062fffeae43c75f64ca489cee45e45c43832d0740d06034d",
+            "Length": 4096
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "49901aa2748b33aeb4f2654d39ee61e87637d8ea2d08a08d7359cf66fe19d16e",
+            "Length": 4608
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net10.0-renamed/cleaned_final/BabelEmbedProbe.cleaned.dll",
+        "sha256": "9df2730a620bc8ba442d1726a842a410835e52bd119c99c9e03aff8c341ffa8a"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net10.0-signed-combined/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "00ddf17e8c1ac6ba517efb6b7224ac66ccfc4ae8cab944722a6f6f33958e0c38"
+      },
+      "id": "net10.0-signed-combined",
+      "fixture": {
+        "Id": "net10.0-signed-combined",
+        "Framework": "net10.0",
+        "Profile": "signed-combined",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net10.0-signed-combined/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net10.0-signed-combined/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events",
+          "--resourceencryption",
+          "--stringencryption",
+          "xor",
+          "--controlflow",
+          "switch=on",
+          "--proxy",
+          "all",
+          "--keyfile",
+          "C:/cilantro-verify/babel/embedding-identities/test-only.snk"
+        ],
+        "OracleSha256": "3db1e804693196417f9886af672157b756d43b6dc0c118e1afb0e233d9de598d",
+        "ProtectedSha256": "b8222c9a92a55ac30413e0513cb57faa9f17f585e49bf8b274bc6e8250020207",
+        "LibrarySha256": "5bf6d2ab170a15f3024021d927148b0165677915abb03348c51508d36c271c67",
+        "LeafSha256": "830429befc45bfbe0c966c82207e59fc2341b9a0695b3e73e1842918b5b08da6",
+        "EmbeddedLibrarySha256": "5bf6d2ab170a15f3024021d927148b0165677915abb03348c51508d36c271c67"
+      },
+      "behavior": {
+        "Id": "net10.0-signed-combined",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "4fa52d5c6f37e0f94bc6374745586a2204fc5391f90efc4ba61e6fb01ff0863b",
+            "Length": 4608
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "bacc484a1db7d71c193b74ba64e1299c9b012130f3afdafe54130814f560dff9",
+            "Length": 5120
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net10.0-signed-combined/cleaned_final/BabelEmbedProbe.cleaned.dll",
+        "sha256": "4ee3c52156e3c56b8ca76747f584a39644d5eac785d4cd10f281ab1f73c447f5"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net10.0-signed-renamed/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "3fa480333923c508aa79c70e22f3c04ab6276559b08e0c7bb7a7579107dff376"
+      },
+      "id": "net10.0-signed-renamed",
+      "fixture": {
+        "Id": "net10.0-signed-renamed",
+        "Framework": "net10.0",
+        "Profile": "signed-renamed",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net10.0-signed-renamed/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net10.0-signed-renamed/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events",
+          "--keyfile",
+          "C:/cilantro-verify/babel/embedding-identities/test-only.snk"
+        ],
+        "OracleSha256": "3db1e804693196417f9886af672157b756d43b6dc0c118e1afb0e233d9de598d",
+        "ProtectedSha256": "195d3618a8567ead4b36c37e9c5a203cb8b14dc46fa8c3e027e7c98880eaf170",
+        "LibrarySha256": "5bf6d2ab170a15f3024021d927148b0165677915abb03348c51508d36c271c67",
+        "LeafSha256": "830429befc45bfbe0c966c82207e59fc2341b9a0695b3e73e1842918b5b08da6",
+        "EmbeddedLibrarySha256": "5bf6d2ab170a15f3024021d927148b0165677915abb03348c51508d36c271c67"
+      },
+      "behavior": {
+        "Id": "net10.0-signed-renamed",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "4fa52d5c6f37e0f94bc6374745586a2204fc5391f90efc4ba61e6fb01ff0863b",
+            "Length": 4608
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "bacc484a1db7d71c193b74ba64e1299c9b012130f3afdafe54130814f560dff9",
+            "Length": 5120
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net10.0-signed-renamed/cleaned_final/BabelEmbedProbe.cleaned.dll",
+        "sha256": "6f342d1ba295f80ae4e34263468fde4a8ef8dd92a31fb9b7305626f6b87f6ce3"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net48-renamed/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "aa18c894fb26c2c706f7eb99e0996f6448b2e33e0e2f4d87333b258a84b3f39e"
+      },
+      "id": "net48-renamed",
+      "fixture": {
+        "Id": "net48-renamed",
+        "Framework": "net48",
+        "Profile": "renamed",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net48-renamed/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net48-renamed/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events"
+        ],
+        "OracleSha256": "a0127bb5a913e80305b169901e667145783a43ae434a40ce451d52ab60f422ae",
+        "ProtectedSha256": "1a20dc6f0ad334afa8fb50c1115405b95bb0768c5152b1e453ca9bcfecef4991",
+        "LibrarySha256": "d8901550664e4fea179c4516028168034639e659d0d308688360b6edad38e1d7",
+        "LeafSha256": "6c911e9e2c59f24cfd17deb366e839ca37b4e2296f2d661b03b0584a8167b26c",
+        "EmbeddedLibrarySha256": "d8901550664e4fea179c4516028168034639e659d0d308688360b6edad38e1d7"
+      },
+      "behavior": {
+        "Id": "net48-renamed",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "45bc3ffbed3c6b2d9c0eb0eba4ec48451e11aad5868791c6b783cc7256e5c9ff",
+            "Length": 4608
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "20d2409075b19ed1a64e1f6278201107ede5d8512cd96eba3e1bfd675a51b71f",
+            "Length": 4608
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net48-renamed/cleaned_final/BabelEmbedProbe.cleaned.exe",
+        "sha256": "387cfb95ea6f732bc54b00d4ab0c41f0abfe9020bdc9b4b142483acb525b353d"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net48-signed-combined/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "742d56f4da413273217e56289dd9423d7dc775f43fb2a7b155015b1eedab5b51"
+      },
+      "id": "net48-signed-combined",
+      "fixture": {
+        "Id": "net48-signed-combined",
+        "Framework": "net48",
+        "Profile": "signed-combined",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net48-signed-combined/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net48-signed-combined/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events",
+          "--resourceencryption",
+          "--stringencryption",
+          "xor",
+          "--controlflow",
+          "switch=on",
+          "--proxy",
+          "all",
+          "--keyfile",
+          "C:/cilantro-verify/babel/embedding-identities/test-only.snk"
+        ],
+        "OracleSha256": "ea6b44905cb9e0111711f2d77688e1eec81f6e5e508352d38b766d67129d3bd9",
+        "ProtectedSha256": "80b6ba020b27517eb932ab7a75971e2daa5fb03d8fe3db6ea95c9e65a77b267b",
+        "LibrarySha256": "81451524a6140d75d2e08234c401660b1089e592d9cc5e7586dada80614158be",
+        "LeafSha256": "998db7a2abd53e41725ed868c33f3440da6883863671d335b57d020ae3cdfe80",
+        "EmbeddedLibrarySha256": "81451524a6140d75d2e08234c401660b1089e592d9cc5e7586dada80614158be"
+      },
+      "behavior": {
+        "Id": "net48-signed-combined",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "81aa5fe1405792f9c1bb1c80ff74594029a6f4a0b5b3d20b5a0bb358acf95e1b",
+            "Length": 5120
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "75a06f34c0adc4544ea00ce5174fe936ed057467e9e9d9cef689ed6f290e5216",
+            "Length": 5120
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net48-signed-combined/cleaned_final/BabelEmbedProbe.cleaned.exe",
+        "sha256": "a2e29161f46da82f3485bc3f584be0e2075a4b79105d63f58b4a16a2e3eac114"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net48-signed-renamed/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "895906df95dd0bd607b8a1c9799fe955e96965ca1a386cba3dd3103792bdb5d3"
+      },
+      "id": "net48-signed-renamed",
+      "fixture": {
+        "Id": "net48-signed-renamed",
+        "Framework": "net48",
+        "Profile": "signed-renamed",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net48-signed-renamed/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net48-signed-renamed/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events",
+          "--keyfile",
+          "C:/cilantro-verify/babel/embedding-identities/test-only.snk"
+        ],
+        "OracleSha256": "ea6b44905cb9e0111711f2d77688e1eec81f6e5e508352d38b766d67129d3bd9",
+        "ProtectedSha256": "1bae2b8932b6b482ab0853ddba0b8a555f9eebe4fd58fbb0901dfc011b1c5f46",
+        "LibrarySha256": "81451524a6140d75d2e08234c401660b1089e592d9cc5e7586dada80614158be",
+        "LeafSha256": "998db7a2abd53e41725ed868c33f3440da6883863671d335b57d020ae3cdfe80",
+        "EmbeddedLibrarySha256": "81451524a6140d75d2e08234c401660b1089e592d9cc5e7586dada80614158be"
+      },
+      "behavior": {
+        "Id": "net48-signed-renamed",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "81aa5fe1405792f9c1bb1c80ff74594029a6f4a0b5b3d20b5a0bb358acf95e1b",
+            "Length": 5120
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "75a06f34c0adc4544ea00ce5174fe936ed057467e9e9d9cef689ed6f290e5216",
+            "Length": 5120
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net48-signed-renamed/cleaned_final/BabelEmbedProbe.cleaned.exe",
+        "sha256": "3f9d02c37cb7a2962543250c576e4e8dca7ed0ee3fbf7ce4351eeebd13ae7921"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net8.0-renamed/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "42aae368e297d069044f5897bfd5b9619aed1632f5c86be090340daec66a1e21"
+      },
+      "id": "net8.0-renamed",
+      "fixture": {
+        "Id": "net8.0-renamed",
+        "Framework": "net8.0",
+        "Profile": "renamed",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net8.0-renamed/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net8.0-renamed/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events"
+        ],
+        "OracleSha256": "d26c032c1ebf1f85d43f4aca445a3d7a5f7033d86f0a3503a2c5022fcf176f42",
+        "ProtectedSha256": "e41ebae0ff95d165040db93eb56aded422ce391c39223d0577d4b4c4c15aa888",
+        "LibrarySha256": "7db7c6e9003f3b3208248857331225937a2d5a0a82e6632ded8613f4aaf5beb8",
+        "LeafSha256": "c89fa2d44c80fdead45ff1d5575309ef92110f2121031a9add4c749d417c3191",
+        "EmbeddedLibrarySha256": "7db7c6e9003f3b3208248857331225937a2d5a0a82e6632ded8613f4aaf5beb8"
+      },
+      "behavior": {
+        "Id": "net8.0-renamed",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "f404090d5aae13a45faf537dc7984c46fd2b553285b8101f6066316fce7ab8bd",
+            "Length": 4096
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "df0e4beda78fb7ef139875aed349396c4f0e54f1ff314c3a6486d382256fc9ee",
+            "Length": 4608
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net8.0-renamed/cleaned_final/BabelEmbedProbe.cleaned.dll",
+        "sha256": "227df59dd5d2ae53f297f272a70e6b8013b274b0e387a023ba08e6339edd42a3"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net8.0-signed-combined/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "cccf0156e4af769e117ee9675e9aa310427b98482f7dd3333721b9a787833bfe"
+      },
+      "id": "net8.0-signed-combined",
+      "fixture": {
+        "Id": "net8.0-signed-combined",
+        "Framework": "net8.0",
+        "Profile": "signed-combined",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net8.0-signed-combined/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net8.0-signed-combined/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events",
+          "--resourceencryption",
+          "--stringencryption",
+          "xor",
+          "--controlflow",
+          "switch=on",
+          "--proxy",
+          "all",
+          "--keyfile",
+          "C:/cilantro-verify/babel/embedding-identities/test-only.snk"
+        ],
+        "OracleSha256": "ab7fb57e4ce792f588a7e3b44ac7bb2b62f0a33afd570a857f809ac35c83523e",
+        "ProtectedSha256": "2b091033034e0aaf91e0cb7a570842f74d679e85ae081a2e98cf246ac3314dd3",
+        "LibrarySha256": "d51f39859b2394a5f5117e3676e38ff93e22b826585fffc5341fe93420a493e2",
+        "LeafSha256": "f7ef110847bc69bdba7d9b6679e1db59b504b8920b295e8910ecf623d67c7b32",
+        "EmbeddedLibrarySha256": "d51f39859b2394a5f5117e3676e38ff93e22b826585fffc5341fe93420a493e2"
+      },
+      "behavior": {
+        "Id": "net8.0-signed-combined",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "6e4fa06cb81f1ddfd688b410dae168a919c97ae4a81d99dbec70b35a6dd7f71f",
+            "Length": 4608
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "c3c65eea2b20dcc88174d9821e3961632e7747d314a7076fd44545b5935bc9d1",
+            "Length": 5120
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net8.0-signed-combined/cleaned_final/BabelEmbedProbe.cleaned.dll",
+        "sha256": "1b8db42dd39c29a452fd039872918afdc7ab442addc16f8d533282d34a186953"
+      }
+    },
+    {
+      "recursiveReport": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net8.0-signed-renamed/cleaned_final/BabelEmbedProbe.embedded.json",
+        "sha256": "0329e1cffe5f029034c2d37c07f506de493e574ec964163b3c0bda5b3cdeca64"
+      },
+      "id": "net8.0-signed-renamed",
+      "fixture": {
+        "Id": "net8.0-signed-renamed",
+        "Framework": "net8.0",
+        "Profile": "signed-renamed",
+        "CompilerVersion": "12.1.0.0",
+        "CompilerSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "Options": [
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "8675309",
+          "--use",
+          "tagassembly=on",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net8.0-signed-renamed/oracle/BabelEmbedLibrary.dll",
+          "--embed",
+          "C:\\cilantro-verify\\babel\\embedding-identities/net8.0-signed-renamed/oracle/BabelEmbedLeaf.dll",
+          "--types",
+          "--methods",
+          "--fields",
+          "--properties",
+          "--events",
+          "--keyfile",
+          "C:/cilantro-verify/babel/embedding-identities/test-only.snk"
+        ],
+        "OracleSha256": "ab7fb57e4ce792f588a7e3b44ac7bb2b62f0a33afd570a857f809ac35c83523e",
+        "ProtectedSha256": "818d3df2f85928bb7831843e421cf4d5dbbd2ffe4109b4d3af85dcade1bcbfea",
+        "LibrarySha256": "d51f39859b2394a5f5117e3676e38ff93e22b826585fffc5341fe93420a493e2",
+        "LeafSha256": "f7ef110847bc69bdba7d9b6679e1db59b504b8920b295e8910ecf623d67c7b32",
+        "EmbeddedLibrarySha256": "d51f39859b2394a5f5117e3676e38ff93e22b826585fffc5341fe93420a493e2"
+      },
+      "behavior": {
+        "Id": "net8.0-signed-renamed",
+        "Match": true,
+        "Kinds": [
+          "oracle",
+          "protected",
+          "cleaned"
+        ],
+        "Scope": "Source/protected/cleaned embedding comparison with ordinary deployed dependency files",
+        "Dependencies": [
+          {
+            "Name": "BabelEmbedLeaf.dll",
+            "Sha256": "6e4fa06cb81f1ddfd688b410dae168a919c97ae4a81d99dbec70b35a6dd7f71f",
+            "Length": 4608
+          },
+          {
+            "Name": "BabelEmbedLibrary.dll",
+            "Sha256": "c3c65eea2b20dcc88174d9821e3961632e7747d314a7076fd44545b5935bc9d1",
+            "Length": 5120
+          }
+        ],
+        "Runs": [
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          },
+          {
+            "ExitCode": 0,
+            "TimedOut": false,
+            "Stdout": "EMBED_PROBE 73 -32\r\nLIBRARY_RESOURCE_λ_73\r\nLEAF_RESOURCE_Ω_42\r\nBabelEmbedLibrary:2.1.0.0\r\nBabelEmbedLeaf:3.2.0.0\r\n",
+            "Stderr": ""
+          }
+        ]
+      },
+      "cleaned": {
+        "path": "C:\\cilantro-verify\\babel\\embedding-identities\\net8.0-signed-renamed/cleaned_final/BabelEmbedProbe.cleaned.dll",
+        "sha256": "a1675f5dbf7f4fbb5f4c7958b14c49da5d1dde3814e6786a439a05b394dfe539"
+      }
+    }
+  ],
+  "fullSuite": {
+    "path": "C:/cilantro-verify/babel/embedding-identities/full-suite.log",
+    "sha256": "9667020bda1176486e350559dc93120cfa68fe83fdb03e628079d7af3be3e088",
+    "passed": 3846,
+    "skipped": 37,
+    "failed": 0,
+    "total": 3883,
+    "duration": "9 m 28 s",
+    "date": "2026-10-20"
+  }
+}

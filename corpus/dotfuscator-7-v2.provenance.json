@@ -1,0 +1,239 @@
+{
+  "capturedOn": "2026-10-19",
+  "version": "7.9.0+2381db6511",
+  "method": "Static managed graph templates, reviewed native codec, ECDSA-P256/SHA256 environment validation and original caller metadata; no native code executed during recovery.",
+  "nativeKeyReview": "Runtime.Extensions.dll SHA-256 pinned in DotfuscatorV2Codec; __eck at RVA 0x1000, framing at RVA 0x1dc0, environment signature at RVA 0x30e0; native/managed xorshift masks cancel only for matching signed seeds.",
+  "oracleRuntimeComparisons": 18,
+  "oracleRuntimeComparisonsPassed": 18,
+  "originalCaptureComparison": "Protected and cleaned stdout hashes match; original protected build already corrupts TransformBuffer strings, so default execution differs from its oracle.",
+  "originalCaptureStdoutSha256": "1f45b5706269990832571a5093acc30c16e2ea56dc74bbf9b47025c86abeef6b",
+  "fixtures": [
+    {
+      "id": "net48-native-strings",
+      "inputSha256": "8c23ba907c03dfab7c249d0788d4b56797b68f4d04ce31517242f1c60bbd82e7",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "a0e07d7733054dcc7800b93e036bfbd0e381cc6a0afbceb9cfe5c158212ec8c3",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net48-native-combined",
+      "inputSha256": "fdede098ab06128eff022d74be21f0ce1111aa079626f27f112dcca24112352b",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "f53d083bdb218a7aba9de006fb0372cc3921ff8124ada3d322e8d5863e001e69",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net48-native-renamed",
+      "inputSha256": "a056e51fa469c65aafb8c82da4768fb7ef1b9db37b5d3b8856c250e4181b18f8",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "f49b7796e002b51a3f5fde08e20a49ccada403274652677c9bb1293740a36f8c",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net8.0-native-strings",
+      "inputSha256": "d07571f230d8d7fdac02f6144e6a2d1291320d3258b2561fe40e32abea8f6bf4",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "9934347b3b9577dec95943f32722ac08ae5ab0f3df171916ad36c2563ec48a0c",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net8.0-native-combined",
+      "inputSha256": "264f48a49004fd831451dde82ea1b8cd7c878a4749013ad0247212058fb52dbe",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "4698f4cfc895bf33824d4d374a04dc0b7c247bfdb41446b3ae036f7d0c947d48",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net8.0-native-renamed",
+      "inputSha256": "95ceb7fbfbae948601280d1ea0bbb242af40e9f25b735c98c66ccd598d3081f3",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "2372dccc86d76250a762948bd286569585c92f36e1a90ae37e97838b3eba17f0",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net10.0-native-strings",
+      "inputSha256": "5cd9ec3331a46646420701f884c0e4fdd79474317ea7a5dc464c05618ac6876e",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "0aa41d80e279b82cd6be4ca12db79787641f3714dd758c5a488f59c2b7f54610",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net10.0-native-combined",
+      "inputSha256": "355cc44ee1b11b6f0543da9e9e6641386c28c87c5572d14be9ad69c926edb8ad",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "6d7930eb348a1f2486a37038256216d0544b17b78422327b23ac03bf8847479d",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net10.0-native-renamed",
+      "inputSha256": "419e7cd6f01fbb62b1096034c7f9f0feb2976acbce658d85fffddd95034d33a1",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "e1237b95e05a49fa85da99b575e1d904064b4699d8449d903c6d9f30d0ab356d",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 17
+    },
+    {
+      "id": "net48-native-original",
+      "inputSha256": "fb7a431dff97b8efad37916b31e688cd138216e1e427d2ab61da35bf2f8e943a",
+      "environmentFile": "environment0f617e02.bin",
+      "environmentSha256": "c61b5efdc33a0039ecfbd0f9c7d33207edc77f8bc099018f546e7599ff9e5235",
+      "nativeSha256": "1b1f5d593b308ffd6746e333b86719e0ba057cf0ccaa5f009dd076a1d40daac2",
+      "expectedDecodedSites": 19
+    }
+  ],
+  "decoderGraphFingerprints": {
+    "net48": "5847145b09c15ba9749d1cd237881048e8e85e5ef2be002305dfb1ce28af9d9e",
+    "net8": "5e45be2b37aa99e3f1bc7cac488cccca911e753ec4a48703106779a08655bc9a",
+    "net10": "d8ece9cd3afba19307bec6cc57ad0fac3160fc6b434f734984e99ab0c6a5ce58"
+  },
+  "nativeRuntimeRetirement": {
+    "scope": "Complete native-key v2 string recovery retires attributed private decoder helpers and the unused public NativeCPP bridge. Original NativeCPP whole-type fingerprints and exact reviewed CoreCLR inlining variants are required.",
+    "originalWholeTypeFingerprints": [
+      "45b06fb056a2db0c04844eef672b162e45ba59dbd47f4789b1c9ed2475dbb50a",
+      "ef9423095f9e2661c98acf2d46db67c24f799abbbd833ecc2da6f97109c79b7d",
+      "12f751d2c2b76986197caaf7708635a75c9e08f7320a582dc80c365a96c1a4a3"
+    ],
+    "coreClrInliningFingerprints": [
+      "7f33ea489cbe6c3f5e41fc4f4060fbd3251e96a2bee9ec7a6b02a756c090cd92",
+      "75b68b8e6117109530b8370be09de880346da81acd347c8aa294cc086b785dfa"
+    ],
+    "normalization": "Independent metadata copies only. Exact signed environment filename becomes a role label; Windows kernel32.dll spelling is case-insensitive, with exports and all other libraries exact. Normalized whole-type graphs retain other operands, imports, handlers, layouts and fields.",
+    "inliningReview": "The two CoreCLR variants differ only at nine calls: original same-owner no-argument call/ret platform wrappers become the same OperatingSystem Boolean APIs. Source/current graph differences were inspected in native-proof-diff[-net10]-{source,current}.json.",
+    "metadata": "Type/field/method custom attributes, constructor scopes, field and method signature scopes, constant kinds/values and parameter attributes remain bound to the original proof. Verification precedes this cleanup invocation removing its proved constant predicates.",
+    "guards": "All v2 sites must be resolved and companion authentication pass. Entry points, outside type-name literals, calls, handles, signatures, attributes and every surviving metadata reference prevent deletion. Changed graphs, added members, forged signature scopes, changed attributes and --keep-runtime retain the bridge.",
+    "nativeBridgeOutputsVerified": 13,
+    "runtimeComparisonsPassed": 37,
+    "runtimeEvidence": "native-retirement-runtime-evidence.json",
+    "focusedTestsPassed": 49,
+    "focusedTestLog": "native-retirement-focused-final.log",
+    "testLog": "native-retirement-full-verified.log",
+    "remainingSwitchDispatchers": 0,
+    "nativeCompanionsInCleanedOutputs": 0,
+    "applicationBodiesExecutedDuringRecovery": 0,
+    "proofSources": [
+      {
+        "path": "src/Cilantro.Core/Analysis/DotfuscatorV2Shape.cs",
+        "sha256": "f9495c200962c87db734af24efd05bdea20b868f293289bbd71132d996594621"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorV2StringPass.cs",
+        "sha256": "f6ecf92dc9ea3bd6e47b18d188f928b5dd2a7f3399522de6a3abdc63ac6b1a81"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorNativeRuntime.cs",
+        "sha256": "1d05c9b7d6ecfc088104d4bb8bf4d52668fe973967d9aa660b30f1034cdba6fd"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+        "sha256": "1dc0ffc095253c48f5ede2c8958010202db67dfb3951f3f30ecb7256bfde17f0"
+      },
+      {
+        "path": "tests/Cilantro.Tests/DotfuscatorV2CorpusTests.cs",
+        "sha256": "2a94790c16e51868d28f71d0341776007f95bbdda8f1a3f662a8091f8425c30b"
+      },
+      {
+        "path": "tests/Cilantro.Tests/DotfuscatorMixedCheckTests.cs",
+        "sha256": "dc32086e937bf366eed8148b64e49c3ff352bc2e693ebaff57b3e219fd24194b"
+      },
+      {
+        "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeMetadata.cs",
+        "sha256": "425ea3e24814bb5b0e0d66c294c17fb57dbba9dc433748c6fe04256a93508632"
+      }
+    ],
+    "passedTests": 3350,
+    "skippedTests": 37,
+    "failedTests": 0,
+    "metadataRefactorValidation": "The unchanged extra-metadata description is shared with resource-family retirement. Resource/v2 focused suite: 63 passed; current full validation is recorded in the resource provenance runtimeRetirement section."
+  },
+  "x86Extension": {
+    "manifest": "corpus/dotfuscator-7-native-x86.manifest.json",
+    "provenance": "corpus/dotfuscator-7-native-x86.provenance.json",
+    "capturedAt": "2026-10-20",
+    "captures": 6,
+    "recoveredSites": 102,
+    "runtimeComparisons": 12
+  },
+  "linuxExtension": {
+    "manifest": "corpus/dotfuscator-7-native-linux-x64.manifest.json",
+    "provenance": "corpus/dotfuscator-7-native-linux-x64.provenance.json",
+    "capturedAt": "2026-10-20",
+    "captures": 6,
+    "recoveredSites": 102,
+    "runtimeComparisons": 12
+  },
+  "crossPlatformValidation": {
+    "provenance": "corpus/dotfuscator-7-native-linux-x64.provenance.json",
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3538,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3575,
+      "duration": "7m58s",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-linux-review/full-tests.log",
+        "sha256": "dccebcd90087cb3555b9783de294782d8b82ba04c883ae1708bf6ae896506fbf"
+      }
+    },
+    "currentProofSources": [
+      {
+        "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+        "sha256": "11d366921814789ae67fb51b8db2a1219d07f4cec2b9982cb936d9f230735a66"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+        "sha256": "54ffc99b8d1614bdcfc66e39eaa0723dcf7bdef39c9c8e70f683da057f28ed68"
+      },
+      {
+        "path": "corpus/probes/dotfuscator.ps1",
+        "sha256": "4276edbc29ce38fb2012a341ac73e3e447fc922ce028a1512f8f62a80e738a73"
+      }
+    ]
+  },
+  "arm64Extension": {
+    "manifest": "corpus/dotfuscator-7-native-linux-arm64.manifest.json",
+    "provenance": "corpus/dotfuscator-7-native-linux-arm64.provenance.json",
+    "capturedAt": "2026-10-20",
+    "captures": 6,
+    "sites": 102,
+    "emulatedRuntimeComparisons": 12,
+    "anyCpuEmulatedComparisons": 4
+  },
+  "latestNativeValidation": {
+    "provenance": "corpus/dotfuscator-7-native-linux-arm64.provenance.json",
+    "fullSuite": {
+      "validatedAt": "2026-10-20",
+      "passed": 3551,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3588,
+      "duration": "5m32s",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/native-arm64-review/full-tests.log",
+        "sha256": "8da2fad1ccb5a2beca1c27e7cbcbde088ce9933592ecc672441bb695a326c479"
+      }
+    },
+    "currentProofSources": [
+      {
+        "path": "src/Cilantro.Core/Codec/DotfuscatorV2Codec.cs",
+        "sha256": "f506965ac8eddfb7eccab2866deee8aa48fdeda267858fa1069f0c9c224d23d0"
+      },
+      {
+        "path": "src/Cilantro.Core/Recovery/DotfuscatorV2Companions.cs",
+        "sha256": "83f8ab5009f3a05586ae4a417b26c28dabaf4de5c56ca15fc7e7ca160d223e4d"
+      },
+      {
+        "path": "corpus/probes/dotfuscator.ps1",
+        "sha256": "932d84a8e55e994d0723afc47d55565ff88121c773841d0bbdb20e03f4221b16"
+      }
+    ]
+  }
+}

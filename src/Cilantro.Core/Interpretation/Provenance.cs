@@ -84,6 +84,13 @@ public sealed class ProvenanceGraph
     }
 
     public int Count => _nodes.Count;
+    internal bool TryReadNode(int id, out ProvenanceNode node)
+    {
+        node = default;
+        if (id <= 0 || id > _nodes.Count) return false;
+        node = _nodes[id - 1];
+        return true;
+    }
 
     /// <summary>Whether the graph has no room left, so nothing more can be recorded in it.</summary>
     /// <remarks>

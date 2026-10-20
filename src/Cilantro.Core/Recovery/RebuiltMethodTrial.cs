@@ -479,7 +479,7 @@ internal static class RebuiltMethodTrial
     // Heap identities differ between machines. Preserve aliases/cycles while normalizing
     // strings, boxes and arrays; refuse opaque models instead of comparing allocation IDs.
     internal sealed class Snapshot(StaticHeap heap, Dictionary<object, int>? metadata = null,
-        IReadOnlySet<string>? excludedDomainSlots = null)
+        IReadOnlySet<string>? excludedDomainSlots = null, bool preserveIdentity = false)
     {
         internal HashSet<IMDTokenProvider> MetadataHandles { get; } = [];
         internal bool Captures(StaticValue value) => value.Kind == StaticValueKind.HeapReference && ids.ContainsKey(value.HeapId);
@@ -523,7 +523,7 @@ internal static class RebuiltMethodTrial
             }
             if (value.Kind != StaticValueKind.HeapReference) return Refuse($"unsupported value kind {value.Kind}");
             if (ids.TryGetValue(value.HeapId, out var seen)) return $"ref:{seen}";
-            var id = ids.Count; ids.Add(value.HeapId, id);
+            var id = preserveIdentity ? value.HeapId : ids.Count; ids.Add(value.HeapId, id);
             if (heap.TryGetRegionSnapshot(value, out var kind, out var address, out var bytes))
                 return HashBytes(bytes.Span) is { } hash && HashText(kind) is { } regionKind
                     ? $"{id}:region:{regionKind}:{address}:{bytes.Length}:{hash}" : null;
@@ -673,7 +673,7 @@ internal static class RebuiltMethodTrial
             if (--remaining < 0) return Refuse("node budget exhausted");
             if (depth > 64) return Refuse("depth budget exhausted");
             if (modelIds.TryGetValue(identity, out var seen)) return $"model-ref:{seen}";
-            var id = modelIds.Count;
+            var id = ModelIdentity(identity);
             modelIds.Add(identity, id);
             return HashBytes(bytes) is { } hash ? $"model:{id}:{elementType}[]:{bytes.Length}:{hash}" : null;
         }
@@ -698,13 +698,21 @@ internal static class RebuiltMethodTrial
             if (depth > 64) return Refuse("depth budget exhausted");
             if (modelIds.TryGetValue(identity, out var seen)) return $"model-ref:{seen}";
             if (count > remaining) return Refuse("collection exceeds remaining node budget");
-            var id = modelIds.Count;
+            var id = ModelIdentity(identity);
             modelIds.Add(identity, id);
             // Keep enumeration order and key/value pairing. Different cache contents or
             // aliases remain differences; recognizing a model does not exclude its state.
             var items = values.Select(value => Read(value, depth + 1)).ToArray();
             return items.Any(item => item is null) ? null
                 : $"model:{id}:{kind}:{Digest(JsonSerializer.Serialize(items))}";
+        }
+
+        private int ModelIdentity(object value)
+        {
+            if (!preserveIdentity) return modelIds.Count;
+            if (metadata is null) { Refuse("stable model identity unavailable"); return modelIds.Count; }
+            if (!metadata.TryGetValue(value, out var id)) metadata.Add(value, id = metadata.Count);
+            return id;
         }
     }
 }

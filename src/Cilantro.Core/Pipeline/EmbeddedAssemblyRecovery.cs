@@ -146,6 +146,19 @@ internal static class EmbeddedAssemblyRecovery
             nodes[0] = new(root.Report.InputPath,root.Report.InputSha256,0,root.Success ? "recovered" : "incomplete",RunManifest.Of(root));
             complete = root.Success && nodes.Skip(1).All(n=>n.Status is "recovered" or "preserved-reference");
         }
+        if (complete)
+        {
+            if (!DependencyDeploymentCompletion.TryComplete(root, nodes, links, out var deployed, out var deploymentReason))
+            {
+                complete = false;
+                nodes[0] = nodes[0] with { Diagnostic = "Recursive dependency deployment declined: " + deploymentReason };
+            }
+            else
+            {
+                root = deployed;
+                nodes[0] = nodes[0] with { Run = RunManifest.Of(root) };
+            }
+        }
         var report = new EmbeddedRecoveryReport(complete, MaximumDepth, MaximumArtifacts, MaximumInputBytes, nodes, links);
         var path = Path.Combine(Path.GetDirectoryName(root.AnalysisReportPath)!,
             Path.GetFileNameWithoutExtension(root.Report.InputPath) + ".embedded.json");

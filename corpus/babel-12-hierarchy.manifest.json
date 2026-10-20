@@ -1,0 +1,148 @@
+{
+  "manifestVersion": 1,
+  "profile": "babel-12-hierarchy",
+  "description": "Generic inheritance method-image captures: multi-level/reordered generic bases, inherited instance/static state and nested generic base arguments.",
+  "samples": [
+    {
+      "id": "net48-oracle",
+      "tier": "oracle",
+      "sha256": "98bb79da8a5583f24851fa5f4223372999f23e672746a5a5da8c75527eb45c7a",
+      "localName": "babel-12-hierarchy/net48-deep/oracle/BabelHierarchyProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-deep",
+      "tier": "profiled",
+      "sha256": "c3c70741c07c6e075c17cb75c6b8827b0df3420497ea59eef6066f40b47ac5fc",
+      "localName": "babel-12-hierarchy/net48-deep/protected/BabelHierarchyProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "98bb79da8a5583f24851fa5f4223372999f23e672746a5a5da8c75527eb45c7a",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net48-swapped",
+      "tier": "profiled",
+      "sha256": "0c61b4bbc00343eec29a94d3cb573f75089eaef7d25487fae11d345e86ea0db9",
+      "localName": "babel-12-hierarchy/net48-swapped/protected/BabelHierarchyProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "98bb79da8a5583f24851fa5f4223372999f23e672746a5a5da8c75527eb45c7a",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net48-nested",
+      "tier": "profiled",
+      "sha256": "d1ae7cca56be91a6a661825eba43cce5400c79e18ec6848e535c4052b462b59d",
+      "localName": "babel-12-hierarchy/net48-nested/protected/BabelHierarchyProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "98bb79da8a5583f24851fa5f4223372999f23e672746a5a5da8c75527eb45c7a",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "9243d7bc750413dcfe5c52928eefe5be9f3782b79fe2e9c41ecfc1d49a83a69d",
+      "localName": "babel-12-hierarchy/net8.0-deep/oracle/BabelHierarchyProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-deep",
+      "tier": "profiled",
+      "sha256": "f06caf0a72539e1cc1d07e6171b91d43dd6d15d23f844e270ba8ab7b631ab6de",
+      "localName": "babel-12-hierarchy/net8.0-deep/protected/BabelHierarchyProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9243d7bc750413dcfe5c52928eefe5be9f3782b79fe2e9c41ecfc1d49a83a69d",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net8.0-swapped",
+      "tier": "profiled",
+      "sha256": "f12b2046821a84fb36ef71ee22942f32150fe62064f9905f945ab712cfc58834",
+      "localName": "babel-12-hierarchy/net8.0-swapped/protected/BabelHierarchyProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9243d7bc750413dcfe5c52928eefe5be9f3782b79fe2e9c41ecfc1d49a83a69d",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net8.0-nested",
+      "tier": "profiled",
+      "sha256": "c5da09560fe5eb228dc5c19c6ca5718f8a7478eebec92554c63735b44641e7bd",
+      "localName": "babel-12-hierarchy/net8.0-nested/protected/BabelHierarchyProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "9243d7bc750413dcfe5c52928eefe5be9f3782b79fe2e9c41ecfc1d49a83a69d",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "c605a3362c102cffc20ab65de4b66762d3612db542d4b825bd2934cd80d614aa",
+      "localName": "babel-12-hierarchy/net10.0-deep/oracle/BabelHierarchyProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-deep",
+      "tier": "profiled",
+      "sha256": "0d57a04723f9434cb50e85f16c330d48770e61b181bdc044d445335508ee8bc7",
+      "localName": "babel-12-hierarchy/net10.0-deep/protected/BabelHierarchyProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "c605a3362c102cffc20ab65de4b66762d3612db542d4b825bd2934cd80d614aa",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net10.0-swapped",
+      "tier": "profiled",
+      "sha256": "f9b4fb2f6f2c031374afa610825606e31909b7761f2012443744fca7112196cb",
+      "localName": "babel-12-hierarchy/net10.0-swapped/protected/BabelHierarchyProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "c605a3362c102cffc20ab65de4b66762d3612db542d4b825bd2934cd80d614aa",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    },
+    {
+      "id": "net10.0-nested",
+      "tier": "profiled",
+      "sha256": "cd3dd52d8d258e98d86bc6869e11aedf272b22ce9015b971a91e4ffc37c8f558",
+      "localName": "babel-12-hierarchy/net10.0-nested/protected/BabelHierarchyProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "c605a3362c102cffc20ab65de4b66762d3612db542d4b825bd2934cd80d614aa",
+      "expectedRestoredBodyCount": 1,
+      "maximumRemainingStubs": 0,
+      "maximumSurplusResources": 0,
+      "requireOracleResourceParity": true
+    }
+  ]
+}

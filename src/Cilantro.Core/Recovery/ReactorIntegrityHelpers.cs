@@ -19,7 +19,7 @@ internal static class ReactorIntegrityHelpers
         // A generated name alone is insufficient. Require independent successful string
         // and proxy rewrites on the same owner, using different exact input resources.
         // Namespace spelling is not evidence of ownership: Reactor can choose a low-churn name.
-        var strings = records.Where(r => r.Bundle is null && r.ProxyTypes.Count == 0).ToArray();
+        var strings = records.Where(r => !r.IsNumericConstruction && !r.IsMethodImageConstruction && r.Bundle is null && r.ProxyTypes.Count == 0).ToArray();
         var proxies = records.Where(r => r.Bundle is null && r.ProxyTypes.Count != 0).ToArray();
         var owners = strings.SelectMany(s => s.ReaderOwners.Select(owner => (Record: s, Owner: owner)))
             .Where(p => p.Owner is not null && p.Owner.Module == context.Module && !p.Owner.IsGlobalModuleType &&

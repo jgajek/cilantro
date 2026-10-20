@@ -1,0 +1,2258 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": "Dotfuscator Professional Evaluation 7.9.0",
+  "description": "Response exception retirement across 45 existing licensed source-built check captures. All 36 generated exception classes are retired; application notifications and clean-verdict behavior are preserved.",
+  "manifests": [
+    {
+      "path": "C:/Users/jgaje/Documents/Codex/CILantro/corpus/dotfuscator-7-checks.manifest.json",
+      "sha256": "97d0aeedd047ae5dcb5e574faa504fbc3426bdcb16d5b635b45a4cec55c1bc76"
+    },
+    {
+      "path": "C:/Users/jgaje/Documents/Codex/CILantro/corpus/dotfuscator-7-check-interactions.manifest.json",
+      "sha256": "8f0ca6cd6705914a02a8cfce87931f3c8de4f2fdbd0ddf4e7de87a61c3095087"
+    },
+    {
+      "path": "C:/Users/jgaje/Documents/Codex/CILantro/corpus/dotfuscator-7-root-checks.manifest.json",
+      "sha256": "edd6b08c22526e63878ee738fc52f1ab78574b5310f0efdc8a25b6c677485a9b"
+    }
+  ],
+  "sources": [
+    {
+      "path": "src/Cilantro.Core/Analysis/GeneratedRuntimeShape.cs",
+      "sha256": "d73112e7855d68dabaf3c19451e9786d306a9c45cc369d079fcbc84103ef72ff"
+    },
+    {
+      "path": "src/Cilantro.Core/Analysis/DotfuscatorRootCheckShape.cs",
+      "sha256": "e5357270ce9291476586f90e31e44ba459afb0f2912d2436aaad8c7c3c2e31fd"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/DotfuscatorCheckPass.cs",
+      "sha256": "0bbf2711990da6c34d0872ae2a305d670f7a9a42783e4123952f4338e4650853"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/RetiredDotfuscatorResponseRuntime.cs",
+      "sha256": "cf9c415b17a762ad6d36ff86356ef6a7ac5deaa4d8ed41262ec9ae9ebf04cbdb"
+    },
+    {
+      "path": "src/Cilantro.Core/Recovery/RuntimeCleanupPass.cs",
+      "sha256": "ab20daec31d04e1c74c5cab0b47e3d86a5172ca98acd2c2d10c262ce4826a56d"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorResponseRetirementTests.cs",
+      "sha256": "02cc7d3b011ded326fbc3ee2cb4b7aa38c7125ca71bb0302d2236bb06b58cf0b"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorCheckTests.cs",
+      "sha256": "579e249ea14a0f49b724d431b628f8f17701b4f6886020a7ae3ad304db549d3c"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorMixedCheckTests.cs",
+      "sha256": "520f75b4c1d530e187a7798fa12c50b8bf6be606ac73d3ce747d9d9e1d08e8a4"
+    },
+    {
+      "path": "tests/Cilantro.Tests/DotfuscatorRootCheckTests.cs",
+      "sha256": "986e849b0ad3d0bbd6d24adf3274885a8fd35837f506e038aea56245d95c3138"
+    }
+  ],
+  "review": {
+    "originalExceptionTypes": 36,
+    "normalizedOriginalFamilies": [
+      "381464c15e1c6206bab2a125bdbdfa0adb8123c34f0cf9da1f8e2f856b950c71",
+      "5756dbd6262bdc71877cb35f3883ca902cff33d4c3a3aaf604d68d7b0f6ca3aa",
+      "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+      "703ce65015e362775f6483cf6675f1b3fc040614cadfc47f254e86a04dc44970",
+      "71734b9704e589d7e9ea9f292fd0d95a0bc447684da087a79af4b3f78e09c1d9",
+      "83943f134a0f433a62d4184eff4938d6bdd1f04aa8d2b7bd28ab769a1448e092",
+      "8817ec5d76f9a046340ef7c685b984d60376f467bf9f5cdeb361939dba7d9c5d",
+      "91e4fde80b1b73ae92ef5bf62b54eb6e1dd76c2927d083ce60d6dda587c33f92",
+      "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+      "9bb12fef0f48b87edf0f4a325e2ade15008cae279bf91abc9b14755df5af651d",
+      "bba97d167aba925a5b6485dca4db62095453ebafb673f5a2bb5658618afbebb4",
+      "def4eff272ed1d82393047f10f8ac23dc45f3fd86e586e5492338bf58d59aecb",
+      "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+      "f7205475005ba8dfaff95e894bb2a4c33568d82da148101ff6af4c8e4a2cfa18"
+    ],
+    "selector": "Only a must-known load of this reviewed checker verdict can attribute the selected clean response and rejected response. Both binary-array orders are supported. Unrelated literal-index dispatchers confer no ownership.",
+    "response": "Private static void() methods without custom/security/generic/interop metadata: empty selected response and exact newobj/dup/framework Object.GetHashCode/pop/throw rejected response. Original and current bodies are normalized in private copies.",
+    "exception": "Exact complete original family graphs include all metadata, layouts, scopes, string decoder helpers and the native bridge where present. Only constructor-message and display literals are data parameters; their display relationship is checked and current values must equal original values.",
+    "currentType": "Complete current single-type graph and metadata preserve exact call bindings/scopes while native bridge bodies are independently retired by their own proof. Explicit type/method reflection names, handles, live calls, signatures and other surviving declarations veto deletion.",
+    "partialRetirement": "Previously validated private responses can be absent only when their token removals were recorded by cleanup. Similarly, a verified type can be projected only through recorded original method removals; all surviving metadata and bodies still match the exact original projection.",
+    "reflection": "Verified private response guards may retire despite broad containing-type reflection exposure, following the existing guard policy. Explicit response names, handles and calls remain consumers. Unrelated application declarations gain no ownership.",
+    "inputAudit": {
+      "path": "C:/cilantro-verify/dotfuscator/root-review/response-exceptions-reviewed.json",
+      "sha256": "18bce1695ad309a27c051729700630539b7115cf0f2e01f755e254286094fd43"
+    },
+    "eligibility": {
+      "path": "C:/cilantro-verify/dotfuscator/root-review/response-eligibility.json",
+      "sha256": "a3b8c33476aa8e6febdcb6273d37c3d8532b67e4431715e18ffd41139c13ac9f"
+    },
+    "auditSources": [
+      {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/audit-response-exceptions.ps1",
+        "sha256": "3e93c74b4cc5a709a0a10321f9fb32fcebdad4debe840508820bf21f05ce131c"
+      },
+      {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/audit-response-eligibility.ps1",
+        "sha256": "3a9e86941a1b2ab914a6ebdbd5040591af205b314f353d5f5b2c2ac392e65fc1"
+      }
+    ],
+    "graphs": [
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-debug-method",
+        "inputSha256": "3bc91910a6f239232a826b2e56fee4bbe0df4e095b37de11b2e4840fb75c3b65",
+        "type": "System.ArgumentOutOfRangeException ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "Specified argument was out of the range of valid values.",
+        "display": "System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-method-response-9-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-method-response-9-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-method-response-9-il.txt",
+          "sha256": "a39c92043636ce4d4f15e80e4aa0adcacf964436b9b96cdd2e1a23076d81923f"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-tamper-method",
+        "inputSha256": "94f7d45f3f084fd88e83cc3999a02dd0aed7c6ab988e331572174a786cba7808",
+        "type": "System.DivideByZeroException ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "Attempted to divide by zero.",
+        "display": "System.DivideByZeroException: Attempted to divide by zero.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-tamper-method-response-13-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-tamper-method-response-13-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-tamper-method-response-13-il.txt",
+          "sha256": "53f63a3bb38e8270e31d2b2b30a62d0d07dcb01b5060cc831579cff5c2a7a772"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-combined-method",
+        "inputSha256": "c8adf6b35440ee39932a7fa97324bd4d8a2d42d1d485176ee6bf5e8c48f38cc3",
+        "type": "System.Exception ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "Exception of type 'System.Exception' was thrown.",
+        "display": "System.Exception: Exception of type 'System.Exception' was thrown.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-combined-method-response-16-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-combined-method-response-16-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-combined-method-response-16-il.txt",
+          "sha256": "faacef95ec7423588c6cc87a390dc0d21e0d94ea489f45d9768df84f9427c057"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-debug-field",
+        "inputSha256": "7766216a41a37d88992121997a2f984737b1f766b11a00b3bf37c2e5ae0c24bb",
+        "type": "System.DivideByZeroException ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "Attempted to divide by zero.",
+        "display": "System.DivideByZeroException: Attempted to divide by zero.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-field-response-9-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-field-response-9-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-field-response-9-il.txt",
+          "sha256": "53f63a3bb38e8270e31d2b2b30a62d0d07dcb01b5060cc831579cff5c2a7a772"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-debug-property",
+        "inputSha256": "b44264ac879a98601f25df59b96297bdac99f3fd4bd3e3189979e62ce168083b",
+        "type": "System.IO.IOException ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "I/O error occurred.",
+        "display": "System.IO.IOException: I/O error occurred.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-property-response-9-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-property-response-9-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-property-response-9-il.txt",
+          "sha256": "2334f0abd037eb93b7bd08adfabb475c64afc57e9626bf14bb79bd4dc7687f07"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-debug-delegate",
+        "inputSha256": "995c8db7d6813552940fa566bcbca35af78ae614b839f971dd862db0cfd23379",
+        "type": "System.InvalidCastException ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "Specified cast is not valid.",
+        "display": "System.InvalidCastException: Specified cast is not valid.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-delegate-response-9-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-delegate-response-9-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-delegate-response-9-il.txt",
+          "sha256": "90fbcd21c03e6d3cc61a034c82ccb85bfadbadbd18af0d9f6e2c2549148f7392"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-debug-none",
+        "inputSha256": "f855767935db55e4d9ba5834bb47823fb28cfd7566cadaddb2953ac8f9e41089",
+        "type": "System.IO.FileLoadException ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "Could not load the specified file.",
+        "display": "System.IO.FileLoadException: Could not load the specified file.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-none-response-9-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-none-response-9-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-none-response-9-il.txt",
+          "sha256": "0477bbb9f0fd189925bc54f165f24b45414de2dc18300c20f383ef13e05f81d4"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net48-debug-probability",
+        "inputSha256": "d0b3851d378d882d160de99a5a8e1235b038417e409facb7f3a5398e3e3cd9dc",
+        "type": "System.InvalidCastException ",
+        "types": 1,
+        "fingerprint": "eafb4c5dfa49acb27e87b626e354cec1b02c6fe02fa0ca90ddef741712fcd4ed",
+        "message": "Specified cast is not valid.",
+        "display": "System.InvalidCastException: Specified cast is not valid.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-probability-response-9-canonical.json",
+          "sha256": "5e07e175bb226451a3f129c05dbb319c58a6bb5c3956899fd96f3bdcdb6e81f8"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-probability-response-9-metadata.json",
+          "sha256": "3e84da5c1e8de132463ddaf86f8030afe99adb2417cc98bf003c711b33aafd74"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net48-debug-probability-response-9-il.txt",
+          "sha256": "90fbcd21c03e6d3cc61a034c82ccb85bfadbadbd18af0d9f6e2c2549148f7392"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-debug-method",
+        "inputSha256": "39d2fccebf3a2e02142d81d3421a5f9831cd6f8e2867fc51ccf8db7064b515ee",
+        "type": "System.Exception ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "Exception of type 'System.Exception' was thrown.",
+        "display": "System.Exception: Exception of type 'System.Exception' was thrown.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-method-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-method-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-method-response-3-il.txt",
+          "sha256": "faacef95ec7423588c6cc87a390dc0d21e0d94ea489f45d9768df84f9427c057"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-tamper-method",
+        "inputSha256": "7d4ddcaba82282355b76e68d1e90e0d146d0fb4fc204cb8ca01c7951b32571ae",
+        "type": "System.IO.IOException ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "I/O error occurred.",
+        "display": "System.IO.IOException: I/O error occurred.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-tamper-method-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-tamper-method-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-tamper-method-response-3-il.txt",
+          "sha256": "2334f0abd037eb93b7bd08adfabb475c64afc57e9626bf14bb79bd4dc7687f07"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-combined-method",
+        "inputSha256": "ee1a53fb88fa304fe44ff917ff849f322df598ef41479e30d2194f809d2e5c56",
+        "type": "System.ArgumentOutOfRangeException ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "Specified argument was out of the range of valid values.",
+        "display": "System.ArgumentOutOfRangeException: Specified argument was out of the range of valid values.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-combined-method-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-combined-method-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-combined-method-response-3-il.txt",
+          "sha256": "a39c92043636ce4d4f15e80e4aa0adcacf964436b9b96cdd2e1a23076d81923f"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-debug-field",
+        "inputSha256": "4002dd1c3837f504676f8a1c55f6c9fab76accc059ac3c669c3f391705f6c6cb",
+        "type": "System.ArgumentNullException ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "Value cannot be null.",
+        "display": "System.ArgumentNullException: Value cannot be null.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-field-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-field-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-field-response-3-il.txt",
+          "sha256": "8000173f4d3bc182549e451a51026bd456974e1fa4cef3bf05ddb122287af7d6"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-debug-property",
+        "inputSha256": "c0cf1a440e6441ec45473ac0ae97da215ac2f1c9366573071a2af1913a149206",
+        "type": "System.Collections.Generic.KeyNotFoundException ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "The given key was not present in the dictionary.",
+        "display": "System.Collections.Generic.KeyNotFoundException: The given key was not present in the dictionary.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-property-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-property-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-property-response-3-il.txt",
+          "sha256": "b79a7bdd9dd604c7ab4dba867b4dcf8d75d8c908aa4edb7378895b76575f7683"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-debug-delegate",
+        "inputSha256": "b5a1ed046ae387a5937f2ed353b929148caf7cd1b0d169dd81278269ebd3812b",
+        "type": "System.Collections.Generic.KeyNotFoundException ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "The given key was not present in the dictionary.",
+        "display": "System.Collections.Generic.KeyNotFoundException: The given key was not present in the dictionary.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-delegate-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-delegate-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-delegate-response-3-il.txt",
+          "sha256": "b79a7bdd9dd604c7ab4dba867b4dcf8d75d8c908aa4edb7378895b76575f7683"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-debug-none",
+        "inputSha256": "f5ad4361730cc0bd03669f6b0c0d541beb884072b2d0f81b7d981c8d600f5ef7",
+        "type": "System.ArgumentNullException ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "Value cannot be null.",
+        "display": "System.ArgumentNullException: Value cannot be null.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-none-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-none-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-none-response-3-il.txt",
+          "sha256": "8000173f4d3bc182549e451a51026bd456974e1fa4cef3bf05ddb122287af7d6"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net8.0-debug-probability",
+        "inputSha256": "551f42ce539e8f1742e14c60bb4d38e35709bdc5afd92b911556315c563bd753",
+        "type": "System.StackOverflowException ",
+        "types": 1,
+        "fingerprint": "989ae9c3ee23068c84ea11f232b6348c7021e08f9f9523c19f793a0b0aed6c48",
+        "message": "Operation caused a stack overflow.",
+        "display": "System.StackOverflowException: Operation caused a stack overflow.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-probability-response-3-canonical.json",
+          "sha256": "9e905ab75c41f36c3d0f70c3aa50dfff2fa8ed6231e693579a8d55ce911d26a4"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-probability-response-3-metadata.json",
+          "sha256": "b3673b91221d526af8c53ebaa56f218dbc44ddc7f1ad8e7aa0d901c38c8edbb7"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net8.0-debug-probability-response-3-il.txt",
+          "sha256": "075ee24291fc83035b5fbf9e96426bfa47f53142b78bb9dc4218546c362996ca"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-debug-method",
+        "inputSha256": "479bad3234613c2e2f4b3bebc9a641fa2ed96268e0d2050834e8a80096de55c6",
+        "type": "System.ArgumentNullException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "Value cannot be null.",
+        "display": "System.ArgumentNullException: Value cannot be null.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-method-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-method-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-method-response-3-il.txt",
+          "sha256": "8000173f4d3bc182549e451a51026bd456974e1fa4cef3bf05ddb122287af7d6"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-tamper-method",
+        "inputSha256": "a135ec8b0c6d7c7bf35448c956272ed409ea46d8065beaeecaef2014924333ca",
+        "type": "System.IO.FileLoadException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "Could not load the specified file.",
+        "display": "System.IO.FileLoadException: Could not load the specified file.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-tamper-method-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-tamper-method-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-tamper-method-response-3-il.txt",
+          "sha256": "0477bbb9f0fd189925bc54f165f24b45414de2dc18300c20f383ef13e05f81d4"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-combined-method",
+        "inputSha256": "32c7aefbd907b3da6be535fc7716e0e91d533509f0a60d323f4504cab5522da0",
+        "type": "System.IO.FileLoadException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "Could not load the specified file.",
+        "display": "System.IO.FileLoadException: Could not load the specified file.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-combined-method-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-combined-method-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-combined-method-response-3-il.txt",
+          "sha256": "0477bbb9f0fd189925bc54f165f24b45414de2dc18300c20f383ef13e05f81d4"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-debug-field",
+        "inputSha256": "2e778c9612ec5a9c814aca8f20c5cad4f5421cb55f6a75397d2f79840dab6747",
+        "type": "System.IO.FileLoadException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "Could not load the specified file.",
+        "display": "System.IO.FileLoadException: Could not load the specified file.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-field-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-field-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-field-response-3-il.txt",
+          "sha256": "0477bbb9f0fd189925bc54f165f24b45414de2dc18300c20f383ef13e05f81d4"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-debug-property",
+        "inputSha256": "0ea0ebb13e63754ee2db117bc02d0c02a5fe461aea9af4bf2f10832c56352e45",
+        "type": "System.IO.FileLoadException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "Could not load the specified file.",
+        "display": "System.IO.FileLoadException: Could not load the specified file.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-property-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-property-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-property-response-3-il.txt",
+          "sha256": "0477bbb9f0fd189925bc54f165f24b45414de2dc18300c20f383ef13e05f81d4"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-debug-delegate",
+        "inputSha256": "1939331d8a3050df1283c5b69583f6708901e8a75cb0485273cbbfc5aa37624b",
+        "type": "System.IO.PathTooLongException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "The specified file name or path is too long, or a component of the specified path is too long.",
+        "display": "System.IO.PathTooLongException: The specified file name or path is too long, or a component of the specified path is too long.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-delegate-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-delegate-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-delegate-response-3-il.txt",
+          "sha256": "a8622f259bdfd31f51a0cf47f6ddf34cedb717d8006de12fb9d517feae12c983"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-debug-none",
+        "inputSha256": "0513a8ac7f1a081c11c147be8992da4c8c4d3b65c78f5006767d541d5e9ea149",
+        "type": "System.IO.EndOfStreamException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "Attempted to read past the end of the stream.",
+        "display": "System.IO.EndOfStreamException: Attempted to read past the end of the stream.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-none-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-none-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-none-response-3-il.txt",
+          "sha256": "bdd43d39ed1cf94cb4d60afce0d9ebf057d7c73f130c63e5506a93189cd5ffba"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-checks",
+        "id": "net10.0-debug-probability",
+        "inputSha256": "a68838d457b9053908b1ace079ca6d404e6b4b1d28907cfb597f3c20b6e8ecaf",
+        "type": "System.Collections.Generic.KeyNotFoundException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "The given key was not present in the dictionary.",
+        "display": "System.Collections.Generic.KeyNotFoundException: The given key was not present in the dictionary.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-probability-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-probability-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-checks-net10.0-debug-probability-response-3-il.txt",
+          "sha256": "b79a7bdd9dd604c7ab4dba867b4dcf8d75d8c908aa4edb7378895b76575f7683"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net48-combined-flow",
+        "inputSha256": "fa653e5e6cdf23b3027e57ead14b105a38cfe69badc726204c77f1d94e159e6c",
+        "type": "System.InvalidOperationException ",
+        "types": 1,
+        "fingerprint": "5756dbd6262bdc71877cb35f3883ca902cff33d4c3a3aaf604d68d7b0f6ca3aa",
+        "message": "Operation is not valid due to the current state of the object.",
+        "display": "System.InvalidOperationException: Operation is not valid due to the current state of the object.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-flow-response-16-canonical.json",
+          "sha256": "7f5013c9232ab79d0e83750761aebdd9db995c87d508436e00dfb04ba2048038"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-flow-response-16-metadata.json",
+          "sha256": "79f164f3b4498f6b80c33dc464f4ba9a0df02693affd6ad35d88594ce7e0397c"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-flow-response-16-il.txt",
+          "sha256": "07b66604c92b8acb79ba6a2c2fe295e433ab90d368d6c5ceb6fe986be5bafb88"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net48-combined-renamed",
+        "inputSha256": "97fcadd071f491f648a84449a774eb526040b001d9c4eab58c4ce0f8b51604c9",
+        "type": "eval_k",
+        "types": 1,
+        "fingerprint": "8817ec5d76f9a046340ef7c685b984d60376f467bf9f5cdeb361939dba7d9c5d",
+        "message": "Value does not fall within the expected range.",
+        "display": "System.ArgumentException: Value does not fall within the expected range.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-renamed-response-16-canonical.json",
+          "sha256": "e44985d96a4989da36eb056fb822d3f47c75b450245951c6899579839750397f"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-renamed-response-16-metadata.json",
+          "sha256": "874de488fe0a069d414d561f3cea2010dede4f175e13806d5fd0d5d31e7bed29"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-renamed-response-16-il.txt",
+          "sha256": "cb53399e76944309333ee5a54923d4d4634120359ed9d5d5e95b0fe45078327e"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net48-combined-native",
+        "inputSha256": "6b9cf7ef1204948da2b40aee50ac48d955a7dedb2574e0188163bc5014000034",
+        "type": "eval_k",
+        "types": 2,
+        "fingerprint": "703ce65015e362775f6483cf6675f1b3fc040614cadfc47f254e86a04dc44970",
+        "message": "Error in the application.",
+        "display": "System.ApplicationException: Error in the application.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-native-response-16-canonical.json",
+          "sha256": "b5ce9717c20ee2d20fcb474dc6e10de7aa4853d99c2d14eb0fb561aa0fe6636f"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-native-response-16-metadata.json",
+          "sha256": "fb3877fd5da5f4b9b0103a2a1616274bf7a49c346dcb744c2ec260d3c76a0062"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net48-combined-native-response-16-il.txt",
+          "sha256": "efad7c5a7acdb451534e27047af438d187fa2ee40a987f1cff3c3a1890a34c62"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net8.0-combined-flow",
+        "inputSha256": "92fd584476ddd807d418a466f81221f4b7ecb5b5251e77c9e1e41317c58d503b",
+        "type": "System.IndexOutOfRangeException ",
+        "types": 1,
+        "fingerprint": "9bb12fef0f48b87edf0f4a325e2ade15008cae279bf91abc9b14755df5af651d",
+        "message": "Index was outside the bounds of the array.",
+        "display": "System.IndexOutOfRangeException: Index was outside the bounds of the array.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-flow-response-3-canonical.json",
+          "sha256": "46c96280727b4ed0cfd320d849d5ad2dd1f59a1ce6bfede2411348c9db4839b9"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-flow-response-3-metadata.json",
+          "sha256": "abcb84f9e83640ec25444e64c74582e793c4f84012f30025494420a96c37c3ab"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-flow-response-3-il.txt",
+          "sha256": "db541af1c990274402e1fe91edafbe0cbf70521069f6e2f9231321b8a5538a7f"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net8.0-combined-renamed",
+        "inputSha256": "eec97d0b27d5d1761b9eba1855878b3f26072440491bff456ab0ec1b6a0ddded",
+        "type": "eval_i",
+        "types": 1,
+        "fingerprint": "71734b9704e589d7e9ea9f292fd0d95a0bc447684da087a79af4b3f78e09c1d9",
+        "message": "Operation caused a stack overflow.",
+        "display": "System.StackOverflowException: Operation caused a stack overflow.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-renamed-response-3-canonical.json",
+          "sha256": "d371dae87275710197ac03c5b03ecb46acd83c54503ded5d289b1f17808f1c93"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-renamed-response-3-metadata.json",
+          "sha256": "c851cd6c511a3dfef3328482328c7c387610a59726eef12511f4de88a520dd20"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-renamed-response-3-il.txt",
+          "sha256": "66bf5eac7c7879e9eff9499437c5239059ff7e5e055a24938036a626d7bbe0ed"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net8.0-combined-native",
+        "inputSha256": "b4fd187f97fe92bd424d3ccd242406b557ae7247611c55f0e20cc6595e2fa696",
+        "type": "eval_i",
+        "types": 2,
+        "fingerprint": "f7205475005ba8dfaff95e894bb2a4c33568d82da148101ff6af4c8e4a2cfa18",
+        "message": "Exception of type 'System.Exception' was thrown.",
+        "display": "System.Exception: Exception of type 'System.Exception' was thrown.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-native-response-3-canonical.json",
+          "sha256": "d862bbf3173077e84d15399e2b54045be7a46bde79c5eb7082d643ee7cfee1ec"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-native-response-3-metadata.json",
+          "sha256": "ebe1b6cbbc32679029b6cc2fe75d0b8783a466982a4bc3746ba13e51ce31ce0a"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net8.0-combined-native-response-3-il.txt",
+          "sha256": "32fc70604ac0f35f2203aad11ec34aff01620a2062786c5b1a563f606f8516c5"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net10.0-combined-flow",
+        "inputSha256": "783d423a75592ff601f33807a38fa9d9efd53856b94ffc17b0c7c3a149c27909",
+        "type": "System.Exception ",
+        "types": 1,
+        "fingerprint": "381464c15e1c6206bab2a125bdbdfa0adb8123c34f0cf9da1f8e2f856b950c71",
+        "message": "Exception of type 'System.Exception' was thrown.",
+        "display": "System.Exception: Exception of type 'System.Exception' was thrown.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-flow-response-3-canonical.json",
+          "sha256": "97e63f7c00cf987b421fc392f4928485212870f6f948401ebc8b50e0b0974159"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-flow-response-3-metadata.json",
+          "sha256": "5ac903706c4d1bb976e90329e4b22eea85dfbf09b26bcd92ca6bc802bd6ae932"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-flow-response-3-il.txt",
+          "sha256": "faacef95ec7423588c6cc87a390dc0d21e0d94ea489f45d9768df84f9427c057"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net10.0-combined-renamed",
+        "inputSha256": "568289dee4bb74228313ccc9376315f451862620d7e656f82fd950021fbefe4a",
+        "type": "eval_i",
+        "types": 1,
+        "fingerprint": "91e4fde80b1b73ae92ef5bf62b54eb6e1dd76c2927d083ce60d6dda587c33f92",
+        "message": "Index was outside the bounds of the array.",
+        "display": "System.IndexOutOfRangeException: Index was outside the bounds of the array.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-renamed-response-3-canonical.json",
+          "sha256": "1da9c2c3c7476bf7c0ebf1368076ad28d4d6fe56c7e77fa4cffdadfd468f3095"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-renamed-response-3-metadata.json",
+          "sha256": "eac3a81571332c258bffcff35f0dc7453e0ad0028dfa59e201537bb288679bd2"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-renamed-response-3-il.txt",
+          "sha256": "8cadae5badf2f1adfee9101e2941fee031f46a946130fcaaba0b3b038317aab9"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-check-interactions",
+        "id": "net10.0-combined-native",
+        "inputSha256": "42f732c35b60eb8b65b9fe9136212c38630c4843a9c22537f87d6c12cbb5f4ed",
+        "type": "eval_i",
+        "types": 2,
+        "fingerprint": "def4eff272ed1d82393047f10f8ac23dc45f3fd86e586e5492338bf58d59aecb",
+        "message": "Unable to find the specified file.",
+        "display": "System.IO.FileNotFoundException: Unable to find the specified file.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-native-response-3-canonical.json",
+          "sha256": "0567b6c03822f2df7675942dd36c24ea0804c26fb52a8c60ec64b3b28fd2ab78"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-native-response-3-metadata.json",
+          "sha256": "7a989e2bcc6910a8b7b962198b22e4d4462bccfff5ad14c9f4ed2f52e2c7c531"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-check-interactions-net10.0-combined-native-response-3-il.txt",
+          "sha256": "7e9bcbae8cda0d8e5975c2cf8c01d8ded8af4b6eb26d0733d11ddbe6d53a3d80"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-root-checks",
+        "id": "net10.0-root-method",
+        "inputSha256": "996bed813a3eb6e20ecfd058b8b7edc0e11e58a11ba94753aa4e4333361df59a",
+        "type": "System.InvalidCastException ",
+        "types": 1,
+        "fingerprint": "58475d94bf42c3bb5b623d194dd514c0bda705efb5cf0d6d6cdeb026be538a94",
+        "message": "Specified cast is not valid.",
+        "display": "System.InvalidCastException: Specified cast is not valid.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-method-response-3-canonical.json",
+          "sha256": "320a78df37f0dbc93f828ca8e507432ed4e4eebb1e6dc428407772c7f3646523"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-method-response-3-metadata.json",
+          "sha256": "59d6d3d52248636e2a0a89d746c907f1199b70bbd1519d4b23021d837c54cf2e"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-method-response-3-il.txt",
+          "sha256": "90fbcd21c03e6d3cc61a034c82ccb85bfadbadbd18af0d9f6e2c2549148f7392"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-root-checks",
+        "id": "net10.0-root-flow",
+        "inputSha256": "1853b8b6088fe2e850d11137816374ee8babb782310fe0c0b3841bde7afde92c",
+        "type": "eval_l",
+        "types": 1,
+        "fingerprint": "bba97d167aba925a5b6485dca4db62095453ebafb673f5a2bb5658618afbebb4",
+        "message": "Attempted to read past the end of the stream.",
+        "display": "System.IO.EndOfStreamException: Attempted to read past the end of the stream.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-flow-response-17-canonical.json",
+          "sha256": "97e63f7c00cf987b421fc392f4928485212870f6f948401ebc8b50e0b0974159"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-flow-response-17-metadata.json",
+          "sha256": "b16e89768e260f478a37ca9951858f1f58c817e5fdde1a19dfc3e6bef996fd24"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-flow-response-17-il.txt",
+          "sha256": "c3c52d936dc69e01f3832c9650dc08cddb51bb8ae7851992b9d8a4e0bfb724ce"
+        }
+      },
+      {
+        "manifest": "dotfuscator-7-root-checks",
+        "id": "net10.0-root-native",
+        "inputSha256": "5306ec2c09cfecc5fb83b9a5b0b39e8a118d2ae7104dce98e20f25c7358189a8",
+        "type": "eval_l",
+        "types": 1,
+        "fingerprint": "83943f134a0f433a62d4184eff4938d6bdd1f04aa8d2b7bd28ab769a1448e092",
+        "message": "Object reference not set to an instance of an object.",
+        "display": "System.NullReferenceException: Object reference not set to an instance of an object.",
+        "canonical": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-native-response-17-canonical.json",
+          "sha256": "97e63f7c00cf987b421fc392f4928485212870f6f948401ebc8b50e0b0974159"
+        },
+        "metadata": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-native-response-17-metadata.json",
+          "sha256": "f78b39c8e49bb210e27d006d6400e5278193e5c34187059129fb3b69eb12fa69"
+        },
+        "cil": {
+          "path": "C:/cilantro-verify/dotfuscator/root-review/dotfuscator-7-root-checks-net10.0-root-native-response-17-il.txt",
+          "sha256": "c3c52d936dc69e01f3832c9650dc08cddb51bb8ae7851992b9d8a4e0bfb724ce"
+        }
+      }
+    ]
+  },
+  "validation": {
+    "captures": 45,
+    "removedResponseExceptions": 36,
+    "remainingResponseExceptions": 0,
+    "focusedTestsPassed": 35,
+    "focusedTests": {
+      "path": "C:/cilantro-verify/dotfuscator/root-review/response-focused-verified.log",
+      "sha256": "54f4cbdbb8ac0a91732638d1a1d99366628ff56cd5a018320c6bcd41704abaa6"
+    },
+    "comparisons": 84,
+    "behavior": [
+      {
+        "comparisons": 60,
+        "scope": "Source/protected/cleaned Windows execution; default and notification modes",
+        "evidence": {
+          "path": "C:/cilantro-verify/dotfuscator/check-corpus/behavior.json",
+          "sha256": "4e3946754d9474bd230c721f5e6448b7500588f88d430a91822cd0452cd328df"
+        }
+      },
+      {
+        "comparisons": 18,
+        "scope": "Source/protected/cleaned Windows execution; default and notification modes",
+        "evidence": {
+          "path": "C:/cilantro-verify/dotfuscator/check-interactions-final/behavior.json",
+          "sha256": "c930b6014dcc1a57480136d8b82114a4afe1a269e524361504f1081bfc29e33e"
+        }
+      },
+      {
+        "comparisons": 6,
+        "scope": "Desktop source/cleaned clean-verdict replay; no protected Android checker/device execution",
+        "evidence": {
+          "path": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted/behavior.json",
+          "sha256": "42b5a3019b7e826599d89ebaf0d4c45b67cebd9e3eb122e98b3839063a2f6545"
+        }
+      }
+    ],
+    "outputCounts": {
+      "path": "C:/cilantro-verify/dotfuscator/root-review/response-output-counts.json",
+      "sha256": "31ce9748759917dd166bda92a403716d5f1cd555688f2eefea0abd892632716d"
+    },
+    "fullSuite": {
+      "passed": 3755,
+      "failed": 0,
+      "skipped": 37,
+      "total": 3792,
+      "duration": "7 m 3 s - Cilantro.Tests.dll (net10.0)",
+      "evidence": {
+        "path": "C:/cilantro-verify/dotfuscator/root-review/response-full-verified.log",
+        "sha256": "227258b77488efedc4825449c53966630eba6c34f65702a4e22e18c4ea8625bd"
+      }
+    }
+  },
+  "limits": [
+    "No protected Android checker or Android device/emulator execution.",
+    "Unknown original response implementations are retained; unknown checker families still withhold output.",
+    "The two renamed empty Android platform stubs remain unattributed."
+  ],
+  "captures": [
+    {
+      "id": "net10.0-combined-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-combined-method/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-combined-method/protected/CheckProbe.dll",
+        "sha256": "32c7aefbd907b3da6be535fc7716e0e91d533509f0a60d323f4504cab5522da0"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-combined-method\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "76a8b1ba0be57b532806ec2064fd7b911ab31751f8c80dd3f3a832e9eab1ea4d"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-combined-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "f08e0fcc4514c03126813e69a5c6fb05c0c0ef8d08051b604befb08fcc311643"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-combined-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "7f0827d9859f40c5255b2ec1813251ccccc15c977358ca936d961b14f5388551"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-delegate",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-delegate/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-delegate/protected/CheckProbe.dll",
+        "sha256": "1939331d8a3050df1283c5b69583f6708901e8a75cb0485273cbbfc5aa37624b"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-delegate\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "c69df4cc37824de1b8919170fbfbbcfd6a15b9515ebecb8f70e6e0fe9b2032d2"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-delegate\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "e7cd4e2ab60e538fff6d053c7bc68c776a98ec35ac74ed5103874c3bb7412b79"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-delegate\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "1e7dd6ad6824d79a796b0cdded893cc6aaf041777e38a6651c6a255cce7d2744"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-exit",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-exit/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-exit/protected/CheckProbe.dll",
+        "sha256": "6e324c2e756799ae515caea7a3358497ed2d803600587e078485f2a0a8a9a242"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-exit\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "bb09c2cbdc99534ad65b0b28931224bf5e8dcd15b07ee02b04a56da178103386"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-exit\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "fdba9eb6eb88cdcdd26cc5c0775b12c7fd5a9eb1c582e9d1266177d9f9857bf0"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-exit\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "da590d2d40f85986d0965f1a67feee3a3a293d39a9f989d1c26bcc2cec8366bf"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 0,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-field",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-field/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-field/protected/CheckProbe.dll",
+        "sha256": "2e778c9612ec5a9c814aca8f20c5cad4f5421cb55f6a75397d2f79840dab6747"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-field\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "e04d391c614d956b2e79f472b72b6d55455b744eb9c9f25c9fa916126cb8f227"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-field\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "bac7c1cce0b36ea3e0fcb7d586d3af9887982051d64e1e23aae314ad2fa70bf2"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-field\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "637ca65ce0e90608a1dca96e9e3685d6101df5befb3c5c075faf2a3f066eff80"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-hang",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-hang/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-hang/protected/CheckProbe.dll",
+        "sha256": "24e861b0c646d5d975b90ce413c3353a6c8258b64e1a85edd8221a516015f8bd"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-hang\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "9386996511ea6b29fca829fd5602419b6bf4e8254f07b8e8bbd79645c34e3c7d"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-hang\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "0fe5da9c704a36b659f7fc8b6c26daf305ff95bb6a1149f5a7e0c1aa9a22ebfe"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-hang\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "df67fa0893a0c2a75a7acfc6ae4f3c57ba907fe1c4def74b1598ce8c876bfed2"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 0,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-method/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-method/protected/CheckProbe.dll",
+        "sha256": "479bad3234613c2e2f4b3bebc9a641fa2ed96268e0d2050834e8a80096de55c6"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-method\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "bf5f53638f8466f8cdfe8c09f836fde3dd9922c153453589d41efe6aabc12f57"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "4b066178051fe6bdbca58bfe2cf054fc0ffe9ade2a3844353974cd086bf17bd4"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "cfc47e61c7f0639cd603c20412248d54b27d47ca7a64ef1ff621a5fcc0577884"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-none",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-none/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-none/protected/CheckProbe.dll",
+        "sha256": "0513a8ac7f1a081c11c147be8992da4c8c4d3b65c78f5006767d541d5e9ea149"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-none\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "60ace12b599c9716b7d03649508709f7fc93ff81ce08be7dbcf81461da8ab843"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-none\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "50b07b3bc181072bfd81799b2a58d51214ca4a2b01b69856076be1ea21e0c7cd"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-none\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "7adb140338e69397ab54a50fbc326b5c79cfca3d20d9beca9afc35a7256e3f67"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-probability",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-probability/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-probability/protected/CheckProbe.dll",
+        "sha256": "a68838d457b9053908b1ace079ca6d404e6b4b1d28907cfb597f3c20b6e8ecaf"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-probability\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "21f6085a5c378c4ab9ef774ce20bb7b12ef6b5fe1b3b65b659b661d3e7db49bb"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-probability\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "529cc4e100dd0cde6551b8009eecb08d60e034bd42e2b5e33190581cd273cb0c"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-probability\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "34086ea6f37a0aa93977d0ccc052a88deef45efbccbab7cf2689d5a6c785e0ad"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-debug-property",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-property/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-property/protected/CheckProbe.dll",
+        "sha256": "0ea0ebb13e63754ee2db117bc02d0c02a5fe461aea9af4bf2f10832c56352e45"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-property\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "aef904d69305f2ad8698a3ef2e948a60ad962dfe8ea6971e8a23890870d64bfc"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-property\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "3989fbde2ce13c580a37adf6908f5f2a81d2ead17ee35d445aeba8699b808055"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-debug-property\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "73c3091be4878461aa28d0f7abd48ac832ac06f06b305c970c4bdc4bee6476ea"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-tamper-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-tamper-method/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-tamper-method/protected/CheckProbe.dll",
+        "sha256": "a135ec8b0c6d7c7bf35448c956272ed409ea46d8065beaeecaef2014924333ca"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-tamper-method\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "f137d9f95b991c2f92eb4d7dd9e4869dc3e45b607063211bd231ec85cb15fac4"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-tamper-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "d7563e971328e0bca611194083e2706de4336b2570917a1b0ef7d705004c9e7e"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net10.0-tamper-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "9973c347817d703569f38d4009d0f6925b6c9bffe1954bf440869fbae4bf4ffc"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-combined-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-combined-method/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-combined-method/protected/CheckProbe.exe",
+        "sha256": "c8adf6b35440ee39932a7fa97324bd4d8a2d42d1d485176ee6bf5e8c48f38cc3"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-combined-method\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "ad850e4bbf9baa3bedfc3548dba9f0fee8018e01377e245b146e00e6b10f02fd"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-combined-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "37280137b8779f7b285d355566b351f7e2f838a97726740c454b65c5ddb3e646"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-combined-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "f0a86a380cc57e54552fcb556f675d670cec8d09d79b089f54818150901c3076"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-delegate",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-delegate/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-delegate/protected/CheckProbe.exe",
+        "sha256": "995c8db7d6813552940fa566bcbca35af78ae614b839f971dd862db0cfd23379"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-delegate\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "5fe1a3a36a5b824fef9ab80ff284cf789a098a04e954ac9b5805a3e8e31bfe4d"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-delegate\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "90aa813ddc4925c6710cb07fb01d74c37d9b2f021180f6be513cf9de321a94c0"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-delegate\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "55b3fa9cba092f81b553bbf96fdadaaa6abdb7dda24177a48769875ae1c83a6b"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-exit",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-exit/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-exit/protected/CheckProbe.exe",
+        "sha256": "5f434cb42e52afe5d14b9ac7cc0ebc1c75736791761e6d329eaeebd06370e333"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-exit\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "ec38ad620b1f8b1d48a944160b8fe5ee19a45fdabc7ad32811f46f289e2176da"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-exit\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "bf8e7db7a3518f06352b5a7ef18f48bdb479d42a3e8b44ee61c4a18a434c4e71"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-exit\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "e60fbe94b91dd7230385696597a3f112363ed2088f8432ccf268daf4a79fc993"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 0,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-field",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-field/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-field/protected/CheckProbe.exe",
+        "sha256": "7766216a41a37d88992121997a2f984737b1f766b11a00b3bf37c2e5ae0c24bb"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-field\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "662caa1f188c4e5e96c2743e1e9d8bfcdd2ebb3d81324dff775316ab115a4954"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-field\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "0bad88d692c4133738eafd90985acd4bca983e38a93c2875b5bb47b7b7c1d096"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-field\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "67faa055d4df5e40bb47dbc96badd1eedaf842d328015ff53c93bb3cdcf78eeb"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-hang",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-hang/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-hang/protected/CheckProbe.exe",
+        "sha256": "511165bc9f3ec6cc16329dfe55645d5ea3fa3d5ae9adf3a961959b17a853c8f1"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-hang\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "04c1b7418f87da476c2f1c3e9e9dbc1afebd396f37b895a49895aeb7ab9fb671"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-hang\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "6e2fc223d77b26619ba7af62c50408a031f2ad7ca01a9fd0926b9a27746cd961"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-hang\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "63f7a81b9d7153dfdbbd9471310c3dcf33992935cae5e540a94422b1fd9427f8"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 0,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-method/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-method/protected/CheckProbe.exe",
+        "sha256": "3bc91910a6f239232a826b2e56fee4bbe0df4e095b37de11b2e4840fb75c3b65"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-method\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "2aff790d2ea2cc3db3d00c4c484801f8c5d36d1807cb1b1824d2632c5f44de3f"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "89d7933515c6555683c1138e15b3eaa6d189f40eb522e64e9d011ce6c2a9723c"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "b0c2eac233c56acc622ec348dd7825d785acf15fd6f9b687f5810b2fa89d9018"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-none",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-none/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-none/protected/CheckProbe.exe",
+        "sha256": "f855767935db55e4d9ba5834bb47823fb28cfd7566cadaddb2953ac8f9e41089"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-none\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "edbfe72b4b41361c830ded08b9138b1d08bda20fd2f104c7599a5d8e78e7cfb0"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-none\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "9f26ad5aa16ebcf4944dc65c99a489d0bd4394589d1cb9f8f2c2a98b77b13e10"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-none\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "d815defde9b627c0a008b680e70c51c0684ccdc71188ceff4aa3a12b0b9e689e"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-probability",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-probability/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-probability/protected/CheckProbe.exe",
+        "sha256": "d0b3851d378d882d160de99a5a8e1235b038417e409facb7f3a5398e3e3cd9dc"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-probability\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "a09bbc74e06f492a00838267077502b1af945f30b46671be12ee7d0b666819c1"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-probability\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "640d1d5fa1f4795169c5d47f6762cb8c5d9cf3cfb0757158991176fc9320d888"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-probability\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "3532cae9caed8605b1d50906a767ee48e6d6aba7dd6b7a93ccf404917cfdc323"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-debug-property",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-property/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-property/protected/CheckProbe.exe",
+        "sha256": "b44264ac879a98601f25df59b96297bdac99f3fd4bd3e3189979e62ce168083b"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-property\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "b5b6d88724ff76ba04f27b0db6d97c545bb51b212061caba264797f808567535"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-property\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "84b2f234d0d78406a81e6bb1438cf506e131f6bed16e99c3ce9f1de13a94ecd5"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-debug-property\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "b14fe710c3c2a8bdfa8739c06d0d424bde883cc01efaac6b3831ccda0edec483"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-tamper-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-tamper-method/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-tamper-method/protected/CheckProbe.exe",
+        "sha256": "94f7d45f3f084fd88e83cc3999a02dd0aed7c6ab988e331572174a786cba7808"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-tamper-method\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "ab2452bb71a114e6b8f9f46934e3bc87183cc5b319365bc043c2e70c4a2c3008"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-tamper-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "4e618a43c734755f670ad2e1f0d0d6256ecfac2109e281ebd2be1ef880074b22"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net48-tamper-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "671b89debac3c2c1c91ba4e25a153ef69918dc40b347132659bf7806de420599"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-combined-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-combined-method/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-combined-method/protected/CheckProbe.dll",
+        "sha256": "ee1a53fb88fa304fe44ff917ff849f322df598ef41479e30d2194f809d2e5c56"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-combined-method\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "768950bf10c4e0616bb1a3e373476611719e2cc9ad3e757d1605a613d5e94398"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-combined-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "197931e296bea67e8d49253627714207e1c4c1b03cb9f5f664dde8ddbc3f5c76"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-combined-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "292f02800ffaa3a4511deaf0f29e51c7c887f2ba8b88e116a13f99e440f20dcb"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-delegate",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-delegate/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-delegate/protected/CheckProbe.dll",
+        "sha256": "b5a1ed046ae387a5937f2ed353b929148caf7cd1b0d169dd81278269ebd3812b"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-delegate\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "dd4f9cd4ae0d86511f82932f53497344b00262b09633b16d7f0efa365f106ec2"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-delegate\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "5a38510213a0c776cc8670e4d6a794c2b8edb415c1faa770ad6eb352edfc8ccb"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-delegate\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "e4337a7e636ffed7ee325150cef6771718adbaf91543114586f6b3c3e14dc1e1"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-exit",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-exit/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-exit/protected/CheckProbe.dll",
+        "sha256": "1bf2e2a825fc738c0a210c83a5aee94f46ddcab5ad7b4240532e06f0d9bca9e0"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-exit\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "ce124c0989746db18f90f12f5eec58ba8509b7743882035552813807d7af2ed2"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-exit\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "4f34a48fb6dc6d2daf4b03a6a2ff2553a1213bcf1d54060dd4d4231322aa0421"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-exit\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "5bceb343f8c202b68532da246a192432c00107246fe919527b2a11e06892de13"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 0,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-field",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-field/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-field/protected/CheckProbe.dll",
+        "sha256": "4002dd1c3837f504676f8a1c55f6c9fab76accc059ac3c669c3f391705f6c6cb"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-field\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "656be9c3e04b2e8d48e4ab8365d38dadfd78530710d7cbb286011ad0a556c273"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-field\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "dbd4b44fed74277716da6d14927524ecf23639ceea35cead98781539f2b8f94d"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-field\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "cfc47e61c7f0639cd603c20412248d54b27d47ca7a64ef1ff621a5fcc0577884"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-hang",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-hang/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-hang/protected/CheckProbe.dll",
+        "sha256": "59eae3f197eed9d1f3615f38fb30b680d3767d6047dd4cb25494828a1b4717ac"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-hang\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "c2c25c35ae2fbbba94c886731342408773adf8a573019c0d3ab1ecbd59b0f3fc"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-hang\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "5931b81b415bc018a174c0e93bd2b3de572d227687cd0ad8b97fb5360e3eb2e8"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-hang\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "dc2d8d5f27020eabb311a6b0f86cc18c479a028ee6c4db2c82a9dc12a3099224"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 0,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-method/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-method/protected/CheckProbe.dll",
+        "sha256": "39d2fccebf3a2e02142d81d3421a5f9831cd6f8e2867fc51ccf8db7064b515ee"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-method\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "5549d234420f6a22c19b574e13274710034c6db18b8baa4bd8e948308a1cf5a6"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "40767713428de74a677987d0137f71ecd5f88a091c0e10a8c03a9835cc541c9e"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "3c4122a038c5cbd7e825448e5e5a6461081881f89b409536bc2bd38314e646b9"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-none",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-none/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-none/protected/CheckProbe.dll",
+        "sha256": "f5ad4361730cc0bd03669f6b0c0d541beb884072b2d0f81b7d981c8d600f5ef7"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-none\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "4f966c167d42230bd12f1ef9b448c8ffd6ba9f62eb0be26fbe47ad81a985a65a"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-none\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "243cdf7712b2be3b320c4767eae9849447122fed2aa413a2080225934c581d3a"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-none\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "5485f12a041996ff265994e22f69f1e16c091895b3307f771a0107d0539befac"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-probability",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-probability/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-probability/protected/CheckProbe.dll",
+        "sha256": "551f42ce539e8f1742e14c60bb4d38e35709bdc5afd92b911556315c563bd753"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-probability\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "90f67fe5f94b6f486860165b64e926c8b629c37208a4e428145ea3ecfcd019ba"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-probability\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "1a659da429c12e3d800abed155a5b9db6f11ee66c5a7ccd02e9b6462f265ce72"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-probability\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "364df0f3bf2cba23ef5144e032dc96e19c190db509bf2025f11c548053c155d5"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-debug-property",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-property/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-property/protected/CheckProbe.dll",
+        "sha256": "c0cf1a440e6441ec45473ac0ae97da215ac2f1c9366573071a2af1913a149206"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-property\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "a739f823d85b749040f1cec53989b9661b9578e3b100eeb426f951a0d472e52e"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-property\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "51a7d18d942a8b61e32f031697ce7c74a67d21bef6f3eeb261e2efb274769ae7"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-debug-property\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "11639cad81ff0cab89311301c813ca1bb4d11eeecbd393c0e5bea38f26202a97"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-tamper-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-corpus",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-tamper-method/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-tamper-method/protected/CheckProbe.dll",
+        "sha256": "7d4ddcaba82282355b76e68d1e90e0d146d0fb4fc204cb8ca01c7951b32571ae"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-tamper-method\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "25a9cc7ab86e1a5983b251b8822617ea29940637898f22934eb31fea3b683df6"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-tamper-method\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "da3d931fc16b0adfc37d3f09bd4c7a3b71b38972dda66e0b7096227b7597ff01"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-corpus\\net8.0-tamper-method\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "0322f8f0ff4b064ae3fd07bdd53e03d5b1afe57d2d33f3783a60706782284a33"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-combined-flow",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-flow/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-flow/protected/CheckProbe.dll",
+        "sha256": "783d423a75592ff601f33807a38fa9d9efd53856b94ffc17b0c7c3a149c27909"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-flow\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "608872d6cd517eff9796711c60d162f18c06ea3fe0a935e8fcb1e04a418800d4"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-flow\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "9f15717e86f118c8a471a36c557f7c428a947b1f1db5fac18afbf4b6d18be24c"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-flow\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "bd9625f7b065d44b0a5d3997d531d6f3c2dab69209f1e3ec203c5fdfbb932420"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-combined-native",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-native/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-native/protected/CheckProbe.dll",
+        "sha256": "42f732c35b60eb8b65b9fe9136212c38630c4843a9c22537f87d6c12cbb5f4ed"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-native\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "75c36bdf0ae8a9ea437a67c60887cc603a009ccfb113d79efbe6defe2b59b51e"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-native\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "50d3e8c55e9e4820120c366816c548f04073ecd6a908c3bdf5ef45b2ea3ce6a8"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-native\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "c3f9407ebf6e86ba6bc11d72ccbbcec1ad20d6e0d03aa9c4afc9ae8485f4cbe7"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 2,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-combined-renamed",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-renamed/oracle/CheckProbe.dll",
+        "sha256": "9717055ba484593be3e6f591c4bb8af712da666ab287171aff56d8a7ab46dff5"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-renamed/protected/CheckProbe.dll",
+        "sha256": "568289dee4bb74228313ccc9376315f451862620d7e656f82fd950021fbefe4a"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-renamed\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "c3066b6a4b1713e05fc144940e3b7c928abd7a6cff14d61b2c6e0addb2ffde55"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-renamed\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "0a2b7b8082fa432e8c12fc43a8f1866a337d55688f4717a977154dd3eca74337"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net10.0-combined-renamed\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "c9ef95f31a33d00b420edd68051418b8f6b4814afbb1a8018942f1bb9f3be062"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-combined-flow",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-flow/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-flow/protected/CheckProbe.exe",
+        "sha256": "fa653e5e6cdf23b3027e57ead14b105a38cfe69badc726204c77f1d94e159e6c"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-flow\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "5660ed8c51929af4857ac2ff27ce935869ae29ff58d14308fec1cf39e810d3c7"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-flow\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "b960e1cf057b1fed47590342f681b6e41e58e4792504d1754a422390a8937a97"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-flow\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "a81ab6e139cd1068860f048609de0cf2a933d3a5a0b22a1bc4e88492d5aed0eb"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-combined-native",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-native/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-native/protected/CheckProbe.exe",
+        "sha256": "6b9cf7ef1204948da2b40aee50ac48d955a7dedb2574e0188163bc5014000034"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-native\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "da88178d57dcbc8a34a881dd34c326e00efc743199aeebfc647a4cd0f4940e39"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-native\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "2b4eea3cfb558b345c5f4ef5a26f501de8be4e66473f9dc1dca109cc1f139aa3"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-native\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "2ee2e567a98d9750227b51bf5e041efe1c82c98dd78bb0c9dcf9035e2b3e7a66"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 2,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-combined-renamed",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-renamed/oracle/CheckProbe.exe",
+        "sha256": "3e83be22e853bb6d3ce7227bed5ace467623c3d59c89a9b9a2d88c5c0c9285a2"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-renamed/protected/CheckProbe.exe",
+        "sha256": "97fcadd071f491f648a84449a774eb526040b001d9c4eab58c4ce0f8b51604c9"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-renamed\\cleaned_response_final\\CheckProbe.cleaned.exe",
+        "sha256": "f815e840aa987f071b0717d6064e6884590b124222041530027c81b3b6e18408"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-renamed\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "2ff504a252a8c57773773482f0627c1aa5fecf5b85dd30e83cafcd9cbb72ae25"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net48-combined-renamed\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "e38bd795cf7ec26d02848a2795e6db8ae8b8c9b602cb13e57966554596195222"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-combined-flow",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-flow/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-flow/protected/CheckProbe.dll",
+        "sha256": "92fd584476ddd807d418a466f81221f4b7ecb5b5251e77c9e1e41317c58d503b"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-flow\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "a8bd18dfea2467c0892443fb3f5d8cecd8da592e0f0d27a0f7d422bb34bb1224"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-flow\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "1d0ee95b1002de7b2ba1dbcf061770600dc208d21409ca070f5b30e50ac0c64c"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-flow\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "a5c998a89461c474d5db5bfc1f47ea33626a627bf45fcf7e896a45a42e2760fc"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-combined-native",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-native/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-native/protected/CheckProbe.dll",
+        "sha256": "b4fd187f97fe92bd424d3ccd242406b557ae7247611c55f0e20cc6595e2fa696"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-native\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "d0dda31f664af2c9703b1a94197b75f025bdbbf39e8eef08c80f6229f1416612"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-native\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "07f3c5d536e6ac20d90d1d2c3dfa9d62a6a71665683d51338c65d281154f7791"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-native\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "b9c340b797461ffbfe00d021f63e9578ba0ac3d924d7be6977bc6fb97f2bc56e"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 2,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-combined-renamed",
+      "corpus": "C:/cilantro-verify/dotfuscator/check-interactions-final",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-renamed/oracle/CheckProbe.dll",
+        "sha256": "fd7499fbd9ee0cd4ee63244bb37de069f26ca6021b5cf43596e045724b5c6721"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-renamed/protected/CheckProbe.dll",
+        "sha256": "eec97d0b27d5d1761b9eba1855878b3f26072440491bff456ab0ec1b6a0ddded"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-renamed\\cleaned_response_final\\CheckProbe.cleaned.dll",
+        "sha256": "86d1bb940083e3ec6f038f14d52f646b1667368a7499a708c67e9c9966477e19"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-renamed\\cleaned_response_final\\CheckProbe.analysis.json",
+        "sha256": "00f95ca1c02b0833f69a348944f76cf8922a365bdc721ba82d79c06740e7a03b"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\check-interactions-final\\net8.0-combined-renamed\\cleaned_response_final/CheckProbe.changes.json",
+        "sha256": "cbb3182bca079066057e319412aa3dc22d27e258eab6a1b0ffbcbb39b6f5bbf5"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 1,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-root-exit",
+      "corpus": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-exit/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-exit/protected/RootCheckProbe.dll",
+        "sha256": "4e5a6792e04465718f53ff03cfd0424fc6a4278990304781e984c341ecbd47bb"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-exit\\cleaned_response_final\\RootCheckProbe.cleaned.dll",
+        "sha256": "e90cad75ded80b223c3e69cfb183fee80879745225684d6cf83ee7f18abbc24e"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-exit\\cleaned_response_final\\RootCheckProbe.analysis.json",
+        "sha256": "10a070b53707ec39a4165191bc5fee0e308371d15297a5197aebb4cb0010fedd"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-exit\\cleaned_response_final/RootCheckProbe.changes.json",
+        "sha256": "603c3b5499cdefcb2af1a3360da9fd92aa21b6a353ce89e0e7463250174f48b5"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-root-flow",
+      "corpus": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-flow/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-flow/protected/RootCheckProbe.dll",
+        "sha256": "1853b8b6088fe2e850d11137816374ee8babb782310fe0c0b3841bde7afde92c"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-flow\\cleaned_response_final\\RootCheckProbe.cleaned.dll",
+        "sha256": "f9338f1b7c33ad3b8e34055aa58175d8d2024465b6c023e89c46602eb4a4cb66"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-flow\\cleaned_response_final\\RootCheckProbe.analysis.json",
+        "sha256": "2f0346cda3d48e06d4c11ee913150093f7582dfd68b71c3adbf3722848ff4fdb"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-flow\\cleaned_response_final/RootCheckProbe.changes.json",
+        "sha256": "4c8ee320ecbaffe1deb8206ed43da5c32d28e7618693132a6ab1fc96ed380d48"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-root-hang",
+      "corpus": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-hang/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-hang/protected/RootCheckProbe.dll",
+        "sha256": "74651ee6d3b91c3c41b155cf262b91c856545eb7a0f17785bc2fce5da948a9c6"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-hang\\cleaned_response_final\\RootCheckProbe.cleaned.dll",
+        "sha256": "887518a7bc8581e8b959a679e2986d268efb8c399868d43d5155f116ef87fb18"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-hang\\cleaned_response_final\\RootCheckProbe.analysis.json",
+        "sha256": "b18f979b4578d3c9e0631d7d24f63329d4399b90204cea985b5aab8f96d136f3"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-hang\\cleaned_response_final/RootCheckProbe.changes.json",
+        "sha256": "34a321d50061fb41e4cfcf51888eef6c44a1e986b8b1b65d38c7ab20e2018160"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-root-method",
+      "corpus": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-method/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-method/protected/RootCheckProbe.dll",
+        "sha256": "996bed813a3eb6e20ecfd058b8b7edc0e11e58a11ba94753aa4e4333361df59a"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-method\\cleaned_response_final\\RootCheckProbe.cleaned.dll",
+        "sha256": "6860c5c5494fe2f12082ae6c8ef32a55509e63982ef851640bbd49fd64fc7b4d"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-method\\cleaned_response_final\\RootCheckProbe.analysis.json",
+        "sha256": "a835bd15f1e962c28c6e99cabb991285804ef062616030e575fecdba98dffea2"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-method\\cleaned_response_final/RootCheckProbe.changes.json",
+        "sha256": "c7347df0aca0b6238bd6c0ba866394884efc4d6245b83f383fc8fd1e85134098"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 14,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-root-native",
+      "corpus": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-native/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-native/protected/RootCheckProbe.dll",
+        "sha256": "5306ec2c09cfecc5fb83b9a5b0b39e8a118d2ae7104dce98e20f25c7358189a8"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-native\\cleaned_response_final\\RootCheckProbe.cleaned.dll",
+        "sha256": "064beb5af988bfe229280857111490b1ce0465f349e6c10be972a4780aaa73ee"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-native\\cleaned_response_final\\RootCheckProbe.analysis.json",
+        "sha256": "76b5fb80008dfb1172fedfba4aa1485358d2cc6282389746ed1f45dd8c3cf0a3"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-native\\cleaned_response_final/RootCheckProbe.changes.json",
+        "sha256": "aa99445a1f45c131a11897061a37d0e5f5a7af6c5d8b8df06d1baf822be8e950"
+      },
+      "removedResponseExceptions": 1,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 14,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-root-none",
+      "corpus": "C:/cilantro-verify/dotfuscator/root-corpus-encrypted",
+      "source": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-none/oracle/RootCheckProbe.dll",
+        "sha256": "1fb2e360211d77ac8c55c68299cf218eb0d9f157733d114db8e5538bf6f94e4f"
+      },
+      "protected": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-none/protected/RootCheckProbe.dll",
+        "sha256": "8b84049a0d9fdcaef499d81f47f2427a735654187705a704c9dad499563a76a4"
+      },
+      "output": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-none\\cleaned_response_final\\RootCheckProbe.cleaned.dll",
+        "sha256": "c8b2e3556dc89f0cea07683402eac64e11ec7b6f4607be0eed8226b68a0541a1"
+      },
+      "analysis": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-none\\cleaned_response_final\\RootCheckProbe.analysis.json",
+        "sha256": "97c7072336a2a052aeed99177e0795289a8ac1484e4b684752392bbdb8c6938e"
+      },
+      "changes": {
+        "path": "C:\\cilantro-verify\\dotfuscator\\root-corpus-encrypted\\net10.0-root-none\\cleaned_response_final/RootCheckProbe.changes.json",
+        "sha256": "76610c70a648a4d60fc6383cf64be74cb0716ec2ec66a6db6e56a5aef6a8d99d"
+      },
+      "removedResponseExceptions": 0,
+      "remainingResponseExceptions": 0,
+      "runtimeTypesRemoved": 13,
+      "remainingDispatchers": 0,
+      "remainingUnreachableInstructions": 0
+    }
+  ]
+}

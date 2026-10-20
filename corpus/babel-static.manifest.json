@@ -134,7 +134,8 @@
       "minimumProxyCallsRestored": 1990,
       "expectedMissingResourceNames": [
         "YQLy"
-      ]
+      ],
+      "minimumNeutralizedCheckSites": 2
     },
     {
       "id": "ptnifif",
@@ -201,7 +202,8 @@
       "expectedDecodedResourceSha256": [
         "95b1cfc86f7cf38093d6a680e2aecd82773c955c62b5f2d1aa7406d54b7150a8",
         "adf70d11c1b1701d8cfe139732942aecf5f565d4aee241fb2abe66110bb5254a"
-      ]
+      ],
+      "minimumNeutralizedCheckSites": 1
     }
   ]
 }

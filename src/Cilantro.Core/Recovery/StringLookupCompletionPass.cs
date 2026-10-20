@@ -13,6 +13,7 @@ namespace Cilantro.Core.Recovery;
 public class StringLookupCompletionPass : DeobfuscationPass
 {
     internal const string TypesFact = "cleanup.orphanedStringLookupTypes";
+    internal const string SharedTypesFact = "strings.retainedSharedInitializers";
     private const string CandidatesFact = "strings.retainedLookups";
     internal sealed record Candidate(MethodDef Resolver, IReadOnlyCollection<MethodDef> Aliases, IReadOnlyDictionary<int, string> Answers);
     internal static void Remember(ArtifactContext context, MethodDef resolver, IReadOnlyCollection<MethodDef> aliases,
@@ -124,6 +125,12 @@ public class StringLookupCompletionPass : DeobfuscationPass
                 CilantroPipeline.BuildRewriteAllowance(context)).Passed)
             { notes.Add(owner.FullName + ": structural verification refused the rewrite."); continue; }
             transaction.Commit();
+            if (preserveSharedInitialization)
+            {
+                context.TryGetFact<IReadOnlySet<TypeDef>>(SharedTypesFact, out var retained);
+                context.SetFact<IReadOnlySet<TypeDef>>(SharedTypesFact, new HashSet<TypeDef>(retained ?? new HashSet<TypeDef>())
+                    .Concat(sharedInitializers!.Select(initializer => initializer.DeclaringType)).ToHashSet());
+            }
             if (resourceReadsAgree)
                 foreach (var resource in observedResources ?? [])
                     DecodedResourceOwnership.Remember(context, resource, owned.SelectMany(t => t.Methods));

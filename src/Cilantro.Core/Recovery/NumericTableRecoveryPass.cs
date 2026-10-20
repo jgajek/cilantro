@@ -201,8 +201,34 @@ public class NumericTableRecoveryPass : DeobfuscationPass
         foreach (var getter in getters.Where(g => recoveredHolders.Contains(g.Holder)))
             RecoveryOrphans.Declare(context, getter.Method.DeclaringType.Methods
                 .Where(m => IsNumericArrayWrapper(m, getter.Holder.DeclaringType)));
+        RecordResourceOwners(context, first.State.LoaderEvidence, second.State.LoaderEvidence,
+            getters.Where(getter => folded.Contains(getter.Method)).SelectMany(getter => new[]
+                { getter.Method.DeclaringType, getter.Holder.DeclaringType, getter.Table.DeclaringType }).ToHashSet());
         context.AddEvidence(new Evidence(Name, $"Replaced {changes} numeric-table reads; independent static interpretations agreed bit-for-bit."));
         return (PassStatus.Success, changes, [$"Recovered {changes} numeric constants from {getters.Length} closed table getter(s).", .. refusals.Take(8)]);
+    }
+
+    private static void RecordResourceOwners(ArtifactContext context, LoaderInterpretationEvidence first,
+        LoaderInterpretationEvidence second, HashSet<TypeDef> owners)
+    {
+        if (owners.Count == 0) return;
+        var sources = DecodedResourceOwnership.ObservedOwnedReads(context, first, owners)
+            .Intersect(DecodedResourceOwnership.ObservedOwnedReads(context, second, owners)).ToArray();
+        var methods = owners.SelectMany(owner => owner.Methods).Where(method => method.Rid != 0).ToDictionary(method => method.MDToken.Raw);
+        foreach (var source in sources)
+        {
+            var readers = first.Observations.Concat(second.Observations).Where(observation => observation.Kind == LoaderObservationKind.ManagedResourceRead &&
+                    observation.CallStack.Count != 0 && methods.ContainsKey(observation.CallStack[^1]))
+                .Where(observation => System.Text.Json.JsonSerializer.Deserialize<ManagedResourceRead>(observation.Detail) is { } read &&
+                    read.Name == source.Name && read.Sha256 == source.Sha256)
+                .Select(observation => methods[observation.CallStack[^1]]).Distinct().ToArray();
+            if (readers.Length == 0) continue;
+            DecodedResourceOwnership.Remember(context, source, readers, numericConstruction: true);
+            RecoveryOrphans.Declare(context, readers);
+            context.AddEvidence(new("numeric-resource-ownership",
+                $"Both closed numeric construction trials read {source.Name} (SHA-256 {source.Sha256}); cleanup still requires physical removal of every observed reader.",
+                string.Join(", ", readers.Select(reader => reader.FullName))));
+        }
     }
 
     internal static bool IsNumericArrayWrapper(MethodDef method, TypeDef holder)

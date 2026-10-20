@@ -1,0 +1,241 @@
+{
+  "manifestVersion": 1,
+  "profile": "babel-12-embedding",
+  "description": "Licensed executable dependency embedding captures across net48/net8/net10: single, multiple, resource/string/proxy/control-flow combinations and nested embedding. Static byte-exact extraction and complete reviewed loader retirement with ordinary dependency deployment.",
+  "samples": [
+    {
+      "id": "net48-oracle",
+      "tier": "oracle",
+      "sha256": "a0127bb5a913e80305b169901e667145783a43ae434a40ce451d52ab60f422ae",
+      "localName": "babel-12-embedding/net48-single/oracle/BabelEmbedProbe.exe",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net48-single",
+      "tier": "profiled",
+      "sha256": "2a1438caa2ada58a325f36bb36b051e9e8d3b2e4fa4fb399fae16ca145237e96",
+      "localName": "babel-12-embedding/net48-single/protected/BabelEmbedProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "a0127bb5a913e80305b169901e667145783a43ae434a40ce451d52ab60f422ae",
+      "expectedPayloadSha256": [
+        "d8901550664e4fea179c4516028168034639e659d0d308688360b6edad38e1d7"
+      ],
+      "expectedRetiredResourceNames": [
+        "GBqTW"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-multiple",
+      "tier": "profiled",
+      "sha256": "9cc118339a1bc615f238803342783a9149e5d5269c39ad904431914037809fbb",
+      "localName": "babel-12-embedding/net48-multiple/protected/BabelEmbedProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "a0127bb5a913e80305b169901e667145783a43ae434a40ce451d52ab60f422ae",
+      "expectedPayloadSha256": [
+        "d8901550664e4fea179c4516028168034639e659d0d308688360b6edad38e1d7",
+        "6c911e9e2c59f24cfd17deb366e839ca37b4e2296f2d661b03b0584a8167b26c"
+      ],
+      "expectedRetiredResourceNames": [
+        "GBqTW"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-combined",
+      "tier": "profiled",
+      "sha256": "e5f35964df6f12e570d649299b87c35afa98ceea3245ae1f7a1602ed53e4fb61",
+      "localName": "babel-12-embedding/net48-combined/protected/BabelEmbedProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "a0127bb5a913e80305b169901e667145783a43ae434a40ce451d52ab60f422ae",
+      "expectedPayloadSha256": [
+        "d8901550664e4fea179c4516028168034639e659d0d308688360b6edad38e1d7",
+        "6c911e9e2c59f24cfd17deb366e839ca37b4e2296f2d661b03b0584a8167b26c"
+      ],
+      "expectedRetiredResourceNames": [
+        "qity"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net48-nested",
+      "tier": "profiled",
+      "sha256": "fc37c4f5f5ca3e59f1287880ce57883c1fb2e0b6192200a6a9333effafe69e38",
+      "localName": "babel-12-embedding/net48-nested/protected/BabelEmbedProbe.exe",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "a0127bb5a913e80305b169901e667145783a43ae434a40ce451d52ab60f422ae",
+      "expectedPayloadSha256": [
+        "9cda114349bd983c010e3f7c3b9eb34e7bd323d9a0cd95108da0b821ffc84c4c"
+      ],
+      "expectedRetiredResourceNames": [
+        "GBqTW"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-oracle",
+      "tier": "oracle",
+      "sha256": "d26c032c1ebf1f85d43f4aca445a3d7a5f7033d86f0a3503a2c5022fcf176f42",
+      "localName": "babel-12-embedding/net8.0-single/oracle/BabelEmbedProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net8.0-single",
+      "tier": "profiled",
+      "sha256": "20e3c16473316b538de3871ec9bb71039338e9311d7b06266f14922cc011de6d",
+      "localName": "babel-12-embedding/net8.0-single/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "d26c032c1ebf1f85d43f4aca445a3d7a5f7033d86f0a3503a2c5022fcf176f42",
+      "expectedPayloadSha256": [
+        "7db7c6e9003f3b3208248857331225937a2d5a0a82e6632ded8613f4aaf5beb8"
+      ],
+      "expectedRetiredResourceNames": [
+        "AzYfZ"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-multiple",
+      "tier": "profiled",
+      "sha256": "821fbe3cf375d6ddf3a304fa8d379721e378d49e8eca50414d997699eefbde3c",
+      "localName": "babel-12-embedding/net8.0-multiple/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "d26c032c1ebf1f85d43f4aca445a3d7a5f7033d86f0a3503a2c5022fcf176f42",
+      "expectedPayloadSha256": [
+        "7db7c6e9003f3b3208248857331225937a2d5a0a82e6632ded8613f4aaf5beb8",
+        "c89fa2d44c80fdead45ff1d5575309ef92110f2121031a9add4c749d417c3191"
+      ],
+      "expectedRetiredResourceNames": [
+        "AzYfZ"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-combined",
+      "tier": "profiled",
+      "sha256": "46e7f3f9d8a49821d0cf7bc9b5022d648e5a79f4dad8a65be9dd2d9361c3c7e3",
+      "localName": "babel-12-embedding/net8.0-combined/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "d26c032c1ebf1f85d43f4aca445a3d7a5f7033d86f0a3503a2c5022fcf176f42",
+      "expectedPayloadSha256": [
+        "7db7c6e9003f3b3208248857331225937a2d5a0a82e6632ded8613f4aaf5beb8",
+        "c89fa2d44c80fdead45ff1d5575309ef92110f2121031a9add4c749d417c3191"
+      ],
+      "expectedRetiredResourceNames": [
+        "KhSHw"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net8.0-nested",
+      "tier": "profiled",
+      "sha256": "a122561b661e45bc2e026797b381bdeb80b7f397c600546223dac73933d0f534",
+      "localName": "babel-12-embedding/net8.0-nested/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "d26c032c1ebf1f85d43f4aca445a3d7a5f7033d86f0a3503a2c5022fcf176f42",
+      "expectedPayloadSha256": [
+        "25f1629f5b859d5803b8ecea49e84985644cf74240c5b6371a3578806aeea166"
+      ],
+      "expectedRetiredResourceNames": [
+        "AzYfZ"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-oracle",
+      "tier": "oracle",
+      "sha256": "aca815ab7c529bb723161beb0cc8917f2c5e517b029f6fb0ed5b72f6ca4a58db",
+      "localName": "babel-12-embedding/net10.0-single/oracle/BabelEmbedProbe.dll",
+      "expectedDetection": "none",
+      "expectedCapabilities": []
+    },
+    {
+      "id": "net10.0-single",
+      "tier": "profiled",
+      "sha256": "d10047c984b5db632b42e881182ec6faeb7e96f7cdcaaf43624443f58b0947ef",
+      "localName": "babel-12-embedding/net10.0-single/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "aca815ab7c529bb723161beb0cc8917f2c5e517b029f6fb0ed5b72f6ca4a58db",
+      "expectedPayloadSha256": [
+        "9540a9e7f48a3ac45aaaaa3fd026c817e13b2d7fce0a2f2d9fcc76bf00b57c0f"
+      ],
+      "expectedRetiredResourceNames": [
+        "AzYfZ"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-multiple",
+      "tier": "profiled",
+      "sha256": "9dc553a40ddbcd4a0e93ec8f4a68dff3c317e944dec8f28434d365ca0d394385",
+      "localName": "babel-12-embedding/net10.0-multiple/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "aca815ab7c529bb723161beb0cc8917f2c5e517b029f6fb0ed5b72f6ca4a58db",
+      "expectedPayloadSha256": [
+        "9540a9e7f48a3ac45aaaaa3fd026c817e13b2d7fce0a2f2d9fcc76bf00b57c0f",
+        "745bacfdeaae20be8133bb2aec967b1505687c9c8f1a5ce2fb5764ad58a42c30"
+      ],
+      "expectedRetiredResourceNames": [
+        "AzYfZ"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-combined",
+      "tier": "profiled",
+      "sha256": "62f1696d743f5f01cbcd0c8fc613ced73bc0063ba145accae134a067ec9218af",
+      "localName": "babel-12-embedding/net10.0-combined/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "aca815ab7c529bb723161beb0cc8917f2c5e517b029f6fb0ed5b72f6ca4a58db",
+      "expectedPayloadSha256": [
+        "9540a9e7f48a3ac45aaaaa3fd026c817e13b2d7fce0a2f2d9fcc76bf00b57c0f",
+        "745bacfdeaae20be8133bb2aec967b1505687c9c8f1a5ce2fb5764ad58a42c30"
+      ],
+      "expectedRetiredResourceNames": [
+        "KhSHw"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    },
+    {
+      "id": "net10.0-nested",
+      "tier": "profiled",
+      "sha256": "1cb523d9b244a04e69d996721db2d4515b7780d936bcfe130d45ffb6c829c47f",
+      "localName": "babel-12-embedding/net10.0-nested/protected/BabelEmbedProbe.dll",
+      "expectedDetection": "babel",
+      "expectedCapabilities": [],
+      "oracleSha256": "aca815ab7c529bb723161beb0cc8917f2c5e517b029f6fb0ed5b72f6ca4a58db",
+      "expectedPayloadSha256": [
+        "7118f9567248966ddb783748b4e1169b2883161ad728a6a67b08514be1e29be3"
+      ],
+      "expectedRetiredResourceNames": [
+        "AzYfZ"
+      ],
+      "maximumRemainingSwitchDispatchers": 0,
+      "maximumUnreachableInstructions": 0
+    }
+  ]
+}

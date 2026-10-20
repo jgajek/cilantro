@@ -1,0 +1,37 @@
+# Babel and Dotfuscator trial targets
+
+The target is recovery of the built-in protection families emitted by the installed Babel 12.1 Enterprise and Dotfuscator 7.9 Professional trials. The tables identify the evidence for each family. They do not promise recovery of every application, custom decoder or future producer build. Original names, pruned code and other information discarded by a producer cannot be reconstructed without additional source material.
+
+The user excludes Babel stream string encryption and Dotfuscator Shelf Life while their required trial license material is unavailable. These are exclusions, not supported features.
+
+| Babel target | Evidence and result |
+| --- | --- |
+| XOR and hash strings | [Baseline](../corpus/babel-12-baseline.manifest.json): literal sites and CoreCLR eager hash caches recover; original string allocation and lookup behavior are preserved. |
+| Numeric values and arrays | [Baseline](../corpus/babel-12-baseline.manifest.json): primitive tables and arrays recover with exact bits and fresh array semantics; obsolete encrypted data retires. |
+| Delegate proxies | [Baseline](../corpus/babel-12-baseline.manifest.json), [method shapes](../corpus/babel-12-methods.manifest.json), [generic owners](../corpus/babel-12-generics.manifest.json), [inheritance](../corpus/babel-12-hierarchy.manifest.json) and [external bases](../corpus/babel-12-external-bases.manifest.json): closed target/access/initialization proofs restore calls and preserve application state. |
+| Internal method encryption | The method and generic corpora restore bodies, token bindings and exception handlers, including byref and constrained-owner cases. Producer-induced behavior differences are recorded in [method provenance](../corpus/babel-12-methods.provenance.json). |
+| Cipher choices | [Cipher matrix](../corpus/babel-12-ciphers.manifest.json): all seven advertised choices, twenty-one restored bodies, zero remaining encrypted stubs and matching runtime results across net48/net8/net10. |
+| Password-protected method images | [Password](../corpus/babel-12-password.manifest.json) and [combined](../corpus/babel-12-password-combined.manifest.json): closed callbacks and bounded PBKDF2 recover all six bodies. Unknown passwords remain unresolved. |
+| External method images | [External](../corpus/babel-12-external.manifest.json) and [combined](../corpus/babel-12-external-combined.manifest.json): six bodies recover from explicit hash-pinned data files; cleaned outputs run without those files. |
+| Resources | [Baseline](../corpus/babel-12-baseline.manifest.json) and combinations restore resource-only satellites and application streams with oracle resource parity. Code-bearing dependencies use the separate bundle path. |
+| Dependency embedding | [Embedding](../corpus/babel-12-embedding.manifest.json) and [identities](../corpus/babel-12-embedding-identities.manifest.json): extracted dependencies deploy as ordinary DLLs, nested loaders retire and signed outputs can be re-signed with the supplied matching key. |
+| Control flow and metadata hardening | [Hardening](../corpus/babel-12-hardening.manifest.json): all six control-flow choices and captured reflection/ildasm settings recover. The [option audit](../corpus/babel-12-option-availability.provenance.json) additionally validates two x86 invalid-opcode captures and the requested `loadtomemory=off` embedding setting. |
+| Debugging and integrity checks | [Baseline](../corpus/babel-12-baseline.manifest.json) and [legacy captures](../corpus/babel-static.manifest.json): reviewed complete check families recover; changed or unknown checkers refuse. |
+| Combined protection and cleanup | Baseline and external/password combinations gate restored methods, strings, proxies, resources and retired initialization. Cleanup requires proof that every surviving application consumer is preserved. |
+| Stream string encryption | Excluded: the supplied trial reports that the component is unavailable. [Availability evidence](../corpus/babel-12-baseline.provenance.json). |
+
+| Dotfuscator target | Evidence and result |
+| --- | --- |
+| Managed string encryption v1 | [Managed corpus](../corpus/dotfuscator-7-static.manifest.json): net48/net8/net10 literals recover alongside high control flow and renaming. |
+| Native-key string encryption v2 | [Native corpus](../corpus/dotfuscator-7-native.manifest.json) and [signature cases](../corpus/dotfuscator-7-signatures.manifest.json): authenticated environment/native inputs and reviewed managed graphs recover strings statically; obsolete bridges retire. Corpus-specific producer defects stay in provenance. |
+| Native platform variants | Reviewed Windows x86/x64, Linux x64/ARM64 and macOS x64/ARM64 binaries are supported as data inputs. Windows and Linux runtime comparisons pass; ARM64 Linux runs under emulation. macOS runtime execution remains unvalidated. See [platform coverage](compatibility.md#dotfuscator-coverage). |
+| Resource encryption | [Resources](../corpus/dotfuscator-7-resources.manifest.json), [resource types](../corpus/dotfuscator-7-resource-types.manifest.json) and [combinations](../corpus/dotfuscator-7-resource-interactions.manifest.json): data restores without object deserialization; reviewed generated managers/readers retire. Producer type loss is recorded rather than guessed. |
+| Localized resource deployment | [Satellites](../corpus/dotfuscator-7-satellite-resources.manifest.json) and [contracts](../corpus/dotfuscator-7-resource-contracts.manifest.json): culture fallback, contract-version differences and captured satellite-only layouts recover. |
+| Debugging and integrity checks | [Checks](../corpus/dotfuscator-7-checks.manifest.json) and [combinations](../corpus/dotfuscator-7-check-interactions.manifest.json): reviewed families select their clean verdict, preserving application notification effects. |
+| Android Root Checks | [Root Check corpus](../corpus/dotfuscator-7-root-checks.manifest.json): complete reviewed families recover and retire; six desktop clean-verdict replays pass. Original Android checks and rooted/non-rooted device behavior were not executed. |
+| Check responses | [Response-retirement audit](../corpus/dotfuscator-7-response-retirement.provenance.json): reviewed generated exception/exit/hang/probability responses simplify; application consumers retain needed declarations. |
+| Control flow and renaming | Managed, native and combined corpora gate dispatcher/unreachable-instruction removal while preserving application switches and metadata consumers. Readable replacement names do not reconstruct discarded original identifiers. |
+| Separate legacy code protection | [Availability audit](../corpus/dotfuscator-7-feature-availability.provenance.json): the accepted configuration changes none of eight application methods and reports no encryption transform. This establishes no separate method-encryption support. |
+| Shelf Life | Excluded: generation requires a separate activation key unavailable under the supplied evaluation setup. |
+
+Custom plugins/decoders, unknown generated graphs, unavailable runtime state and damaged inputs can still require additional implementation. The detailed [compatibility guide](compatibility.md) records the implementation and platform limits. [Cipher provenance](../corpus/babel-12-ciphers.provenance.json) records the latest source hashes, full regression result and the thirty-manifest input audit.

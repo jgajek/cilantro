@@ -94,6 +94,12 @@ public sealed record PipelineOptions(
     /// </remarks>
     CancellationToken Cancellation = default)
 {
+    /// <summary>Explicit SNK private keys for re-signing normally signed outputs and recursively recovered dependencies.</summary>
+    public IReadOnlyList<string>? StrongNameKeyFiles { get; init; }
+
+    /// <summary>Explicit data-only Babel method-code companions, mounted by file name beside each analyzed module.</summary>
+    public IReadOnlyList<string>? BabelCodeSourceFiles { get; init; }
+
     /// <summary>
     /// Optional synchronous observer for phases and pass outcomes, including embedded children.
     /// Observers should return promptly and must not throw. Nothing is written by the core itself.
@@ -139,6 +145,12 @@ public sealed record PipelineResult(
 
     /// <summary>Listings of the programs behind virtualized methods, two files per method.</summary>
     public IReadOnlyList<string> VirtualProgramPaths { get; init; } = [];
+
+    /// <summary>Restored culture resource assemblies beside the cleaned output.</summary>
+    public IReadOnlyList<string> ResourceSatellitePaths { get; init; } = [];
+
+    /// <summary>Ordinary dependency files required by retired embedded loaders.</summary>
+    public IReadOnlyList<string> DependencyPaths { get; init; } = [];
 
     /// <summary>
     /// Programs the interpreter is asked to run from a method that does work of its own, so no

@@ -10,7 +10,7 @@ namespace Cilantro.Core.Recovery;
 internal static class NumericInitializationOwnership
 {
     internal static bool TryProve(ArtifactContext context, MethodDef initializer, out TypeDef? shared, out string reason,
-        out IReadOnlyList<RecoveredResourceOrigin> resources)
+        out IReadOnlyList<RecoveredResourceOrigin> resources, IReadOnlySet<TypeDef>? region = null)
     {
         shared = null;
         resources = [];
@@ -19,6 +19,7 @@ internal static class NumericInitializationOwnership
                 c.DeclaringType.FullName == "System.Security.Cryptography.CryptoConfig"))
         { reason = "application crypto-provider configuration is not closed"; return false; }
         var owner = initializer.DeclaringType;
+        var owned = region ?? new HashSet<TypeDef> { owner };
         var pending = new Stack<MethodDef>(); pending.Push(initializer);
         var seen = new HashSet<MethodDef>();
         var sharedOwners = new Dictionary<TypeDef, ClosedInitializerValues.Result>();
@@ -58,12 +59,12 @@ internal static class NumericInitializationOwnership
                 {
                     var field = fieldReference.ResolveFieldDef();
                     if (field is null || field.Module != context.Module) return false;
-                    if (field.IsStatic && field.DeclaringType != owner)
+                    if (field.IsStatic && !owned.Contains(field.DeclaringType))
                     {
                         if (instruction.OpCode.Code != Code.Ldsfld || !Shared(field.DeclaringType) ||
                             !sharedOwners[field.DeclaringType].Fields.Contains(field)) return false;
                     }
-                    if (field.IsStatic && field.DeclaringType == owner && instruction.OpCode.Code is not (Code.Ldsfld or Code.Stsfld)) return false;
+                    if (field.IsStatic && owned.Contains(field.DeclaringType) && instruction.OpCode.Code is not (Code.Ldsfld or Code.Stsfld)) return false;
                 }
                 if (instruction.OpCode.Code is not (Code.Call or Code.Callvirt or Code.Newobj)) continue;
                 if (instruction.Operand is not IMethod called || called is MethodSpec) return false;
@@ -85,7 +86,7 @@ internal static class NumericInitializationOwnership
                     pending.Push(callee);
                     if (callee.DeclaringType != owner && callee.DeclaringType.FindStaticConstructor() is { } cctor)
                     {
-                        if (!Shared(callee.DeclaringType)) pending.Push(cctor);
+                        if (owned.Contains(callee.DeclaringType) || !Shared(callee.DeclaringType)) pending.Push(cctor);
                     }
                 }
                 // External operations are checked at execution time below. Closed
@@ -95,19 +96,21 @@ internal static class NumericInitializationOwnership
         }
         reason = "multiple shared initialization orders are not established";
         if (sharedOwners.Count > 1) return false;
-        var allowedFields = owner.Fields.Where(f => f.IsStatic).Concat(sharedOwners.Values.SelectMany(p => p.Fields))
+        var allowedFields = owned.SelectMany(t => t.Fields).Where(f => f.IsStatic).Concat(sharedOwners.Values.SelectMany(p => p.Fields))
             .Select(f => f.FullName).ToHashSet(StringComparer.Ordinal);
         reason = "cold construction effects or inputs are not closed";
         var effects = first.EffectsOf(initializer.MDToken.Raw);
         if (!effects.AllInvocationsCompleted || effects.WroteMappedImage || effects.WroteScratchRegion || effects.Registrations.Count != 0 ||
-            effects.StaticFieldsWritten.Any(f => !allowedFields.Contains(f))) return false;
+            effects.StaticFieldsWritten.Any(f => !allowedFields.Contains(f)))
+        { reason += $" (complete={effects.AllInvocationsCompleted}, image={effects.WroteMappedImage}, scratch={effects.WroteScratchRegion}, registrations={effects.Registrations.Count}; foreign fields: {string.Join(", ", effects.StaticFieldsWritten.Where(f => !allowedFields.Contains(f)))})"; return false; }
         if (sharedOwners.Keys.Any(t => t.FindStaticConstructor() is not { } init ||
             !first.EffectsOf(init.MDToken.Raw).AllInvocationsCompleted)) return false;
         var origins = new HashSet<RecoveredResourceOrigin>();
         foreach (var observation in first.Observations)
         {
             if (observation.Kind == LoaderObservationKind.StrongNameProbe) continue;
-            if (observation.Kind != LoaderObservationKind.ManagedResourceRead) return false;
+            if (observation.Kind != LoaderObservationKind.ManagedResourceRead)
+            { reason = "unclosed construction observation: " + observation.Kind; return false; }
             var read = JsonSerializer.Deserialize<ManagedResourceRead>(observation.Detail);
             if (read is null || context.Module.Resources.Count(r => r.Name.String == read.Name) != 1 ||
                 context.Module.Resources.OfType<EmbeddedResource>().Count(r => new RecoveredResourceOrigin(read.Name, read.Sha256).Matches(r)) != 1)

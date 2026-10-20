@@ -101,14 +101,14 @@ public sealed class DependencyDecoderCompletionPass : DeobfuscationPass
         while (use?.OpCode.Code == Code.Castclass)
         {
             if (use.Operand is not TypeRef type || type.FullName != "System.IO.MemoryStream" ||
-                type.DefinitionAssembly?.FullName != caller.Module.CorLibTypes.AssemblyRef.FullName) return false;
+                !DependencyFrameworkScope.Matches(type, caller.Module)) return false;
             casts++;
             use = Next();
         }
         if (casts == 0) return false;
         if (use?.OpCode.Code != Code.Callvirt || use.Operand is not MemberRef method ||
             method.FullName != "System.Byte[] System.IO.MemoryStream::ToArray()" ||
-            method.DeclaringType.DefinitionAssembly?.FullName != caller.Module.CorLibTypes.AssemblyRef.FullName) return false;
+            !DependencyFrameworkScope.Matches(method.DeclaringType, caller.Module)) return false;
         return !il.Any(i => i.Operand is Instruction target && consumed.Contains(target) ||
             i.Operand is IList<Instruction> targets && targets.Any(consumed.Contains)) &&
             !caller.Body.ExceptionHandlers.Any(h => new[] { h.TryStart, h.TryEnd, h.HandlerStart, h.HandlerEnd, h.FilterStart }.Any(i => i is not null && consumed.Contains(i)));

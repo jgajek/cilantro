@@ -163,7 +163,10 @@ public sealed class BabelTests
     public void UnmarkedRuntimeRequiresAnActuallyDecodableEnvelope(bool damaged)
     {
         var bytes = Envelope(Bundle(AssemblyBytes()), false, true, true);
-        if (damaged) bytes[^1] ^= 0x55;
+        // Flipping a ciphertext byte can still produce valid padding (and an
+        // intact compressed stream followed by ignored bytes). Truncation always
+        // breaks the block framing, independently of the generated assembly MVID.
+        if (damaged) Array.Resize(ref bytes, bytes.Length - 1);
         using var context = SyntheticContext.Build(module =>
         {
             var type = SyntheticContext.AddType(module, "Runtime");

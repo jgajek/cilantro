@@ -1,0 +1,1156 @@
+{
+  "validatedAt": "2026-10-20",
+  "compiler": {
+    "name": "Babel Obfuscator Enterprise floating trial",
+    "version": "12.1.0.0",
+    "sha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38"
+  },
+  "scope": "All seven advertised encryption choices applied to one encrypted method on net48, net8.0 and net10.0. Target CIL is interpreted statically; runtime comparisons execute only this repository-built benign probe. No license credentials are stored.",
+  "manifest": {
+    "sha256": "6d2b0ff0014dfd09d06439f4d4ef6c40a3ab01b53918820445a231718cc20f5c",
+    "path": "corpus/babel-12-ciphers.manifest.json"
+  },
+  "sources": [
+    {
+      "sha256": "1e8bc4762bb19aef12aa87dc99c816dcdca33e082ebde34f3269a58e1430e8b8",
+      "path": "src/Cilantro.Core/Interpretation/Intrinsics.cs"
+    },
+    {
+      "sha256": "76b57d20f9964e009abd349abe99fc539cf32689b0ba6be49b64093de8fbf655",
+      "path": "tests/Cilantro.Tests/CryptoAlgorithmSelectionTests.cs"
+    },
+    {
+      "sha256": "0b9847863f9159a9264a0e24b5297e9fcf6f538e82b481b7ccc912f6aaa48c98",
+      "path": "tests/Cilantro.Tests/PasswordDerivationTests.cs"
+    },
+    {
+      "sha256": "3c1c2090450974a1a9bdb1a4440e0ad9f5e416f6bf6849dfa7abe62e1f73a57a",
+      "path": "tests/Cilantro.Tests/CustomSymmetricAlgorithmTests.cs"
+    },
+    {
+      "sha256": "8032a9effba805ac6a900f440da990c387d08b3aba7ae574b060dcae233a5624",
+      "path": "tests/Cilantro.Tests/BabelCipherCorpusTests.cs"
+    },
+    {
+      "sha256": "35974937e9b54f0c403fd7d075a57bd79b10016d89372b1390052e103adcf8fe",
+      "path": "corpus/probes/babel-ciphers.ps1"
+    },
+    {
+      "sha256": "ec4d66190cdcf2c59edc5f6b002c523131c1bfff6a1c2c8c4658677ba2c766d9",
+      "path": "corpus/probes/BabelProbe/Program.cs"
+    },
+    {
+      "sha256": "78c3bce757347b068c49b1a1401436b4565e295979c89f94bfc9642fe0bf0003",
+      "path": "corpus/probes/BabelProbe/BabelProbe.csproj"
+    },
+    {
+      "sha256": "55b9b921378bd858ab954ee0e81f05165ca23ebdac6a134674ab76312da231dd",
+      "path": "corpus/probes/BabelProbe/Secret.txt"
+    }
+  ],
+  "implementation": {
+    "independentVectors": "RFC 2268 RC2 vector and FIPS 197 AES vector cover encrypt/decrypt and framework provider aliases.",
+    "randomState": "Seed, byte offset and cumulative replay work are visible primitive model state. Each instance is limited to 65536 bytes and 4000000 replay steps, also charged to the shared interpreter budget.",
+    "inputAlgorithms": "Private managed AES and XOR algorithms execute as bounded input CIL. SymmetricAlgorithm properties model protected backing fields, legal size ranges and copied key/IV values. KeySizes, explicitly seeded bounded Random.NextBytes and pure DateTime.Millisecond arithmetic are modeled; unseeded randomness is refused.",
+    "frameworkAlgorithms": "RC2 factory/provider support and canonical runtime AES provider aliases. Cipher sizes follow their actual receiver."
+  },
+  "runtimeComparisons": 21,
+  "runtimeComparisonsPassed": 21,
+  "restoredBodies": 21,
+  "remainingStubs": 0,
+  "differentialNet48IlVerifyComparisons": 7,
+  "linuxRc2": {
+    "restoredBodies": 1,
+    "staticRecoveryOnly": true,
+    "remainingStubs": 0,
+    "distribution": "Ubuntu-24.04 under WSL",
+    "reportSha256": "82c6e8feaf88f767638ba5a20fed61d579921d85d11bcce79317ed1aa986e7ee",
+    "byteIdentical": true,
+    "framework": "net8.0",
+    "windowsCleanedSha256": "76168e8df3befb5b6b913864819d69146872ee2a65cd30ad74f719d1d5d9191b",
+    "linuxCleanedSha256": "76168e8df3befb5b6b913864819d69146872ee2a65cd30ad74f719d1d5d9191b"
+  },
+  "focusedTests": {
+    "evidence": {
+      "sha256": "3f682899a111966db8d405211fb79a059521a0a971a87b5ec1e4f182b9433787",
+      "path": "C:/cilantro-verify/babel/ciphers/cipher-gates-final.log"
+    },
+    "failed": 0,
+    "passed": 49,
+    "skipped": 1
+  },
+  "cases": [
+    {
+      "id": "net48-aes",
+      "fixture": {
+        "Id": "net48-aes",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=Aes"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "8a893a9a39927d9a231ab384f23eb1e7e567d77f93396e04155d21fe075e13c5"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "41176ee13f660363d0863bd125893bc7e9794a9127d28b1d7db6ae9cd29394ee",
+      "reportSha256": "ebbe6461e923eae767a52d0555c3a9817b45f1eef659389010162574a9126916",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "91ae154a74233428f5261c9ea53c67590d4456d172b45cf9f540e5767d8834a6",
+        "path": "C:/cilantro-verify/babel/ciphers/net48-aes/behavior.json"
+      }
+    },
+    {
+      "id": "net48-aesmanaged",
+      "fixture": {
+        "Id": "net48-aesmanaged",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=AesManaged"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "9eeb163d7508c22517fbc494b52435b228f63539f78fd3c36b31580915c7eee9"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "e6eb60fc27ca89c2b5bf84ed97c7d7b113697703cf8562fec42799d0d42c92f9",
+      "reportSha256": "fc6aaaa8d3583a7959bdd0dbca019bc1bd08c15ebca1a5751a0fce538333c2dd",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "e9027ca0a7b435f8635a57a4b9ea6458eed4fcea739fd546ac60090a80624119",
+        "path": "C:/cilantro-verify/babel/ciphers/net48-aesmanaged/behavior.json"
+      }
+    },
+    {
+      "id": "net48-des",
+      "fixture": {
+        "Id": "net48-des",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=DES"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "d4a40e668aeb2af38527c260886d92cb5853e22f5d99a4c24bcbd19766fe22a8"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "d763114681e29b0aa06ee4e461ad6c80f59b6f3cf129b460686f5de1a491ebb7",
+      "reportSha256": "5b43cb81ff94f5df723d1a67abe746bd8ae2a7f181937d3042ca000b3ac36b8f",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "a28af5b3900310fdf877b76c671a4a8ee1d3a66f26cc3a26edba10274edc6a86",
+        "path": "C:/cilantro-verify/babel/ciphers/net48-des/behavior.json"
+      }
+    },
+    {
+      "id": "net48-tripledes",
+      "fixture": {
+        "Id": "net48-tripledes",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=TripleDES"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "a6fe1662f774e4cedeaa3508ec1cf37d097916be567da2b8354af9a5ecf05223"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "856a415cc893d661dbdf0967db4d454ceeac4dfa409a1bc92c59e0ee691b43fc",
+      "reportSha256": "57e9c31489139acc1bb8d2057c5ab5d99192be9c1578ce76b539a0be1d917690",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "d7cd917cd72d6708ebda0bea2c92de981749e7a2dff69b833c20fda6f33fd1c1",
+        "path": "C:/cilantro-verify/babel/ciphers/net48-tripledes/behavior.json"
+      }
+    },
+    {
+      "id": "net48-rijndael",
+      "fixture": {
+        "Id": "net48-rijndael",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=Rijndael"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "07cc6fe037df90a6f9c88222220e4eb7fb54083ad504015c2d415fb700975714"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "837d1158f7ac3be815ed904b2d976ac7dc73ba08e1e9e3773332708f3a0ce58f",
+      "reportSha256": "f2eee1c2471ffae8a2410eec0a8a6499b4b4d3e6739aa5b951ab999f1ba249ed",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "ebd72c07214b71d73bbd2ce6fdaf170ae663406751d0169643dc8b0bbd97e42f",
+        "path": "C:/cilantro-verify/babel/ciphers/net48-rijndael/behavior.json"
+      }
+    },
+    {
+      "id": "net48-rc2",
+      "fixture": {
+        "Id": "net48-rc2",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=RC2"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "99f1bbe2184181666444e9a0fe0348da479221f7bd6d26cc834a201ffe4ea68f"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "52472c8906f7b20b237d5fe33763e95ffacab41b5bbfcd5ab74d759a3b8c7935",
+      "reportSha256": "2f3c94d8215ce61e5101e6959ed48ff04bed2aa6485a69d299ccc5cf56c825f2",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "d990b129a7f12ea584d5bbe041a3173b600f8c630ffda6b7ab80e9face1546d7",
+        "path": "C:/cilantro-verify/babel/ciphers/net48-rc2/behavior.json"
+      }
+    },
+    {
+      "id": "net48-xor",
+      "fixture": {
+        "Id": "net48-xor",
+        "Framework": "net48",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=XOR"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "25daf5bcf4be23ad15f2bb6c9d65c3420f6e38d044154e5d28465785aa2b7646",
+        "ProtectedSha256": "f5607d7d4e439b59eb1495cc472ba2edfda79ce045eebe4aa942fd9949a8279b"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "0cc643844156dbce75f0197916f07b55796a38621af2fa0045f81512a6219e6b",
+      "reportSha256": "bde29033228debb0000768549ff839d968c0dc672944bcbd30f365e04614a200",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "fc53f197bb747eaac99a843a111bc4c25199adeca232a65a87009b8a804ea5fa",
+        "path": "C:/cilantro-verify/babel/ciphers/net48-xor/behavior.json"
+      }
+    },
+    {
+      "id": "net8.0-aes",
+      "fixture": {
+        "Id": "net8.0-aes",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=Aes"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "4654c92e5feb561dc24960053e3c96c953901c8e423affec853c0d8945469551"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "da12092d8daf744a63be551397b1dc12a32fa7914c254891dfadb0c61054779f",
+      "reportSha256": "035035b9e7986d518cad139c59fcb36a9767bb578423e958b73f851f1d2fd7e1",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "bb574f138673849950f471c143dac872d6acd6210b550716ce97cd261d5fe713",
+        "path": "C:/cilantro-verify/babel/ciphers/net8.0-aes/behavior.json"
+      }
+    },
+    {
+      "id": "net8.0-aesmanaged",
+      "fixture": {
+        "Id": "net8.0-aesmanaged",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=AesManaged"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "63728ca23863a7fa1dae981b46cafee4ea715b90e6e14b3967115b0f14583545"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "88267b28045c3991e7a9e07d22ebf614b839750e0b4ccc60cc37eb72cd458288",
+      "reportSha256": "2b2ec022aa92e3876d439a456d380dcee811743655035a3cd987b0e61e8706c5",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "df8316e986b5d3de415e6dde843aacc1eb73dc95108593d04b99466fcc821cad",
+        "path": "C:/cilantro-verify/babel/ciphers/net8.0-aesmanaged/behavior.json"
+      }
+    },
+    {
+      "id": "net8.0-des",
+      "fixture": {
+        "Id": "net8.0-des",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=DES"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "908837284e3a891f28e5059235b11e13fc9517c98be3d8497756cedc9f9d4a35"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "eaf6b0858781487886bf41b65900962c5f651556e70f18a490f298d819e23a3a",
+      "reportSha256": "8b112be60fca97c0599944af5706de89d549848a1cfda03d87a1435d7f334322",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "a06497b339ae02e5a80e465b590997544e2aae94b4ffa9b5458aece5a3807d42",
+        "path": "C:/cilantro-verify/babel/ciphers/net8.0-des/behavior.json"
+      }
+    },
+    {
+      "id": "net8.0-tripledes",
+      "fixture": {
+        "Id": "net8.0-tripledes",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=TripleDES"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "2dfe891609df77f85a85b47c5b0141ea95204e4852d343ba69f56e4fc6244081"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "6efc1ce2d2ab4f1620d582672fa38d78e0f2a1eefc28825e0ee1974ddb19486d",
+      "reportSha256": "1a15d9ff6d2904299629fb8afc000124a6621fc608b2b9d46710126efc8ef872",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "1e1875b25724e60ba9f72cc63c4218f222ca45881b42c81882865cb86692d39b",
+        "path": "C:/cilantro-verify/babel/ciphers/net8.0-tripledes/behavior.json"
+      }
+    },
+    {
+      "id": "net8.0-rijndael",
+      "fixture": {
+        "Id": "net8.0-rijndael",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=Rijndael"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "9affcfdb1317258fb23089dfb0d70f9043a1f09524e3b341d24c4d955a3f5e22"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "d25f2605754fef2d4f7d4c8276ce2146f13b9e379480451fa3834792f7c68787",
+      "reportSha256": "b8f8f61e158322ed8ff99c165236ab449870a6205b45a2f1d4615de65f0b9ba3",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "64da7eb1328a427008ec13a651add4ba00970c51ba6ff9e1c944643d1d545c23",
+        "path": "C:/cilantro-verify/babel/ciphers/net8.0-rijndael/behavior.json"
+      }
+    },
+    {
+      "id": "net8.0-rc2",
+      "fixture": {
+        "Id": "net8.0-rc2",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=RC2"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "b88f0a4b9b86357911c6f5877702795f73847da9e0f611ee681788009e0d7a9a"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "76168e8df3befb5b6b913864819d69146872ee2a65cd30ad74f719d1d5d9191b",
+      "reportSha256": "576aac13ea5be7523f3aeb53dfc10659c75e820d3c1d24bc912d734d4e2965d7",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "1e8f416a4c056bee92ddc192b3da520fd228639e9e82708e52e7c495abedfbed",
+        "path": "C:/cilantro-verify/babel/ciphers/net8.0-rc2/behavior.json"
+      }
+    },
+    {
+      "id": "net8.0-xor",
+      "fixture": {
+        "Id": "net8.0-xor",
+        "Framework": "net8.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=XOR"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "9d0048ab89f6e555c48dd092654f98d9e706e6f71c23bd43ef12fe05e9eefba0",
+        "ProtectedSha256": "1b3112ad005c92df0ee5b478b3b20ad9013efa8650f5415ed702befe2743afc7"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "23153e10bedc4e7503602643df8d460e1ad35cf4c6483826b2e7f366bc89b20a",
+      "reportSha256": "ef12a78e5f06bcde2ed9e1a397e177b775cb1e4e1963b2f97e180c82c40eba67",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "332d8fff0ebe4056a82eb3c5d9fe5e97b87287938181744ccbde6d29264ec8ea",
+        "path": "C:/cilantro-verify/babel/ciphers/net8.0-xor/behavior.json"
+      }
+    },
+    {
+      "id": "net10.0-aes",
+      "fixture": {
+        "Id": "net10.0-aes",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=Aes"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "cfb94633c813b8486f4d1d5f344c5eaa1dab936424a08f5a66c878a5f6c06b2f"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "dfdec5050a530de14dd22254fdfbadd900911e7e72b45b3685f02e5779f18ef9",
+      "reportSha256": "713a778f7a95a41ce6603de547254099ae3b4b1ff536d8ab905c11488f18f23a",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "914aed9eec686dd147a278e97e3bb7a0e1315a2d803a1bb37f24d1740751a0e6",
+        "path": "C:/cilantro-verify/babel/ciphers/net10.0-aes/behavior.json"
+      }
+    },
+    {
+      "id": "net10.0-aesmanaged",
+      "fixture": {
+        "Id": "net10.0-aesmanaged",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=AesManaged"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "aded3b6afbc5153c850e9c8aad95136c7384f9f33c57737b4763ff36b318a3ef"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "0bbf50e3cfa98f1683d54a7094349a55ef88cc758eb7d9cb9e0c8383779f68dc",
+      "reportSha256": "94b07b247425ab217ded037f18625ee331b06e8d45ffcd121e078ceb5bdc4018",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "a49a235ddf925d87d1f3e9cd79e2580a6d3ed9e9d4421fbf641521cae1405427",
+        "path": "C:/cilantro-verify/babel/ciphers/net10.0-aesmanaged/behavior.json"
+      }
+    },
+    {
+      "id": "net10.0-des",
+      "fixture": {
+        "Id": "net10.0-des",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=DES"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "8ef2622fa2bc698936841e110e83b17be841793e31da3cd1bd2dfd132b9ba0f2"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "2f0f8974d4c79d5a55db6768cae0b63f347cbfa12686e9135948f16ba9edd2bc",
+      "reportSha256": "4719df325c79482a93700121b2fb6a9069d256b73314499f1c8ced3460188d58",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "271968bf1c28e5d6e7d0c224acd41c2896da492685fb9de7e5f957d8220d428f",
+        "path": "C:/cilantro-verify/babel/ciphers/net10.0-des/behavior.json"
+      }
+    },
+    {
+      "id": "net10.0-tripledes",
+      "fixture": {
+        "Id": "net10.0-tripledes",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=TripleDES"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "9c731fc9d013884c3b6f50a48185dd55f2f39112dbee77630e7416ece39619b2"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "56d4161303aa8ef67f1b1281300b9aed8baf5219064576bd247bc991a78d003a",
+      "reportSha256": "64f74a13d5f85e2fe23582a0fc313f96081e7e33d74616636f948f3f62fc03f6",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "50223c57ca44f283c1a980c326d21a6536b19e264b70be34711c8e5f555597a1",
+        "path": "C:/cilantro-verify/babel/ciphers/net10.0-tripledes/behavior.json"
+      }
+    },
+    {
+      "id": "net10.0-rijndael",
+      "fixture": {
+        "Id": "net10.0-rijndael",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=Rijndael"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "c38cd23f5b45a5717b0b63d39f08f3d014bc69af235f77dc2e7b8f03fd732bd5"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "c866b044e9abf873cd8e90901e0cc4b226c1f689d5938ba5e865e07f2592bae2",
+      "reportSha256": "7a9f0461b97ec925b7ab7df444df83cc5188c0769ad7f355e99a801bfc798851",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "6b8293dac460c9868ec252c2d6acf1680909be878b6ba3e78a03948378be4226",
+        "path": "C:/cilantro-verify/babel/ciphers/net10.0-rijndael/behavior.json"
+      }
+    },
+    {
+      "id": "net10.0-rc2",
+      "fixture": {
+        "Id": "net10.0-rc2",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=RC2"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "42297983d87897ee0f62e5a4c556115ed9e7aa08a4b906143d45652b887bb3d1"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "6a896a3fe4712e31ae32dacddb5787646ea5f7150b2cc674d9832299a0e50cae",
+      "reportSha256": "c234700e7fa465f749088abc2ec9df149176e3be16eafa6a30766d3f87a79afd",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "2cab88a4178d17f690c02d91809bd15c3873756b086bbd106ccbafebc4f262c2",
+        "path": "C:/cilantro-verify/babel/ciphers/net10.0-rc2/behavior.json"
+      }
+    },
+    {
+      "id": "net10.0-xor",
+      "fixture": {
+        "Id": "net10.0-xor",
+        "Framework": "net10.0",
+        "Options": [
+          "--notypes",
+          "--nomethods",
+          "--nofields",
+          "--noproperties",
+          "--noevents",
+          "--nologo",
+          "--quiet",
+          "--strict-exit",
+          "--randomseed",
+          "12345678",
+          "--use",
+          "tagassembly=on",
+          "--msilencryption",
+          "BabelProbe\\.Program::Encrypted",
+          "--use",
+          "encryption=XOR"
+        ],
+        "BabelVersion": "12.1.0.0",
+        "BabelSha256": "a925062a044a2f0e0e3fe8d28e1fac8f5b46cc1764e7fbd6d3e9d863f295aa38",
+        "OracleSha256": "00dd756332657f3a063410aa48137bba04a37ca7481df44e69aaeada9353ee00",
+        "ProtectedSha256": "bcfff4a2f71ab5382c01277b5abbfc6fdd6c9b9197dee4e92017b7601f3407a3"
+      },
+      "producerEncryptedMethods": 1,
+      "cleanedSha256": "e328e86a3783280fc6ae10e1a6482f90c6d15a56213ad4121f6186291aa193ef",
+      "reportSha256": "f0e1ab19ddd89b263aa40c339deb3a592aa7e1f5d8bd70118d8defe31a6b81f0",
+      "restoredBodies": 1,
+      "remainingStubs": 0,
+      "remainingResources": [
+        "BabelProbe.Secret.txt"
+      ],
+      "behaviorMatches": true,
+      "stdoutSha256": [
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb",
+        "f6534fda9a5cfb2700bf3026e82513b570f7931807e081778475da7677c41beb"
+      ],
+      "behaviorEvidence": {
+        "sha256": "d61d1fc8e62e1392febfa3e3818b18813abd0d30617714f789d07acb86658a23",
+        "path": "C:/cilantro-verify/babel/ciphers/net10.0-xor/behavior.json"
+      }
+    }
+  ],
+  "linuxCipherMatrix": {
+    "cases": [
+      {
+        "reportSha256": "41c9ae840f14359257c5f1a380361c00569f31053fa462f2e54d473988aa8273",
+        "remainingStubs": 0,
+        "byteIdenticalToWindows": true,
+        "cipher": "aes",
+        "restoredBodies": 1,
+        "cleanedSha256": "da12092d8daf744a63be551397b1dc12a32fa7914c254891dfadb0c61054779f"
+      },
+      {
+        "reportSha256": "21bb2ff4e821545c7a24d00eec43f3ada9f0e5668f9c9618ecec74e6b131cf9b",
+        "remainingStubs": 0,
+        "byteIdenticalToWindows": true,
+        "cipher": "aesmanaged",
+        "restoredBodies": 1,
+        "cleanedSha256": "88267b28045c3991e7a9e07d22ebf614b839750e0b4ccc60cc37eb72cd458288"
+      },
+      {
+        "reportSha256": "8fce9b1732ef705e43dca97543dd6b2e8d76109c8a07f9f7d946d00c4b3fa5b6",
+        "remainingStubs": 0,
+        "byteIdenticalToWindows": true,
+        "cipher": "des",
+        "restoredBodies": 1,
+        "cleanedSha256": "eaf6b0858781487886bf41b65900962c5f651556e70f18a490f298d819e23a3a"
+      },
+      {
+        "reportSha256": "e96c98eb86b263130aec82d7852b6e7e2fc7f99d3c32389a91cf5566808c8427",
+        "remainingStubs": 0,
+        "byteIdenticalToWindows": true,
+        "cipher": "tripledes",
+        "restoredBodies": 1,
+        "cleanedSha256": "6efc1ce2d2ab4f1620d582672fa38d78e0f2a1eefc28825e0ee1974ddb19486d"
+      },
+      {
+        "reportSha256": "abbe9474040e8fd70f6fe5a270c275878734e21a5c46dfdd1610e24c1fe0002d",
+        "remainingStubs": 0,
+        "byteIdenticalToWindows": true,
+        "cipher": "rijndael",
+        "restoredBodies": 1,
+        "cleanedSha256": "d25f2605754fef2d4f7d4c8276ce2146f13b9e379480451fa3834792f7c68787"
+      },
+      {
+        "reportSha256": "82c6e8feaf88f767638ba5a20fed61d579921d85d11bcce79317ed1aa986e7ee",
+        "remainingStubs": 0,
+        "byteIdenticalToWindows": true,
+        "cipher": "rc2",
+        "restoredBodies": 1,
+        "cleanedSha256": "76168e8df3befb5b6b913864819d69146872ee2a65cd30ad74f719d1d5d9191b"
+      },
+      {
+        "reportSha256": "a081b37c5c01b94366446eb93ebf8169bff764bec5e4cfebe05734445f3806cb",
+        "remainingStubs": 0,
+        "byteIdenticalToWindows": true,
+        "cipher": "xor",
+        "restoredBodies": 1,
+        "cleanedSha256": "23153e10bedc4e7503602643df8d460e1ad35cf4c6483826b2e7f366bc89b20a"
+      }
+    ],
+    "distribution": "Ubuntu-24.04 under WSL",
+    "staticAnalysisOnly": true,
+    "framework": "net8.0"
+  },
+  "fullRegression": {
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/ciphers/full-suite.log",
+      "sha256": "1921939e3ffd9cda4419489abc403d3ec70cf1361496ef3d981971642c83811d"
+    },
+    "skipped": 37,
+    "total": 3943,
+    "duration": "12 m 6 s",
+    "passed": 3906,
+    "skipScope": "Unrelated private fixtures; all Babel and Dotfuscator corpus environment gates enabled.",
+    "failed": 0
+  },
+  "corpusInputs": {
+    "missingOrChanged": 0,
+    "inputCount": 362,
+    "evidence": {
+      "path": "C:/cilantro-verify/babel/ciphers/corpus-input-audit.json",
+      "sha256": "1c200c28a6b6ad65b8062c8296ccb9a342e4f088fd878fa3484f302dff3298bd"
+    },
+    "manifestCount": 30,
+    "babelDataCompanionCount": 6
+  }
+}

@@ -125,7 +125,7 @@ internal static class DependencySliceSource
                     if (discard && state.Stack[^1].Protected)
                     {
                         if (code == Code.Isinst || i.Operand is not ITypeDefOrRef cast ||
-                            cast.DefinitionAssembly?.FullName != module.CorLibTypes.AssemblyRef.FullName) return false;
+                            !DependencyFrameworkScope.Matches(cast, module)) return false;
                         var allowed = state.Stack[^1].Kind switch
                         {
                             Kind.Resource => cast.FullName is "System.Object" or "System.IO.Stream",
@@ -284,7 +284,7 @@ internal static class DependencySliceSource
         return true;
 
         bool Framework(IMethod called, string signature) => called.FullName == signature && called.DeclaringType is TypeRef type &&
-            type.DefinitionAssembly?.FullName == module.CorLibTypes.AssemblyRef.FullName;
+            DependencyFrameworkScope.Matches(type, module);
 
         bool Record(Instruction call, int pops, long value, bool wide, bool native = false)
         {

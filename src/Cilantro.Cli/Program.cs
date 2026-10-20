@@ -196,6 +196,8 @@ internal static class CilantroCommand
                   --generic-recovery            Attempt verified cleanup without a recognized protector
                   --fail-on-partial             Withhold success/cleaned output on incomplete passes
                   --library FILE                Read this managed dependency statically (repeatable)
+                  --signing-key FILE            Re-sign cleaned assemblies with matching SNK private keys (repeatable)
+                  --babel-code-source FILE      Supply data-only external Babel method code (repeatable)
                   --host-profile FILE           Supply facts about the sample's expected machine
                   --declarations FILE           Supply host facts, libraries, budgets or skipped passes
                   --allow-declared-calls        Trust call assertions in --declarations; review them first
