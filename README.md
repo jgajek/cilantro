@@ -12,7 +12,7 @@ Give it an EXE or DLL. You get cleaned assemblies, extracted stages and an offli
 
 ## Recover a sample
 
-Download the Windows x64 or Linux x64 archive from [Releases](https://github.com/jgajek/cilantro/releases), check it against `SHA256SUMS.txt` and unpack it. Both archives include the CLI and MCP server; no separate .NET installation is needed.
+Download the Windows x64, Linux x64/ARM64 or macOS Apple Silicon/Intel archive from [Releases](https://github.com/jgajek/cilantro/releases), check it against `SHA256SUMS.txt` and unpack it. Each archive includes the CLI and MCP server; no separate .NET installation is needed.
 
 On Windows:
 

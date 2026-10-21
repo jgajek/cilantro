@@ -19,9 +19,20 @@ jobs:
         include:
           - runtime: win-x64
             artifact: cilantro-win-x64.zip
+            runner: ubuntu-latest
           - runtime: linux-x64
             artifact: cilantro-linux-x64.tar.gz
-    runs-on: ubuntu-latest
+            runner: ubuntu-latest
+          - runtime: linux-arm64
+            artifact: cilantro-linux-arm64.tar.gz
+            runner: ubuntu-24.04-arm
+          - runtime: osx-arm64
+            artifact: cilantro-osx-arm64.tar.gz
+            runner: macos-15
+          - runtime: osx-x64
+            artifact: cilantro-osx-x64.tar.gz
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -58,35 +69,39 @@ jobs:
 
       # The archive is named for the tag, and the tool reports its own version. If those disagree the
       # download is mislabelled, and nobody reading a bug report against it can tell which build they
-      # have. Only the Linux job can ask the binary; both jobs build the same source.
+      # have. Each Linux/macOS job asks its native binary; Windows builds the same source.
       - name: Check the tag against the tool
-        if: matrix.runtime == 'linux-x64'
+        if: matrix.runtime != 'win-x64'
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RUNTIME: ${{ matrix.runtime }}
         run: |
-          reported="$(publish/linux-x64/cilantro --version)"
+          reported="$("publish/$RUNTIME/cilantro" --version)"
           if [ "${TAG#v}" != "$reported" ]; then
             echo "Tag $TAG does not match the version the tool reports, $reported." >&2
             exit 1
           fi
 
-      - name: Smoke test Linux executables
-        if: matrix.runtime == 'linux-x64'
+      - name: Smoke test ${{ matrix.runtime }} executables
+        if: matrix.runtime != 'win-x64'
+        env:
+          RUNTIME: ${{ matrix.runtime }}
         run: |
-          publish/linux-x64/cilantro --help > /dev/null
-          publish/linux-x64/cilantro --help-all > /dev/null
+          "publish/$RUNTIME/cilantro" --help > /dev/null
+          "publish/$RUNTIME/cilantro" --help-all > /dev/null
           dotnet build corpus/probes/Probe/Probe.csproj -c Release -f net10.0
-          publish/linux-x64/cilantro corpus/probes/Probe/bin/Release/net10.0/Probe.dll \
-            --generic-recovery --no-recursion --json -o "smoke/linux case" > smoke.json
+          "publish/$RUNTIME/cilantro" corpus/probes/Probe/bin/Release/net10.0/Probe.dll \
+            --generic-recovery --no-recursion --json -o "smoke/$RUNTIME case" > smoke.json
           python3 - <<'PY'
-          import json, pathlib, subprocess
+          import json, os, pathlib, subprocess
+          published = pathlib.Path('publish') / os.environ['RUNTIME']
           result = json.loads(pathlib.Path('smoke.json').read_text())
           assert result['Success'] and result['Verified']
           assert pathlib.Path(result['Wrote']['Cleaned']).is_file()
-          error = subprocess.run(['publish/linux-x64/cilantro', '--bogus', '--json'], capture_output=True, text=True)
+          error = subprocess.run([str(published / 'cilantro'), '--bogus', '--json'], capture_output=True, text=True)
           assert error.returncode == 2 and json.loads(error.stdout)['Schema'] == 'cilantro.error/1'
           request = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}\n'
-          mcp = subprocess.run(['publish/linux-x64/cilantro-mcp'], input=request, capture_output=True, text=True, timeout=30, check=True)
+          mcp = subprocess.run([str(published / 'cilantro-mcp')], input=request, capture_output=True, text=True, timeout=30, check=True)
           assert json.loads(mcp.stdout.splitlines()[0])['result']['serverInfo']['version'] == result['ToolVersion']
           PY
 

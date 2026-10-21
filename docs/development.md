@@ -26,7 +26,7 @@ dotnet publish src/Cilantro.Cli -c Release -r win-x64 -p:PublishSingleFile=true 
 dotnet publish src/Cilantro.Mcp -c Release -r win-x64 -p:PublishSingleFile=true -o artifacts/publish/win-x64
 ```
 
-Use `linux-x64` for the Linux archive. The single-file property enables self-contained publishing in each project. Test `--version`, `--help`, an ordinary run, and JSON/error output from the published CLI on its target platform. Both executables belong in each release archive, with licence and documentation.
+Use `linux-x64` or `linux-arm64` for Linux, and `osx-arm64` (Apple Silicon) or `osx-x64` (Intel) for macOS. The single-file property enables self-contained publishing in each project. Test `--version`, `--help`, an ordinary run, and JSON/error output from the published CLI on its target platform. Both executables belong in each release archive, with licence and documentation. The release workflow builds and smoke-tests each Linux/macOS archive on a native runner, including a benign probe recovery and MCP initialization.
 
 ## Write documentation for its reader
 

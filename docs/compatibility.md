@@ -11,7 +11,7 @@ CILantro turns protected .NET assemblies into code and data you can investigate 
 | **Babel .NET** | XOR/hash strings, numeric values and arrays, delegate proxies, encrypted methods, resources, embedded dependencies, control flow and debugging/integrity checks. Coverage includes legacy captures and Babel 12.1. |
 | **Dotfuscator** | Managed v1 and native-key v2 strings, encrypted resources and culture satellites, control flow, debugging/integrity checks and Android Root Check removal. Coverage centers on 7.9, with older managed string forms also recognized. |
 
-The official ConfuserEx probes target .NET Framework 4.8; Reactor, Babel and Dotfuscator probes cover .NET Framework 4.8, .NET 8 and .NET 10. ConfuserEx validation includes 51 protected captures across isolated, combined and packed profiles, with cleaned executable comparisons on three inputs. The downloaded tools run on Windows x64 and Linux x64. Product labels alone do not identify every implementation; the report records the recovery result for your file.
+The official ConfuserEx probes target .NET Framework 4.8; Reactor, Babel and Dotfuscator probes cover .NET Framework 4.8, .NET 8 and .NET 10. ConfuserEx validation includes 51 protected captures across isolated, combined and packed profiles, with cleaned executable comparisons on three inputs. Release builds target Windows x64, Linux x64/ARM64 and macOS Apple Silicon/Intel. Product labels alone do not identify every implementation; the report records the recovery result for your file.
 
 ### Babel .NET coverage
 

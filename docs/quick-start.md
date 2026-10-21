@@ -112,4 +112,4 @@ Reference paths are relative to the manifest. CILantro checks their bytes agains
 
 ## Install
 
-Use the Windows x64 or Linux x64 archive from [Releases](https://github.com/jgajek/cilantro/releases). Published archives include self-contained `cilantro` and `cilantro-mcp`; no separate runtime is needed. Compare the archive SHA-256 with its published `SHA256SUMS.txt`, unpack it, and check `--version` and `--help`. A framework-dependent local development build requires .NET 10.
+Use the Windows x64, Linux x64/ARM64 or macOS Apple Silicon/Intel archive from [Releases](https://github.com/jgajek/cilantro/releases). On macOS, choose `osx-arm64` for Apple Silicon or `osx-x64` for Intel. Published archives include self-contained `cilantro` and `cilantro-mcp`; no separate runtime is needed. Compare the archive SHA-256 with its published `SHA256SUMS.txt`, unpack it, and check `--version` and `--help`. A framework-dependent local development build requires .NET 10.
