@@ -139,7 +139,7 @@ public sealed class ReportSchemaTests
     private static JsonElement Shape(string file, string definition)
     {
         var text = File.ReadAllText(Path.Combine(Checkout.Root, "schema", file));
-        var root = JsonDocument.Parse(text).RootElement;
+        var root = JsonElement.Parse(text);
         return definition.Length == 0 ? root : root.GetProperty("$defs").GetProperty(definition);
     }
 }
