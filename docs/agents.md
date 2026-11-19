@@ -88,6 +88,10 @@ For a potentially long run, call `start_unpack` with arguments such as:
 
 MCP defaults VM reconstruction **off**, unlike the ordinary CLI. Set `devirtualize` explicitly when required. Poll every few seconds; do not submit duplicate runs into the same output directory. Background work survives a polling timeout but not server exit. Handle `finished`, `failed`, and `cancelled` as terminal phases, and inspect the status advice for stale runs. Cancellation is cooperative; do not assume a request has already stopped the current work.
 
+When `reportDir` is supplied, MCP also writes the default cleaned assembly there.
+An explicit `output` overrides that location. This supports read-only sample
+mounts without copying or modifying the input.
+
 ## Declaration loop
 
 When a run needs more information, read `Blockers` and their structured `Remedy` fields. A missing dependency calls for a file; a missing environment fact calls for an established value; a budget stop may call for a larger allowance. A `Wants` placeholder marks an answer still needed. `next_declarations` accepts the blockers path, optional existing declarations (`from`), supplied `answers`, and an optional output path (`into`). Review the resulting assertions before rerunning with them.

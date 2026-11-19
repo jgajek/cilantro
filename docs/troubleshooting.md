@@ -34,6 +34,15 @@ dependencies. Running the wrapper and the same child concurrently repeats manage
 Recursive children inherit the supplied library pool, but load only libraries they reference.
 An unrelated library explicitly supplied to the root is still refused. A child library failure
 is recorded in the embedded recovery graph so its siblings and the root report remain available.
+
+`Application.ExecutablePath` and `FileVersionInfo.GetVersionInfo` can be modeled
+from the registered input path and its PE version resource. They do not read
+the analysis host's executable or borrow the CLR's file version. Unknown paths,
+malformed resources and language-dependent version selections remain explicit
+limitations. VM disassembly probes use synthetic arguments; their failures stay
+in the disassembly diagnostics rather than being reported as sample blockers.
+Failures during actual loader initialization are still recorded.
+
 For example, reflection-based proxy initialization may need a companion library even when
 the decoder's own IL is entirely inside the sample:
 

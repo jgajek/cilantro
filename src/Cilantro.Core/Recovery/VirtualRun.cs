@@ -134,6 +134,7 @@ internal sealed class VirtualRunWatcher
     private int _opcode = -1;
     private int _performing = -1;
     private int _performingDepth = -1;
+    private long _writesBefore;
     private int _depth;
     private int _suspendedUntil = -1;
 
@@ -313,6 +314,7 @@ internal sealed class VirtualRunWatcher
         // calls out to other methods, and an operation is only over when its own frame is.
         _performing = _opcode;
         _performingDepth = _depth;
+        _writesBefore = _state.StaticFieldWriteCount;
         Naming(_opcode, VirtualSemantics.Operand(_heap, operation, _operandField));
         _operand = VirtualSemantics.Operand(_heap, operation, _operandField);
 
@@ -393,6 +395,10 @@ internal sealed class VirtualRunWatcher
             return;
         var performing = _performing;
         _performing = -1;
+        // Reflection intrinsics can write fields without executing a stsfld instruction.
+        // Count writes, including repeated writes of the same value, before considering pop.
+        if (_state.StaticFieldWriteCount != _writesBefore)
+            _stores.Add(performing);
         if (_working is { Count: > 0 })
         {
             if (!_worked.TryGetValue(performing, out var runs))

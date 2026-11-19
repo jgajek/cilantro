@@ -24,6 +24,12 @@ Some VM programs belong to the protector's support machinery. If recovery replac
 
 **Reconstruction** turns those operations into a .NET method body with control flow, locals and supported exception handling. Later cleanup simplifies that body for reading.
 
+Field writes made through reflection count as writes when learning an operation's
+meaning, including a write that repeats the existing value. Consuming a stack
+value alone does not establish a discard. Reflective access to a static field also
+runs the declaring type's initializer, so cold-start comparisons preserve its
+ordering when the operation becomes ordinary field access.
+
 For the analyst, the payoff is being able to follow calls, constants and branches in a .NET decompiler instead of manually translating the VM's dispatcher and handlers. The reconstruction remains an analysis of the VM program, rather than the original source code.
 
 ## Choose the right file

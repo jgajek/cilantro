@@ -265,6 +265,51 @@ public sealed class VirtualSemanticsTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReflectiveStaticWritesAreNotMistakenForDiscard(bool write)
+    {
+        using var context = SyntheticContext.Build(module => Engine(module, withValues: true));
+        var module = context.Module;
+        var machinery = module.GetTypes().Single(type => type.Name == "Machinery");
+        var step = module.GetTypes().Single(type => type.Name == "Step");
+        var dispatcher = machinery.Methods.Single(method => method.Name == "Perform");
+        var target = new FieldDefUser("External", new FieldSig(module.CorLibTypes.Int32),
+            FieldAttributes.Public | FieldAttributes.Static);
+        machinery.Fields.Add(target);
+        var machine = new StaticMachine();
+        var heap = machine.State.Heap;
+        var program = machinery.Fields.Single(field => field.Name == "Program");
+        Assert.True(heap.TryAllocateObject(program.FieldType.FullName, out var list));
+        Assert.True(heap.TryAllocateObject(step.FullName, out var operation));
+        Assert.True(heap.TryWriteField(operation, step.Fields[0], StaticValue.FromInt32(Store)));
+        Assert.True(heap.TryWriteField(operation, step.Fields[1], StaticValue.FromInt32(0)));
+        Assert.True(heap.TrySetModelValue(list, "Items", new List<StaticValue> { operation }));
+        Assert.True(heap.TryAllocateObject(machinery.FullName, out var engine));
+        Assert.True(heap.TryWriteField(engine, program, list));
+        var watcher = new VirtualRunWatcher(module, machine.State, dispatcher, step.Fields[0],
+            step.Fields[1], step.FullName,
+            [new VirtualInstruction(0, Store, new VirtualOperand.Number(0) { Type = "System.Int32" })]);
+        var info = module.CorLibTypes.GetTypeRef("System.Reflection", "FieldInfo");
+        var setter = new MemberRefUser(module, "SetValue",
+            MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.Object, module.CorLibTypes.Object), info);
+        Assert.True(heap.TryAllocateObject(info.FullName, out var receiver));
+        Assert.True(heap.TrySetModelValue(receiver, "Metadata", target));
+        Assert.True(heap.TryAllocateBox("System.Int32", StaticValue.FromInt32(7), out var value));
+        // A prior write and a repeated identical write must not defeat observation.
+        machine.State.WriteStaticField(target, StaticValue.FromInt32(7));
+        watcher.Entered(dispatcher, [engine, operation]);
+        if (write)
+        {
+            var result = new LoaderFrameworkIntrinsic().Invoke(new IntrinsicContext(machine.State), setter,
+                [receiver, StaticValue.Null, value]);
+            Assert.Equal(StaticExecutionStatus.Completed, result.Status);
+        }
+        watcher.Exited(dispatcher);
+        Assert.Equal(write, watcher.Result().Stores.Contains(Store));
+    }
+
+    [Theory]
     [InlineData("matching", true)]
     [InlineData("opcode", false)]
     [InlineData("operand", false)]

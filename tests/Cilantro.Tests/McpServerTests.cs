@@ -16,6 +16,44 @@ namespace Cilantro.Tests;
 /// </remarks>
 public sealed class McpServerTests
 {
+    [Theory]
+    [InlineData("unpack", false)]
+    [InlineData("unpack", true)]
+    [InlineData("start_unpack", false)]
+    [InlineData("start_unpack", true)]
+    public void ReportDirectoryOwnsDefaultCleanedOutput(string tool, bool explicitOutput)
+    {
+        var directory = Directory.CreateTempSubdirectory("cilantro-mcp-output");
+        try
+        {
+            var inputs = Directory.CreateDirectory(Path.Combine(directory.FullName, "inputs"));
+            var input = Path.Combine(inputs.FullName, "sample.dll");
+            using (var module = new dnlib.DotNet.ModuleDefUser("sample.dll"))
+            {
+                new dnlib.DotNet.AssemblyDefUser("sample", new Version(1, 0)).Modules.Add(module);
+                module.Write(input);
+            }
+            var original = File.ReadAllBytes(input);
+            var reports = Path.Combine(directory.FullName, "reports");
+            var output = Path.Combine(directory.FullName, "explicit.dll");
+            var args = new JsonObject { ["path"] = input, ["reportDir"] = reports, ["genericRecovery"] = true };
+            if (explicitOutput) args["output"] = output;
+            var result = Answered(Session(Ask(tool, args)));
+            if (tool == "start_unpack")
+            {
+                var run = PollUntilEnded(result["StatusPath"]!.GetValue<string>())["Run"]!;
+                Assert.Equal("finished", run["Phase"]!.GetValue<string>());
+                result = run["Result"]!;
+            }
+            var cleaned = result["Wrote"]!["Cleaned"]!.GetValue<string>();
+            Assert.Equal(explicitOutput ? output : Path.Combine(reports, "sample.cleaned.dll"), cleaned);
+            Assert.True(File.Exists(cleaned));
+            Assert.Equal(original, File.ReadAllBytes(input));
+            Assert.Equal([input], Directory.GetFiles(inputs.FullName));
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
     /// <summary>
     /// A client says hello and is told what it is talking to, in the version it asked for.
     /// </summary>

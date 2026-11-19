@@ -1553,6 +1553,7 @@ public sealed class StaticMachineState
     }
 
     public IReadOnlyDictionary<string, StaticValue> StaticFields => _staticFields;
+    internal long StaticFieldWriteCount { get; private set; }
     public IReadOnlyDictionary<string, byte[]> Resources => _resources;
     public IReadOnlyList<TypeInitializationEvent> TypeInitializationEvents =>
         _typeInitializationEvents;
@@ -1585,6 +1586,7 @@ public sealed class StaticMachineState
     {
         RequireStaticState(field);
         _staticFields[field.FullName] = value;
+        StaticFieldWriteCount++;
         Evidence.RecordStaticFieldWrite(field.FullName);
         if (_staticFieldReferences.TryGetValue(field.FullName, out var reference))
             Heap.TryWriteManaged(reference, value);

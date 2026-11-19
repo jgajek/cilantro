@@ -1887,8 +1887,17 @@ public static class VirtualProgramRecovery
         machine.Stepped = watcher.Stepped;
         try
         {
+            // These arguments are controlled probes, not a call made by the application.
+            // Preserve failures in the reading diagnostics without turning them into run blockers.
+            using var trying = machine.State.Blockers.Trying();
             if (TryBuildArguments(machine, root, out var arguments))
-                machine.Execute(root, arguments);
+            {
+                var observed = machine.Execute(root, arguments);
+                if (!observed.Succeeded)
+                    context.AddEvidence(new Evidence("vm-observation-stopped",
+                        $"Synthetic observation of {root.FullName} stopped with {observed.Status}: " +
+                        (observed.Diagnostic ?? "no diagnostic").Split(" | provenance:", StringSplitOptions.None)[0]));
+            }
         }
         finally
         {
@@ -2000,7 +2009,9 @@ public static class VirtualProgramRecovery
             diagnostic = "The arguments could not be built, so the engine was not entered.";
             return null;
         }
-        var ran = machine.Execute(root, arguments);
+        StaticExecutionResult ran;
+        using (machine.State.Blockers.Trying())
+            ran = machine.Execute(root, arguments);
         machine.FrameEntered = null;
 
         var heap = machine.State.Heap;

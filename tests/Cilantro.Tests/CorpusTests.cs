@@ -565,7 +565,7 @@ public sealed class CorpusTests
 
             // The virtualized loader initializer holds real IL where it shipped as a stub, and it
             // says so about itself with the marker every rebuilt body carries.
-            AssertVirtualizedProtectorRetirement(result, cleaned);
+            AssertVirtualizedProtectorRetirement(result, cleaned, liftedRemovedByRuntimeCleanup: true);
 
             // The recovered plaintext is the probe's own planted strings, present at the call sites
             // the resolver used to hide. Their presence in the cleaned copy is the byte-level proof
@@ -769,7 +769,7 @@ public sealed class CorpusTests
         }
     }
     private static void AssertVirtualizedProtectorRetirement(
-        PipelineResult result, dnlib.DotNet.ModuleDefMD cleaned)
+        PipelineResult result, dnlib.DotNet.ModuleDefMD cleaned, bool liftedRemovedByRuntimeCleanup = false)
     {
         var changes = System.Text.Json.JsonSerializer.Deserialize<ChangeRecord[]>(
             File.ReadAllText(result.ChangesReportPath))!;
@@ -788,8 +788,18 @@ public sealed class CorpusTests
             change.Kind == "lift-virtualized-program");
         var lifted = Assert.Single(changes, change => change.Kind == "remove-orphaned-rebuilt-method" &&
             change.Location.EndsWith("::LiftedProgram1()", StringComparison.Ordinal));
-        Assert.Equal("unused-reactor-pools", lifted.Pass);
-        Assert.Contains("wholly unused Reactor pool", lifted.Description, StringComparison.Ordinal);
+        if (liftedRemovedByRuntimeCleanup)
+        {
+            // The Framework fixture now proves the original caller orphaned before pool cleanup.
+            Assert.Equal("runtime-cleanup", lifted.Pass);
+            Assert.Contains("lifted body of orphaned original caller", lifted.Description, StringComparison.Ordinal);
+            Assert.Contains("visibility, reachability and surviving-reference checks", lifted.Description, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Equal("unused-reactor-pools", lifted.Pass);
+            Assert.Contains("wholly unused Reactor pool", lifted.Description, StringComparison.Ordinal);
+        }
         Assert.Matches("Removed body fingerprint: [0-9a-f]{64}\\.$", lifted.Description);
         Assert.DoesNotContain(cleaned.GetTypes().SelectMany(type => type.Methods),
             method => method.Name.StartsWith("LiftedProgram", StringComparison.Ordinal));

@@ -233,8 +233,8 @@ internal static class Tools
             "Let that file also say what calls the tool cannot read do. Needed whenever " +
             "a remedy names it, and ignored otherwise."),
         ["reportDir"] = Text(
-            "Where to write the reports and payloads. Defaults to a cilantro " +
-            "folder beside the input."),
+            "Where to write reports and payloads, and the cleaned copy unless output is supplied. " +
+            "Defaults to a cilantro folder beside the input."),
         ["output"] = Text("Where to write the cleaned copy.")
     };
 
@@ -246,7 +246,10 @@ internal static class Tools
             GenericRecovery: Yes(arguments, "genericRecovery") ?? false,
             RecoverEmbeddedAssemblies: Yes(arguments, "recoverEmbedded") ?? false,
             RenameSymbols: Yes(arguments, "rename"),
-            OutputPath: Word(arguments, "output"),
+            OutputPath: Word(arguments, "output") ??
+                (Word(arguments, "reportDir") is { Length: > 0 } directory && Word(arguments, "path") is { } input
+                    ? Path.Combine(directory, Path.GetFileNameWithoutExtension(input) + ".cleaned" + Path.GetExtension(input))
+                    : null),
             ReportDirectory: Word(arguments, "reportDir"),
             DeclarationsPath: Word(arguments, "declarations"),
             AllowDeclaredCalls: Yes(arguments, "allowDeclaredCalls") ?? false,

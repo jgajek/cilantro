@@ -3592,6 +3592,7 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
         ,"System.Diagnostics.ProcessModuleCollection"
         ,"System.Diagnostics.ProcessModule"
         ,"System.Diagnostics.FileVersionInfo"
+        ,"System.Windows.Forms.Application"
         ,"System.Collections.ReadOnlyCollectionBase"
         ,"System.Collections.IEnumerator"
         ,"System.Collections.IEnumerable"
@@ -4000,6 +4001,11 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 "System.Collections.IEnumerator" or HashtableKeys.ViewType or HashtableKeys.EnumeratorType &&
             HashtableKeys.TryInvoke(context.State, name, arguments, out var keyResult))
             return keyResult;
+        if (type == "System.Windows.Forms.Application" && name == "get_ExecutablePath" && arguments.Count == 0)
+            return context.State.ModulePath.Length != 0 && !context.State.ModuleFileIsAbsent
+                ? context.State.Heap.TryAllocateString(context.State.ModulePath, out var executablePath)
+                    ? IntrinsicResult.Completed(executablePath) : AllocationFailure("application executable path")
+                : IntrinsicResult.Invalid("Application executable path is not registered.");
         if (type == "System.Diagnostics.Process")
             return InvokeProcess(context, name, arguments);
         if (type is "System.Diagnostics.ProcessModuleCollection" or
@@ -4726,6 +4732,12 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
             accessed is FieldDef accessedField)
         {
             var instance = arguments[1];
+            // Reflection must trigger the same initialization as ldsfld/stsfld. A VM often
+            // writes its program's fields through FieldInfo; skipping this changes cold-start
+            // ordering when those writes are reconstructed as ordinary IL.
+            if (accessedField.IsStatic && context.InitializeType is { } initialize &&
+                initialize(accessedField.DeclaringType) is { Status: not StaticExecutionStatus.Completed } stopped)
+                return stopped;
             if (name == "GetValue")
             {
                 if (accessedField.IsStatic || instance.Kind == StaticValueKind.Null)
@@ -9985,8 +9997,48 @@ public sealed class LoaderFrameworkIntrinsic : IStaticIntrinsic
                 ? IntrinsicResult.Completed(version)
                 : AllocationFailure("runtime version");
         }
+        if (type == "System.Diagnostics.FileVersionInfo" && name == "GetVersionInfo" && arguments.Count == 1)
+        {
+            if (!heap.TryGetString(arguments[0], out var path) || context.State.ModuleFileIsAbsent ||
+                context.State.ModulePath.Length == 0 || !string.Equals(path, context.State.ModulePath, StringComparison.OrdinalIgnoreCase))
+                return IntrinsicResult.Invalid("FileVersionInfo requires the registered module path; host files are not read.");
+            if (!ImageVersionInfo.TryRead(context.State.ModuleFileBytes, out var info))
+                return IntrinsicResult.Invalid("The registered image has malformed or unsupported multilingual version data.");
+            if (!heap.TryAllocateObject(type, out var version)) return AllocationFailure("image version");
+            heap.TrySetModelValue(version, "ImageVersion", true);
+            foreach (var (key, text) in info.Strings) heap.TrySetModelValue(version, "Version." + key, text);
+            foreach (var (key, value) in new (string, uint)[]
+                     { ("File", info.FileHigh), ("FileLow", info.FileLow), ("Product", info.ProductHigh), ("ProductLow", info.ProductLow) })
+            {
+                var prefix = key.EndsWith("Low", StringComparison.Ordinal) ? key[..^3] : key;
+                var low = key.EndsWith("Low", StringComparison.Ordinal);
+                heap.TrySetModelValue(version, "Version." + prefix + (low ? "BuildPart" : "MajorPart"), (int)(value >> 16));
+                heap.TrySetModelValue(version, "Version." + prefix + (low ? "PrivatePart" : "MinorPart"), (int)(value & 0xFFFF));
+            }
+            return IntrinsicResult.Completed(version);
+        }
         if (type == "System.Diagnostics.FileVersionInfo" && arguments.Count == 1)
         {
+            if (heap.TryGetModelValue(arguments[0], "ImageVersion", out bool imageVersion) && imageVersion)
+            {
+                if (name.StartsWith("get_", StringComparison.Ordinal) &&
+                    heap.TryGetModelValue(arguments[0], "Version." + name[4..], out int value))
+                    return IntrinsicResult.Completed(StaticValue.FromInt32(value));
+                if (name is "get_FileVersion" or "get_ProductVersion" or "get_CompanyName" or
+                    "get_FileDescription" or "get_InternalName" or "get_OriginalFilename" or
+                    "get_ProductName" or "get_LegalCopyright" or "get_LegalTrademarks" or
+                    "get_Comments" or "get_PrivateBuild" or "get_SpecialBuild")
+                {
+                    if (!heap.TryGetModelValue(arguments[0], "Version." + name[4..], out string? text) || text is null)
+                        return IntrinsicResult.Completed(StaticValue.Null);
+                    if (heap.TryGetModelValue(arguments[0], "VersionValue." + name[4..], out StaticValue cached))
+                        return IntrinsicResult.Completed(cached);
+                    if (!heap.TryAllocateString(text, out var versionText)) return AllocationFailure("image version text");
+                    heap.TrySetModelValue(arguments[0], "VersionValue." + name[4..], versionText);
+                    return IntrinsicResult.Completed(versionText);
+                }
+                return IntrinsicResult.Invalid($"Image version operation {name} is not modeled.");
+            }
             // Which runtime the process is running under is a fact about the machine, and Reactor
             // reads it to decide which of its own code paths applies.
             var part = name switch

@@ -55,6 +55,36 @@ public sealed class VirtualProgramRecoveryTests
                 Assert.IsType<VirtualOperand.Number>(item.Operand).Value));
     }
 
+    [Fact]
+    public void DecodingProbesRetainThrowDiagnosticsWithoutReportingApplicationFailure()
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            AddEngine(module);
+            var dispatch = module.GetTypes().Single(type => type.Name == "Engine").Methods.Single(method => method.Name == "Execute");
+            dispatch.Body.Instructions.Clear();
+            dispatch.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
+            dispatch.Body.Instructions.Add(OpCodes.Throw.ToInstruction());
+        });
+        var method = Assert.Single(VirtualizedMethodDetector.Detect(context.Module));
+        var recovered = VirtualProgramRecovery.Recover(context, method, out var diagnostic);
+        Assert.NotNull(recovered);
+        Assert.Equal(Program.Length, recovered.Instructions.Count);
+        Assert.Contains("threw", diagnostic, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(context.Evidence, evidence => evidence.Category == "vm-observation-stopped" &&
+            evidence.Message.Contains("Threw", StringComparison.Ordinal));
+        var ledger = BootstrapMachine.Environment(context).Blockers;
+        Assert.Empty(ledger.Blockers);
+        // The scope must end: an actual subsequent failure is still a blocker.
+        Assert.True(BootstrapMachine.TrySeed(context, 10000, out var machine, out _));
+        Assert.NotNull(machine);
+        var dispatch = context.Module.GetTypes().Single(type => type.Name == "Engine").Methods.Single(method => method.Name == "Execute");
+        Assert.True(machine.State.Heap.TryAllocateObject(dispatch.DeclaringType.FullName, out var instance));
+        Assert.Equal(Cilantro.Core.Interpretation.StaticExecutionStatus.Threw,
+            machine.Execute(dispatch, [instance, Cilantro.Core.Interpretation.StaticValue.Null]).Status);
+        Assert.NotEmpty(ledger.Blockers);
+    }
+
     /// <summary>
     /// An operand that is a token for something in this module is named, because that is what the
     /// listing is read for.
