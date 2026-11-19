@@ -37,6 +37,12 @@ type errors, including existing erased-signature helper errors exposed in caller
 Cleaned emission and structural verification do not establish full IL verifiability or complete
 runtime deprotection. The non-high-cost regression suite passes 3,475 tests, with 116 skipped.
 
+Release validation also compared the complete Reactor 6 corpus outcomes against the original
+1.0.6 binary: all normalized outcomes matched. Both builds exposed an outdated mutation ceiling
+for `mlfhntkcvb-payload` (20,134 observed versus 20,132 pinned). The ceiling now reflects that
+unchanged baseline; both cleaned outputs hash to
+`c01d24a8c9357a295494ae85208817e66707191760fe6f5f4db40b08ddf7af4a`.
+
 ## Reproduce
 
 Build the versions into separate directories so a running benchmark never loads a mixture of builds:
