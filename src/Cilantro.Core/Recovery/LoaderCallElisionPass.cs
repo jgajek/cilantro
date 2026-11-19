@@ -635,7 +635,7 @@ public sealed class LoaderCallRecheckPass : LoaderCallElisionPass
     protected override (PassStatus Status, int Changes, IReadOnlyList<string> Diagnostics) Execute(
         ArtifactContext context)
     {
-        if (!RebuiltMethods.Of(context).Any())
+        if (RebuiltMethods.Of(context).Count == 0)
             return (PassStatus.Success, 0, ["No reconstructed body requires a later loader dependency check."]);
 
         // Repeat the effects and reachability checks against the final bodies. A reconstruction
