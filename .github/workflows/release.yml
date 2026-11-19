@@ -28,7 +28,7 @@ jobs:
             runner: ubuntu-24.04-arm
           - runtime: osx-arm64
             artifact: cilantro-osx-arm64.tar.gz
-            runner: macos-15
+            runner: macos-26
           - runtime: osx-x64
             artifact: cilantro-osx-x64.tar.gz
             runner: macos-15-intel
