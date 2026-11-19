@@ -9,6 +9,34 @@ Measure Release builds against the hash-pinned corpus. The corpus runner's polic
 renaming and VM reconstruction; it still reads VM programs and follows the native wrapper's
 managed child. These measurements describe that policy, rather than every CLI option.
 
+Dispatcher path recovery now processes independent method bodies with at most four workers,
+bounded by the available processor count. Small modules stay sequential. Workers retain the
+same per-method rewrite order, round limits, verification and rollback; change records are
+published in original method order. Account for this concurrency when running several CLI
+instances together. The historical timings above predate this change.
+
+## WMS large-sample verification
+
+The managed WMS child (`9e76d2c69d058e209da12460dba98c5947a6d65b78aec310b69438fad1e8608e`)
+completed all 136 pass decisions and recursive child recovery in **1,271.248 s (21m11s)** on
+2026-11-19, with CLI success and structural verification passing. This local run used
+`--no-devirtualize --keep-names`, the 11 matching installer libraries and a 128-million-step
+declaration; no passes or emission gates were bypassed. Missing LumiSoft metadata had previously
+blocked proxy initialization, so the libraries are part of the reproduction inputs.
+
+The output restored 25,361 bodies, 194,451 proxy calls and all 24,780 protected string sites.
+Two emission runs produced the same cleaned-file SHA-256:
+`69e04e403949b7a2e83517ceabb4ed3586c541b189b6d2e6eeeba6ae093d1aa7`.
+The first run exposed a subsequent child-library inheritance failure; the confirmation includes
+that fix. Evidence, dependency hashes, declarations and commands are retained locally under
+`C:/cilantro-verify/wms-investigation/emission-results.txt`.
+
+This is a local reproduction, not an isolated paired speedup measurement. VM reconstruction
+was disabled, the integrity verdict remains partial, and independent ILVerify still reports
+type errors, including existing erased-signature helper errors exposed in callers by inlining.
+Cleaned emission and structural verification do not establish full IL verifiability or complete
+runtime deprotection. The non-high-cost regression suite passes 3,475 tests, with 116 skipped.
+
 ## Reproduce
 
 Build the versions into separate directories so a running benchmark never loads a mixture of builds:
@@ -61,6 +89,13 @@ bottlenecks but include GC pauses and blocked thread time; they are not hardware
   node immediately when the graph is full, avoiding discarded location and parent work.
 - **Condition folding.** The backward producer search runs only for conditional instructions.
   Argument operands use dnlib's maintained parameter index instead of repeatedly searching its list.
+- **Constant-local proofs after proxy recovery.** Local reads, stores and address escapes are
+  indexed in one instruction scan. Straight-line store/read intervals without alternate entries
+  use that index; other layouts retain the reachability proof from method and exception roots.
+  Those proofs share instruction positions and use a set of reads instead of rescanning lists.
+- **Unused dataflow state.** Constant folding tracks only integer locals that have reads,
+  avoiding copies of dead temporary values at every control-flow block. Store-map queries
+  retain all eligible locals, including unread stores used by dispatcher recovery.
 - **Interpreter frame defaults.** Scalar local defaults are copied once per execution instead
   of repeatedly reading dnlib's locked local list on every helper call. Modeled dynamic modules
   bypass caches whose metadata could change during execution.

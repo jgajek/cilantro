@@ -14,6 +14,7 @@ Start with the symptom affecting your investigation: no readable method, a missi
 | Budget exhausted | The named pass, budget and blocker remedy | Raise only the relevant bound after checking the stalled path. More steps do not implement missing semantics. |
 | Missing environment fact | Exact blocker key and the facts consulted | Supply a fact appropriate to the intended environment; record why it is justified. |
 | Missing managed dependency | Requested identity and available matching file | Supply the specific file with `--library`, retaining its hash. |
+| Proxy or VM initialization reports an unknown reflected type | The type's assembly reference and the installer's companion DLLs | Extract the matching dependency without running the installer and supply it with `--library`. A larger interpreter budget cannot supply missing type metadata. |
 | Unsupported API/instruction | Blocker details and affected method/stage | Report a reproducible case. Do not assert an arbitrary return value solely to make the run pass. |
 | Decompiler error or strange code | Exact cleaned artifact, method and CIL | Compare extracted-original/decrypted/rebuilt provenance, inspect validation and check the method in IL view. |
 | Many switches or tiny methods remain | Their callers, selectors and role | Distinguish application switches, async state machines and legitimate empty methods from protection. Counts alone are insufficient. |
@@ -27,6 +28,22 @@ CLI runs automatically maintain `NAME.status.json` in the case folder. Through M
 Large assemblies and virtualization can take minutes or longer. Check that the process is still alive and that status or CPU activity advances. An unchanged status file alone does not prove a hang; a stale file does not prove a process is still running. A polling timeout does not cancel background work. Do not launch duplicate runs into the same directory.
 
 MCP cancellation is cooperative. Confirm the terminal state before reusing its output directory. A killed or failed process can leave partial artifacts; inspect the terminal result instead of treating the existence of a file as success.
+
+When a native wrapper extracts a managed child, analyze that child once with its matching
+dependencies. Running the wrapper and the same child concurrently repeats managed recovery.
+Recursive children inherit the supplied library pool, but load only libraries they reference.
+An unrelated library explicitly supplied to the root is still refused. A child library failure
+is recorded in the embedded recovery graph so its siblings and the root report remain available.
+For example, reflection-based proxy initialization may need a companion library even when
+the decoder's own IL is entirely inside the sample:
+
+```text
+cilantro recovered.dll --library companion.dll --declarations case.json -o case/retry
+```
+
+Use the actual referenced assembly identity and record the dependency hash. Check the
+per-pass diagnostics as well as the blocker ledger: an earlier exhausted interpretation
+can remain in the ledger even when a later attempt succeeds.
 
 ## Retry a decoder that reached its step limit
 

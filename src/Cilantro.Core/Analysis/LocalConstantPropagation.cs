@@ -26,9 +26,19 @@ internal static class LocalConstantPropagation
         if (body.Instructions.Count == 0)
             return 0;
         var eligible = body.Variables.Where(v => v.Type.ElementType is ElementType.I4 or ElementType.U4).ToHashSet();
+        HashSet<Local>? read = rewrite ? [] : null;
         foreach (var i in body.Instructions)
+        {
+            if (read is not null && i.IsLdloc() && i.GetLocal(body.Variables) is { } used)
+                read.Add(used);
             if (i.OpCode.Code is Code.Ldloca or Code.Ldloca_S && i.GetLocal(body.Variables) is { } escaped)
                 eligible.Remove(escaped);
+        }
+        // Folding observes local reads and branch conditions, not the store map.
+        // Proxy reconciliation can leave thousands of unused integer temporaries;
+        // carrying their InitLocals zeros through every CFG block is needless state.
+        // KnownStores still tracks all eligible locals for dispatcher consumers.
+        if (read is not null) eligible.IntersectWith(read);
         if (eligible.Count == 0 && !body.Instructions.Any(i => i.OpCode.FlowControl == FlowControl.Cond_Branch)) return 0;
         var graph = ControlFlowGraph.Build(method);
         var trackStack = EvaluationStackAnalyzer.Analyze(method).Valid;

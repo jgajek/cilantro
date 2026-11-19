@@ -194,6 +194,19 @@ public sealed class TrustedLibraryTests : IDisposable
     }
 
     [Fact]
+    public void InheritedLibrariesAreRestrictedToTheChildsReferences()
+    {
+        var helper = WriteLibrary("helper", 41);
+        var unrelated = WriteLibrary("stranger", 7);
+        using var context = ArtifactContext.Load(WriteCaller("child"), [helper, unrelated], inheritedLibraries: true);
+        Assert.Equal("helper", Assert.Single(context.Libraries).Name);
+        Assert.Equal("helper", Assert.Single(context.TrustedModules).Assembly.Name.String);
+        using var empty = ArtifactContext.Load(unrelated, [helper], inheritedLibraries: true);
+        Assert.Empty(empty.Libraries);
+        Assert.Empty(empty.TrustedModules);
+    }
+
+    [Fact]
     public void ALibraryThatIsNotThereIsSaidSoPlainly()
     {
         var caller = WriteCaller("caller");

@@ -94,6 +94,10 @@ public sealed record PipelineOptions(
     /// </remarks>
     CancellationToken Cancellation = default)
 {
+    // The root validates every supplied library. Extracted children share the pool,
+    // but only their own references may enter their interpreter's trusted set.
+    internal bool InheritedLibraries { get; init; }
+
     /// <summary>Explicit SNK private keys for re-signing normally signed outputs and recursively recovered dependencies.</summary>
     public IReadOnlyList<string>? StrongNameKeyFiles { get; init; }
 

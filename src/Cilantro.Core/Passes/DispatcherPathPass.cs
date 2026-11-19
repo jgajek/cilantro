@@ -8,6 +8,16 @@ namespace Cilantro.Core.Passes;
 /// <summary>Threads known dispatcher state while preserving local values and ordered effects.</summary>
 public class DispatcherPathPass : DeobfuscationPass
 {
+    private readonly int maximumConcurrency;
+
+    public DispatcherPathPass() : this(Math.Min(4, Environment.ProcessorCount)) { }
+
+    internal DispatcherPathPass(int maximumConcurrency)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumConcurrency, 1);
+        this.maximumConcurrency = maximumConcurrency;
+    }
+
     public override string Name => "dispatcher-paths";
     public override IReadOnlyCollection<string> Dependencies => ["control-flow-recompletion"];
     public override bool GatesEmission => false;
@@ -15,24 +25,53 @@ public class DispatcherPathPass : DeobfuscationPass
 
     protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
     {
-        var total = 0;
-        foreach (var method in context.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
+        // Materialize bodies before workers start. Each worker changes only its own
+        // method; metadata signatures and module facts remain read-only in this pass.
+        var methods = context.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody).ToArray();
+        var changes = new int[methods.Length];
+        var preserveEffects = PreserveEffects;
+        context.TryGetFact<CancellationToken>(CilantroPipeline.CancellationFact, out var cancellation);
+        if (methods.Length < 64 || maximumConcurrency == 1)
         {
-            var changed = 0;
-            for (var round = 0; round < 64; round++)
+            for (var index = 0; index < methods.Length; index++) RewriteMethod(index);
+        }
+        else
+        {
+            Parallel.For(0, methods.Length, new ParallelOptions
             {
-                var count = Rewrite(method, PreserveEffects);
-                if (count == 0) break;
-                changed += count;
-                ControlFlowCompletionPass.TryComplete(method);
-            }
+                MaxDegreeOfParallelism = maximumConcurrency,
+                CancellationToken = cancellation
+            }, RewriteMethod);
+        }
+
+        // Publish in input order, after all workers finish: ArtifactContext is not
+        // shared writable state, and reports remain independent of scheduling.
+        var total = 0;
+        for (var index = 0; index < methods.Length; index++)
+        {
+            var changed = changes[index];
             if (changed == 0) continue;
             total += changed;
-            context.AddChange(new ChangeRecord(Name, "thread-dispatcher-path", method.FullName,
+            context.AddChange(new ChangeRecord(Name, "thread-dispatcher-path", methods[index].FullName,
                 $"Redirected {changed} known-state paths while retaining required local writes, calls and field reads."));
         }
         context.AddEvidence(new Evidence(Name, $"Made {total} dispatcher paths direct across state-update blocks."));
         return (PassStatus.Success, total, [$"Made {total} dispatcher paths direct; calls, unknown state and exception boundaries were preserved."]);
+
+        void RewriteMethod(int index)
+        {
+            var method = methods[index];
+            var changed = 0;
+            for (var round = 0; round < 64; round++)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                var count = Rewrite(method, preserveEffects);
+                if (count == 0) break;
+                changed += count;
+                ControlFlowCompletionPass.TryComplete(method);
+            }
+            changes[index] = changed;
+        }
     }
 
     internal static int Rewrite(MethodDef method, bool preserveEffects = false)

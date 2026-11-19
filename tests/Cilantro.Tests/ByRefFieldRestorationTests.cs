@@ -19,6 +19,8 @@ public sealed class ByRefFieldRestorationTests
     [InlineData("duplicate", 0)]
     [InlineData("named", 0)]
     [InlineData("handle", 0)]
+    [InlineData("named-in-other-method", 0)]
+    [InlineData("type-handle-in-other-method", 0)]
     [InlineData("wrong-address-type", 0)]
     public void RestoresStorageOnlyWhenEveryAddressUseAndWriterIsClosed(string variant, int expected)
     {
@@ -70,6 +72,19 @@ public sealed class ByRefFieldRestorationTests
             il.Add(OpCodes.Ldstr.ToInstruction("initial")); il.Add(OpCodes.Stsfld.ToInstruction(field));
             il.Add(OpCodes.Ldsflda.ToInstruction(field)); il.Add(OpCodes.Call.ToInstruction(writer));
             il.Add(OpCodes.Ldsfld.ToInstruction(field)); il.Add(OpCodes.Ret.ToInstruction());
+            // Methods with no address use still participate in the module-wide
+            // reflection/escape proof, even though they no longer need a CFG.
+            if (variant is "named-in-other-method" or "type-handle-in-other-method")
+            {
+                var observer = new MethodDefUser("Observe", MethodSig.CreateStatic(module.CorLibTypes.Void))
+                    { Attributes = MethodAttributes.Private | MethodAttributes.Static, Body = new CilBody() };
+                owner.Methods.Add(observer);
+                observer.Body.Instructions.Add(variant == "named-in-other-method"
+                    ? OpCodes.Ldstr.ToInstruction(field.FullName)
+                    : OpCodes.Ldtoken.ToInstruction(owner));
+                observer.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+                observer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            }
         });
         var late = variant.StartsWith("late", StringComparison.Ordinal);
         if (late) context.AddPassResult(new("type-restoration", variant == "late" ? Cilantro.Core.PassStatus.Success : Cilantro.Core.PassStatus.Unsupported, 0, [], TimeSpan.Zero));

@@ -79,6 +79,9 @@ public sealed class ArtifactContext : IDisposable
         new ReadOnlyCollection<ModuleDefMD>(_trustedModules);
 
     public static ArtifactContext Load(string path, IReadOnlyList<string>? libraryPaths = null)
+        => Load(path, libraryPaths, inheritedLibraries: false);
+
+    internal static ArtifactContext Load(string path, IReadOnlyList<string>? libraryPaths, bool inheritedLibraries)
     {
         var fullPath = Path.GetFullPath(path);
         var bytes = File.ReadAllBytes(fullPath);
@@ -94,14 +97,14 @@ public sealed class ArtifactContext : IDisposable
         var module = ModuleDefMD.Load(bytes, options);
         var context = new ArtifactContext(fullPath, bytes, module);
         if (libraryPaths is { Count: > 0 })
-            context.LoadLibraries(libraryPaths, resolution, options);
+            context.LoadLibraries(libraryPaths, resolution, options, inheritedLibraries);
         return context;
     }
 
     private void LoadLibraries(
         IReadOnlyList<string> paths,
         ModuleContext resolution,
-        ModuleCreationOptions options)
+        ModuleCreationOptions options, bool inheritedLibraries)
     {
         if (resolution.AssemblyResolver is not AssemblyResolver resolver)
             throw new TrustedLibraryException(
@@ -142,6 +145,9 @@ public sealed class ArtifactContext : IDisposable
             // more useful than silently loading a file that will never be reached.
             if (!referenced.TryGetValue(assembly.Name.String, out var reference))
             {
+                // Recursive children inherit a pool supplied for the parent. Only
+                // references actually made by this child belong in its trusted set.
+                if (inheritedLibraries) { library.Dispose(); continue; }
                 // The versions are listed too, because the reader of this message is deciding which
                 // file to go and find.
                 var names = string.Join(", ", referenced.Values

@@ -108,6 +108,7 @@ internal static class EmbeddedAssemblyRecovery
             var childOptions = options with
             {
                 RecoverEmbeddedAssemblies = false,
+                InheritedLibraries = true,
                 // Extracted stages can be plain assemblies or use a different protector.
                 // Ordinary recursive recovery should still emit verified generic cleanup;
                 // strict callers must explicitly opt into that policy.
@@ -134,7 +135,7 @@ internal static class EmbeddedAssemblyRecovery
                 Enqueue(child, node, next.Depth + 1);
             }
             catch (OperationCanceledException) { throw; }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException or InvalidOperationException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or BadImageFormatException or InvalidOperationException or TrustedLibraryException)
             {
                 nodes.Add(new(next.Path, hash, next.Depth, "failed", null, exception.Message));
                 complete = false;

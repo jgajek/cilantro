@@ -177,7 +177,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                 };
             else
             {
-                left = Feeding(instructions, entered, instructions.IndexOf(right));
+                left = Feeding(instructions, entered, entered.Positions[right]);
                 if (left is null || !left.IsLdcI4()) continue;
                 var a = left.GetLdcI4Value();
                 // Preserve exceptional divisions, including the signed overflow
@@ -252,7 +252,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             if (producer.OpCode.Code == Code.Dup &&
                 branch.OpCode.Code is Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S &&
                 branch.Operand is Instruction duplicateTarget &&
-                Feeding(instructions, entered, instructions.IndexOf(producer)) is { } original &&
+                Feeding(instructions, entered, entered.Positions[producer]) is { } original &&
                 (original.IsLdcI4() || original.OpCode.Code == Code.Ldnull))
             {
                 var truth = original.IsLdcI4() && original.GetLdcI4Value() != 0;
@@ -284,7 +284,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                     Code.Ble or Code.Ble_S or Code.Ble_Un or Code.Ble_Un_S or
                     Code.Blt or Code.Blt_S or Code.Blt_Un or Code.Blt_Un_S
                     when numbered && branch.Operand is Instruction comparedTarget &&
-                        Feeding(instructions, entered, instructions.IndexOf(producer)) is
+                        Feeding(instructions, entered, entered.Positions[producer]) is
                         { } compared && compared.IsLdcI4():
                     var decided = Compares(branch.OpCode.Code, compared.GetLdcI4Value(), value);
                     Neutralize(producer);
@@ -364,7 +364,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// assignment on every path there is — which is asked by walking the method with the
     /// assignment walled off and requiring that the walk reach no read at all.
     /// </remarks>
-    private static int FoldConstantLocals(MethodDef method)
+    internal static int FoldConstantLocals(MethodDef method)
     {
         var constants = ConstantLocals(method);
         if (constants.Count == 0)
@@ -393,32 +393,24 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         var variables = method.Body.Variables;
         var entered = EntryPoints(method);
         var constants = new Dictionary<Local, int>();
+        var accesses = new Dictionary<Local, LocalAccesses>();
+        var entries = new int[instructions.Count + 1];
+        for (var index = 0; index < instructions.Count; index++)
+        {
+            var instruction = instructions[index];
+            entries[index + 1] = entries[index] + (entered.GetValueOrDefault(instruction) == 0 ? 0 : 1);
+            if (instruction.GetLocal(variables) is not { } local) continue;
+            if (!accesses.TryGetValue(local, out var uses)) accesses[local] = uses = new LocalAccesses();
+            if (instruction.OpCode.Code is Code.Ldloca or Code.Ldloca_S) uses.AddressTaken = true;
+            if (instruction.IsStloc()) { uses.Store = instruction; uses.Stores++; }
+            else if (instruction.IsLdloc()) uses.Reads.Add(instruction);
+        }
         foreach (var local in variables)
         {
-            // An address taken is a way of writing the local that reading the instructions
-            // cannot account for.
-            if (instructions.Any(instruction =>
-                    instruction.OpCode.Code is Code.Ldloca or Code.Ldloca_S &&
-                    instruction.GetLocal(variables) == local))
-                continue;
-
-            Instruction? store = null;
-            var stored = 0;
-            var reads = new List<Instruction>();
-            foreach (var instruction in instructions)
-            {
-                if (instruction.GetLocal(variables) != local)
-                    continue;
-                if (instruction.IsStloc())
-                {
-                    store = instruction;
-                    stored++;
-                }
-                else if (instruction.IsLdloc())
-                {
-                    reads.Add(instruction);
-                }
-            }
+            if (!accesses.TryGetValue(local, out var uses) || uses.AddressTaken) continue;
+            var store = uses.Store;
+            var stored = uses.Stores;
+            var reads = uses.Reads;
 
             // InitLocals gives an unwritten integer local a known zero on every path,
             // including exception handlers. Address-taken locals were excluded above.
@@ -432,15 +424,33 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             }
             if (stored != 1 || store is null || reads.Count == 0)
                 continue;
-            if (Feeding(instructions, entered, instructions.IndexOf(store)) is not { } producer ||
+            if (Feeding(instructions, entered, entered.Positions[store]) is not { } producer ||
                 !producer.IsLdcI4())
                 continue;
-            if (!StoredBeforeEveryRead(method, store, reads))
+            var storeIndex = entered.Positions[store];
+            // Accesses were collected in instruction order.
+            var firstRead = entered.Positions[reads[0]];
+            var lastRead = entered.Positions[reads[^1]];
+            // With no alternate entry between the store and its reads, every
+            // reachable read must pass the store. This covers the many straight-line
+            // temporaries introduced by proxy argument reconciliation. Other layouts
+            // retain the complete reachability proof, including exceptional roots.
+            var straight = firstRead > storeIndex &&
+                entries[lastRead + 1] == entries[storeIndex + 1];
+            if (!straight && !StoredBeforeEveryRead(method, store, reads, entered.Positions))
                 continue;
             constants[local] = producer.GetLdcI4Value();
         }
 
         return constants;
+    }
+
+    private sealed class LocalAccesses
+    {
+        internal bool AddressTaken;
+        internal int Stores;
+        internal Instruction? Store;
+        internal List<Instruction> Reads { get; } = [];
     }
 
     /// <summary>
@@ -457,12 +467,17 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         Instruction store,
         IReadOnlyCollection<Instruction> reads)
     {
+        var positions = method.Body.Instructions.Select((instruction, index) => (instruction, index))
+            .ToDictionary(item => item.instruction, item => item.index);
+        return StoredBeforeEveryRead(method, store, reads, positions);
+    }
+
+    private static bool StoredBeforeEveryRead(MethodDef method, Instruction store,
+        IReadOnlyCollection<Instruction> reads, Dictionary<Instruction, int> index)
+    {
         var instructions = method.Body.Instructions;
-        if (instructions.Count == 0)
-            return false;
-        var index = new Dictionary<Instruction, int>();
-        for (var at = 0; at < instructions.Count; at++)
-            index[instructions[at]] = at;
+        if (instructions.Count == 0) return false;
+        var readSet = reads as IReadOnlySet<Instruction> ?? reads.ToHashSet();
 
         var seen = new HashSet<Instruction>();
         var work = new Stack<Instruction>();
@@ -479,7 +494,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             var current = work.Pop();
             if (current == store || !seen.Add(current))
                 continue;
-            if (reads.Contains(current))
+            if (readSet.Contains(current))
                 return false;
             switch (current.OpCode.FlowControl)
             {
@@ -588,7 +603,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// </summary>
     private static List<Instruction>? Peel(
         IList<Instruction> instructions,
-        Dictionary<Instruction, int> entered,
+        BackwardInputs entered,
         int index)
     {
         var expression = new List<Instruction>();
@@ -605,7 +620,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                 return null;
             wanted = wanted - pushes + Consumed(producer.OpCode.StackBehaviourPop);
             expression.Add(producer);
-            at = instructions.IndexOf(producer);
+            at = entered.Positions[producer];
         }
 
         return expression;
@@ -645,23 +660,38 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// may be arrived at holding something else, and what the instruction before it left behind
     /// says nothing about that.
     /// </remarks>
-    private static Dictionary<Instruction, int> EntryPoints(MethodDef method)
+    private sealed class BackwardInputs
     {
-        var entered = new Dictionary<Instruction, int>();
-        foreach (var instruction in method.Body.Instructions)
+        internal Dictionary<Instruction, int> Counts { get; } = [];
+        internal Dictionary<Instruction, Instruction> Sources { get; } = [];
+        internal Dictionary<Instruction, int> Positions { get; } = [];
+        internal int GetValueOrDefault(Instruction instruction) => Counts.GetValueOrDefault(instruction);
+    }
+
+    private static BackwardInputs EntryPoints(MethodDef method)
+    {
+        var entered = new BackwardInputs();
+        var instructions = method.Body.Instructions;
+        for (var index = 0; index < instructions.Count; index++)
         {
+            var instruction = instructions[index];
+            entered.Positions.Add(instruction, index);
             if (instruction.Operand is Instruction target)
-                Enter(target);
+                Enter(target, instruction);
             else if (instruction.Operand is IList<Instruction> targets)
                 foreach (var branched in targets)
-                    Enter(branched);
+                    Enter(branched, instruction);
         }
 
         foreach (var boundary in CollectExceptionBoundaries(method))
-            Enter(boundary);
+            Enter(boundary, null);
         return entered;
 
-        void Enter(Instruction at) => entered[at] = entered.GetValueOrDefault(at) + 1;
+        void Enter(Instruction at, Instruction? source)
+        {
+            entered.Counts[at] = entered.GetValueOrDefault(at) + 1;
+            if (source is not null) entered.Sources[at] = source;
+        }
     }
 
     /// <summary>
@@ -690,7 +720,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// </remarks>
     private static Instruction? Feeding(
         IList<Instruction> instructions,
-        Dictionary<Instruction, int> entered,
+        BackwardInputs entered,
         int index)
     {
         // The consumer and everything stepped over on the way back to the push.
@@ -714,10 +744,10 @@ public class ControlFlowCompletionPass : DeobfuscationPass
                 return null;
             if (Falls(instructions[at - 1].OpCode))
                 break;
-            if (hops == Hops || Arriving(instructions, entered, instructions[at]) is not { } jump)
+            if (hops == Hops || Arriving(entered, instructions[at]) is not { } jump)
                 return null;
             path.Add(jump);
-            at = instructions.IndexOf(jump);
+            at = entered.Positions[jump];
         }
 
         // Nothing from outside may arrive anywhere along it, an exception boundary included: a
@@ -753,27 +783,17 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// case arrives having popped the number that chose it, neither of which is what the
     /// instruction before the jump left behind.
     /// </remarks>
-    private static Instruction? Arriving(
-        IList<Instruction> instructions,
-        Dictionary<Instruction, int> entered,
-        Instruction target)
+    private static Instruction? Arriving(BackwardInputs entered, Instruction target)
     {
-        if (entered.GetValueOrDefault(target) != 1)
+        // Each caller only neutralizes instructions or reduces a conditional/switch to
+        // one of its existing targets. No new incoming source can appear during this
+        // scan, and instruction positions stay fixed until the scan returns. Retain
+        // the original entry counts (including EH boundaries), but inspect the live
+        // source because an earlier fold may have removed its edge or made it a br.
+        if (entered.GetValueOrDefault(target) != 1 ||
+            !entered.Sources.TryGetValue(target, out var only))
             return null;
-        Instruction? only = null;
-        foreach (var instruction in instructions)
-        {
-            var names = instruction.Operand is Instruction one
-                ? one == target
-                : instruction.Operand is IList<Instruction> many && many.Contains(target);
-            if (!names)
-                continue;
-            if (only is not null)
-                return null;
-            only = instruction;
-        }
-
-        return only?.OpCode.Code is Code.Br or Code.Br_S ? only : null;
+        return only.OpCode.Code is Code.Br or Code.Br_S && only.Operand == target ? only : null;
     }
 
     /// <summary>

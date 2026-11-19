@@ -271,7 +271,7 @@ public sealed class TypeRestorationPass : DeobfuscationPass
         if (field.Module.GetMemberRefs().Any(r => r.IsFieldRef && r.ResolveFieldDef() == field)) return false;
         foreach (var method in field.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
         {
-            var graph = ControlFlowGraph.Build(method);
+            ControlFlowGraph? graph = null;
             var il = method.Body.Instructions;
             for (var n = 0; n < il.Count; n++)
             {
@@ -283,6 +283,9 @@ public sealed class TypeRestorationPass : DeobfuscationPass
                 if (reference != field) return false;
                 if (instruction.OpCode.Code is Code.Ldfld or Code.Ldsfld or Code.Stfld or Code.Stsfld) continue;
                 if (instruction.OpCode.Code is not (Code.Ldflda or Code.Ldsflda)) return false;
+                // Most methods never take this field's address. The whole-module
+                // reflection/escape scan still runs, but only an address use needs a CFG.
+                graph ??= ControlFlowGraph.Build(method);
                 var next = n + 1;
                 while (next < il.Count && il[next].OpCode.Code == Code.Nop) next++;
                 if (next == il.Count || graph.BlockOf(instruction) != graph.BlockOf(il[next]) ||

@@ -23,7 +23,7 @@ namespace Cilantro.Core;
 
 public sealed class CilantroPipeline
 {
-    public const string Version = "1.0.6";
+    public const string Version = "1.0.7";
 
     /// <summary>
     /// Where the run's cancellation token sits on the context, for the passes that run a pipeline of
@@ -367,7 +367,7 @@ public sealed class CilantroPipeline
 
         using var context = ArtifactContext.Load(
             inputPath,
-            [.. options.LibraryPaths ?? [], .. declarations.Libraries]);
+            [.. options.LibraryPaths ?? [], .. declarations.Libraries], options.InheritedLibraries);
         if (options.ManagedBootstrapReplacement is { } replacement)
             context.AddPassResult(ManagedBootstrapReassembly.Apply(context, replacement));
         context.SetFact("options.removeRuntime", options.RemoveRuntime);

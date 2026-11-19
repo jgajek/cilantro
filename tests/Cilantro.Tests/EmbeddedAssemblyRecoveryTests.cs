@@ -210,6 +210,7 @@ public sealed class EmbeddedAssemblyRecoveryTests
             Assert.True(actual.Strict);
             Assert.True(actual.AnalyzeOnly);
             Assert.False(actual.RecoverEmbeddedAssemblies);
+            Assert.True(actual.InheritedLibraries);
             Assert.Null(actual.StatusPath);
             Assert.NotEqual(options.OutputPath, actual.OutputPath);
             Assert.Contains(Hash(path), actual.ReportDirectory!, StringComparison.Ordinal);
@@ -219,14 +220,17 @@ public sealed class EmbeddedAssemblyRecoveryTests
         Assert.Equal(result.EmbeddedRecoveryReportPath, RunManifest.Of(result).Wrote.Embedded);
     }
 
-    [Fact]
-    public void FailedChildDoesNotPreventItsSiblingFromBeingRecovered()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FailedChildDoesNotPreventItsSiblingFromBeingRecovered(bool libraryFailure)
     {
         using var fixture = new Fixture();
         var bad = fixture.File("bad", "bad");
         var good = fixture.File("good", "good");
         var result = EmbeddedAssemblyRecovery.Run(fixture.Root with { ExtractedPayloadPaths = [bad, good] }, new(), (path, _) =>
-            path == bad ? throw new BadImageFormatException("Invalid child") : fixture.Result(path));
+            path == bad ? throw (libraryFailure ? (Exception)new TrustedLibraryException("Invalid child library")
+                : new BadImageFormatException("Invalid child")) : fixture.Result(path));
         Assert.False(result.Success);
         Assert.Equal("failed", result.EmbeddedRecovery!.Nodes[1].Status);
         Assert.Equal("recovered", result.EmbeddedRecovery.Nodes[2].Status);
