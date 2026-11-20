@@ -75,11 +75,13 @@ public sealed class ControlFlowGraph
     {
         var a = RegionsOf(left);
         var b = RegionsOf(right);
-        return a.Count == b.Count && a.Zip(b).All(pair =>
-            ReferenceEquals(pair.First.Handler, pair.Second.Handler) &&
-            pair.First.InTry == pair.Second.InTry &&
-            pair.First.InHandler == pair.Second.InHandler &&
-            pair.First.InFilter == pair.Second.InFilter);
+        if (ReferenceEquals(a, b)) return true;
+        if (a.Count != b.Count) return false;
+        for (var index = 0; index < a.Count; index++)
+            if (!ReferenceEquals(a[index].Handler, b[index].Handler) ||
+                a[index].InTry != b[index].InTry || a[index].InHandler != b[index].InHandler ||
+                a[index].InFilter != b[index].InFilter) return false;
+        return true;
     }
 
     public static ControlFlowGraph Build(MethodDef method)
@@ -91,6 +93,94 @@ public sealed class ControlFlowGraph
         var instructions = method.Body.Instructions;
         var indices = instructions.Select((instruction, index) => (instruction, index))
             .ToDictionary(item => item.instruction, item => item.index);
+        var blocks = PartitionBlocks(method, instructions, indices);
+
+        var blockMap = blocks.SelectMany(block => block.Instructions.Select(i => (i, block)))
+            .ToDictionary(item => item.i, item => item.block);
+        var allEdges = new List<ControlFlowEdge>();
+        var edgeKeys = new HashSet<(int Source, int Target, ControlFlowEdgeKind Kind)>();
+        var successors = new List<ControlFlowEdge>?[blocks.Count];
+        var predecessors = new List<ControlFlowEdge>?[blocks.Count];
+        foreach (var block in blocks)
+        {
+            var last = block.Last;
+            if (last.OpCode.Code == Code.Switch && last.Operand is IList<Instruction> cases)
+            {
+                foreach (var target in cases)
+                    AddEdge(block, blockMap[target], ControlFlowEdgeKind.Switch);
+                AddNext(block, ControlFlowEdgeKind.FallThrough);
+            }
+            else if (last.OpCode.FlowControl == FlowControl.Branch)
+            {
+                if (last.Operand is Instruction target)
+                    AddEdge(block, blockMap[target], ControlFlowEdgeKind.Branch);
+            }
+            else if (last.OpCode.FlowControl == FlowControl.Cond_Branch)
+            {
+                if (last.Operand is Instruction target)
+                    AddEdge(block, blockMap[target], ControlFlowEdgeKind.Branch);
+                AddNext(block, ControlFlowEdgeKind.FallThrough);
+            }
+            else if (last.OpCode.FlowControl is not (FlowControl.Return or FlowControl.Throw))
+            {
+                AddNext(block, ControlFlowEdgeKind.FallThrough);
+            }
+        }
+
+        var regionMap = ExceptionRegionMap.BuildRegionMap(method, instructions, indices);
+        foreach (var handler in method.Body.ExceptionHandlers)
+        {
+            var exceptionalTarget = handler.FilterStart ?? handler.HandlerStart;
+            if (exceptionalTarget is null)
+                continue;
+            foreach (var block in blocks.Where(block =>
+                         regionMap[block.First].Any(region =>
+                             ReferenceEquals(region.Handler, handler) && region.InTry)))
+            {
+                AddEdge(block, blockMap[exceptionalTarget],
+                    ControlFlowEdgeKind.Exception);
+            }
+        }
+
+        foreach (var block in blocks)
+        {
+            block.Successors = successors[block.Id]?.ToArray() ?? [];
+            block.Predecessors = predecessors[block.Id]?.ToArray() ?? [];
+        }
+        return new ControlFlowGraph(method, blocks, allEdges, blockMap, regionMap);
+
+        void AddNext(BasicBlock block, ControlFlowEdgeKind kind)
+        {
+            if (block.Id + 1 < blocks.Count)
+                AddEdge(block, blocks[block.Id + 1], kind);
+        }
+
+        void AddEdge(BasicBlock source, BasicBlock target, ControlFlowEdgeKind kind)
+        {
+            // Keep first-occurrence order, including distinct edge kinds between the same pair.
+            // Index each accepted edge once instead of rescanning the growing edge list and then
+            // scanning it twice more for every block to assemble adjacency.
+            if (!edgeKeys.Add((source.Id, target.Id, kind)))
+                return;
+            var edge = new ControlFlowEdge(source, target, kind);
+            allEdges.Add(edge);
+            (successors[source.Id] ??= []).Add(edge);
+            (predecessors[target.Id] ??= []).Add(edge);
+        }
+    }
+
+    // Consumers of block boundaries do not need adjacency or exception edges.
+    internal static IReadOnlyList<BasicBlock> PartitionBlocks(MethodDef method)
+    {
+        var instructions = method.Body.Instructions;
+        var indices = instructions.Select((instruction, index) => (instruction, index))
+            .ToDictionary(item => item.instruction, item => item.index);
+        return PartitionBlocks(method, instructions, indices);
+    }
+
+    private static List<BasicBlock> PartitionBlocks(MethodDef method, IList<Instruction> instructions,
+        Dictionary<Instruction, int> indices)
+    {
         var leaders = new HashSet<Instruction> { instructions[0] };
 
         foreach (var instruction in instructions)
@@ -128,59 +218,7 @@ public sealed class ControlFlowGraph
         if (current.Count != 0)
             blocks.Add(new BasicBlock(blocks.Count, current.ToArray()));
 
-        var blockMap = blocks.SelectMany(block => block.Instructions.Select(i => (i, block)))
-            .ToDictionary(item => item.i, item => item.block);
-        var allEdges = new List<ControlFlowEdge>();
-        var edgeKeys = new HashSet<(int Source, int Target, ControlFlowEdgeKind Kind)>();
-        var successors = new List<ControlFlowEdge>?[blocks.Count];
-        var predecessors = new List<ControlFlowEdge>?[blocks.Count];
-        foreach (var block in blocks)
-        {
-            var last = block.Last;
-            if (last.OpCode.Code == Code.Switch && last.Operand is IList<Instruction> cases)
-            {
-                foreach (var target in cases)
-                    AddEdge(block, blockMap[target], ControlFlowEdgeKind.Switch);
-                AddNext(block, ControlFlowEdgeKind.FallThrough);
-            }
-            else if (last.OpCode.FlowControl == FlowControl.Branch)
-            {
-                if (last.Operand is Instruction target)
-                    AddEdge(block, blockMap[target], ControlFlowEdgeKind.Branch);
-            }
-            else if (last.OpCode.FlowControl == FlowControl.Cond_Branch)
-            {
-                if (last.Operand is Instruction target)
-                    AddEdge(block, blockMap[target], ControlFlowEdgeKind.Branch);
-                AddNext(block, ControlFlowEdgeKind.FallThrough);
-            }
-            else if (last.OpCode.FlowControl is not (FlowControl.Return or FlowControl.Throw))
-            {
-                AddNext(block, ControlFlowEdgeKind.FallThrough);
-            }
-        }
-
-        var regionMap = BuildRegionMap(method, instructions, indices);
-        foreach (var handler in method.Body.ExceptionHandlers)
-        {
-            var exceptionalTarget = handler.FilterStart ?? handler.HandlerStart;
-            if (exceptionalTarget is null)
-                continue;
-            foreach (var block in blocks.Where(block =>
-                         regionMap[block.First].Any(region =>
-                             ReferenceEquals(region.Handler, handler) && region.InTry)))
-            {
-                AddEdge(block, blockMap[exceptionalTarget],
-                    ControlFlowEdgeKind.Exception);
-            }
-        }
-
-        foreach (var block in blocks)
-        {
-            block.Successors = successors[block.Id]?.ToArray() ?? [];
-            block.Predecessors = predecessors[block.Id]?.ToArray() ?? [];
-        }
-        return new ControlFlowGraph(method, blocks, allEdges, blockMap, regionMap);
+        return blocks;
 
         void AddBoundary(Instruction? boundary)
         {
@@ -188,35 +226,52 @@ public sealed class ControlFlowGraph
                 leaders.Add(boundary);
         }
 
-        void AddNext(BasicBlock block, ControlFlowEdgeKind kind)
-        {
-            if (block.Id + 1 < blocks.Count)
-                AddEdge(block, blocks[block.Id + 1], kind);
-        }
-
-        void AddEdge(BasicBlock source, BasicBlock target, ControlFlowEdgeKind kind)
-        {
-            // Keep first-occurrence order, including distinct edge kinds between the same pair.
-            // Index each accepted edge once instead of rescanning the growing edge list and then
-            // scanning it twice more for every block to assemble adjacency.
-            if (!edgeKeys.Add((source.Id, target.Id, kind)))
-                return;
-            var edge = new ControlFlowEdge(source, target, kind);
-            allEdges.Add(edge);
-            (successors[source.Id] ??= []).Add(edge);
-            (predecessors[target.Id] ??= []).Add(edge);
-        }
     }
 
     private static bool EndsBlock(Instruction instruction) =>
         instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch or
             FlowControl.Return or FlowControl.Throw;
 
-    private static Dictionary<Instruction, IReadOnlyList<ExceptionRegion>> BuildRegionMap(
+    internal static ExceptionRegionMap BuildExceptionRegions(MethodDef method) =>
+        ExceptionRegionMap.Build(method);
+}
+
+/// <summary>Clause membership without constructing blocks or edges. Rebuild after body edits.</summary>
+internal sealed class ExceptionRegionMap
+{
+    private readonly IReadOnlyDictionary<Instruction, IReadOnlyList<ExceptionRegion>> regions;
+
+    private ExceptionRegionMap(IReadOnlyDictionary<Instruction, IReadOnlyList<ExceptionRegion>> regions) =>
+        this.regions = regions;
+
+    internal bool HaveIdenticalExceptionRegions(Instruction left, Instruction right)
+    {
+        var a = regions.GetValueOrDefault(left) ?? [];
+        var b = regions.GetValueOrDefault(right) ?? [];
+        if (ReferenceEquals(a, b)) return true;
+        if (a.Count != b.Count) return false;
+        for (var index = 0; index < a.Count; index++)
+            if (!ReferenceEquals(a[index].Handler, b[index].Handler) ||
+                a[index].InTry != b[index].InTry || a[index].InHandler != b[index].InHandler ||
+                a[index].InFilter != b[index].InFilter) return false;
+        return true;
+    }
+
+    internal static ExceptionRegionMap Build(MethodDef method)
+    {
+        if (method.Body.ExceptionHandlers.Count == 0) return new(new Dictionary<Instruction, IReadOnlyList<ExceptionRegion>>());
+        var il = method.Body.Instructions;
+        var indices = il.Select((instruction, index) => (instruction, index))
+            .ToDictionary(item => item.instruction, item => item.index);
+        return new(BuildRegionMap(method, il, indices));
+    }
+
+    internal static Dictionary<Instruction, IReadOnlyList<ExceptionRegion>> BuildRegionMap(
         MethodDef method,
         IList<Instruction> instructions,
         Dictionary<Instruction, int> indices)
     {
+        if (method.Body.ExceptionHandlers.Count == 0) return [];
         var result = new Dictionary<Instruction, IReadOnlyList<ExceptionRegion>>(instructions.Count);
         // Region membership changes only at clause boundaries. Share one immutable
         // snapshot across each interval instead of allocating and testing every clause

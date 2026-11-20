@@ -7,6 +7,77 @@ namespace Cilantro.Tests;
 public sealed class BodyMutationTransactionTests
 {
     [Fact]
+    public void RollbackOnlyTransactionRestoresMutatedObjectsOperandsAndReplacementBody()
+    {
+        using var module = new ModuleDefUser("rollback.dll");
+        var method = CreateMethod(module);
+        var originalBody = method.Body;
+        var originalInstructions = originalBody.Instructions.ToArray();
+        var originalLocals = originalBody.Variables.ToArray();
+        var snapshot = MethodBodySnapshot.Capture(method);
+
+        Assert.Throws<InvalidOperationException>((Action)(() =>
+        {
+            using var transaction = new BodyRollbackTransaction(method);
+            originalInstructions[0].OpCode = OpCodes.Nop;
+            originalInstructions[3].Operand = originalInstructions[12];
+            ((Instruction[])originalInstructions[9].Operand)[0] = originalInstructions[0];
+            originalInstructions[1].Operand = originalLocals[1];
+            originalLocals[0].Type = module.CorLibTypes.Int64;
+            originalLocals[0].Name = "changed";
+            originalLocals[0].Attributes = dnlib.DotNet.Pdb.PdbLocalAttributes.DebuggerHidden;
+            originalBody.Instructions.Clear();
+            originalBody.Variables.Clear();
+            originalBody.ExceptionHandlers.Clear();
+            originalBody.InitLocals = false;
+            originalBody.KeepOldMaxStack = false;
+            originalBody.HeaderSize = 1;
+            originalBody.MaxStack = 1;
+            originalBody.LocalVarSigTok = 0;
+            method.Body = new CilBody();
+            throw new InvalidOperationException("Failed rewrite");
+        }));
+
+        Assert.Same(originalBody, method.Body);
+        Assert.Equal(originalInstructions, method.Body.Instructions);
+        Assert.Equal(originalLocals, method.Body.Variables);
+        Assert.True(snapshot.StructurallyEquals(method));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RollbackOnlyTransactionCompletionIsIdempotent(bool commit)
+    {
+        using var module = new ModuleDefUser("rollback.dll");
+        var method = new MethodDefUser("Empty", MethodSig.CreateStatic(module.CorLibTypes.Void));
+        var replacement = new CilBody();
+        using (var transaction = new BodyRollbackTransaction(method))
+        {
+            method.Body = replacement;
+            if (commit) transaction.Commit();
+            else transaction.Rollback();
+            transaction.Rollback();
+            transaction.Commit();
+        }
+        if (commit) Assert.Same(replacement, method.Body);
+        else Assert.Null(method.Body);
+    }
+
+    [Fact]
+    public void PublicSnapshotFingerprintStillDescribesCaptureTimeBeforeFirstRead()
+    {
+        using var module = new ModuleDefUser("snapshot.dll");
+        var method = CreateMethod(module);
+        var expected = MethodBodyStructuralComparer.Fingerprint(method);
+        using var transaction = new BodyMutationTransaction(method);
+        method.Body.Instructions[0].OpCode = OpCodes.Ldc_I4_8;
+        method.Body.Variables[0].Type = module.CorLibTypes.Int64;
+        Assert.Equal(expected, transaction.Snapshot.Fingerprint);
+        Assert.False(transaction.Snapshot.StructurallyEquals(method));
+    }
+
+    [Fact]
     public void DisposeRestoresCompleteBodyAndOriginalBodyObject()
     {
         using var module = new ModuleDefUser("transaction.dll");

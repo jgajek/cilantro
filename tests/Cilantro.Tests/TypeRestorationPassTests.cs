@@ -61,6 +61,50 @@ public sealed class TypeRestorationPassTests
         finally { File.Delete(written); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AddressProofReindexesNamesAndBodiesOnTheNextInvocation(bool fullName)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var host = SyntheticContext.AddType(module, "Addressed");
+            var field = new FieldDefUser("Value", new FieldSig(module.CorLibTypes.Object),
+                FieldAttributes.Private | FieldAttributes.Static);
+            host.Fields.Add(field);
+            var consume = new MethodDefUser("Consume", MethodSig.CreateStatic(module.CorLibTypes.Void,
+                new ByRefSig(module.CorLibTypes.String)), MethodImplAttributes.IL,
+                MethodAttributes.Private | MethodAttributes.Static) { Body = new CilBody() };
+            host.Methods.Add(consume);
+            foreach (var instruction in new[] { OpCodes.Ldarg_0.ToInstruction(), OpCodes.Ldstr.ToInstruction("replacement"),
+                         OpCodes.Stind_Ref.ToInstruction(), OpCodes.Ret.ToInstruction() })
+                consume.Body.Instructions.Add(instruction);
+            var writer = new MethodDefUser("Store", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Private | MethodAttributes.Static) { Body = new CilBody() };
+            host.Methods.Add(writer);
+            foreach (var instruction in new[] { OpCodes.Ldstr.ToInstruction("initial"), OpCodes.Stsfld.ToInstruction(field),
+                         OpCodes.Ldsflda.ToInstruction(field), OpCodes.Call.ToInstruction(consume),
+                         OpCodes.Ldstr.ToInstruction(fullName ? field.FullName : field.Name.String),
+                         OpCodes.Pop.ToInstruction(), OpCodes.Ret.ToInstruction() })
+                writer.Body.Instructions.Add(instruction);
+        });
+        var pass = new TypeRestorationPass();
+        Assert.Equal(0, pass.Run(context).Changes);
+        var host = context.Module.GetTypes().Single(t => t.Name == "Addressed");
+        var writer = host.Methods.Single(m => m.Name == "Store");
+        writer.Body.Instructions[4].Operand = "unrelated";
+        // A changed indirect writer must be re-proved too, even if the field now has no named use.
+        var consume = host.Methods.Single(m => m.Name == "Consume");
+        consume.Body.Instructions[2].OpCode = OpCodes.Pop;
+        consume.Body.Instructions[2].Operand = null;
+        Assert.Equal(0, pass.Run(context).Changes);
+        consume.Body.Instructions[2].OpCode = OpCodes.Stind_Ref;
+        var result = pass.Run(context);
+        Assert.Equal(PassStatus.Success, result.Status);
+        Assert.Equal(1, result.Changes);
+        Assert.Equal(ElementType.String, host.Fields.Single().FieldType.ElementType);
+    }
+
     [Fact]
     public void PromotesObjectFieldWhenEveryWriterAgrees()
     {

@@ -4,7 +4,7 @@ using dnlib.DotNet.Emit;
 
 namespace Cilantro.Core.Recovery;
 
-/// <summary>Recovers closed reference field stack types without changing field signatures.</summary>
+/// <summary>Recovers closed reference field stack types and proved addressed reference field signatures.</summary>
 public sealed class ReferenceFieldTypingPass : ArrayFieldTypingPass
 {
     public override string Name => "reference-field-typing";
@@ -12,7 +12,50 @@ public sealed class ReferenceFieldTypingPass : ArrayFieldTypingPass
     protected override string TypeLabel => "reference";
     protected override string ChangeKind => "restore-reference-field-stack-type";
 
-    protected override bool TryStoredType(MethodDef method, int store, ControlFlowGraph graph, out TypeSig type)
+    protected override TypeSig? NullOnlyReadType(MethodDef method, Instruction read, ControlFlowGraph graph)
+    {
+        var block = graph.BlockOf(read).Instructions.ToArray();
+        var at = Array.IndexOf(block, read);
+        var stack = new List<bool> { true };
+        for (var n = at + 1; n < block.Length && n - at <= 64; n++)
+        {
+            var instruction = block[n];
+            if (instruction.OpCode.Code == Code.Dup)
+            {
+                if (stack.Count == 0 || stack[^1]) return null;
+                stack.Add(false); continue;
+            }
+            instruction.CalculateStackUsage(out var pushes, out var pops);
+            if (pops < 0) return null;
+            var inputs = new bool[pops];
+            for (var p = pops - 1; p >= 0; p--)
+                if (stack.Count != 0) { inputs[p] = stack[^1]; stack.RemoveAt(stack.Count - 1); }
+            if (inputs.Any(marked => marked))
+            {
+                var slot = Array.IndexOf(inputs, true);
+                TypeSig? wanted = null;
+                if (instruction.IsStloc()) wanted = instruction.GetLocal(method.Body.Variables)?.Type;
+                else if (instruction.OpCode.Code == Code.Ret) wanted = method.ReturnType;
+                else if (instruction.OpCode.Code is Code.Stfld or Code.Stsfld && slot == inputs.Length - 1 && instruction.Operand is IField field) wanted = field.FieldSig.Type;
+                else if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj && instruction.Operand is IMethod call &&
+                    call.MethodSig is { Generic: false, ExplicitThis: false, ParamsAfterSentinel: null } signature &&
+                    (signature.CallingConvention & CallingConvention.Mask) == CallingConvention.Default)
+                {
+                    var receiver = signature.HasThis && instruction.OpCode.Code != Code.Newobj ? 1 : 0;
+                    if (inputs.Length != signature.Params.Count + receiver) return null;
+                    wanted = slot < receiver ? call.DeclaringType.ToTypeSig() : signature.Params[slot - receiver];
+                }
+                return wanted is { ContainsGenericParameter: false } && (wanted.ElementType == ElementType.String ||
+                    wanted is ClassSig { FullName: not "System.Object" } || wanted is GenericInstSig { GenericType: ClassSig }) ? wanted : null;
+            }
+            if (instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch or FlowControl.Return or FlowControl.Throw) return null;
+            for (var p = 0; p < pushes; p++) stack.Add(false);
+        }
+        return null;
+    }
+
+    protected override bool TryStoredType(MethodDef method, int store, ControlFlowGraph graph, out TypeSig type,
+        IReadOnlyDictionary<FieldDef, TypeSig>? provenFields = null)
     {
         type = null!;
         if (TryNullCoalescedValue(method, store, graph, out type)) return true;
@@ -36,6 +79,9 @@ public sealed class ReferenceFieldTypingPass : ArrayFieldTypingPass
                     Code.Ldstr => method.Module.CorLibTypes.String,
                     Code.Call or Code.Callvirt when instruction.Operand is IMethod call => ArrayParameterTypingPass.ReturnedType(call),
                     Code.Ldelem_Ref => ArrayElementType(method, index, graph),
+                    Code.Ldind_Ref => IndirectReferenceType(method, index, graph),
+                    Code.Ldfld or Code.Ldsfld when instruction.Operand is FieldDef source &&
+                        !source.DeclaringType.HasGenericParameters => provenFields?.GetValueOrDefault(source, source.FieldType) ?? source.FieldType,
                     _ => instruction.IsLdloc() ? instruction.GetLocal(method.Body.Variables)?.Type :
                         instruction.IsLdarg() ? instruction.GetParameter(method.Parameters)?.Type : null
                 };

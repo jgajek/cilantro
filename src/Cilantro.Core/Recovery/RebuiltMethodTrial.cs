@@ -18,7 +18,8 @@ internal static class RebuiltMethodTrial
         bool NonVmStateMatched = false, bool? VmStateShared = null,
         IReadOnlyList<string>? DifferingRoots = null, IReadOnlyList<string>? NonVmDifferingRoots = null,
         bool? NativeMemoryMatched = null, IReadOnlyList<string>? VmDifferingRoots = null,
-        bool ResolverBehaviorUnproven = false, bool? VmMetadataEscaped = null, uint? ProtectorGateToken = null);
+        bool ResolverBehaviorUnproven = false, bool? VmMetadataEscaped = null, uint? ProtectorGateToken = null,
+        Result? GuardNeutralizedTrial = null, uint? NeutralizedGateToken = null);
     private sealed record Observation(string? Key, string Why, IReadOnlyList<string>? Names = null,
         IReadOnlyList<string?>? Values = null, int StaticStart = 0, HashSet<int>? VmRoots = null,
         string? NonVmKey = null, bool? SharesVmState = null,
@@ -123,6 +124,7 @@ internal static class RebuiltMethodTrial
                     (normalized is null ? "" : $". Separate trial with only that guard neutralized: {normalized.Verdict}; {normalized.Detail}"),
                     DifferingRoots: normalized?.DifferingRoots, NonVmDifferingRoots: normalized?.NonVmDifferingRoots,
                     VmDifferingRoots: normalized?.VmDifferingRoots,
+                    GuardNeutralizedTrial: normalized, NeutralizedGateToken: normalized is null ? null : left.ProtectorGateToken,
                     ProtectorGateToken: normalizedMatch || outcomes[0] == StaticExecutionStatus.Threw && outcomes[1] == StaticExecutionStatus.Completed &&
                         left.GateStateKey is not null && left.GateStateKey == right.GateStateKey &&
                         left.SharesVmState == false && right.SharesVmState == false && left.VmMetadataEscaped == false && right.VmMetadataEscaped == false &&
@@ -283,13 +285,15 @@ internal static class RebuiltMethodTrial
             var enteredRebuilt = false;
             MethodDef? lastGate = null;
             uint lastGateOffset = 0;
+            var engineOwner = engineToken is { } entryToken
+                ? (context.Module.ResolveToken(entryToken) as IMethod)?.ResolveMethodDef()?.DeclaringType : null;
             machine.Stepped = (frame, instruction) =>
             {
                 if (frame == method) stepped = true;
                 if (frame.MDToken.Raw == engineToken) enteredEngine = true;
                 if (frame.MDToken.Raw == rebuiltEntryToken) enteredRebuilt = true;
                 if (engineToken is not null && instruction.OpCode.Code == Code.Throw &&
-                    frame.DeclaringType == method.DeclaringType && IsIsolatedDebuggerGate(frame))
+                    (frame.DeclaringType == method.DeclaringType || frame.DeclaringType == engineOwner) && IsIsolatedDebuggerGate(frame))
                 {
                     lastGate = frame;
                     lastGateOffset = instruction.Offset;
@@ -301,7 +305,14 @@ internal static class RebuiltMethodTrial
                 ? lastGate.MDToken.Raw : null;
             if (!stepped || body == shipped && engineToken is not null && !enteredEngine ||
                 body == rebuilt && rebuiltEntryToken is not null && !enteredRebuilt)
-                return new(null, $"comparison body/engine was not exercised: {answer.Status}: {Short(answer.Diagnostic)}");
+            {
+                // A recognized gate in the VM initializer can throw before entry.
+                // Preserve that refusal, but retain the terminal outcome/token so
+                // a separately reported guard-neutralized trial can exercise it.
+                if (protectorGate is not null) outcomes.Add(answer.Status);
+                return new(null, $"comparison body/engine was not exercised: {answer.Status}: {Short(answer.Diagnostic)}",
+                    ProtectorGateToken: protectorGate);
+            }
             if (answer.Status is not (StaticExecutionStatus.Completed or StaticExecutionStatus.Threw))
                 return new(null, $"{answer.Status}: {Short(answer.Diagnostic)}");
             var effects = machine.State.LoaderEvidence.EffectsOf(method.MDToken.Raw);

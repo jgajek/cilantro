@@ -43,7 +43,7 @@ internal static class EffectfulDispatcherPath
                 }
                 if (values.Count == 0) continue;
                 if (Trace(graph, il[^1], start, values, carriedValue, eligible) is not { } plan || plan.Target == start) continue;
-                using var transaction = new BodyMutationTransaction(method);
+                using var transaction = new BodyRollbackTransaction(method);
                 // Keep the original entry value and the complete ordered instruction prefix.
                 // In particular, a handler must see writes made BEFORE a throwing call/read,
                 // not all final writes eagerly relocated ahead of it.

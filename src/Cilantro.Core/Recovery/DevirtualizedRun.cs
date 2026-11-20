@@ -87,7 +87,7 @@ internal static class DevirtualizedRun
             cancellation.ThrowIfCancellationRequested();
             if (second.Module.ResolveToken(program.Method.Stub.MDToken.Raw) is not MethodDef stub ||
                 VirtualBody.Build(program, second.Module, stub).Body is not { } rebuilt) continue;
-            for (var scenario = 0; scenario < 11; scenario++)
+            for (var scenario = 0; scenario < 15; scenario++)
             {
                 cancellation.ThrowIfCancellationRequested();
                 var initializeModule = scenario == 8;
@@ -95,20 +95,30 @@ internal static class DevirtualizedRun
                 var configured = scenario >= 6 && scenario != 9;
                 var warm = scenario is 5 or 7;
                 var warmSelected = scenario is 9 or 10;
-                var input = scenario >= 5 ? 3 : scenario;
+                // Retain the sparse-host refusals, then exercise the same argument
+                // fixtures with explicit configured host facts. Missing host facts
+                // must not quietly turn into assumptions in the original trials.
+                var input = scenario >= 11 ? scenario == 14 ? 4 : scenario - 11 : scenario >= 5 ? 3 : scenario;
+                var profile = scenario == 14 ? world.Host.Profile.WithTrialDebugger(true) : world.Host.Profile;
                 var engine = (second.Module.ResolveToken(program.Method.Entry.MDToken.Raw) as IMethod)?.ResolveMethodDef();
                 var trial = engine is null
                     ? new RebuiltMethodTrial.Result(DevirtualizationCheck.NotMade, "the original VM entry could not be resolved")
                     : RebuiltMethodTrial.Compare(second, stub, rebuilt, input,
-                        engine.MDToken.Raw, warmOriginal: warm, hostProfile: configured ? world.Host.Profile : null,
+                        engine.MDToken.Raw, warmOriginal: warm, hostProfile: configured ? profile : null,
                         initializeModule: initializeModule, warmSelected: warmSelected);
                 trials.Add(trial);
+                if (trial.GuardNeutralizedTrial is { } normalized)
+                    original.AddEvidence(new Evidence("reconstruction-guard-neutralized-method-trial",
+                        $"{stub.MDToken}, controlled input {input}; only isolated debugger guard 0x{trial.NeutralizedGateToken:X8} neutralized on both independent machines. " +
+                        (configured ? $"Host profile {profile.Name}, SHA-256 {profile.Sha256}. " : "Sparse controlled host fixture. ") +
+                        "Original terminal/entry disagreement remains recorded. " +
+                        $"Separate bounded result: {normalized.Verdict}; {normalized.Detail}. No declared call outcomes; not proof for other paths."));
                 original.AddEvidence(new Evidence("reconstruction-method-trial",
                     $"{stub.MDToken}, controlled input {input}" +
                     (warm ? " after one original call on each independent machine (repeat-call trial)" : "") +
                     (warmSelected ? " after each side executes its own first call (independently evolved repeat-call trial)" : "") +
                     (initializeModule ? " after module initialization with each side's body installed (module-initialized trial)" : "") +
-                    (configured ? $" (32-byte zero streams; configured host profile {world.Host.Profile.Name}, SHA-256 {world.Host.Profile.Sha256}; strict interpretation, no declared call outcomes)"
+                    (configured ? $" ({(input >= 3 ? "32-byte zero streams" : "controlled argument fixture " + input)}; configured host profile {profile.Name}, SHA-256 {profile.Sha256}; strict interpretation, no declared call outcomes)"
                         : scenario >= 3 ? $" (32-byte zero streams for object/stream arguments; debugger attached={scenario == 4})" : " (no host facts)") + $": {trial.Verdict}. {trial.Detail}. " +
                     $"Bounded interpreter comparison ({RebuiltMethodTrial.StepLimit(second)} steps per machine, shared by warm-up and measurement), not proof for other inputs or initial states."));
             }

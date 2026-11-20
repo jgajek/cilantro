@@ -554,10 +554,19 @@ public class LoaderCallElisionPass : DeobfuscationPass
         StaticWorkBudget leftBudget, StaticWorkBudget rightBudget,
         out LoaderInterpretationEvidence? evidence, out string reason)
     {
+        // Failure retains the candidate unchanged. This optional proof is not the
+        // recovery bootstrap, and its cold, unseeded machines can stop on paths the
+        // recovery run never needed. Keep the refusal as proof evidence rather than
+        // asking the analyst to declare more facts for an unperformed rewrite.
+        using var trial = BootstrapMachine.Environment(context).Blockers.Trying();
         evidence = null;
         reason = "independent interpretations did not agree";
         if (!Read(leftBudget, out var left, out reason) || !Read(rightBudget, out var right, out reason))
+        {
+            context.AddEvidence(new Evidence("cold-initializer-proof-refused", reason,
+                $"{initializer.MDToken} {initializer.FullName}"));
             return false;
+        }
         if (!left!.Agrees(right!))
         {
             reason = "independent interpretations did not agree";

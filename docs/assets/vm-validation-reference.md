@@ -79,12 +79,15 @@ An additional independently evolved repeat trial warms the original and rebuilt 
 
 Additional cold-start and repeat-call trials use the run's configured host profile with the same controlled zero-stream fixture. Their evidence names the profile and its SHA-256 so analysts can distinguish these assumptions from the minimal debugger-only trials. Each side gets an independent, strict interpreter: configured host facts are available, but permissive execution settings and declared call outcomes are not imported. Missing facts and unsupported calls still leave the comparison inconclusive. Agreement under a configured profile neither overrides an observed disagreement nor establishes behavior on other hosts.
 
+The null/zero, empty/one and nonempty/minus-one argument fixtures also run with the configured host facts. A separately named and hashed debugger-attached variant preserves the other configured facts and marks the debugger answer as simulated. These additional trials do not replace the sparse-host refusals: a missing runtime-module answer remains visible even if its configured counterpart can complete.
+
 Reflection over constructed generic methods preserves the supplied method and declaring-type arguments when answering parameter and return-type queries. For example, the parameter of `Array.Reverse<byte>` is reported as `byte[]`, rather than an unresolved generic parameter. Method flags such as `IsVirtual` come from the underlying declaration; framework overload selection distinguishes generic arity and static/instance signatures. These queries read metadata and do not execute the sample through CLR reflection.
 
 ## Remaining limits
 
 - The original VM can initialize caches and support state that reconstructed methods do not need. Cold-start full-state comparisons can therefore differ even when the separately captured non-VM state matches. Review the actual comparison coverage and application effects; this does not establish equivalence on another input.
 - Unknown values, exhausted budgets, unsupported native effects and incomplete snapshots remain inconclusive. A matched repeat call cannot establish a cold-start result.
+- An isolated debugger gate in the VM type initializer can stop the original before entry. Its original refusal and terminal disagreement remain recorded. A separate `reconstruction-guard-neutralized-method-trial` records the guard token, host profile and bounded comparison with only that guard neutralized on both machines; it does not turn the original fixture into an agreement.
 - VM invocation discovery accepts simple argument-building sequences and intervening no-ops but rejects branch or exception-region entries into them. Indirect calls and computed program identifiers can conceal programs.
 - Lifted initialization helpers receive separate cold-start and repeat-call comparisons through parameterless callers. Those callers' actual argument-building code must be available to interpret.
 - Resource-based recovery requires independent initializer proofs. Numeric metadata-token resolution and unresolved reflection can limit safe cleanup.

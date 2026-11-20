@@ -9,14 +9,16 @@ internal static class LocalConstantPropagation
     internal static int Fold(MethodDef method) => Analyze(method, true, out _);
 
     internal static IReadOnlyDictionary<Instruction, int> KnownStores(MethodDef method,
-        Dictionary<Instruction, IReadOnlyDictionary<Local, int>>? branchStates = null)
+        Dictionary<Instruction, IReadOnlyDictionary<Local, int>>? branchStates = null,
+        ControlFlowGraph? graph = null, bool? stackValid = null)
     {
-        Analyze(method, false, out var stores, branchStates);
+        Analyze(method, false, out var stores, branchStates, graph, stackValid);
         return stores;
     }
 
     private static int Analyze(MethodDef method, bool rewrite, out Dictionary<Instruction, int> stores,
-        Dictionary<Instruction, IReadOnlyDictionary<Local, int>>? branchStates = null)
+        Dictionary<Instruction, IReadOnlyDictionary<Local, int>>? branchStates = null,
+        ControlFlowGraph? graph = null, bool? stackValid = null)
     {
         branchStates?.Clear();
         var knownStores = new Dictionary<Instruction, int>();
@@ -40,8 +42,8 @@ internal static class LocalConstantPropagation
         // KnownStores still tracks all eligible locals for dispatcher consumers.
         if (read is not null) eligible.IntersectWith(read);
         if (eligible.Count == 0 && !body.Instructions.Any(i => i.OpCode.FlowControl == FlowControl.Cond_Branch)) return 0;
-        var graph = ControlFlowGraph.Build(method);
-        var trackStack = EvaluationStackAnalyzer.Analyze(method).Valid;
+        graph ??= ControlFlowGraph.Build(method);
+        var trackStack = stackValid ?? EvaluationStackAnalyzer.Analyze(method).Valid;
         var stacks = new Dictionary<BasicBlock, int?[]?> { [graph.Entry] = [] };
         var inputs = new Dictionary<BasicBlock, Dictionary<Local, int>>();
         inputs[graph.Entry] = body.InitLocals ? eligible.ToDictionary(v => v, _ => 0) : [];

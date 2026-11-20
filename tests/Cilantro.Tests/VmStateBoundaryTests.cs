@@ -9,6 +9,72 @@ namespace Cilantro.Tests;
 public sealed class VmStateBoundaryTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InitializerGateBeforeEngineEntryGetsASeparateTrialOnlyForAnIsolatedGuard(bool changesApplication)
+    {
+        using var context = SyntheticContext.Build(module =>
+        {
+            var importer = new Importer(module);
+            var engine = SyntheticContext.AddType(module, "Engine");
+            var host = SyntheticContext.AddType(module, "Host");
+            engine.Fields.Add(new FieldDefUser("Cache", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static));
+            var state = new FieldDefUser("State", new FieldSig(module.CorLibTypes.Int32), FieldAttributes.Static);
+            host.Fields.Add(state);
+            var gate = new MethodDefUser("Gate", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            engine.Methods.Add(gate);
+            var done = OpCodes.Ret.ToInstruction();
+            if (changesApplication)
+            {
+                gate.Body.Instructions.Add(OpCodes.Ldc_I4_1.ToInstruction());
+                gate.Body.Instructions.Add(OpCodes.Stsfld.ToInstruction(state));
+            }
+            foreach (var instruction in new[] {
+                OpCodes.Call.ToInstruction(importer.Import(typeof(System.Diagnostics.Debugger).GetProperty(nameof(System.Diagnostics.Debugger.IsAttached))!.GetMethod!)),
+                OpCodes.Brfalse.ToInstruction(done), OpCodes.Ldstr.ToInstruction("Debugger Detected"),
+                OpCodes.Newobj.ToInstruction(importer.Import(typeof(Exception).GetConstructor([typeof(string)])!)),
+                OpCodes.Throw.ToInstruction(), done }) gate.Body.Instructions.Add(instruction);
+            var initializer = new MethodDefUser(".cctor", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Static | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName)
+                { Body = new CilBody() };
+            engine.Methods.Add(initializer);
+            initializer.Body.Instructions.Add(OpCodes.Call.ToInstruction(gate));
+            initializer.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            var entry = new MethodDefUser("Entry", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            engine.Methods.Add(entry); entry.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            var run = new MethodDefUser("Run", MethodSig.CreateStatic(module.CorLibTypes.Void),
+                MethodImplAttributes.IL, MethodAttributes.Static) { Body = new CilBody() };
+            host.Methods.Add(run); run.Body.Instructions.Add(OpCodes.Call.ToInstruction(entry));
+            run.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+        });
+        var methods = context.Module.GetTypes().SelectMany(t => t.Methods).ToArray();
+        var gate = methods.Single(m => m.Name == "Gate");
+        var gateBody = gate.Body;
+        var run = methods.Single(m => m.Name == "Run");
+        var runBody = run.Body;
+        var rebuilt = new CilBody(); rebuilt.Instructions.Add(OpCodes.Ret.ToInstruction());
+        var result = RebuiltMethodTrial.Compare(context, run, rebuilt, 4, methods.Single(m => m.Name == "Entry").MDToken.Raw);
+        Assert.Same(gateBody, gate.Body);
+        Assert.Same(runBody, run.Body);
+        if (changesApplication)
+        {
+            Assert.Equal(DevirtualizationCheck.NotMade, result.Verdict);
+            Assert.Null(result.GuardNeutralizedTrial);
+            Assert.Null(result.ProtectorGateToken);
+        }
+        else
+        {
+            Assert.Equal(DevirtualizationCheck.Disagreed, result.Verdict);
+            Assert.Contains("engine was not exercised", result.Detail);
+            Assert.Equal(DevirtualizationCheck.Agreed, result.GuardNeutralizedTrial!.Verdict);
+            Assert.Equal(gate.MDToken.Raw, result.NeutralizedGateToken);
+            Assert.Equal(gate.MDToken.Raw, result.ProtectorGateToken);
+        }
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

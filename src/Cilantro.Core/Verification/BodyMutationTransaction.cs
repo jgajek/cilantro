@@ -48,6 +48,40 @@ public sealed class BodyMutationTransaction : IDisposable
 }
 
 /// <summary>
+/// Internal rollback transaction for rewrites that do not consume a structural snapshot.
+/// Captures the same restoration state without formatting a structural description.
+/// </summary>
+internal sealed class BodyRollbackTransaction : IDisposable
+{
+    private readonly MethodDef method;
+    private readonly CilBody? body;
+    private readonly MethodBodySnapshot.BodyState? state;
+    private bool completed;
+
+    internal BodyRollbackTransaction(MethodDef method)
+    {
+        this.method = method ?? throw new ArgumentNullException(nameof(method));
+        body = method.Body;
+        state = body is null ? null : MethodBodySnapshot.BodyState.Capture(body);
+    }
+
+    internal void Commit() => completed = true;
+
+    internal void Rollback()
+    {
+        if (completed) return;
+        if (body is not null) state!.RestoreInto(body);
+        method.Body = body;
+        completed = true;
+    }
+
+    public void Dispose()
+    {
+        if (!completed) Rollback();
+    }
+}
+
+/// <summary>
 /// An isolated structural snapshot of a dnlib CIL method body.
 /// </summary>
 public sealed class MethodBodySnapshot
@@ -61,12 +95,13 @@ public sealed class MethodBodySnapshot
         capturedBody = body;
         state = body is null ? null : BodyState.Capture(body);
         structuralRepresentation = BodyStructure.Describe(body);
-        Fingerprint = BodyStructure.Hash(structuralRepresentation);
+
     }
 
     public bool HasBody => state is not null;
 
-    public string Fingerprint { get; }
+    private string? fingerprint;
+    public string Fingerprint => fingerprint ??= BodyStructure.Hash(structuralRepresentation);
 
     public static MethodBodySnapshot Capture(MethodDef method)
     {
@@ -109,7 +144,7 @@ public sealed class MethodBodySnapshot
             BodyStructure.Describe(body),
             StringComparison.Ordinal);
 
-    private sealed class BodyState
+    internal sealed class BodyState
     {
         private readonly bool keepOldMaxStack;
         private readonly bool initLocals;

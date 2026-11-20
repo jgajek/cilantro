@@ -73,6 +73,7 @@ public sealed class ReferenceParameterTypingPass : ArrayParameterTypingPass
     protected override bool ConsumesRecoveredType(MethodDef method) =>
         method.Body.Variables.Any(v => AcceptsType(v.Type)) || AcceptsType(method.ReturnType) ||
         method.Body.Instructions.Any(i =>
+            i.OpCode.Code is Code.Stfld or Code.Stsfld && i.Operand is IField stored && AcceptsType(stored.FieldSig.Type) ||
             i.OpCode.Code is Code.Call or Code.Callvirt or Code.Newobj &&
             i.Operand is IMethod call && call.MethodSig is { } signature &&
             (signature.Params.Any(AcceptsType) || i.OpCode.Code != Code.Newobj && signature.HasThis &&

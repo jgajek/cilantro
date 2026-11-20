@@ -17,6 +17,23 @@ namespace Cilantro.Tests;
 public sealed class HostProfileTests
 {
     [Fact]
+    public void ConfiguredDebuggerTrialPreservesOtherFactsAndDoesNotRewriteTheSourceProfile()
+    {
+        var configured = HostProfile.Parse("""
+            { "facts": { "debugger:IsAttached": false, "registry:Missing": null,
+                         "runtime:ModuleName": "custom-jit.dll", "process:Id": 42 } }
+            """, "configured");
+        var trial = configured.WithTrialDebugger(true);
+        Assert.False(configured.Answers["debugger:IsAttached"].Flag);
+        Assert.True(trial.Answers["debugger:IsAttached"].Flag);
+        Assert.False(trial.Answers["debugger:IsAttached"].Stated);
+        Assert.NotEqual(configured.Sha256, trial.Sha256);
+        foreach (var answer in configured.Answers.Where(pair => pair.Key != "debugger:IsAttached"))
+            Assert.Equal(answer.Value, trial.Answers[answer.Key]);
+        Assert.Equal(configured.Answers.Count, trial.Answers.Count);
+    }
+
+    [Fact]
     public void TheDefaultProfileReadsTheClockTheWayTheMachineAlwaysHas()
     {
         using var module = NewModule();

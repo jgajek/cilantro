@@ -55,6 +55,9 @@ public sealed class TypeRestorationPass : DeobfuscationPass
             .Select(i => (i.Operand as IField)?.ResolveFieldDef()).ToHashSet();
         var exposed = addressed.Count == 0 ? [] : ModuleReachability.Compute(context.Module).ReflectivelyExposedTypes.ToHashSet();
         var inferred = new Dictionary<FieldDef, TypeSig>();
+        // Bodies and signatures stay unchanged throughout inference. Share their
+        // address-use index and CFGs only within this invocation, never across passes.
+        var addressUses = new Lazy<AddressUseIndex>(() => new(context.Module, addressed));
         // Infer before mutating metadata. A copy can become concrete after its
         // source field is proved; cycles without a concrete source stay unknown.
         for (var round = 0; round < 32; round++)
@@ -63,7 +66,7 @@ public sealed class TypeRestorationPass : DeobfuscationPass
             foreach (var field in eligible)
                 if (!inferred.ContainsKey(field) && !excluded.Contains(field) &&
                     TryProveSingleWrittenType(field, writers, inferred, out var concrete) && concrete is not null &&
-                    (!addressed.Contains(field) || ProveClosedAddresses(field, concrete, inferred, exposed)))
+                    (!addressed.Contains(field) || ProveClosedAddresses(field, concrete, inferred, exposed, addressUses.Value)))
                     inferred.Add(field, concrete);
             if (inferred.Count == before) break;
         }
@@ -263,46 +266,39 @@ public sealed class TypeRestorationPass : DeobfuscationPass
         new SigComparer().Equals(left, right);
 
     private static bool ProveClosedAddresses(FieldDef field, TypeSig concrete,
-        IReadOnlyDictionary<FieldDef, TypeSig> inferred, HashSet<TypeDef> exposed)
+        IReadOnlyDictionary<FieldDef, TypeSig> inferred, HashSet<TypeDef> exposed, AddressUseIndex uses)
     {
         var owner = field.DeclaringType;
         if (owner.HasGenericParameters || owner.IsExplicitLayout || owner.IsSerializable ||
             field.HasCustomAttributes || concrete.ContainsGenericParameter || exposed.Contains(owner)) return false;
-        if (field.Module.GetMemberRefs().Any(r => r.IsFieldRef && r.ResolveFieldDef() == field)) return false;
-        foreach (var method in field.Module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
+        if (uses.MemberReferences.Contains(field) || uses.Names.Contains(field.Name) ||
+            uses.Names.Contains(field.FullName) || uses.TypeHandles.Contains(owner)) return false;
+        foreach (var (method, n, reference) in uses.Fields.GetValueOrDefault(field) ?? [])
         {
-            ControlFlowGraph? graph = null;
             var il = method.Body.Instructions;
-            for (var n = 0; n < il.Count; n++)
-            {
-                var instruction = il[n];
-                if (instruction.Operand is string name && (name == field.Name || name == field.FullName)) return false;
-                if (instruction.OpCode.Code == Code.Ldtoken && instruction.Operand is ITypeDefOrRef type &&
-                    type.ResolveTypeDef() == owner) return false;
-                if (instruction.Operand is not IField reference || reference.ResolveFieldDef() != field) continue;
-                if (reference != field) return false;
-                if (instruction.OpCode.Code is Code.Ldfld or Code.Ldsfld or Code.Stfld or Code.Stsfld) continue;
-                if (instruction.OpCode.Code is not (Code.Ldflda or Code.Ldsflda)) return false;
-                // Most methods never take this field's address. The whole-module
-                // reflection/escape scan still runs, but only an address use needs a CFG.
-                graph ??= ControlFlowGraph.Build(method);
-                var next = n + 1;
-                while (next < il.Count && il[next].OpCode.Code == Code.Nop) next++;
-                if (next == il.Count || graph.BlockOf(instruction) != graph.BlockOf(il[next]) ||
-                    il[next].OpCode.Code != Code.Call || il[next].Operand is not MethodDef target ||
-                    target.Module != field.Module || !target.IsStatic || !target.HasBody || target.HasGenericParameters ||
-                    target.DeclaringType.HasGenericParameters || target.Parameters.Count == 0 ||
-                    target.Parameters[^1].Type is not ByRefSig address || !TypeEquals(address.Next, concrete) ||
-                    !ProveIndirectUses(target, target.Parameters[^1], concrete, inferred)) return false;
-            }
+            var instruction = il[n];
+            if (reference != field) return false;
+            if (instruction.OpCode.Code is Code.Ldfld or Code.Ldsfld or Code.Stfld or Code.Stsfld) continue;
+            if (instruction.OpCode.Code is not (Code.Ldflda or Code.Ldsflda)) return false;
+            // Most methods never take this field's address. The whole-module
+            // reflection/escape scan still runs, but only an address use needs a CFG.
+            var graph = uses.Graph(method);
+            var next = n + 1;
+            while (next < il.Count && il[next].OpCode.Code == Code.Nop) next++;
+            if (next == il.Count || graph.BlockOf(instruction) != graph.BlockOf(il[next]) ||
+                il[next].OpCode.Code != Code.Call || il[next].Operand is not MethodDef target ||
+                target.Module != field.Module || !target.IsStatic || !target.HasBody || target.HasGenericParameters ||
+                target.DeclaringType.HasGenericParameters || target.Parameters.Count == 0 ||
+                target.Parameters[^1].Type is not ByRefSig address || !TypeEquals(address.Next, concrete) ||
+                !ProveIndirectUses(target, target.Parameters[^1], concrete, inferred, uses)) return false;
         }
         return true;
     }
 
     private static bool ProveIndirectUses(MethodDef method, Parameter parameter, TypeSig concrete,
-        IReadOnlyDictionary<FieldDef, TypeSig> inferred)
+        IReadOnlyDictionary<FieldDef, TypeSig> inferred, AddressUseIndex uses)
     {
-        var graph = ControlFlowGraph.Build(method);
+        var graph = uses.Graph(method);
         var il = method.Body.Instructions;
         for (var n = 0; n < il.Count; n++)
         {
@@ -333,4 +329,38 @@ public sealed class TypeRestorationPass : DeobfuscationPass
         }
         return true;
     }
+    private sealed class AddressUseIndex
+    {
+        internal HashSet<string> Names { get; } = new(StringComparer.Ordinal);
+        internal HashSet<TypeDef> TypeHandles { get; } = [];
+        internal HashSet<FieldDef> MemberReferences { get; }
+        internal Dictionary<FieldDef, List<(MethodDef Method, int Index, IField Reference)>> Fields { get; } = [];
+        private readonly Dictionary<MethodDef, ControlFlowGraph> graphs = [];
+
+        internal AddressUseIndex(ModuleDef module, IReadOnlySet<FieldDef?> addressed)
+        {
+            MemberReferences = module.GetMemberRefs().Where(r => r.IsFieldRef)
+                .Select(r => r.ResolveFieldDef()).ToHashSet();
+            foreach (var method in module.GetTypes().SelectMany(t => t.Methods).Where(m => m.HasBody))
+                for (var index = 0; index < method.Body.Instructions.Count; index++)
+                {
+                    var instruction = method.Body.Instructions[index];
+                    if (instruction.Operand is string name) Names.Add(name);
+                    if (instruction.OpCode.Code == Code.Ldtoken && instruction.Operand is ITypeDefOrRef type &&
+                        type.ResolveTypeDef() is { } definition) TypeHandles.Add(definition);
+                    if (instruction.Operand is IField reference && reference.ResolveFieldDef() is { } field && addressed.Contains(field))
+                    {
+                        if (!Fields.TryGetValue(field, out var entries)) Fields[field] = entries = [];
+                        entries.Add((method, index, reference));
+                    }
+                }
+        }
+
+        internal ControlFlowGraph Graph(MethodDef method)
+        {
+            if (!graphs.TryGetValue(method, out var graph)) graphs[method] = graph = ControlFlowGraph.Build(method);
+            return graph;
+        }
+    }
+
 }

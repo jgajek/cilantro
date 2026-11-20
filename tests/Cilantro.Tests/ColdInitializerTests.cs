@@ -173,6 +173,28 @@ public sealed class ColdInitializerTests
         Assert.Equal(0, left.RemainingSteps);
     }
 
+    [Fact]
+    public void OptionalProofRefusalIsEvidenceAndDoesNotHideRealRecoveryStops()
+    {
+        using var context = Fixture(false);
+        var world = new RunEnvironment(new HostEnvironment(HostProfile.Empty));
+        context.SetFact(BootstrapMachine.RunEnvironmentFact, world);
+        world.Blockers.Record(BlockerKind.Budget, "earlier", "An existing recovery stop");
+        var method = context.Module.GetTypes().Single(t => t.Name == "First").FindStaticConstructor();
+        Assert.False(LoaderCallElisionPass.TryInterpretColdInitializer(context, method,
+            new StaticWorkBudget(1), new StaticWorkBudget(1), out var evidence, out var reason));
+        Assert.Null(evidence);
+        Assert.Contains("budget", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, world.Blockers.Count);
+        Assert.Contains(context.Evidence, item => item.Category == "cold-initializer-proof-refused" &&
+            item.Message == reason && item.Location!.Contains(method.FullName, StringComparison.Ordinal));
+
+        Assert.True(BootstrapMachine.TrySeed(context, 1000, out var actual, out _));
+        var outcome = actual!.Execute(method, [], new StaticWorkBudget(1));
+        Assert.Equal(StaticExecutionStatus.StepLimitExceeded, outcome.Status);
+        Assert.Equal(2, world.Blockers.Count);
+    }
+
     private static ArtifactContext Fixture(bool failingBootstrap) => SyntheticContext.Build(module =>
     {
         var cache = SyntheticContext.AddType(module, "Cache");

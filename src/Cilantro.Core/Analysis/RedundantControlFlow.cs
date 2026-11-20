@@ -9,7 +9,7 @@ internal static class RedundantControlFlow
     {
         var il = method.Body.Instructions;
         if (!il.Any(i => i.OpCode.Code is Code.Br or Code.Br_S && i.Operand is Instruction)) return 0;
-        var graph = ControlFlowGraph.Build(method);
+        var graph = ControlFlowGraph.BuildExceptionRegions(method);
         var positions = il.Select((instruction, index) => (instruction, index)).ToDictionary(p => p.instruction, p => p.index);
         Instruction? Next(Instruction instruction) => instruction.OpCode.Code is Code.Br or Code.Br_S
             ? instruction.Operand as Instruction
@@ -56,7 +56,7 @@ internal static class RedundantControlFlow
     internal static int FoldBooleanDiamonds(MethodDef method)
     {
         var il = method.Body.Instructions;
-        ControlFlowGraph? graph = null;
+        ExceptionRegionMap? graph = null;
         var plans = new List<(Instruction Branch, Instruction Taken, Instruction Fallthrough)>();
         // Preserve the original condition and all alternate entries into the diamond.
         // Only this edge pair bypasses the literal materialization and immediate test.
@@ -69,7 +69,7 @@ internal static class RedundantControlFlow
             var test = il[at + 4];
             if (test.OpCode.Code is not (Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S) ||
                 test.Operand is not Instruction destination) continue;
-            graph ??= ControlFlowGraph.Build(method);
+            graph ??= ControlFlowGraph.BuildExceptionRegions(method);
             if (!Enumerable.Range(at, 6).All(index => graph.HaveIdenticalExceptionRegions(branch, il[index])) ||
                 !graph.HaveIdenticalExceptionRegions(branch, destination)) continue;
             var taken = Target(il[at + 3].GetLdcI4Value());
@@ -113,7 +113,7 @@ internal static class RedundantControlFlow
     {
         var il = method.Body.Instructions;
         if (!il.Any(i => i.OpCode.FlowControl == FlowControl.Cond_Branch)) return 0;
-        var graph = ControlFlowGraph.Build(method);
+        var graph = ControlFlowGraph.BuildExceptionRegions(method);
         var indices = il.Select((instruction, index) => (instruction, index)).ToDictionary(p => p.instruction, p => p.index);
         var plans = new List<(Instruction Branch, Instruction Target, int Pops)>();
         for (var index = 0; index + 1 < il.Count; index++)

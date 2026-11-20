@@ -12,6 +12,43 @@ public sealed class ParallelDispatcherPathTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void ParallelCompletionRetainsSerialBodiesBehaviorAndReportsAcrossRepeatedRuns(bool effects)
+    {
+        using var serial = Build(effects);
+        using var parallel = Build(effects);
+        var originals = serial.Module.GlobalType.Methods.Where(m => m.HasBody).ToArray();
+        var concurrent = parallel.Module.GlobalType.Methods.Where(m => m.HasBody).ToArray();
+        var expected = originals.Select(m => new[] { Run(m, 0), Run(m, 1) }).ToArray();
+        var one = new ControlFlowCompletionPass(1);
+        var four = new ControlFlowCompletionPass(4);
+        for (var round = 0; round < 2; round++)
+        {
+            var before = one.Run(serial);
+            var after = four.Run(parallel);
+            Assert.Equal(PassStatus.Success, before.Status);
+            Assert.Equal(before.Status, after.Status);
+            if (round == 0) Assert.True(before.Changes > 0);
+            Assert.Equal(before.Changes, after.Changes);
+            Assert.Equal(before.Diagnostics, after.Diagnostics);
+            Assert.Equal(serial.Changes, parallel.Changes);
+            foreach (var fact in new[] { "cfg.constantBranchesFolded", "cfg.unreachableInstructionsRemoved", "cfg.methodsSimplified" })
+            {
+                Assert.True(serial.TryGetFact<int>(fact, out var first));
+                Assert.True(parallel.TryGetFact<int>(fact, out var second));
+                Assert.Equal(first, second);
+            }
+            for (var index = 0; index < originals.Length; index++)
+            {
+                Assert.Equal(MethodBodySnapshot.Capture(originals[index]).Fingerprint,
+                    MethodBodySnapshot.Capture(concurrent[index]).Fingerprint);
+                Assert.Equal(expected[index], new[] { Run(concurrent[index], 0), Run(concurrent[index], 1) });
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void IndependentMethodsRetainSerialBodiesBehaviorAndReportOrder(bool effects)
     {
         using var serial = Build(effects);

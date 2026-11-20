@@ -8,11 +8,26 @@ namespace Cilantro.Core.Recovery;
 /// <summary>Restores array stack types where every closed caller already supplies that array.</summary>
 public class ArrayParameterTypingPass : DeobfuscationPass
 {
-    private sealed record CallerValue(TypeSig? Type, Parameter? Source = null, bool IsNull = false);
+    internal sealed record CallerValue(TypeSig? Type, Parameter? Source = null, bool IsNull = false,
+        FieldDef? Field = null, MethodDef? LocalMethod = null, Local? Local = null);
+    private sealed record Plan(MethodDef Method, Parameter Parameter, TypeSig Array, TypeSig Concrete, bool AfterCasts);
+    private sealed record CallSite(MethodDef Caller, Instruction Instruction, IMethod Call);
+    private sealed record TypingAnalysis(Dictionary<Parameter, CallerValue[]> Inputs, List<Plan> Plans,
+        HashSet<MethodDef> UncalledForwarders, HashSet<MethodDef> ClosedUncalled);
+
+    internal static IReadOnlyDictionary<Parameter, CallerValue[]> ClosedInputs(ArtifactContext context) =>
+        new ReferenceParameterTypingPass().Analyze(context).Inputs;
+
+    private static CallerValue ProducedValue(MethodDef method, Instruction instruction, TypeSig? type) =>
+        new(type, instruction.IsLdarg() ? instruction.GetParameter(method.Parameters) : null,
+            instruction.OpCode.Code == Code.Ldnull,
+            instruction.OpCode.Code is Code.Ldfld or Code.Ldsfld ? instruction.Operand as FieldDef : null,
+            instruction.IsLdloc() ? method : null,
+            instruction.IsLdloc() ? instruction.GetLocal(method.Body.Variables) : null);
     public override string Name => "array-parameter-typing";
     public override IReadOnlyCollection<string> Dependencies => ["unused-private-helper-cleanup"];
 
-    protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
+    private TypingAnalysis Analyze(ArtifactContext context)
     {
         var methods = context.Module.GetTypes().SelectMany(t => t.Methods).ToArray();
         var exposed = ModuleReachability.Compute(context.Module).ReflectivelyExposedTypes.ToHashSet();
@@ -20,9 +35,14 @@ public class ArrayParameterTypingPass : DeobfuscationPass
         var scopedNames = new ScopedMethodNameUses(context.Module, exposed);
         var namedHandles = new NamedMethodHandleUses(context.Module);
         var propertyHandles = new PropertyOnlyTypeHandles(context.Module);
+        var uncalledForwarders = UncalledResourceForwarders(context.Module, methods, exposed, names);
         var referenceContracts = ReferenceParameterContracts.Find(context.Module);
+        var hasFriends = context.Module.Assembly?.CustomAttributes.Any(a =>
+            a.TypeFullName == "System.Runtime.CompilerServices.InternalsVisibleToAttribute") == true;
         var candidates = methods.Where(m => m.HasBody && m.IsStatic && !m.IsConstructor && !m.IsVirtual &&
-            !m.DeclaringType.HasGenericParameters && !MemberVisibility.IsExternallyVisible(m) &&
+            !m.DeclaringType.HasGenericParameters && HasClosedCallerBoundary(m, hasFriends) &&
+            !m.IsUnmanagedExport && m.ExportInfo is null && !m.IsPinvokeImpl &&
+            !m.CustomAttributes.Any(a => a.TypeFullName == "System.Runtime.InteropServices.UnmanagedCallersOnlyAttribute") &&
             (referenceContracts.Contains(m) || !exposed.Contains(m.DeclaringType) || namedHandles.IsClosed(m) || propertyHandles.IsClosed(m)) &&
             (referenceContracts.Contains(m) || (!names.Contains(m.Name.String) && !names.Contains(m.FullName)) || scopedNames.ExcludesAll(m)) &&
             m.MethodSig.Params.Any(p => p.ElementType == ElementType.Object)).ToHashSet();
@@ -33,18 +53,34 @@ public class ArrayParameterTypingPass : DeobfuscationPass
         var arrayConsumers = candidates.Where(ConsumesRecoveredType).ToHashSet();
         foreach (var reference in context.Module.GetMemberRefs().Where(r => r.IsMethodRef))
             if (reference.ResolveMethodDef() is { } definition) candidates.Remove(definition);
+        var referencedMethods = methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions)
+            .Select(i => i.Operand).OfType<IMethod>().Select(m => m.ResolveMethodDef())
+            .Concat(context.Module.GetMemberRefs().Where(r => r.IsMethodRef).Select(r => r.ResolveMethodDef())).ToHashSet();
+        // A closed static method with no references has no invocation that can
+        // contribute values to a callee. Preserve its body, but do not treat its
+        // unbound arguments as evidence against actual callers. Handles, names,
+        // exports, attributes, accessors and friend assemblies veto this proof.
+        var closedUncalled = candidates.Where(m => !hasFriends && m.IsAssembly && !uncalledForwarders.Contains(m) &&
+            !m.IsSpecialName && !m.HasCustomAttributes && m.Overrides.Count == 0 &&
+            !names.Contains(m.Name.String) && !names.Contains(m.FullName) &&
+            !exposed.Contains(m.DeclaringType) && !referencedMethods.Contains(m) && m != context.Module.EntryPoint &&
+            !m.DeclaringType.Properties.Any(p => p.GetMethods.Contains(m) || p.SetMethods.Contains(m) || p.OtherMethods.Contains(m)) &&
+            !m.DeclaringType.Events.Any(e => e.AddMethod == m || e.RemoveMethod == m || e.InvokeMethod == m || e.OtherMethods.Contains(m))).ToHashSet();
+        uncalledForwarders.UnionWith(closedUncalled);
         var delegateInputs = ClosedDelegateParameterTypes.Find(context.Module, candidates, exposed);
         var inferred = new Dictionary<Parameter, TypeSig>();
-        var plans = new List<(MethodDef Method, Parameter Parameter, TypeSig Array, TypeSig Concrete, bool AfterCasts)>();
-        var instantiations = methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions)
-            .Where(i => i.OpCode.Code == Code.Call).Select(i => i.Operand).OfType<IMethod>()
-            .ToLookup(m => m.ResolveMethodDef());
+        var plans = new List<Plan>();
+        var instantiations = methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions
+                .Where(i => i.OpCode.Code == Code.Call && i.Operand is IMethod)
+                .Select(i => new CallSite(m, i, (IMethod)i.Operand)))
+            .ToLookup(site => site.Call.ResolveMethodDef());
         var graphs = methods.Where(m => m.HasBody).ToDictionary(m => m, ControlFlowGraph.Build);
         var blocks = graphs.SelectMany(pair => pair.Value.Blocks.Select(block => (method: pair.Key, block))).ToArray();
         var flowMethods = methods.Where(m => m.HasBody && (candidates.Contains(m) || m.Body.Instructions.Any(i =>
             i.Operand is IMethod call && call.ResolveMethodDef() is { } target && candidates.Contains(target)))).ToHashSet();
         // Propagate only already-proven caller parameters. Each round adds a parameter
         // or stops, so chains converge without treating a recursive cycle as evidence.
+        Dictionary<Parameter, CallerValue[]> inputs = [];
         while (true)
         {
             var previousCount = inferred.Count;
@@ -68,7 +104,8 @@ public class ArrayParameterTypingPass : DeobfuscationPass
                         if (!assignments.TryGetValue(assigned, out var values)) assignments[assigned] = values = [];
                         values.Add(stack.Count == 0 ? new CallerValue(null) : stack[^1]);
                     }
-                    if (instruction.Operand is IMethod invoked && invoked.ResolveMethodDef() is { } target && candidates.Contains(target))
+                    if (instruction.Operand is IMethod invoked && invoked.ResolveMethodDef() is { } target && candidates.Contains(target) &&
+                        !uncalledForwarders.Contains(method))
                     {
                         if (instruction.OpCode.Code == Code.Ldftn && delegateInputs.TryGetValue(target, out var supplied))
                             calls[target].Add(supplied.Select(type => new CallerValue(type)).ToArray());
@@ -103,11 +140,10 @@ public class ArrayParameterTypingPass : DeobfuscationPass
                         instruction.OpCode.Code is Code.Castclass or Code.Isinst && instruction.Operand is ITypeDefOrRef cast ? cast.ToTypeSig() :
                         instruction.OpCode.Code is Code.Call or Code.Callvirt && instruction.Operand is IMethod call ? ReturnedType(call) :
                         instruction.OpCode.Code is Code.Ldfld or Code.Ldsfld && instruction.Operand is IField field ? field.FieldSig?.Type : boxedArray ?? indirectReference ?? arrayElement;
-                    var source = instruction.IsLdarg() ? instruction.GetParameter(method.Parameters) : null;
-                    for (var index = 0; index < pushes; index++) stack.Add(new CallerValue(type, source, instruction.OpCode.Code == Code.Ldnull));
+                    for (var index = 0; index < pushes; index++) stack.Add(ProducedValue(method, instruction, type));
                 }
             }
-            var inputs = new Dictionary<Parameter, CallerValue[]>();
+            inputs = [];
             foreach (var method in candidates.Where(m => calls[m].Count != 0))
             foreach (var parameter in method.Parameters.Where(p => p.Type.ElementType == ElementType.Object))
             {
@@ -152,12 +188,45 @@ public class ArrayParameterTypingPass : DeobfuscationPass
                 common = preferred;
                 inferred.Add(parameter, common);
                 var method = parameter.Method;
-                var bodyType = GenericBodyType(method, parameter, common, instantiations[method]);
+                var bodyType = GenericBodyType(method, parameter, common, instantiations[method], graphs);
                 if (arrayConsumers.Contains(method) && method.Body.Instructions.Any(i => i.IsLdarg() && i.GetParameter(method.Parameters) == parameter &&
-                    !AlreadyTyped(method, i, bodyType, afterCasts))) plans.Add((method, parameter, bodyType, common, afterCasts));
+                    !AlreadyTyped(method, i, bodyType, afterCasts))) plans.Add(new(method, parameter, bodyType, common, afterCasts));
             }
             if (inferred.Count == previousCount) break;
         }
+        // An open forwarding call cannot establish a closed type. It can still
+        // prove a generic template when its actual value already has exactly the
+        // bound template type. Require a separate closed seed and inspect every
+        // call without using inferred parameter types, avoiding circular proofs.
+        foreach (var method in candidates.Where(m => m.HasGenericParameters && arrayConsumers.Contains(m)))
+        foreach (var parameter in method.Parameters.Where(p => p.Type.ElementType == ElementType.Object && !inferred.ContainsKey(p)))
+        {
+            if (method.Body.Instructions.Any(i => i.OpCode.Code is Code.Starg or Code.Starg_S or Code.Ldarga or Code.Ldarga_S && i.Operand == parameter)) continue;
+            TypeSig? concrete = null;
+            var valid = true;
+            foreach (var site in instantiations[method].Where(s => IsClosedDirectCall(s.Call, method)))
+            {
+                var actual = BackwardInputs(site.Caller, graphs[site.Caller], site.Instruction, method.Parameters.Count,
+                    new Dictionary<Parameter, TypeSig>())?[parameter.Index];
+                if (actual?.IsNull == true) continue;
+                if (actual?.Type is not { ContainsGenericParameter: false } type || !AcceptsType(type) ||
+                    concrete is not null && !new SigComparer().Equals(concrete, type)) { valid = false; break; }
+                concrete = type;
+            }
+            if (!valid || concrete is null) continue;
+            var template = GenericBodyType(method, parameter, concrete, instantiations[method], graphs);
+            if (template.ContainsGenericParameter && method.Body.Instructions.Any(i => i.IsLdarg() &&
+                i.GetParameter(method.Parameters) == parameter && !AlreadyTyped(method, i, template)))
+                plans.Add(new(method, parameter, template, concrete, false));
+        }
+        return new(inputs, plans, uncalledForwarders, closedUncalled);
+    }
+
+    protected override (PassStatus, int, IReadOnlyList<string>) Execute(ArtifactContext context)
+    {
+        var analysis = Analyze(context);
+        var plans = analysis.Plans;
+        var uncalledForwarders = analysis.UncalledForwarders;
         if (plans.Count == 0) return (PassStatus.Success, 0, [$"No erased {TypeLabel} parameter had unanimous concrete caller types."]);
         using var transaction = new BodyMutationBatch(plans.Select(p => p.Method).Distinct().ToArray());
         var importer = new Importer(context.Module);
@@ -188,14 +257,66 @@ public class ArrayParameterTypingPass : DeobfuscationPass
             CilantroPipeline.BuildRewriteAllowance(context));
         if (!verification.Passed) return (PassStatus.Partial, 0, [$"{TypeLabel} parameter typing rolled back after structural verification."]);
         transaction.Commit();
+        foreach (var method in uncalledForwarders.Where(m => m.Body.Instructions.Any(i =>
+                     i.Operand is IMethod call && plans.Any(p => p.Method == call.ResolveMethodDef()))))
+            context.AddEvidence(new(analysis.ClosedUncalled.Contains(method) ? "typing-uncalled-internal-method" : "typing-uncalled-resource-forwarder",
+                analysis.ClosedUncalled.Contains(method)
+                    ? "Excluded an unreferenced internal static method from caller inputs: no friend assembly, reflective exposure, name, handle, export, attribute or accessor can supply a caller. Body retained unchanged."
+                    : "Excluded an unreferenced forwarding helper from caller inputs: its resource lookup does not expose methods, its non-public static boundary has no friend assemblies, and no IL or metadata alias names it. Body retained unchanged.", method.FullName));
         foreach (var plan in plans) context.AddChange(new(Name, ChangeKind, plan.Method.FullName,
-            $"Restored {plan.Array.FullName} at reads of parameter {plan.Parameter.Index}; every direct caller supplies a value compatible with this proven {TypeLabel} type. Signature unchanged."));
+            $"Restored {plan.Array.FullName} at reads of parameter {plan.Parameter.Index}; every potentially callable direct caller supplies a value compatible with this proven {TypeLabel} type. Signature unchanged."));
         return (PassStatus.Success, plans.Count, [$"Restored {TypeLabel} stack types for {plans.Count} parameter(s) from closed caller evidence."]);
+    }
+
+    private static bool HasClosedCallerBoundary(MethodDef method, bool hasFriends)
+    {
+        if (MemberVisibility.IsExternallyVisible(method)) return false;
+        if (!hasFriends || method.IsPrivate) return true;
+        for (var owner = method.DeclaringType; owner is not null; owner = owner.DeclaringType)
+            if (owner.IsNestedPrivate) return true;
+        return false;
     }
 
     // Recover only the stack slots consumed by this call. Loops elsewhere in the
     // method and unrelated exception clauses do not invalidate a local proof.
     // Never carry a value across an exception-region boundary or handler edge.
+    private static HashSet<MethodDef> UncalledResourceForwarders(ModuleDef module, MethodDef[] methods,
+        HashSet<TypeDef> exposed, HashSet<string> names)
+    {
+        if (module.Assembly is not { } assembly || assembly.CustomAttributes.Any(a =>
+                a.TypeFullName == "System.Runtime.CompilerServices.InternalsVisibleToAttribute")) return [];
+        var resourceOwners = methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions.Select((i, n) => (m, i, n)))
+            .Where(p => p.i.OpCode.Code == Code.Ldtoken && p.i.Operand is ITypeDefOrRef &&
+                ResourceLookupTypeHandleUse.IsClosed(p.m, p.n))
+            .Select(p => ((ITypeDefOrRef)p.i.Operand).ResolveTypeDef()).Where(t => t?.Module == module).ToHashSet();
+        var referenced = methods.Where(m => m.HasBody).SelectMany(m => m.Body.Instructions)
+            .Select(i => i.Operand).OfType<IMethod>().Select(m => m.ResolveMethodDef())
+            .Concat(module.GetMemberRefs().Where(r => r.IsMethodRef).Select(r => r.ResolveMethodDef())).ToHashSet();
+        var result = new HashSet<MethodDef>();
+        foreach (var method in methods.Where(m => m.HasBody && m.IsStatic && (m.IsPrivate || m.IsAssembly) &&
+                     !m.IsSpecialName && !m.IsConstructor && !m.IsVirtual && !m.IsUnmanagedExport && m.ExportInfo is null &&
+                     !m.IsPinvokeImpl && !m.HasCustomAttributes &&
+                     !m.HasGenericParameters && !m.DeclaringType.HasGenericParameters && m.Overrides.Count == 0 &&
+                     resourceOwners.Contains(m.DeclaringType) && !exposed.Contains(m.DeclaringType) &&
+                     !referenced.Contains(m) && m != module.EntryPoint && !names.Contains(m.Name.String) && !names.Contains(m.FullName)))
+        {
+            if (method.Body.HasExceptionHandlers) continue;
+            var code = method.Body.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
+            if (code.Length != method.Parameters.Count + 2 || code[^1].OpCode.Code != Code.Ret ||
+                code[^2].OpCode.Code is not (Code.Call or Code.Callvirt) || code[^2].Operand is not IMethod call ||
+                call.ResolveMethodDef() is not { IsVirtual: false, IsConstructor: false } target || target.Module != module || target == method ||
+                call.MethodSig is not { ExplicitThis: false, GenParamCount: 0, ParamsAfterSentinel: null } signature ||
+                signature.Params.Count + (signature.HasThis ? 1 : 0) != method.Parameters.Count ||
+                (signature.RetType.ElementType == ElementType.Void) != (method.ReturnType.ElementType == ElementType.Void) ||
+                method.ReturnType.ElementType != ElementType.Object && !new SigComparer().Equals(method.ReturnType, signature.RetType) ||
+                code.Take(code.Length - 2).Where((i, n) => !i.IsLdarg() || i.GetParameter(method.Parameters) != method.Parameters[n]).Any() ||
+                method.DeclaringType.Properties.Any(p => p.GetMethods.Contains(method) || p.SetMethods.Contains(method) || p.OtherMethods.Contains(method)) ||
+                method.DeclaringType.Events.Any(e => e.AddMethod == method || e.RemoveMethod == method || e.InvokeMethod == method || e.OtherMethods.Contains(method))) continue;
+            result.Add(method);
+        }
+        return result;
+    }
+
     private CallerValue[]? BackwardInputs(MethodDef method, ControlFlowGraph graph, Instruction call, int count,
         IReadOnlyDictionary<Parameter, TypeSig> inferred)
     {
@@ -261,7 +382,7 @@ public class ArrayParameterTypingPass : DeobfuscationPass
                 i.OpCode.Code is Code.Castclass or Code.Isinst && i.Operand is ITypeDefOrRef cast ? cast.ToTypeSig() :
                 i.OpCode.Code is Code.Call or Code.Callvirt && i.Operand is IMethod invoked ? ReturnedType(invoked) :
                 i.OpCode.Code is Code.Ldfld or Code.Ldsfld && i.Operand is IField field ? field.FieldSig?.Type : null;
-            return type is null ? null : new(type, source);
+            return type is null ? null : ProducedValue(method, i, type);
         }
         var result = new CallerValue[count];
         for (var n = 0; n < count; n++)
@@ -342,7 +463,7 @@ public class ArrayParameterTypingPass : DeobfuscationPass
                         code is Code.Castclass or Code.Isinst && instruction.Operand is ITypeDefOrRef cast ? cast.ToTypeSig() :
                         code is Code.Call or Code.Callvirt && instruction.Operand is IMethod call ? ReturnedType(call) :
                         code is Code.Ldfld or Code.Ldsfld && instruction.Operand is IField field ? field.FieldSig?.Type : boxedArray ?? indirect ?? elementType;
-                    var value = new CallerValue(type, instruction.IsLdarg() ? instruction.GetParameter(method.Parameters) : null, code == Code.Ldnull);
+                    var value = ProducedValue(method, instruction, type);
                     stack.RemoveRange(stack.Count - pops, pops);
                     for (var n = 0; n < pushes; n++) stack.Add(value);
                 }
@@ -358,7 +479,8 @@ public class ArrayParameterTypingPass : DeobfuscationPass
     // remains the authority for the cast, never the callee's desired parameter type.
     protected virtual string TypeLabel => "array";
     protected virtual TypeSig PreferConsumerType(Parameter parameter, TypeSig common, IReadOnlyList<TypeSig> inputs) => common;
-    private static TypeSig GenericBodyType(MethodDef method, Parameter parameter, TypeSig concrete, IEnumerable<IMethod> calls)
+    private TypeSig GenericBodyType(MethodDef method, Parameter parameter, TypeSig concrete, IEnumerable<CallSite> calls,
+        Dictionary<MethodDef, ControlFlowGraph> graphs)
     {
         if (!method.HasGenericParameters) return concrete;
         var invocations = calls.ToArray();
@@ -376,14 +498,24 @@ public class ArrayParameterTypingPass : DeobfuscationPass
             if (next >= il.Count || !il[next].IsStloc() ||
                 il[next].GetLocal(method.Body.Variables)?.Type is not { ContainsGenericParameter: true } local) continue;
             // The local proposes a template, never evidence for the value's type.
-            // Every closed call must instantiate it to the independently proven
-            // common caller type before it can be used in the generic body.
-            if (invocations.Any(call => !IsClosedDirectCall(call, method) ||
-                !new SigComparer().Equals(Interpretation.GenericScope.For(call, null)?.Bind(local), concrete))) continue;
+            // Closed instantiations must agree with the concrete seed; an open
+            // caller must already supply the exact bound template independently.
+            if (invocations.Any(site => !ProvesTemplate(site, local))) continue;
             if (template is not null && !new SigComparer().Equals(template, local)) return concrete;
             template = local;
         }
         return template ?? concrete;
+
+        bool ProvesTemplate(CallSite site, TypeSig proposed)
+        {
+            if (!IsDirectDefinitionCall(site.Call, method)) return false;
+            var bound = Interpretation.GenericScope.For(site.Call, null)?.Bind(proposed);
+            if (bound is null) return false;
+            if (IsClosedDirectCall(site.Call, method)) return new SigComparer().Equals(bound, concrete);
+            var actual = BackwardInputs(site.Caller, graphs[site.Caller], site.Instruction, method.Parameters.Count,
+                new Dictionary<Parameter, TypeSig>())?[parameter.Index];
+            return actual?.IsNull == true || actual?.Type is { } type && new SigComparer().Equals(type, bound);
+        }
     }
     internal static TypeSig? ReturnedType(IMethod method)
     {

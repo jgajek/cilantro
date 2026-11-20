@@ -26,6 +26,15 @@ namespace Cilantro.Core.Passes;
 public class ControlFlowCompletionPass : DeobfuscationPass
 {
     private const int MaximumRounds = 16;
+    private readonly int maximumConcurrency;
+
+    public ControlFlowCompletionPass() : this(Math.Min(4, Environment.ProcessorCount)) { }
+
+    internal ControlFlowCompletionPass(int maximumConcurrency)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumConcurrency, 1);
+        this.maximumConcurrency = maximumConcurrency;
+    }
 
     public override string Name => "control-flow-completion";
     public override IReadOnlyCollection<string> Dependencies =>
@@ -37,11 +46,28 @@ public class ControlFlowCompletionPass : DeobfuscationPass
         var foldedTotal = 0;
         var removedTotal = 0;
         var rewrittenMethods = 0;
-        foreach (var method in context.Module.GetTypes()
-                     .SelectMany(type => type.Methods)
-                     .Where(item => item.HasBody && item.Body.Instructions.Count != 0))
+        // The same method-local cleanup already runs in dispatcher workers. Load bodies
+        // before starting workers, and publish facts and changes only on this thread.
+        var methods = context.Module.GetTypes().SelectMany(type => type.Methods)
+            .Where(item => item.HasBody && item.Body.Instructions.Count != 0).ToArray();
+        var outcomes = new (int Folded, int Removed)?[methods.Length];
+        context.TryGetFact<CancellationToken>(CilantroPipeline.CancellationFact, out var cancellation);
+        if (methods.Length < 64 || maximumConcurrency == 1)
         {
-            var outcome = TryComplete(method);
+            for (var index = 0; index < methods.Length; index++) Complete(index);
+        }
+        else
+        {
+            Parallel.For(0, methods.Length, new ParallelOptions
+            {
+                MaxDegreeOfParallelism = maximumConcurrency,
+                CancellationToken = cancellation
+            }, Complete);
+        }
+        for (var index = 0; index < methods.Length; index++)
+        {
+            var method = methods[index];
+            var outcome = outcomes[index];
             if (outcome is null)
                 continue;
             foldedTotal += outcome.Value.Folded;
@@ -75,6 +101,12 @@ public class ControlFlowCompletionPass : DeobfuscationPass
             context.TryGetFact<int>(fact, out var already);
             context.SetFact(fact, already + found);
         }
+
+        void Complete(int index)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            outcomes[index] = TryComplete(methods[index]);
+        }
     }
 
     /// <summary>
@@ -86,7 +118,7 @@ public class ControlFlowCompletionPass : DeobfuscationPass
     /// </remarks>
     internal static (int Folded, int Removed)? TryComplete(MethodDef method)
     {
-        using var transaction = new BodyMutationTransaction(method);
+        using var transaction = new BodyRollbackTransaction(method);
         var folded = 0;
         var removed = 0;
         var wasDisputed = EvaluationStackAnalyzer.Analyze(method).Diagnostics.Count;

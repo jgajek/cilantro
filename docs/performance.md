@@ -9,13 +9,93 @@ Measure Release builds against the hash-pinned corpus. The corpus runner's polic
 renaming and VM reconstruction; it still reads VM programs and follows the native wrapper's
 managed child. These measurements describe that policy, rather than every CLI option.
 
-Dispatcher path recovery now processes independent method bodies with at most four workers,
+Dispatcher path recovery and control-flow completion process independent method bodies with at most four workers,
 bounded by the available processor count. Small modules stay sequential. Workers retain the
 same per-method rewrite order, round limits, verification and rollback; change records are
 published in original method order. Account for this concurrency when running several CLI
 instances together. The historical timings above predate this change.
 
-## WMS large-sample verification
+## Full WMS recovery: 2026-11-20
+
+### Second optimization round
+
+A fresh serial pair reduced full analysis from **1,668.898 s (27m49s) to 1,467.791 s
+(24m28s)**: **12.1% less wall time**, saving 3m21s. The baseline was the verified build
+from the first round below. This is one paired measurement, not a repeated median. Both runs
+used the same Windows/runtime/server-GC configuration, input, declaration, 11 installer libraries,
+renaming, VM reconstruction, child recovery and all 136 pass decisions. No profiling, builds or
+test jobs competed with either timed run.
+
+| Pass | Baseline | Candidate |
+| --- | ---: | ---: |
+| Control-flow completion | 42.526 s | 9.669 s |
+| Control-flow recompletion | 18.288 s | 6.154 s |
+| Control-flow helper completion | 34.904 s | 16.491 s |
+| Dispatcher paths | 201.765 s | 158.381 s |
+| Dispatcher paths completion | 192.497 s | 151.635 s |
+| Dispatcher effects completion | 146.356 s | 190.321 s |
+| Control-flow finalization | 81.087 s | 71.891 s |
+
+The changes avoid unused structural descriptions in internal rollback transactions, reuse the
+current dispatcher's graph and stack proof before any edits, and run standalone control-flow
+completion with at most four independent method workers. All proof limits, rewrite ordering within
+a method, verification and restoration state are retained; reports publish in original method order.
+
+The root cleaned DLL is byte-for-byte identical to the baseline and the previous verified output
+(`3f27462181f524e0878f8b929b5fe13a06ccf245684a4383525ecc78e9507246`). All 10 detailed
+reports/listings and seven additional artifacts match after timing/path normalization, including
+the child cleaned DLL, extracted payload, rename map, HTML and embedded report. Independent
+ILVerify reports zero findings and no unreadable bodies. The focused Windows suite passes
+303 tests with one skip, including failed-rewrite restoration, capture-time fingerprints and
+serial/parallel behavior and report equivalence across repeated invocations.
+The full Linux suite passes **3,672 tests with 147 skipped and zero failures** (28m35s).
+All 704 production and test source files match between Linux and Windows after line-ending
+normalization, and the benchmarked Windows source hashes remain unchanged.
+
+Individual stages varied, including a slower effect-preserving dispatcher completion and changes
+in stages whose implementation was unchanged. The total is the observed improvement; it does not
+establish a uniform per-pass improvement. Evidence and pinned source/binary manifests are under
+`C:/cilantro-verify/wms-performance-round2`. Existing application runtime proof limits are unchanged.
+
+### First optimization round
+
+A serial baseline/candidate pair on the managed WMS child
+(`9e76d2c69d058e209da12460dba98c5947a6d65b78aec310b69438fad1e8608e`) reduced full
+analysis wall time from **1,756.529 s (29m17s) to 1,540.794 s (25m41s)**: **12.3% less
+wall time**, saving 3m36s. This is one paired measurement, not a repeated median. Both runs
+ran on Windows 10.0.26300 with 22 logical processors, .NET runtime 10.0.15 and the same
+server-GC configuration (SDK 10.0.404 recorded). Both used the 11 installer libraries, the same
+256-million-step declaration, renaming and VM reconstruction, all 136 pass decisions and
+recursive child analysis. No profiling or test jobs competed with the timed analyses.
+
+| Pass | Baseline | Candidate |
+| --- | ---: | ---: |
+| Type restoration | 44.694 s | 2.719 s |
+| Dispatcher paths | 208.610 s | 150.070 s |
+| Dispatcher paths completion | 184.654 s | 147.128 s |
+| Dispatcher effects completion | 209.564 s | 142.114 s |
+| Control-flow finalization | 148.429 s | 104.244 s |
+
+All 10 detailed JSON reports/VM listings match after pass-duration and output-path normalization.
+Seven additional artifacts also match: the rename map, both HTML reports, embedded-run report,
+root and child cleaned assemblies, and extracted payload. The HTML case-folder label and
+embedded pass durations receive the corresponding path/timing normalization. The cleaned WMS
+SHA-256 is unchanged from the previous independently verified recovery:
+`3f27462181f524e0878f8b929b5fe13a06ccf245684a4383525ecc78e9507246`.
+Independent ILVerify again reports **zero findings and zero unreadable bodies**. These output
+checks preserve the existing proof limits; they do not establish full GUI/COM behavioral equivalence.
+
+The final source build has zero warnings/errors. The focused Windows suite passes **362 tests**
+with one skipped; the full Linux suite passes **3,666 tests**, with **147 skipped and zero failures**.
+The Linux checkout matches the Windows production and test sources exactly. Tests include nested
+and open-ended exception regions, edits between block/region queries, and addressed-field named
+uses and indirect writers changed between inference invocations.
+
+Raw timings, pinned build/input manifests, comparison results and verification evidence are kept
+under `C:/cilantro-verify/wms-performance-20261120`. Some unchanged stages varied between runs;
+the total wall time above is the measured improvement, rather than a sum of selected pass savings.
+
+## Earlier WMS emission measurement
 
 The managed WMS child (`9e76d2c69d058e209da12460dba98c5947a6d65b78aec310b69438fad1e8608e`)
 completed all 136 pass decisions and recursive child recovery in **1,271.248 s (21m11s)** on
@@ -91,6 +171,27 @@ bottlenecks but include GC pauses and blocked thread time; they are not hardware
 - **Exception-region allocation.** Repeated CFG construction allocated a membership list for
   every instruction and checked every clause each time. Membership now changes only at clause
   boundaries; instructions within an interval share an immutable snapshot in original clause order.
+- **Graphs built for narrower queries.** Branch threading and branch-convergence checks now
+  build exception membership without constructing blocks and edges. Discarded-value analysis
+  partitions blocks without adjacency. Both paths retain all original clause boundaries;
+  membership queries are rebuilt after edits, and methods without clauses need no region map.
+- **Addressed-field inference.** Each type-restoration invocation indexes named uses, type
+  handles, member references and addressed-field uses once. Its read-only inference phase
+  shares method graphs, while every indirect writer is still proved against the current
+  inferred types. The index and graphs are discarded before the next pass invocation.
+- **Snapshot fingerprints.** Structural snapshots still freeze their representation before
+  edits, but compute its SHA-256 only when a caller requests the fingerprint. Rollback and
+  structural comparisons retain the original captured state.
+- **Rollback-only rewrites.** Dispatcher paths, effectful dispatcher paths and control-flow
+  completion capture the same restoration state without constructing a structural description.
+  The public transaction and snapshot APIs retain their capture-time description and fingerprint.
+- **Dispatcher fallback analyses.** Known-store analysis reuses the current round's graph and
+  successful stack verification. Both were computed before any body edits; neither survives
+  a rewrite or another round. Other callers still build and verify their own analysis.
+- **Control-flow completion workers.** Standalone completion uses the same method-local
+  cleanup already called from dispatcher workers, with at most four workers. Bodies are loaded
+  before dispatch; reports and accumulated facts are published in original method order after
+  all workers finish. Modules with fewer than 64 nonempty methods remain sequential.
 - **Provenance after saturation.** Arithmetic and literal tracking now returns the same budget
   node immediately when the graph is full, avoiding discarded location and parent work.
 - **Condition folding.** The backward producer search runs only for conditional instructions.

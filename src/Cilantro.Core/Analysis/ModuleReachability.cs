@@ -321,7 +321,7 @@ public sealed class ModuleReachability
         }
 
         foreach (var root in Roots(module, methods, typeInitializersAlwaysRun)
-                     .Concat(alsoRoots ?? []))
+                     .Concat(GenericConstructionRoots(module)).Concat(alsoRoots ?? []))
         {
             if (reachable.Add(root))
                 pending.Enqueue(root);
@@ -330,6 +330,13 @@ public sealed class ModuleReachability
         while (pending.Count != 0)
         {
             var method = pending.Dequeue();
+            // Generic new() reaches a constructor without a newobj naming it. Its
+            // receiver and initializer have the same consequences as ordinary construction.
+            if (method.IsInstanceConstructor)
+            {
+                Construct(method.DeclaringType);
+                Activate(method.DeclaringType);
+            }
             if (!method.HasBody)
                 continue;
             for (var index = 0; index < method.Body.Instructions.Count; index++)
@@ -351,7 +358,7 @@ public sealed class ModuleReachability
                             // members or permitting construction of T. Keep T's ordinary
                             // metadata reference, but do not invent a reflective caller.
                             if (IsAssemblyOnlyHandle(method, index) || IsBinderContextHandle(method, index) ||
-                                TypeIdentityHandleUse.IsClosed(method, index)) break;
+                                TypeIdentityHandleUse.IsClosed(method, index) || ResourceLookupTypeHandleUse.IsClosed(method, index)) break;
                             // RunClassConstructor consumes this handle and activates only
                             // the static initializer. It neither returns the type nor makes
                             // an instance or a reflective caller of its ordinary methods.
@@ -458,6 +465,80 @@ public sealed class ModuleReachability
                 : null;
     }
 
+    /// <summary>Constructor requirements carried by surviving generic metadata and calls.</summary>
+    internal static IReadOnlyCollection<MethodDef> GenericConstructionRoots(ModuleDef module)
+    {
+        var roots = new HashSet<MethodDef>();
+        var seen = new HashSet<TypeSig>();
+        foreach (var type in module.GetTypes())
+        {
+            Type(type.BaseType?.ToTypeSig());
+            foreach (var implemented in type.Interfaces) Type(implemented.Interface.ToTypeSig());
+            foreach (var field in type.Fields) Type(field.FieldType);
+            foreach (var property in type.Properties) Signature(property.PropertySig);
+            foreach (var item in type.Events) Type(item.EventType.ToTypeSig());
+            foreach (var method in type.Methods)
+            {
+                Signature(method.MethodSig);
+                if (!method.HasBody) continue;
+                foreach (var local in method.Body.Variables) Type(local.Type);
+                foreach (var instruction in method.Body.Instructions)
+                {
+                    switch (instruction.Operand)
+                    {
+                        case IMethod called:
+                            if (called is MethodSpec specification && specification.GenericInstMethodSig is { } arguments)
+                                Arguments(arguments.GenericArguments, specification.Method.ResolveMethodDef() is { } definition &&
+                                    definition.Module == module ? definition.GenericParameters : null);
+                            Type(called.DeclaringType?.ToTypeSig());
+                            Signature(called.MethodSig);
+                            break;
+                        case IField field:
+                            Type(field.DeclaringType?.ToTypeSig());
+                            Type(field.FieldSig?.Type);
+                            break;
+                        case ITypeDefOrRef referenced:
+                            Type(referenced.ToTypeSig());
+                            break;
+                    }
+                }
+            }
+        }
+        return roots;
+
+        void Signature(CallingConventionSig? signature)
+        {
+            if (signature is not MethodBaseSig method) return;
+            Type(method.RetType);
+            foreach (var parameter in method.Params) Type(parameter);
+            foreach (var parameter in method.ParamsAfterSentinel ?? []) Type(parameter);
+        }
+
+        void Type(TypeSig? signature)
+        {
+            if (signature is null || !seen.Add(signature)) return;
+            if (signature is GenericInstSig instance)
+                Arguments(instance.GenericArguments, instance.GenericType.TypeDefOrRef.ResolveTypeDef() is { } definition &&
+                    definition.Module == module ? definition.GenericParameters : null);
+            if (signature.Next is { } next) Type(next);
+        }
+
+        void Arguments(IList<TypeSig> arguments, IList<GenericParam>? parameters)
+        {
+            for (var index = 0; index < arguments.Count; index++)
+            {
+                var argument = arguments[index];
+                Type(argument);
+                // An unresolved external generic definition may construct its arguments.
+                // Keep that possibility independent of which libraries happen to resolve.
+                if (parameters is not null && (index >= parameters.Count || !parameters[index].HasDefaultConstructorConstraint)) continue;
+                if (argument.ToTypeDefOrRef()?.ResolveTypeDef() is not { IsValueType: false } definition || definition.Module != module) continue;
+                foreach (var constructor in definition.Methods.Where(method => method.IsInstanceConstructor &&
+                             method.IsPublic && method.MethodSig.Params.Count == 0)) roots.Add(constructor);
+            }
+        }
+    }
+
     private static bool DistinctRuntimeDelegateSlot(IMethod called, MethodDef candidate)
     {
         var owner = candidate.DeclaringType;
@@ -509,16 +590,16 @@ public sealed class ModuleReachability
     private static bool IsStaticFieldAccess(Instruction instruction) =>
         instruction.OpCode.Code is Code.Ldsfld or Code.Stsfld or Code.Ldsflda;
 
-    private static bool IsInitializerOnlyHandle(MethodDef method, int index)
+    internal static bool IsInitializerOnlyHandle(MethodDef method, int index)
     {
         var body = method.Body.Instructions;
         return index + 1 < body.Count && body[index + 1] is { OpCode.Code: Code.Call, Operand: IMethod called } &&
             called.Name == "RunClassConstructor" && called.DeclaringType is TypeRef reference &&
-            reference.FullName == "System.Runtime.CompilerServices.RuntimeHelpers" &&
-            reference.DefinitionAssembly?.Name.String is "mscorlib" or "System.Private.CoreLib" or "System.Runtime" &&
-            called.MethodSig is { HasThis: false, GenParamCount: 0 } signature &&
+            CoreLibraryIdentity.Matches(method.Module, reference, "System.Runtime.CompilerServices.RuntimeHelpers") &&
+            called.MethodSig is { HasThis: false, ExplicitThis: false, GenParamCount: 0, ParamsAfterSentinel: null } signature &&
+            (signature.GetCallingConvention() & CallingConvention.Mask) == CallingConvention.Default &&
             signature.RetType.ElementType == ElementType.Void && signature.Params.Count == 1 &&
-            signature.Params[0].FullName == "System.RuntimeTypeHandle";
+            CoreLibraryIdentity.Matches(method.Module, signature.Params[0].ToTypeDefOrRef(), "System.RuntimeTypeHandle");
     }
 
     private static bool IsBinderContextHandle(MethodDef method, int index)

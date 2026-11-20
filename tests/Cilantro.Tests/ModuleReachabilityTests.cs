@@ -74,6 +74,7 @@ public sealed class ModuleReachabilityTests : IDisposable
     [InlineData("duplicate", true)]
     [InlineData("local-impostor", true)]
     [InlineData("wrong-signature", true)]
+    [InlineData("foreign-token", true)]
     public void ClassInitializationKeepsInitializerDependenciesWithoutExposingOrdinaryMembers(string shape, bool exposed)
     {
         using var context = SyntheticContext.Build(module =>
@@ -86,7 +87,12 @@ public sealed class ModuleReachabilityTests : IDisposable
             var api = SyntheticContext.AddType(module, "Api");
             api.Attributes = TypeAttributes.Public;
             var run = AddMethod(api, "Run", MethodAttributes.Public | MethodAttributes.Static);
-            IMethod called = module.Import(typeof(System.Runtime.CompilerServices.RuntimeHelpers).GetMethod("RunClassConstructor")!);
+            ITypeDefOrRef helpers = shape == "foreign-token"
+                ? new TypeRefUser(module, "System.Runtime.CompilerServices", "RuntimeHelpers",
+                    new AssemblyRefUser("mscorlib", new Version(4, 0, 0, 0), new PublicKeyToken("0000000000000000")))
+                : module.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", "RuntimeHelpers");
+            IMethod called = new MemberRefUser(module, "RunClassConstructor", MethodSig.CreateStatic(module.CorLibTypes.Void,
+                module.CorLibTypes.GetTypeRef("System", "RuntimeTypeHandle").ToTypeSig()), helpers);
             if (shape == "local-impostor")
             {
                 var fake = SyntheticContext.AddType(module, "RuntimeHelpers");

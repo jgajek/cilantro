@@ -112,7 +112,7 @@ public class DispatcherPathPass : DeobfuscationPass
             }
         }
         if (plans.Count == 0) return RewriteKnownStore(method, graph, preserveEffects, eligible);
-        using var transaction = new BodyMutationTransaction(method);
+        using var transaction = new BodyRollbackTransaction(method);
         var before = EvaluationStackAnalyzer.Analyze(method);
         if (!before.Valid) return 0;
         // Apply one plan at a time across rounds. Another plan could depend on the
@@ -137,7 +137,8 @@ public class DispatcherPathPass : DeobfuscationPass
         if (!method.Body.Instructions.Any(i => i.OpCode.FlowControl == FlowControl.Cond_Branch) ||
             !EvaluationStackAnalyzer.Analyze(method).Valid) return 0;
         var branchStates = preserveEffects ? new Dictionary<Instruction, IReadOnlyDictionary<Local, int>>() : null;
-        var stores = LocalConstantPropagation.KnownStores(method, branchStates);
+        // No body mutation has occurred since graph construction or stack verification.
+        var stores = LocalConstantPropagation.KnownStores(method, branchStates, graph, stackValid: true);
         foreach (var block in graph.Blocks)
         {
             var il = block.Instructions.Where(i => i.OpCode.Code != Code.Nop).ToArray();
@@ -146,7 +147,7 @@ public class DispatcherPathPass : DeobfuscationPass
                 il[^2].GetLocal(method.Body.Variables) is not { } local) continue;
             if (Trace(graph, il[^1], target, local, value, false, eligible) is not { } result || result.Target == target)
                 continue;
-            using var transaction = new BodyMutationTransaction(method);
+            using var transaction = new BodyRollbackTransaction(method);
             // Keep the original computation and store at their original sites. Only the
             // following pure dispatcher path is bypassed; guard reads and calls still run.
             if (result.State != value)

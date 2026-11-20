@@ -17,7 +17,7 @@ internal static class DiscardedStackValues
         var addressed = method.Body.Instructions.Where(i => i.OpCode.Code is Code.Ldloca or Code.Ldloca_S)
             .Select(i => i.GetLocal(method.Body.Variables)).ToHashSet();
         var remove = new HashSet<Instruction>();
-        foreach (var block in ControlFlowGraph.Build(method).Blocks)
+        foreach (var block in ControlFlowGraph.PartitionBlocks(method))
         {
             var stack = new List<Value>();
             var nulls = new HashSet<Local>();

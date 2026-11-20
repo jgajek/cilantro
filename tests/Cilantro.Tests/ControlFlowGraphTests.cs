@@ -30,6 +30,7 @@ public sealed class ControlFlowGraphTests
                 HandlerStart = il[range.Handler], HandlerEnd = range.HandlerEnd == 32 ? null : il[range.HandlerEnd]
             });
         var graph = ControlFlowGraph.Build(method);
+        var memberships = ControlFlowGraph.BuildExceptionRegions(method);
         for (var index = 0; index < il.Length; index++)
         {
             var expected = ranges.Select((range, clause) => (
@@ -40,7 +41,39 @@ public sealed class ControlFlowGraphTests
                 .Where(region => region.InTry || region.InHandler || region.InFilter);
             Assert.Equal(expected, graph.RegionsOf(il[index]).Select(region =>
                 (region.Handler, region.InTry, region.InHandler, region.InFilter)));
+            for (var other = 0; other < il.Length; other++)
+            {
+                var same = ranges.All(range =>
+                    (index >= range.Try && index < range.End) == (other >= range.Try && other < range.End) &&
+                    (index >= range.Handler && index < range.HandlerEnd) == (other >= range.Handler && other < range.HandlerEnd) &&
+                    (range.Filter >= 0 && index >= range.Filter && index < range.Handler) ==
+                    (range.Filter >= 0 && other >= range.Filter && other < range.Handler));
+                Assert.Equal(same, memberships.HaveIdenticalExceptionRegions(il[index], il[other]));
+            }
         }
+    }
+
+    [Fact]
+    public void RegionAndBlockQueriesObserveEditsBetweenInvocations()
+    {
+        using var module = new ModuleDefUser("edited-regions");
+        var il = Enumerable.Range(0, 6).Select(_ => OpCodes.Nop.ToInstruction()).ToArray();
+        il[^1].OpCode = OpCodes.Ret;
+        var method = Method(module, il);
+        Assert.True(ControlFlowGraph.BuildExceptionRegions(method).HaveIdenticalExceptionRegions(il[0], il[2]));
+        Assert.Single(ControlFlowGraph.PartitionBlocks(method));
+        var handler = new ExceptionHandler(ExceptionHandlerType.Finally)
+        { TryStart = il[0], TryEnd = il[2], HandlerStart = il[2], HandlerEnd = il[4] };
+        method.Body.ExceptionHandlers.Add(handler);
+        Assert.False(ControlFlowGraph.BuildExceptionRegions(method).HaveIdenticalExceptionRegions(il[0], il[2]));
+        Assert.Equal(new[] { il[0], il[2], il[4] }, ControlFlowGraph.PartitionBlocks(method).Select(b => b.First));
+        handler.TryEnd = il[3];
+        handler.HandlerStart = il[3];
+        Assert.True(ControlFlowGraph.BuildExceptionRegions(method).HaveIdenticalExceptionRegions(il[0], il[2]));
+        il[0].OpCode = OpCodes.Br;
+        il[0].Operand = il[5];
+        Assert.Equal(new[] { il[0], il[1], il[3], il[4], il[5] },
+            ControlFlowGraph.PartitionBlocks(method).Select(b => b.First));
     }
 
     [Fact]

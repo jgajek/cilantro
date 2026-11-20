@@ -176,6 +176,11 @@ public sealed class HostProfile
         new(StringComparer.Ordinal) { ["debugger:IsAttached"] = HostAnswer.Of(debuggerAttached),
             ["debugger:IsLogging"] = HostAnswer.Of(false) });
 
+    // A separate fixture, not a change to the analyst's configured world. Preserve every
+    // other answer, including unanswered/absent/bytes and its stated provenance.
+    internal HostProfile WithTrialDebugger(bool attached) => new(Name + "-simulated-debugger-" + attached,
+        new(_answers, StringComparer.Ordinal) { ["debugger:IsAttached"] = HostAnswer.Of(attached) });
+
     /// <summary>No host assumptions, for recovery that must produce host-independent constants.</summary>
     internal static HostProfile Empty { get; } = new("empty", new(StringComparer.Ordinal));
 
